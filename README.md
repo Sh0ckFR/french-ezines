@@ -6,6 +6,7 @@ French old computer security ezines restaured to be used as mirrors, the sources
 
 * rafale.org
 * hzv-mag
+* 50-1337
 
 # How to contribute
 
