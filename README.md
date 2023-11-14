@@ -8,4 +8,4 @@ French old computer security ezines restaured to be used as mirrors, the sources
 
 # How to contribute
 
-PRs are welcome, you just need to be sure that your restaured version will work directly without any broken links and that the original authors and papers has not been edited.
+PRs are welcome, you just need to be sure that your restaured version will work directly without any broken links except if they are linked to the original website and that the original authors and papers has not been edited.
