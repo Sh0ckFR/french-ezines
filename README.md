@@ -5,6 +5,7 @@ French old computer security ezines restaured to be used as mirrors, the sources
 # List of the available ezines
 
 * rafale.org
+* hzv-mag
 
 # How to contribute
 
