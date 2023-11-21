@@ -1,0 +1,908 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html>
+<head>
+<title>RFC 1180 FR</title>
+<style type="text/css">
+<!--
+p, blockquote {color:black;font-weight:normal;text-align:justify;}
+pre {font-size:12;}
+li {color:black;font-weight:bold;font-size:16;}
+a:hover {color:firebrick;}
+-->
+</style>
+
+</head>
+<body link="black" vlink="black" alink="black" bgcolor="#FFFFFF">
+<center><b><h1>RFC 1180</h1></b></center><br>
+<table align="center" width="100%">
+<tr><td>Groupe de travail réseau:</td><td>T. Socolofsky & C. Kale</td></tr>
+<tr><td>&nbsp;</td><td>Spider Systems Limited</td></tr>
+<tr><td>&nbsp;</td><td>Janvier 1991</td></tr>
+<tr><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td>Traduction par Kharneth - Septembre 2003.</td><td>&nbsp;</td></tr>
+<tr><td>kharneth@free.fr</td><td>&nbsp;</td></tr>
+</table>
+
+
+<center><b><h2><u>Un didacticiel sur TCP / IP</u></h2></b></center>
+<br>
+Statut de ce texte<br>
+<br>
+<p>
+	 Ce RFC est un didacticiel sur le groupe de protocole TCP / IP, se focalisant plutôt sur la manière d'envoyer un datagramme IP entre deux hôtes à travers un router.<br>
+	 Il ne spécifie en aucun cas un standard Internet. La diffusion de ce texte n'est pas restreinte.<br>
+</p>
+Table des matières<br>
+<ol>
+<li><a href="#intro">Introduction</a></li>
+<li><a href="#pres">Présentation de TCP/IP</a> 
+		<ol>
+		<li><a href="#struct">Structure de base</a></li>
+		<li><a href="#term">Terminologie</a></li>
+		<li><a href="#flux">Flux de données</a></li>
+		<li><a href="#inter">Interfaces entre 2 réseaux</a></li>
+		<li><a href="#logi">IP crée un seul réseau logique</a></li>
+		<li><a href="#auton">Autonomie du réseau physique</a></li>
+		<li><a href="#inter">Interopérabilité</a></li>
+		<li><a href="#apres">Après la présentation</a></li>
+		</ol></li>
+<li><a href="#ether">Ethernet</a>
+		<ol>
+		<li><a href="#analog">Une analogie humaine</a></li>
+		</ol></li>
+<li><a href="#arp">ARP</a> 
+		<ol>
+		<li><a href="#tablearp">Table ARP de traduction des adresses</a></li>
+		<li><a href="#exeres">Exemple typique de résolution</a></li>
+		<li><a href="#paire">La paire requête/réponse ARP</a></li>
+		<li><a href="#scenar">Le scénario se poursuit</a></li>
+		</ol></li>
+<li><a href="#ip">Le Protocole Internet (IP)</a>
+		<ol>
+		<li><a href="#direct">Acheminement Direct</a></li>
+		<li><a href="#indirect">Acheminement Indirect</a></li>
+		<li><a href="#regles">Règles d'acheminement du module IP</a></li>
+		<li><a href="#adresse">Adresse IP</a></li>
+		<li><a href="#noms">Les noms</a></li>
+		<li><a href="#tablerout">La table de routage IP</a></li>
+		<li><a href="#routdir">Détails sur le routage Direct</a></li>
+		<li><a href="#scendir">Scénario de routage Direct</a></li>
+		<li><a href="#routind">Détails sur le routage Indirect</a></li>
+		<li><a href="#scenind">Scénario de routage Indirect</a></li>
+		<li><a href="#resume">Résumé sur le routage</a></li>
+		<li><a href="#routgest">Gestion du routage</a></li>
+		</ol></li>
+<li><a href="#udp">Le Protocole de Datagramme Utilisateur (UDP)</a> 
+		<ol>
+		<li><a href="#ports">Les ports</a></li>
+		<li><a href="#checksum">Test d'intégrité (Checksum)</a></li>
+		</ol></li>
+<li><a href="#tcp">Le Protocole de Contrôle de Transmission (TCP)</a></li>
+<li><a href="#appres">Les applications réseaux</a>
+		<ol>
+		<li><a href="#telnet">TELNET</a></li>
+		<li><a href="#ftp">FTP</a></li>
+		<li><a href="#rsh">rsh</a></li>
+		<li><a href="#nfs">NFS</a></li>
+		<li><a href="#snmp">SNMP</a></li>
+		<li><a href="#xwin">X-Window</a></li>
+		</ol></li>
+<li><a href="#infos">Autres Informations</a></li>
+<li><a href="#ref">Références</a></li>
+<li><a href="#liens">Liens avec d'autres RFCs</a></li>
+<li><a href="#notes">Notes de Sécurité</a></li>
+<li><a href="#auteurs">Adresses des Auteurs</a></li>
+</ol>
+
+<ol>
+<li><a name="intro" class="titre">Introduction</a> 
+    <p> Ce didacticiel ne présente qu'une partie des nombreux points forts de 
+      TCP/IP, et contient donc l'ossature de la technologie TCP/IP. Il n'explique 
+      pas l'histoire du développement et du financement, l'&eacute;tude de cas 
+      pour son utilisation, et son avenir par rapport à ISO OSI. En effet, de 
+      nombreuses informations techniques n'apparaissent pas.<br>
+	 Le résultat est un condensé d'informations qui doit être compris par les professionnels travaillant dans un environnement TCP/IP. Ces professionnels comprennent l'administrateur systèmes, le programmeur système et l'administrateur réseau. <br>
+	 <br>
+	 Ce didacticiel présente des exemples de l'environnement TCP/IP de UNIX, cependant, les points principaux se retrouvent à travers toutes les implémentations de TCP/IP.<br>
+	 <br>
+	 Remarquez que ce texte présente une explication et non une définition. En cas de questions sur les spécifications d'un protocole, référez-vous
+	 aux RFC définissant les standards actuels.<br>
+	 <br>
+	 Le prochain chapitre est une présentation de TCP/IP, suivie d'une description détaillée de chaque composant individuellement.<br>
+</p>
+</li>
+<li><a name="pres">Présentation de TCP / IP</a>
+<p>
+	 Le terme générique "TCP/IP" est habituellement utilisé pour représenter un peu tout ce qui est en rapport avec les protocoles spécifiques que sont TCP et IP. Cela peut inclure d'autres protocoles, des applications et même le matériel réseau. Par exemple, ces protocoles sont: UDP, ARP et ICMP. Un exemple d'applications: TELNET, FTP et rcp. Le terme approprié est "Technologies Internet". Un réseau qui utilise les technologies internet est appelé un "Internet".<br>
+</p>
+<a name="struct">2.1 Structure de base</a> 
+<blockquote>
+						Pour comprendre cette technologie, vous devez d'abord comprendre la structure logique suivante: 
+						<pre>
+
+                     ----------------------------
+                     |    applications réseaux  |
+                     |                          |
+                     |...  \ | /  ..  \ | /  ...|
+                     |     -----      -----     |
+                     |     |TCP|      |UDP|     |
+                     |     -----      -----     |
+                     |         \      /         |
+                     |         --------         |
+                     |         |  IP  |         |
+                     |  -----  -*------         |
+                     |  |ARP|   |               |
+                     |  -----   |               |
+                     |      \   |               |
+                     |      ------              |
+                     |      |ENET|              |
+                     |      ---@--              |
+                     ----------|-----------------
+                               |
+         ----------------------o---------
+              Câble Ethernet
+
+                  Figure 1.  Noeud d'un réseau TCP/IP basique
+						</pre>
+						Ceci est la structure logique des couches de protocoles à l'intérieur d'un ordinateur sur un internet. Tous les ordinateurs qui peuvent communiquer en utilisant la technologie internet possèdent cette même structure logique. C'est cette structure logique qui détermine le comportement d'un ordinateur sur l'internet. Les carrés représentent le traitement des données lorsqu'elles passent à travers l'ordinateur, et les lignes connectées à ces carrés montrent le chemin emprunté par ces données. La ligne horizontale en bas représente le câble Ethernet; Le "o" correspond au Transceiver. Le "*" correspond à l'adresse IP et le "@" correspond à l'adresse Ethernet. Comprendre cette structure logique est essentielle pour comprendre la technologie internet. Il en sera référence tout au long de ce didacticiel.
+</blockquote>
+<a name="term">2.2 Terminologie</a> 
+<blockquote>
+						Le nom d'une unité de donnée qui parcours un internet dépend de sa position dans les couches de protocole. En résumé: au niveau de l'Ethernet, elle s'appelle trame Ethernet; Entre le pilote Ethernet et le module IP, elle s'appelle un paquet IP; Entre le module IP et le module UDP, elle s'appelle un datagramme UDP; Entre le module IP et le module TCP, elle s'appelle un segment TCP (plus généralement, un message TCP); et dans l'application réseau, elle s'appelle un message d'application.<br>
+						<br>
+						Ces définitions sont imparfaites. Les définitions actuelles changent d'une publication à l'autre. Des définitions plus précises peuvent être trouvées dans le RFC 1122, chapitre 1.3.3.<br>
+						<br>
+						Un pilote est un programme qui communique directement avec l'interface matérielle du réseau. Un module est un programme qui communique avec un pilote, avec les applications réseau, ou avec un autre module.<br>
+						<br>
+						Les termes pilote, module, trame Ethernet, paquet IP, datagramme UDP, message TCP et message d'application sont utilisés lorsque c'est approprié tout au long de ce didacticiel.<br>
+</blockquote>
+<a name="flux">2.3 Flux de données</a> 
+<blockquote>
+						Suivons le cheminement des données à travers les différentes couches de protocoles tel que sur la figure 1. Pour une application qui utilise TCP (Protocole de Contrôle de Transmission), les données transitent entre l'application et le module TCP. Pour les applications qui utilisent UDP (Protocole de Datagramme Utilisateur), les données transitent entre l'application et le module UDP. FTP (Protocole de Transfert de Fichier) est une application typique qui utilise TCP. La pile de protocole dans cet exemple est FTP / TCP / IP / ENET. SNMP (Protocole Simple de Gestion de Réseau) est une application qui utilise UDP. Sa pile de protocole est SNMP / UDP / IP / ENET.<br>
+						<br>
+						Le module TCP, le module UDP et le pilote Ethernet sont des multiplexeurs n-à-1. En tant que multiplexeurs, ils peuvent basculer plusieurs entrées vers une sortie. Ils sont également des de-multiplexers 1-à-n. En tant que de-multiplexers, ils peuvent basculer une entrée vers plusieurs sorties par rapport au champ type dans l'en-tête du protocole.<br>
+						<pre>
+
+         1   2 3 ...   n                   1   2 3 ...   n
+          \  |      /      |               \  | |      /        ^
+           \ | |   /       |                \ | |     /         |
+         -------------   flux              ----------------   flux
+         |multiplexer|    de               |de-multiplexer|    de
+         -------------  données            ----------------  données
+              |            |                     |              |
+              |            v                     |              |
+              1                                  1
+
+        Figure 2.  n-à-1 multiplexer et 1-à-n de-multiplexer
+					 </pre>
+					 Si une trame Ethernet accède au pilote Ethernet depuis le réseau, le paquet peut être acheminé soit vers le module ARP (Protocole de Résolution d'Adresse), soit vers le module IP (Protocole Internet). La valeur du champ type dans la trame Ethernet détermine si la trame Ethernet doit être acheminée vers le module ARP ou IP.
+					 <br><br>
+					 Si un paquet IP arrive dans l'IP, l'unité de donnée est transmise aux modules TCP ou UDP suivant la valeur du champ protocole dans l'en-tête IP.
+					 <br><br>
+					 Si le datagramme UDP arrive dans l'UDP, le message d'application est transmis à l'application réseau suivant la valeur du champ port dans l'en-tête UDP. Si le message TCP arrive dans TCP, le message d'application est transmis à l'application réseau suivant la valeur du champ port dans l'en-tête TCP.
+					 <br><br>
+					 Le multiplexing descendant est simple à réaliser car pour chaque point de départ, il n'existe qu'un seul chemin descendant; chaque module de protocole ajoute ses informations d'en-tête pour que le paquet puisse être acheminer sur l'ordinateur destinataire.
+					 <br><br>
+					 Les données émises depuis les applications à travers TCP ou UDP convergent vers le module IP puis sont envoyées vers le pilote de l'interface réseau.
+					 <br><br>
+      Bien que la technologie internet supporte plusieurs types de réseaux différents, 
+      Ethernet est utilisé pour les exemples dans ce didacticiel car c'est le 
+      réseau physique le plus pratique utilisé sous IP. L'ordinateur de la figure 
+      1 a une seule connexion Ethernet. L'adresse Ethernet de 6 octets est unique 
+      pour chaque interface sur un Ethernet. <br>
+      <br>
+      L'ordinateur possède également une adresse IP de 4 octets. L'adresse 
+      IP doit être unique sur un internet.<br>
+					 Un ordinateur sous tension connaît toujours ses propres adresse IP et adresse Ethernet. <br>
+</blockquote>
+<a name="inter">2.4 Interfaces entre 2 réseaux</a>
+<blockquote>
+						Un ordinateur est connecté sur 2 réseaux distincts tel que dans la figure 3. 
+						<pre>
+
+                ----------------------------
+                |    applications réseau   |
+                |                          |
+                |...  \ | /  ..  \ | /  ...|
+                |     -----      -----     |
+                |     |TCP|      |UDP|     |
+                |     -----      -----     |
+                |         \      /         |
+                |         --------         |
+                |         |  IP  |         |
+                |  -----  -*----*-  -----  |
+                |  |ARP|   |    |   |ARP|  |
+                |  -----   |    |   -----  |
+                |      \   |    |   /      |
+                |      ------  ------      |
+                |      |ENET|  |ENET|      |
+                |      ---@--  ---@--      |
+                ----------|-------|---------
+                          |       |
+                          |    ---o---------------------------
+                          |             Câble Ethernet 2
+           ---------------o----------
+             Câble Ethernet 1
+
+             Figure 3.  N&#156;ud d'un réseau TCP/IP entre 2 Ethernets
+					</pre>
+					Notez que cet ordinateur possède 2 adresses Ethernet ainsi que 2 adresses IP.<br>
+					On voit sur cette structure que pour les ordinateurs avec plus d'une interface de réseau physique, le module IP est à la fois un multiplexer n-à-m et un de-multiplexer m-à-n.<br>
+					<pre>
+
+         1   2 3 ...   n                   1   2 3 ...   n
+          \  | |      /    |                \  | |      /       ^
+           \ | |     /     |                 \ | |     /        |
+         -------------   flux              ----------------   flux
+         |multiplexer|    de               |de-multiplexer|    de
+         -------------  données            ----------------  données
+           / | |     \     |                 / | |     \        |
+          /  | |      \    v                /  | |      \       |
+         1   2 3 ...   m                   1   2 3 ...   m
+
+        Figure 4.  n-à-m multiplexer et m-à-n de-multiplexer
+				 </pre> 
+				 Le multiplexing s'effectue dans n'importe quel sens suivant que les données entrent ou sortent. Un module IP avec plus d'une interface réseau est plus complexe que notre premier exemple dans ce sens qu'il peut transmettre des données sur le réseau suivant. Les données peuvent provenir de n'importe quel réseau puis être acheminée vers n'importe quel autre.<br>
+				 <pre>
+
+                           TCP      UDP
+                             \      /
+                              \    /
+                          --------------
+                          |     IP     |
+                          |            |
+                          |    ---     |
+                          |   /   \    |
+                          |  /     v   |
+                          --------------
+                           /         \
+                          /           \
+                       données       données
+                      arrivant         sortant
+                      ici               ici
+
+            Figure 5.  Exemple de l'IP expédiant un paquet IP
+					</pre>	
+					Le processus d'envoi d'un paquet IP vers un autre réseau est appelé "forwarding" (Faire suivre) un paquet IP. Un ordinateur dédié à la tâche de faire suivre des paquets IP est appelé "IP-router".
+					<br><br>
+					Comme vous pouvez le voir sur le schéma, le paquet IP expédié n'atteint jamais les modules TCP et UDP de l'IP-router. Certaines implémentations d'IP-router ne possèdent pas de module TCP ou UDP.
+					<br><br>
+</blockquote>
+<a name="logi">2.5 IP crée un seul réseau logique</a>
+<blockquote>
+						Le module IP est au centre du succès de la technologie internet. Chaque module ou pilote ajoute son en-tête au message au fur à mesure qu'il traverse les différentes couches de protocole. Chaque module ou pilote lit l'en-tête correspondant du message au fur et à mesure qu'il remonte la pile de protocole jusqu'à l'application. L'en-tête IP contient l'adresse IP qui construit un seul réseau logique à partir de plusieurs réseaux physiques. Cette interconnexion de réseaux physiques est à l'origine du nom: Internet (Interconnected Networks). Un groupe de réseaux physiques interconnectés qui limitent la portée d'un paquet IP est appelé "Internet".
+</blockquote>
+<a name="auton">2.6 Autonomie du réseau physique</a>
+<blockquote>
+						IP cache le matériel réseau sous-jacent aux applications réseaux. Si vous inventez un nouveau réseau physique, vous pouvez le mettre en service en développant un nouveau pilote qui relie l'internet par l'intermédiaire de l'IP. Ainsi, les applications réseaux restent intactes et ne sont pas sensibles aux changements de technologies matérielles.
+</blockquote>
+<a name="inter">2.7 Interopérabilité</a>
+<blockquote>
+						Si deux ordinateurs sur un internet peuvent communiquer, cette action est appelée "interopérer"; si une mise en oeuvre de la technologie internet est bonne, elle est dite posséder "l'interopérabilité". Les utilisateurs d'ordinateurs multimédias bénéficient de l'installation d'un internet grâce à l'interopérabilité des ordinateurs sur le marché. Généralement, lorsque vous achetez un ordinateur, celui-ci pourra interopèrer. Si un ordinateur ne possède pas l'interopérabilité et celle-ci ne peut être ajoutée, alors il occupe un créneau spécialisé sur le marché.
+</blockquote>
+<a name="apres">2.8 Après la présentation</a>
+<blockquote>
+						Maintenant que le décor est planté, nous allons répondre aux questions suivantes:
+						<br><br>
+						Lorsqu'un paquet IP est envoyé, comment déterminer l'adresse Ethernet de destination?
+						<br><br>
+						Comment IP sait quelle carte réseau utiliser pour envoyer un paquet IP?
+						<br><br>
+						Comment un client sur un ordinateur peut atteindre le serveur sur une autre machine?
+						<br><br>
+						Pourquoi avoir créer à la fois TCP et UDP, au lieu de simplement l'un ou l'autre?
+						<br><br>
+						Quelles sont les applications réseaux disponibles?
+						<br><br>
+						Ces question seront expliquées, l'une après l'autre, après un rappel sur l'Ethernet.
+</blockquote>
+</li>
+<li><a name="ether">Ethernet</a> 
+<p>
+	 Ce chapitre est un bref rappel sur la technologie Ethernet.
+	 <br><br>
+	 Une trame Ethernet contient l'adresse de destination, l'adresse de l'expéditeur, le champ type et les données.
+	 <br><br>
+	 Une adresse Ethernet est codée sur 6 octets. Chaque périphérique possède sa propre adresse Ethernet et écoute les trames Ethernet à la recherche de cette adresse de destination. Tous les périphériques recherchent également les trames Ethernet avec une adresse de destination générique, "FF-FF-FF-FF-FF-FF" (en hexadécimale), appelée adresse "de diffusion" (Broadcast).
+	 <br><br>
+	 Ethernet utilise CSMA/CD (Carrier Sense & Multiple Access with Collision Detection). CSMA/CD signifie que tous les périphériques communiquent sur un seul support, qu'une seule transmission peut s'effectuer à la fois, et qu'il peuvent tous recevoir en même temps. Si 2 périphériques essaient de transmettre en même temps, une collision est détectée, et chaque périphérique attend pendant un (court) laps de temps déterminé aléatoirement avant de tenter une nouvelle transmission. 
+</p>
+<a name="analog">3.1 Une analogie humaine</a>
+<blockquote>
+						Une bonne analogie de la technologie Ethernet est un groupe de personnes discutant dans une petite pièce complètement noire. Dans cette analogie, le support du réseau physique est constitué des ondes sonores qui se propagent sur l'air dans la pièce au lieu de signaux électriques sur un câble coaxial.
+						<br><br>
+						Chaque personne peut entendre les mots lorsqu'une autre est en train de parler (Ecoute de la Porteuse - CS). Tout le monde dans la pièce possède les mêmes capacités de communication (Accès Multiple - MA), mais personne ne fait de trop longs discours car tout le monde est poli. Si une personne est impolie, elle est invitée à quitter la pièce. (Ex: éjecté du réseau).
+						<br><br>
+						Personne ne parle pendant qu'une autre a la parole. Mais si deux personnes commencent à parler en même temps, chacune d'elles s'en aperçoit puisqu'elle entend quelque chose qu'elle n'a pas dit. (Détection des Collisions - CD). Quand les deux personnes prennent conscience de cet état, elles attendent quelques instants, puis l'une d'entre elles prend la parole. L'autre entend le discours et attend qu'il prenne fin avant de commencer le sien.
+						<br><br>
+						Chaque personne porte un nom unique (Adresse Ethernet unique) pour éviter les confusions. A chaque fois que l'une d'entre elles parle, elle commence son message par le nom de la personne à qui elle s'adresse et par son propre nom (respectivement, Adresses Ethernet du destinataire et de l'expéditeur), ex: "Salut Jane, c'est Jack, ...blah, blah, blah...". Si l'orateur veut parler à tout le monde il devra dire "Tout le monde" (Adresse de diffusion - Broadcast), ex: "Bonjour tout le monde, c'est Jack, ...blah, blah, blah...".
+</blockquote>
+</li>
+<li><a name="arp">ARP</a> 
+<p>
+	 Lorsqu'un paquet IP est envoyé, comment est déterminée l'adresse Ethernet du destinataire?
+	 <br><br>
+	 ARP (Protocole de résolution des adresses) est utilisé pour traduire les adresses IP en adresses Ethernet. La traduction s'effectue seulement pour les paquets IP émis, puisque c'est à ce moment que l'en-tête IP et l'en-tête Ethernet sont créés.
+</p>
+<a name="tablearp">4.1 Table ARP de traduction des adresses</a>
+<blockquote>
+						La traduction s'opère grâce à une recherche dans une table. Cette table, appelée table ARP, est stockée en mémoire et contient une ligne pour chaque ordinateur. Il y a une colonne pour l'adresse IP et une colonne pour l'adresse Ethernet. Lorsqu'une adresse IP est traduite en adresse Ethernet, la table est parcourue à la recherche d'une adresse IP correspondante. Le schéma suivant représente une table ARP simplifiée:
+						<pre>
+
+                  ------------------------------------
+                  |adresse IP      adresse Ethernet  |
+                  ------------------------------------
+                  |223.1.2.1        08-00-39-00-2F-C3|
+                  |223.1.2.3        08-00-5A-21-A7-22|
+                  |223.1.2.4        08-00-10-99-AC-54|
+                  ------------------------------------
+                      TABLE 1.  Exemple de table ARP
+     				</pre>
+	 					La convention d'écriture pour l'adresse IP de 4 octets est chaque octet en décimal et séparé par un point. Pour l'écriture de l'adresse Ethernet de 6 octets, la convention est chaque octet en hexadécimal et séparé soit par un signe moins, soit par deux-points.
+						<br><br>
+						La table ARP est indispensable car l'adresse IP et l'adresse Ethernet sont choisies indépendamment; vous ne pouvez pas utiliser un algorithme pour traduire une adresse IP en adresse Ethernet. L'adresse IP est choisie par l'administrateur réseau en fonction de l'emplacement de l'ordinateur sur l'internet. Lorsque l'ordinateur est déplacé à un autre endroit de l'internet, son adresse IP doit être changée. L'adresse Ethernet est choisie par le constructeur par rapport à l'espace d'adressage Ethernet permis pour le constructeur. Lorsque la carte réseau Ethernet est remplacée, l'adresse Ethernet change.
+</blockquote>
+<a name="exeres">4.2 Exemple typique de résolution</a>
+<blockquote>
+						Lors d'une utilisation normale, une application réseau, telle TELNET, envoies un message d'application à TCP, puis TCP envoie le message TCP correspondant au module IP. L'adresse IP de destination est connue de l'application, du module TCP et du module IP. A ce niveau, le paquet IP a été construit et est prêt à être transmis au pilote Ethernet, mais avant l'adresse Ethernet de destination doit être déterminée.
+						<br><br>
+						La table ARP est utilisée pour rechercher l'adresse Ethernet de destination. 
+</blockquote>
+<a name="paire">4.3 La paire requête/réponse ARP</a>
+<blockquote>
+						Mais comment la table ARP est-elle remplie la première fois? La réponse est que la table est remplie automatiquement par ARP si besoin est.
+						<br><br>
+						Deux choses se passent quand la table ARP ne peut pas être utilisée pour traduire une adresse:
+						<br><br>
+						1. Un paquet de requête ARP avec une adresse Ethernet de diffusion (Broadcast) est envoyé sur le réseau à tous les ordinateurs. 
+						<br><br>
+						2. Le paquet IP émis est mis en attente.
+						<br><br>
+						L'interface Ethernet de tous les ordinateurs reçoit la trame Ethernet de diffusion. Chaque pilote Ethernet examine le champ type dans la trame Ethernet puis transmet le paquet ARP au module ARP. Le paquet de requête ARP dit "Si ton adresse IP correspond à cette adresse IP, alors s'il te plait donne moi ton adresse Ethernet". Un paquet de requête ARP ressemble en gros à ça:
+						<pre>
+
+                -------------------------------------------
+                |Adresse IP expéditeur   223.1.2.1        |
+                |Adresse ENET expéditeur 08-00-39-00-2F-C3|
+                -------------------------------------------
+                |Adresse IP destinataire   223.1.2.2      |
+                |Adresse ENET destinataire &lt;blank>        |
+                -------------------------------------------
+                     TABLE 2.  Exemple de requête ARP
+						</pre>
+						Chaque module ARP examine l'adresse IP et si l'adresse IP cible correspond à sa propre adresse IP, il envoie directement la réponse à l'adresse Ethernet émettrice. Le paquet de réponse ARP dit "Oui, cette adresse IP ciblée est la mienne, laisse moi te donner mon adresse Ethernet". Un paquet de réponse ARP voit le contenu de ses champs expéditeur/destinataire inversé par rapport au paquet de requête. Il ressemble en gros à ça:
+						<pre>
+
+                ---------------------------------------------
+                |Adresse IP expéditeur   223.1.2.2          |
+                |Adresse ENET expéditeur 08-00-28-00-38-A9  |
+                ---------------------------------------------
+                |Adresse IP destinataire   223.1.2.1        |
+                |Adresse ENET destinataire 08-00-39-00-2F-C3|
+                ---------------------------------------------
+                     TABLE 3.  Exemple de réponse ARP
+						</pre>
+						La réponse est reçu par l'ordinateur émetteur. Le pilote Ethernet regarde le champ Type de la trame Ethernet puis transmet le paquet ARP au module ARP. Le module ARP examine le paquet ARP et ajoute les adresses IP et Ethernet de l'expéditeur à sa table ARP.
+						<br><br>
+						La table mise à jour ressemble maintenant à ça:
+						<pre>
+
+                   ----------------------------------
+                   |Adresse IP     adresse Ethernet |
+                   ----------------------------------
+                   |223.1.2.1      08-00-39-00-2F-C3|
+                   |223.1.2.2      08-00-28-00-38-A9|
+                   |223.1.2.3      08-00-5A-21-A7-22|
+                   |223.1.2.4      08-00-10-99-AC-54|
+                   ----------------------------------
+                   TABLE 4.  Table ARP après la réponse
+						</pre>
+</blockquote>						
+<a name="scenar">4.4 Le scénario se poursuit</a>
+<blockquote>
+						La nouvelle traduction a maintenant été installée automatiquement dans la table, quelques milli-secondes après l'avoir réclamée. Tel qu'expliqué précédemment dans l'étape 2, le paquet IP émis est mis en attente. Ensuite, la traduction de l'adresse IP en adresse Ethernet est effectuée par une recherche dans la table ARP, enfin la trame Ethernet est envoyée sur l'Ethernet. Donc, avec les nouvelles étapes 3, 4 et 5, la marche à suivre pour l'ordinateur émetteur est:
+						<br><br>						
+						1. Un paquet de requête ARP avec une adresse Ethernet de diffusion est envoyé sur le réseau à l'attention de tous les ordinateurs.
+						<br><br>
+						2. Le paquet IP sortant est mis en attente.
+						<br><br>
+						3. La réponse ARP arrive avec la traduction de l'adresse IP en adresse Ethernet pour la table ARP.
+						<br><br>
+						4. Pour le paquet IP en attente, la table ARP est utilisée pour traduire l'adresse IP en adresse Ethernet.
+						<br><br>
+						5. La trame Ethernet est transmise sur l'Ethernet.
+						<br><br>
+						En résumé, lorsque la traduction manque dans la table ARP, le paquet IP est mis en attente. Les données de la traduction sont rapidement récupérées grâce à la requête/réponse ARP puis le paquet IP en attente est envoyé.
+						<br><br>
+						Chaque ordinateur possède sa propre table ARP pour chaque interface Ethernet. Si l'ordinateur cible n'existe pas, il n'y aura pas de réponse ARP ni d'entrée dans la table ARP. IP détruira les paquets IP émis vers cette adresse. Les protocoles des couches supérieures ne peuvent pas faire la différence entre un Ethernet coupé et l'absence de l'ordinateur avec l'adresse IP cible.
+						<br><br>
+						Certains procédés de IP et ARP ne mettent pas les paquets IP de côté en attendant la réponse ARP. A la place, le paquet IP est détruit et la récupération du paquet IP perdu est laissé à la charge du module TCP ou de l'application réseau UDP. Cette récupération se fait après une pause par une retransmission. Le message renvoyé est correctement émis sur le réseau car la première copie du message a déjà permis à la table ARP de se remplir.
+</blockquote>
+</li>						
+<li><a name="ip">Le Protocole Internet (IP)</a> 
+<p>
+	 Le module IP est le c&#156;ur de la technologie internet et l'essence de l'IP est sa table de routage. IP utilise cette table en mémoire pour prendre toutes les décisions concernant l'acheminement d'un paquet IP. Le contenu de la table de routage est défini par l'administrateur réseau. Toute erreur bloque toute communication.
+	 <br><br>
+	 Comprendre comment une table de routage est utilisée revient à comprendre le fonctionnement d'internet. Cette compréhension est indispensable pour une administration et une maintenance correctes sur un réseau IP.
+	 <br><br>
+	 Pour bien comprendre le fonctionnement de la table de routage, il est préférable de commencer par une présentation du routage, puis l'étude de l'adressage dans un réseau IP, puis enfin approfondir tout ça.
+</p>
+<a name="direct">5.1 Acheminement Direct</a>
+<blockquote>
+						Le schéma ci-dessous représente un mini réseau composé de 3 ordinateurs: A, B et C. Chaque ordinateur utilise la même pile de protocoles TCP/IP vue dans la figure 1. L'interface Ethernet de chaque ordinateur possède sa propre adresse Ethernet. Chaque ordinateur possède une adresse IP configurée dans l'interface IP par l'administrateur réseau qui a également attribué un numéro de réseau IP à l'Ethernet.
+						<pre>
+
+                          A      B      C
+                          |      |      |
+                        --o------o------o--
+                        Ethernet 1
+                        Réseau IP "Développement"
+
+                       Figure 6.  Un réseau IP
+						</pre>
+						Quand A envoie un paquet à B, l'en-tête IP contient l'adresse IP de A en tant qu'adresse IP source, et l'en-tête Ethernet contient l'adresse Ethernet de A en tant qu'adresse Ethernet source. De plus, l'en-tête IP contient l'adresse IP de B en tant qu'adresse IP de destination et l'en-tête Ethernet contient l'adresse Ethernet de B en tant qu'adresse Ethernet de destination.
+						<pre>
+
+                ----------------------------------------
+                |adresse            source  destination|
+                ----------------------------------------
+                |En-tête IP          A       B         |
+                |En-tête Ethernet    A       B         |
+                ----------------------------------------
+       TABLE 5.  Adresses dans une trame Ethernet pour un paquet IP
+                                                 partant de A vers B
+						</pre>
+						Pour ce simple cas, IP est inactif car l'IP n'améliore que très légèrement les services qu'offrent Ethernet. Cependant, IP coûte cher: des calculs processeur et une bande passante réseau supplémentaires pour générer, transmettre, et analyser l'en-tête IP.
+						<br><br>
+						Lorsque le module IP de B reçoit le paquet IP de A, il compare l'adresse IP de destination avec la sienne, cherchant une correspondance, puis il passe le datagramme au protocole de la couche supérieure.
+						<br><br>
+						Cette communication entre A et B utilise l'Acheminement Direct.
+</blockquote>
+<a name="indirect">5.2 Acheminement Indirect</a>
+<blockquote>
+						Le schéma ci-dessous est une vision plus réaliste d'internet. Il est composé de 3 Ethernets et de 3 réseaux IP connectés par un router IP appelé ordinateur D. Chaque réseau IP comporte 4 ordinateurs; chaque ordinateur possède ses propres adresses IP et Ethernet.
+						<pre>
+
+          A      B      C      ----D----      E      F      G
+          |      |      |      |   |   |      |      |      |
+        --o------o------o------o-  |  -o------o------o------o--
+        Ethernet 1                 |  Ethernet 2
+        Réseau IP "développement"  |  Réseau IP "comptabilité"
+                                   |
+                                   |
+                                   |     H      I      J
+                                   |     |      |      |
+                                 --o-----o------o------o--
+                                  Ethernet 3
+                                  Réseau IP "usine"
+
+               Figure 7. Trois réseaux IP; Un internet
+						</pre>
+						A part pour l'ordinateur D, chaque ordinateur possède une pile de protocole comme celle du schéma 1. L'ordinateur D est le router IP; il est connecté aux 3 réseaux à la fois et possède donc 3 adresses IP et 3 adresses Ethernet. L'ordinateur D possède une pile de protocole similaire à celle du schéma 3, excepté qu'il a 3 modules ARP et 3 pilotes Ethernet au lieu de 2. Notez cependant qu'il n'a qu'un seul module IP.
+						<br><br>
+						L'administrateur réseau a configuré un numéro unique, appelé id réseau, pour chaque Ethernet. Les numéros de réseau IP n'apparaissent pas sur ce schéma, juste les noms de réseau. 
+						<br><br>
+						Lorsque l'ordinateur A envoie un paquet IP à l'ordinateur B, le processus est identique à celui d'un réseau unique comme dans l'exemple précédent. Toutes les communications entre des ordinateurs appartenant au même réseau IP fonctionnent comme un acheminement direct tel que présenté précédemment.
+						<br><br>
+						Lorsque les ordinateurs D et A communiquent, c'est une communication directe. Lorsque les ordinateurs D et E communiquent, c'est une communication directe. Lorsque les ordinateurs D et H communiquent, c'est une communication directe. Ceci s'explique par le fait que chaque paire d'ordinateur se trouve sur le même réseau IP. 
+						<br><br>
+						Toutefois, lorsque l'ordinateur A communique avec un ordinateur de l'autre côté du router IP, la communication n'est plus directe. A doit utiliser D pour acheminer le paquet IP jusqu'au prochain réseau IP. Cette communication est appelée "indirecte". 
+						<br><br>
+						Cet acheminement de paquets IP est effectué par les modules IP et reste transparent pour TCP, UDP et les applications réseaux.
+						<br><br>
+						Si A envoie un paquet à E, l'adresse IP source et l'adresse Ethernet source sont celles de A. L'adresse IP de destination est celle de E, mais comme le module IP de A envoie le paquet IP à D pour transiter, l'adresse Ethernet de destination est celle de D.
+						<pre>
+
+                ----------------------------------------
+                |adresse            source  destination|
+                ----------------------------------------
+                |En-tête IP          A       E         |
+                |En-tête Ethernet    A       D         |
+                ----------------------------------------
+       TABLE 6.  Adresses dans une trame Ethernet pour un paquet IP
+                         allant de A vers E (avant D)
+						</pre>
+						Le module IP de D reçoit le paquet IP et lors de l'examen de l'adresse de destination dit "Ce n'est pas mon adresse IP", et envoie le paquet IP directement à E.
+						<pre>
+
+                ----------------------------------------
+                |adresse            source  destination|
+                ----------------------------------------
+                |En-tête IP          A       E         |
+                |En-tête Ethernet    D       E         |
+                ----------------------------------------
+       TABLE 7.  Adresses dans une trame Ethernet pour un paquet IP
+                         allant de A vers E (après D)
+						</pre>
+						En résumé, pour les communications directes, l'adresse IP source et l'adresse Ethernet source sont celles de l'expéditeur, et l'adresse IP de destination et l'adresse Ethernet de destination sont celles du destinataire. Pour les communications indirectes, les adresses IP et Ethernet ne sont pas jumelées de la sorte.
+						<br><br>
+						L'internet présenté ici en exemple est vraiment très simple. Les vrais réseaux sont souvent plus compliqués pour diverses raisons, utilisant de nombreux routers et combinant différents réseaux physiques. Cet exemple d'internet pourrait exister si un administrateur réseau voulait diviser un gros Ethernet pour localiser le trafic d'émission Ethernet.
+</blockquote>
+<a name="regles">5.3 Règles d'acheminement du module IP</a>
+<blockquote>
+						Cette présentation sur l'acheminement a montré ce qu'il se passait, mais sans expliquer comment. Maintenant nous allons nous intéresser aux règles, ou algorithmes, utilisés par le module IP. 
+						<br><br>
+						Pour un paquet IP sortant, traversant IP depuis une couche supérieure, IP doit décider d'envoyer le paquet IP directement ou indirectement, et IP doit choisir une carte réseau. Ces choix s'opèrent en consultant la table de routage.
+						<br><br>
+						Pour un paquet IP entrant, traversant IP depuis une couche inférieure, IP doit choisir de faire transiter le paquet IP ou de l'envoyer vers une couche supérieure. Si le paquet IP ne fait que transiter, il est traité comme un paquet IP sortant.
+						<br><br>
+						Quand un paquet IP entrant arrive, il n'est jamais renvoyé vers la même interface réseau. 
+						<br><br>
+						Ces décisions sont prises avant que le paquet IP ne soit passé à l'interface bas niveau et avant que la table ARP ne soit consultée.
+</blockquote>
+<a name="adresse">5.4 Adresse IP</a>
+<blockquote>
+						L'administrateur réseau assigne les adresses IP aux ordinateurs suivant le réseau IP auquel est rattaché l'ordinateur. Une partie de l'adresse IP codée sur 4 octets correspond au numéro du réseau IP (ID réseau), l'autre partie correspond au numéro de l'ordinateur IP (ou numéro d'hôte). Pour l'ordinateur de la table 1, avec une adresse IP de 223.1.2.1, l'id réseau est 223.1.2 et le numéro d'hôte est 1.
+						<br><br>
+						La partie de l'adresse qui est utilisée pour l'id réseau et pour le numéro d'hôte est définie par les bits de poids fort dans l'adresse de 4 octets. Toutes les adresses IP présentées dans ce didacticiel sont de type classe C, ce qui signifie que les 3 bits de poids fort indiquent que 21 bits sont utilisés pour l'id réseau et 8 bits pour le numéro d'hôte. Ceci permet 2 097 152 réseaux de classe C et jusqu'à 254 machines sur chaque réseau.
+						<br><br>
+						L'espace d'adressage IP est administré par le NIC (Centre d'information des réseaux). Tous les internets qui sont connectés au seul Internet mondial doivent utiliser les id réseau assignés par le NIC. Si vous êtes en train de monter votre propre internet et que vous ne projetez pas de le connecter à l'Internet, vous devez malgré tout obtenir vos id réseau auprès du NIC. Si vous entrez vos propres numéros, vous courrez un risque de confusion au cas où votre internet se connecterait à un autre internet.
+</blockquote>
+<a name="noms">5.5 Les noms</a>
+<blockquote>
+						Les gens distinguent leurs ordinateurs avec des noms et pas des numéros. Un ordinateur appelé Alpha devrait avoir comme adresse IP 223.1.2.1. Pour les réseaux de petite taille, cette donnée de traduction nom/adresse est souvent gardée sur chaque ordinateur dans le fichier "hosts". Pour les réseaux de plus grande taille, ce fichier de donnée de traduction est stocké sur un serveur et accédé à travers le réseau si besoin est. Quelques lignes de ce fichier pourrait ressembler à ça:
+						<br><br>
+						223.1.2.1 alpha<br>
+						223.1.2.2 beta<br>
+						223.1.2.3 gamma<br>
+						223.1.2.4 delta<br>
+						223.1.3.2 epsilon<br>
+						223.1.4.2 iota
+						<br><br>
+						L'adresse IP est dans la première colonne et le nom de l'ordinateur dans la seconde.
+						<br><br>
+						Dans la plupart des cas, vous pouvez installer le même fichier "hôte" sur tous les ordinateurs. Vous aurez remarqué que "delta" n'a qu'une seule entrée dans ce fichier bien qu'il ait 3 adresses IP. Delta peut être accédé par n'importe laquelle de ses adresses IP. Lorsque Delta reçoit un paquet IP et regarde l'adresse de destination, il reconnaîtra n'importe laquelle de ses adresses.
+						<br><br>
+						Les réseaux IP reçoivent également des noms. Si vous avez 3 réseaux IP, votre fichier "réseaux" pour décrire ces noms ressemblera à ceci: 
+						<br><br>
+						223.1.2 développement<br>
+						223.1.3 comptabilité<br> 
+						223.1.4 usine
+						<br><br>
+						L'ID réseau est dans la première colonne et son nom dans la deuxième. 
+						<br><br>
+						Dans cet exemple, vous pouvez constater que alpha est l'ordinateur numéro 1 sur le réseau développement, bêta est l'ordinateur numéro 2 sur le réseau développement et ainsi de suite. Vous pouvez également dire que alpha est développement.1 et Bêta est développement.2 et ainsi de suite.
+						<br><br>
+						Le fichier hôte ci-dessus convient pour les utilisateurs, mais l'administrateur réseau remplacera sûrement la ligne de delta par:
+						<br><br>
+						223.1.2.4 devnetrouter delta<br>
+						223.1.3.1 comnetrouter<br>
+						223.1.4.1 usinetrouter
+						<br><br>
+						Ces trois nouvelles lignes du fichier hôtes donnent à chaque adresse IP de delta un nom évocateur. En fait, la première adresse IP listée a 2 noms; "delta" et "devnetrouter" sont synonymes. En pratique, "delta" est le nom usuel de l'ordinateur et les 3 autres noms sont seulement utilisés lors de l'administration de la table de routage IP.
+						<br><br>
+						Ces fichiers sont utilisés par des commandes d'administration réseau et les applications réseaux pour fournir un nom évocateur. Ils ne sont pas nécessaires pour des opérations sur un internet mais ils nous facilitent grandement les choses.
+</blockquote>
+<a name="tablerout">5.6 La table de routage IP</a>
+<blockquote>
+						Comment IP sait quelle carte réseau utiliser pour envoyer un paquet IP? IP la cherche dans la table de routage en utilisant une clé de recherche de l'id réseau extraite de l'adresse IP de destination.
+						<br><br>
+						La table de routage contient une ligne pour chaque itinéraire. Les colonnes principales de la table de routage sont: Id réseau, flag d'acheminement direct/indirect, adresse IP du router et numéro de l'interface. Cette table est consultée par IP pour chaque paquet IP sortant.
+						<br><br>
+						Sur la plupart des ordinateurs, la table de routage peut être modifiée par la commande "route". Le contenu de la table de routage est défini par l'administrateur réseau puisque c'est lui qui assigne les adresses IP aux ordinateurs.
+</blockquote>						
+<a name="routdir">5.7 Détails sur le routage Direct</a>
+<blockquote>
+						Pour expliquer comment cela fonctionne, nous allons approfondir la situation d'acheminement que nous avons vu précédemment.
+						<pre>
+
+                        ---------         ---------
+                        | alpha |         | bêta  |
+                        |    1  |         |  1    |
+                        ---------         ---------
+                             |               |
+                     --------o---------------o-
+                      Ethernet 1
+                      Réseau IP "développement"
+
+               Figure 8.  Vue détaillée d'un réseau IP.
+						</pre>
+						La table de routage de Alpha ressemble à ceci:
+						<pre>
+
+     -----------------------------------------------------------------
+     |réseau        direct/indirect flag  router   numéro d'interface|
+     -----------------------------------------------------------------
+     |développement direct                &lt;blank>  1                 |
+     -----------------------------------------------------------------
+                  TABLE 8.  Exemple simple de Table de routage.
+						</pre>
+						Ce tableau peut être vu sur certains systèmes UNIX grâce à la commande "netstat -r". Sur ce simple réseau, tous les ordinateurs ont la même table de routage.
+						<br><br>
+						Pour la discussion, la table est écrite une nouvelle fois mais sans son numéro de réseau traduit en nom de réseau.
+						<pre>
+						
+     ---------------------------------------------------------------
+     |réseau      direct/indirect flag  router   numéro d'interface|
+     ---------------------------------------------------------------
+     |223.1.2      direct               &lt;blank>  1                 |
+     ---------------------------------------------------------------
+           TABLE 9.  Exemple simple de Table de routage avec les numéros
+					 </pre>
+</blockquote>
+<a name="scendir">5.8 Scénario Direct</a>
+<blockquote>
+						Alpha envoie un paquet IP à Bêta. Le paquet IP est dans le module IP de Alpha et l'adresse IP de destination est Bêta ou 223.1.2.2. IP extraie la partie réseau de cette adresse IP et scanne la première colonne de la table à la recherche d'une correspondance. Avec ce réseau, une correspondance est trouvée sur la première entrée.
+						<br><br>
+						L'autre information sur cette entrée indique que les ordinateurs de ce réseau peuvent être accédés directement par l'interface numéro 1. Une résolution de la table ARP est faite sur l'adresse IP de bêta puis la trame Ethernet est envoyée directement à bêta via l'interface numéro 1.
+						<br><br>
+						Si une application essaye d'envoyer des données vers une adresse IP qui n'appartient pas au réseau "développement", IP sera incapable de trouver une correspondance dans la table de routage. IP détruira alors le paquet. Certains ordinateurs envoient un message d'erreur du type "Réseau non accessible".
+</blockquote>				
+<a name="routind">5.9 Détails sur le routage Indirect</a>
+<blockquote>
+						Maintenant, approfondissons le scénario de routage plus compliqué que nous avons examiné plus tôt. 
+						<pre>
+
+          ---------           ---------           ---------
+          | alpha |           | delta |           |epsilon|
+          |    1  |           |1  2  3|           |   1   |
+          ---------           ---------           ---------
+               |               |  |  |                |
+       --------o---------------o- | -o----------------o--------
+       Ethernet 1                 |     Ethernet 2
+       réseau IP "Développement"  |     réseau IP "comptabilité"
+                                  |
+                                  |     --------
+                                  |     | iota |
+                                  |     |  1   |
+                                  |     --------
+                                  |        |
+                                --o--------o--------
+                                    Ethernet 3
+                                    réseau IP "usine"
+
+             Figure 9.  Vue détaillée de 3 réseaux IP
+						</pre>
+						La table de routage de Alpha ressemble à ceci:
+						<pre>
+
+ -------------------------------------------------------------------------
+ |réseau      direct/indirect flag     router          numéro d'interface|
+ -------------------------------------------------------------------------
+ |développement  direct                &lt;blank>         1                 |
+ |comptabilité   indirect              devnetrouter    1                 |
+ |usine          indirect              devnetrouter    1                 |
+ -------------------------------------------------------------------------
+                      TABLE 10.  Table de routage de Alpha
+						</pre>
+						Pour la discussion, la table est écrite une nouvelle fois avec les numéros au lieu des noms.
+						<pre>
+
+  ----------------------------------------------------------------------
+  |réseau       direct/indirect flag  router         numéro d'interface|
+  ----------------------------------------------------------------------
+  |223.1.2      direct                &lt;blank>        1                 |
+  |223.1.3      indirect              223.1.2.4      1                 |
+  |223.1.4      indirect              223.1.2.4      1                 |
+  ----------------------------------------------------------------------
+               TABLE 11.  Table de routage de Alpha avec des numéros
+						</pre>
+						Le router dans la table de routage de Alpha est l'adresse IP de la connexion de delta au réseau développement.
+</blockquote>
+<a name="scenind">5.10 Scénario Indirect</a>
+<blockquote>
+						Alpha envoie un paquet IP à epsilon. Le paquet IP est dans le module IP de Alpha et l'adresse IP de destination est epsilon (223.1.3.2). IP extraie la partie réseau de cette adresse IP (223.1.3) et scanne la première colonne de la table à la recherche d'une correspondance. Une correspondance est trouvée sur la deuxième entrée.
+						<br><br>
+						Cette entrée indique que les ordinateurs sur le réseau 223.1.3 peuvent être accédé par l'intermédiaire du router-IP devnetrouter. Le module IP de Alpha effectue alors une résolution sur la table ARP de l'adresse IP de devnetrouter et envoie le paquet IP directement à devnetrouter par l'interface numéro 1 de Alpha. Le paquet IP contient toujours l'adresse de destination de epsilon. 
+						<br><br>
+						Le paquet IP arrive à l'interface du réseau développement de delta et continue jusque dans le module IP de delta. L'adresse IP de destination est examinée et comme elle ne correspond à aucune des adresses IP de delta, delta décide de faire suivre le paquet IP.
+						<br><br>
+						Le module IP de delta extraie la partie réseau de l'adresse IP de destination (223.1.3) et scanne sa table de routage à la recherche d'un champ réseau correspondant. La table de routage de delta ressemble à ceci:
+						<pre>
+
+ --------------------------------------------------------------------------
+ |réseau         direct/indirect flag  router           numéro d'interface|
+ --------------------------------------------------------------------------
+ |développement  direct                &lt;blank>          1                 |
+ |usine          direct                &lt;blank>          3                 |
+ |comptabilité   direct                &lt;blank>          2                 |
+ --------------------------------------------------------------------------
+                     TABLE 12.  Table de routage de Delta
+						</pre>
+						Ci-dessous figure la table , sans la traduction en nom.
+						<pre>
+
+ -----------------------------------------------------------------------
+ |réseau       direct/indirect flag  router          numéro d'interface|
+ -----------------------------------------------------------------------
+ |223.1.2      direct                &lt;blank>          1                 |
+ |223.1.3      direct                &lt;blank>          3                 |
+ |223.1.4      direct                &lt;blank>          2                 |
+ -----------------------------------------------------------------------
+              TABLE 13.  Table de routage de Delta avec des numéros
+						</pre>
+						La correspondance est trouvée sur la deuxième entrée. IP envoie alors le paquet IP directement à epsilon par l'interface numéro 3. Le paquet IP contient l'adresse IP de destination de epsilon et l'adresse Ethernet de destination de epsilon.
+						<br><br>
+						Le paquet IP arrive dans epsilon et transite jusqu'au module IP de epsilon. L'adresse IP de destination est examinée et reconnue comme l'adresse IP de epsilon, alors le paquet IP est transmis à la couche de protocole supérieure.
+</blockquote>
+<a name="resume">5.11 Résumé sur le routage</a>
+<blockquote>
+						Quand un paquet IP voyage à travers un large internet, il peut traverser de nombreux routers IP avant de rejoindre sa destination. Le chemin qu'il prend n'est pas déterminé par une source centrale mais est le résultat de la consultation de chaque table de routage au cours de son trajet. Chaque ordinateur définie seulement le saut suivant du trajet et fait confiance à cet ordinateur pour acheminer le paquet IP à bon port.
+</blockquote>						
+<a name="routgest">5.12 Gestion du routage</a>
+<blockquote>
+						Maintenir une cohérence entre les tables de routage de tous les ordinateurs d'un vaste internet est une tâche difficile; la configuration du réseau est constamment modifié par les administrateurs réseau pour correspondre aux besoins d'évolution. Des erreurs dans les tables de routage peuvent bloquer les communications d'une manière atrocement pénible à diagnostiquer. 
+						<br><br>
+						Garder une configuration de réseau simple complique la réalisation d'un internet fiable. Dans ce cas, la méthode la plus directe pour assigner des réseaux IP à l'Ethernet est d'assigner un seul ID réseau IP pour chaque Ethernet.
+						<br><br>
+						Une aide est également disponible de la part de certains protocoles et applications réseau. ICMP (Protocole de contrôle de message internet) peut rapporter certains problèmes de routage. Sur des petits réseaux, la table de routage est remplie manuellement sur chaque ordinateur par l'administrateur réseau. Sur des réseaux plus importants, l'administrateur réseau automatise cette opération manuelle grâce à un protocole de routage pour distribuer les tables à travers le réseau.
+						<br><br>
+						Quand un ordinateur est déplacé sur un autre réseau IP, son adresse IP doit changer. Quand un ordinateur est retiré d'un réseau IP, son ancienne adresse devient inutilisable. Ces changements demandent des actualisations fréquentes du fichier "hôte". Ce fichier INVARIABLE peut devenir difficile à maintenir même pour des réseaux de moyenne taille. Le Système de Nom de Domaine (DNS) aide à résoudre ces problèmes.
+</blockquote>
+</li>
+<li><a name="udp">Le Protocole de Datagramme Utilisateur (UDP)</a> 
+<p>
+	 UDP est l'un des deux protocoles principaux qui réside au sommet de IP. Il offre un service aux utilisateurs des applications réseau. Des exemples d'applications réseau qui utilisent UDP sont: Système de Fichier Réseau (NFS) et Protocole Simple de Gestion des réseaux (SNMP). Le service est un peu plus qu'une interface avec IP.
+	 <br><br>
+	 UDP est un service de distribution de datagramme sans connexion qui ne garantie pas l'acheminement. UDP ne maintient pas de connexion de bout en bout avec le module UDP distant; il envoie simplement le datagramme sur le réseau et accepte les datagrammes provenant du réseau.
+	 <br><br>
+	 UDP ajoute 2 valeurs à ce qui est transmis par IP. La première est le multiplexage de l'information entre les applications réseau par rapport au numéro de port. La deuxième est un checksum pour vérifier l'intégrité des données.
+</p>
+<a name="ports">6.1 Les ports</a>
+<blockquote>
+						Comment un client sur un ordinateur peut-il accéder au serveur sur un autre?
+						<br><br>
+						La communication entre une application et UDP s'effectue à travers les ports UDP. Ces ports sont numérotés, commençant à zéro. Une application qui offre des services (le serveur) attend que des messages arrivent sur un port spécifique dédié à ce service. Le serveur attend patiemment qu'un client réclame un service.
+						<br><br>
+						Par exemple, le serveur SNMP, appelé agent SNMP, écoute le port 161. Il ne peut y avoir qu'un seul agent SNMP par ordinateur puisqu'il n'y a qu'un seul port UDP numéroté 161. Ce numéro de port est connu; c'est un numéro fixé, assigné sur l'internet. Si un client SNMP veut communiquer, il envoie une requête sur le port UDP 161 de l'ordinateur destinataire.
+						<br><br>
+						Quand une application envoie des données par UDP, elles arrivent à l'autre bout en un seul morceau. Par exemple, si une application écrit 5 fois sur le port UDP, l'application à l'autre bout lira 5 fois sur le port UDP. De même, la taille de chaque écriture égalera la taille de chaque lecture.
+						<br><br>
+						UDP préserve les limites du messages définies par l'application. Il ne combine jamais 2 messages d'applications ensemble, ni ne divise un message d'application en plusieurs parties.
+</blockquote>
+<a name="checksum">6.2 Test d'intégrité (Checksum)</a>
+<blockquote>
+						Un paquet IP entrant avec le champ Type de l'en-tête IP indiquant "UDP" est transmis au module UDP par IP. Quand le module UDP reçoit le datagramme UDP depuis IP, il examine le checksum UDP. Si le checksum est 0, cela signifie qu'il n'a pas été calculé par l'expéditeur et qu'il peut être ignoré. Ainsi, le module UDP de l'ordinateur émetteur peut ou non générer un checksum. Si Ethernet est le seul réseau entre les 2 modules UDP communiquant, alors vous n'avez pas besoin de test d'intégrité. Cependant, il est recommandé que la génération du checksum soit toujours activée car plus tard, un changement d'une table de routage peut envoyer les données sur un support moins fiable.
+						<br><br>
+						Si le checksum est valide (ou zéro), le numéro du port de destination est examiné et si une application est rattachée à ce port, un message d'application est mis en attente de lecture pour l'application. Sinon, le datagramme UDP est détruit. Si les datagrammes UDP entrant arrivent plus vite que ce que l'application peut les lire et si la pile de messages en attente est pleine, les datagrammes UDP sont détruits par UDP. UDP continuera à détruire les datagrammes UDP jusqu'à ce que la pile d'attente puisse recevoir de nouveaux messages.
+</blockquote>
+</li>
+<li><a name="tcp">Le Protocole de Contrôle de Transmission (TCP)</a> 
+<p>
+	 TCP offre un service différent de celui proposé par UDP. TCP offre un flux d'octet orienté connexion au lieu d'un service de distribution de datagrammes sans connexion. TCP garantie la transmission complète des données contrairement à UDP.
+	 <br><br>
+	 TCP est utilisé par les applications réseau qui nécessitent une transmission garantie et qui ne veulent pas s'ennuyer avec les pauses ou les reprogrammations de transmission. Les 2 applications réseau les plus typiques utilisant TCP sont le Protocole de Transfert de Fichier (FTP) et TELNET. D'autres applications réseau TCP souvent utilisées sont le système X-Windows, rcp (Copie Distante) et la série de commande r-. Les capacités plus importantes de TCP ne sont pas sans contreparties: cela nécessite plus de calcul de la part du processeur ainsi qu'une bande passante plus large. Le fonctionnement interne du module TCP est beaucoup plus complexe que celui du module UDP. 
+	 <br><br>
+	 De la même façon que pour UDP, les applications réseau se connectent à des ports TCP. Des numéros de port bien définis sont réservés pour des applications spécifiques. Par exemple, le serveur TELNET utilise le port numéro 23. Le client TELNET peut trouver le serveur simplement en se connectant au port TCP 23 sur l'ordinateur désiré.
+	 <br><br>
+	 Lorsqu'une application commence à utiliser TCP, le module TCP sur l'ordinateur client et le module TCP sur l'ordinateur serveur commencent à communiquer entre eux. Ces 2 modules TCP terminaux contiennent des informations d'état qui définissent un circuit virtuel. Ce circuit virtuel consomme des ressources sur chaque terminal TCP. Le circuit est full duplex; les données peuvent circuler dans les 2 sens simultanément. L'application écrit des données sur le port TCP, les données traversent le réseau et sont lues par l'application à l'autre bout.
+	 <br><br>
+	 TCP fragmente le flux d'octet comme bon lui semble; il ne conserve pas les limites entre chaque écriture. Par exemple, si une application écrit 5 fois sur le port TCP, l'application à l'autre bout pourrait effectuer 10 lectures pour récupérer l'intégralité des données. Ou alors, elle pourrait tout récupérer en une seule lecture. Il n'y a pas de corrélation entre le nombre et la taille des écritures d'un côté et le nombre et la taille des lectures de l'autre. 
+	 <br><br>
+	 TCP est un protocole de type fenêtre coulissante avec des pauses et des retransmissions. Le TCP distant doit retourner un accusé de réception pour chaque donnée reçu. L'accusé de réception peut être superposé aux données. Chaque destinataire peut contrôler le débit à l'autre bout afin d'éviter un débordement de tampon.
+	 <br><br>
+	 Comme tous les protocoles de type fenêtre coulissante, le protocole a une taille de fenêtre. La taille de la fenêtre détermine la quantité de donnée qui peut être transmise avant qu'un accusé de réception ne soit réclamé. Pour TCP, cette quantité ne correspond pas à un nombre de segment mais à un nombre d'octets.
+</p>
+</li>
+<li><a name="appres">Les applications réseau</a> 
+<p>
+	 Pourquoi TCP et UDP coexistent au lieu de juste l'un ou l'autre?
+	 <br><br>
+	 Ils proposent des services différents. La plupart des applications sont programmées pour n'utiliser que l'un ou l'autre. Vous, le programmeur , choisissez le protocole qui couvre le mieux vos besoins. Si vous avez besoin d'un service de transmission de flux fiable, TCP serait plus adapté. Si vous avez besoin d'un service de datagramme, UDP convient mieux. Si vous avez besoin d'efficacité sur des circuits à longue distance, TCP serait conseillé. Si vous avez besoin d'efficacité sur des réseaux rapides avec de courtes latences, UDP serait préférable. Si vos besoins ne correspondent pas clairement avec ces catégories, alors le "meilleur" choix est incertain. Cependant, les applications peuvent compenser les défauts d'un choix. Par exemple, si vous choisissez UDP et que vous avez besoin de fiabilité, alors l'application doit offrir la fiabilité. Si vous choisissez TCP et que vous avez besoin d'un service orienté enregistrement, alors l'application doit insérer des marqueurs dans le flux d'octets pour séparer les enregistrements.
+	 <br><br>
+	 Quelles sont les applications réseau disponibles?
+	 <br><br>
+      Il y en a beaucoup trop pour toutes les citer. Leur nombre augmente sans 
+      arrêt. Certaines applications existent depuis le début de la technologie 
+      internet: TELNET et FTP. D'autres sont relativement plus récentes: X-Windows 
+      et SNMP. Ce qui suit est une brève description des applications citées dans 
+      ce didacticiel. </p>
+<a name="telnet">8.1 TELNET</a>
+    <blockquote> TELNET fournis la possibilité d'un accès distant en s'appuyant sur 
+      TCP. Sur la ligne de commande, l'utilisateur tape "telnet 
+      delta" et reçoit une demande de connexion sur l'ordinateur appelé "delta". 
+      <br>
+      <br>
+						TELNET fonctionne correctement; c'est une vieille application qui possède une importante intéropérabilité. L'utilisation de TELNET fonctionne habituellement entre différents systèmes d'exploitation. Par exemple, un client TELNET peut tourner sous VAX/VMS alors que le serveur tourne sous UNIX System V.
+</blockquote>
+<a name="ftp">8.2 FTP</a>
+<blockquote>
+						Le Protocole de Transfert de Fichier (FTP), aussi vieux que TELNET, utilise également TCP et possède une grande interopérabilité. Les opérations et l'aspect sont semblables à une connexion distante par TELNET. Mais au lieu de taper les commandes habituelles, vous devez utiliser une courte liste de commandes pour lister des répertoires et d'autre du même style. Les commandes FTP vous permettent de copier des fichiers entre des ordinateurs.
+</blockquote>
+<a name="rsh">8.3 rsh</a>
+    <blockquote> Remote shell (rsh ou remsh; environnement distant) fait partie 
+      d'une famille entière de commandes distantes de type UNIX. La commande UNIX 
+      pour copier, cp, devient rcp. La commande UNIX "Qui est connecté?", who, 
+      devient rwho. La liste continue et l'ensemble de ces commandes est appelé 
+      commandes "r" ou commandes "r*". <br>
+      <br>
+						Les commandes r* fonctionnent principalement entre des systèmes UNIX et sont conçues pour des interactions entre hôtes de confiance. La sécurité n'est pas réellement prise en compte mais cela fournis un environnement utilisateur pratique.
+						<br><br>
+						Pour exécuter la commande "cc file.c" sur un ordinateur distant appelé delta, tapez "rsh delta cc file.c". Pour copier le fichier "file.c" sur delta, tapez "rcp file.c delta:". Pour vous connecter sur delta, tapez "rlogin delta", et si vous avez configurez les ordinateurs d'une certaine façon, vous ne serez pas surpris par une demande de mot de passe.
+</blockquote>
+<a name="nfs">8.4 NFS</a>
+    <blockquote> Système de Fichier Réseau, d'abord développé par Sun Microsystems 
+      Inc, il utilise UDP et est excellent pour monter des systèmes de fichier 
+      UNIX sur de nombreux ordinateurs. Une station de travail sans disque peut 
+      accéder au disque dur du serveur comme s'il était en local sur la station 
+      de travail. Une seule copie sur disque d'une base de données sur le mainframe 
+      "alpha" peut également être utilisé par le mainframe "bêta" si le système 
+      de fichier de la base donnée est NFS est qu'il est implanté sur "bêta". 
+      <br>
+      <br>
+						NFS surcharge de manière importante le réseau et présente peu d'intérêt sur des lignes lentes, mais les bénéfices sont énormes. Le client NFS est implanté dans le Kernel, autorisant toutes les applications et les commandes à utiliser le disque monté NFS comme s'il était en local.
+</blockquote>
+<a name="snmp">8.5 SNMP</a>
+    <blockquote> Le Protocole Simple de Gestion des réseaux (Simple Network Management 
+      Protocol) utilise UDP et est conçu pour être utilis&eacute; par des stations 
+      de gestion réseau centrales. Il est établi qu'avec suffisamment d'informations, 
+      un administrateur réseau peut détecter et diagnostiquer des problèmes sur 
+      le réseau. La station centrale utilise SNMP pour récupérer ces informations 
+      des autres ordinateurs sur le réseau. SNMP défini le format des données; 
+      c'est le rôle de la station centrale ou de l'administrateur réseau d'interpréter 
+      les données. </blockquote>
+<a name="xwin">8.6 X-Window</a>
+<blockquote>
+						Le Système X-Window utilise le protocole X Window sur TCP pour dessiner des fenêtres sur la zone d'affichage bitmap d'une station de travail. X Window est plus qu'un utilitaire pour dessiner des fenêtres; c'est une philosophie entière pour concevoir des interfaces utilisateur.
+</blockquote>
+</li>
+<li><a name="infos">Autres informations</a> 
+<p>
+	 Beaucoup d'informations à propos de la technologie internet ne sont pas inclues dans ce didacticiel. Ce chapitre énumère les informations considérées comme étant la prochaine étape d'approfondissement pour le lecteur qui voudrait en savoir plus.
+</p>
+	 <ul>
+	 		 <li style="font-weight:normal;color:black;">Commandes d'administration: arp, route et netstat</li>
+	 		 <li style="font-weight:normal;color:black;">ARP: entrée permanente, entrée publiée, entrée de pause, spoofing</li>
+	 		 <li style="font-weight:normal;color:black;">Table de routage IP: entrée Hôte, passerelle par défaut (gateway), sous-réseaux (subnets)</li>
+	 		 <li style="font-weight:normal;color:black;">IP: compteur de durée de vie, fragmentation, ICMP</li>
+	 		 <li style="font-weight:normal;color:black;">RIP, boucle de routage</li>
+	 		 <li style="font-weight:normal;color:black;">Système de Nom de Domaine (DNS)</li>
+	 </ul>
+
+</li>
+<br>
+<li><a name="ref">Références</a> 
+<p>
+	 [1] Comer, D., "Internetworking with TCP/IP Principles, Protocols, and Architecture", Prentice Hall, Englewood Cliffs, New Jersey, U.S.A., 1988.
+	 <br><br>
+	 [2] Feinler, E., et al, DDN Protocol Handbook, Volume 2 and 3, DDN Network Information Center, SRI International, 333 Ravenswood Avenue, Room EJ291, Menlow Park, California, U.S.A., 1985.
+	 <br><br>
+	 [3] Spider Systems, Ltd., "Packets and Protocols", Spider Systems Ltd., Stanwell Street, Edinburgh, U.K. EH6 5NG, 1990.
+</p>
+</li>
+<li><a name="liens">Liens avec d'autres RFCs</a> 
+<p>
+	 Ce RFC est un didacticiel et ne corrige ou remplace aucun autre RFC.
+</p>
+</li>
+<li><a name="notes">Notes de sécurité</a> 
+<p>
+	 Il ne faut pas oublier de prendre en compte la sécurité dans la suite de protocole TCP/IP. Pour certaines personnes ce facteur est un sérieux problème, pour d'autres non; tout dépend de vos exigences. Ce didacticiel ne parle pas de ces problèmes, mais si vous voulez en savoir plus vous devriez commencer par le sujet du ARP-spoofing, puis lisez le chapitre "Security Considerations" du RFC 1122 pour vous guider vers plus d'information.
+</p>
+</li>
+<li><a name="auteurs">Adresses des auteurs</a> 
+<p>
+	 Theodore John Socolofsky<br>
+	 Spider Systems Limited<br>
+	 Spider Park<br>
+	 Stanwell Street<br>
+	 Edinburgh EH6 5NG<br>
+	 United Kingdom<br>
+	 <br>
+	 Phone:<br>
+	 &nbsp;&nbsp;&nbsp;from UK 031-554-9424<br>
+	 &nbsp;&nbsp;&nbsp;from USA 011-44-31-554-9424<br>
+	 Fax:<br>
+	 &nbsp;&nbsp;&nbsp;from UK 031-554-0649<br>
+	 &nbsp;&nbsp;&nbsp;from USA 011-44-31-554-0649<br>
+	 <br>
+	 EMail: TEDS@SPIDER.CO.UK<br>
+	 <br>
+	 <br>
+	 Claudia Jeanne Kale<br>
+	 12 Gosford Place<br>
+	 Edinburgh EH6 4BJ<br>
+	 United Kingdom<br>
+	 <br>
+	 Phone:<br>
+	 &nbsp;&nbsp;&nbsp;from UK 031-554-7432<br>
+	 &nbsp;&nbsp;&nbsp;from USA 011-44-31-554-7432<br>
+	 <br>
+	 EMail: CLAUDIAK@SPIDER.CO.UK<br>
+</p>
+</li>
+</ol>
+
+</body>
+</html>

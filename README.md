@@ -8,6 +8,15 @@ French old computer security ezines restaured to be used as mirrors, the sources
 * hzv-mag
 * 50-1337
 * cryptel
+* frhack
+* Land Of The Free
+* NPN
+* Noway
+* 3d13
+* 912 Hacking Departement
+* Aktivist
+* Blackclowns
+* NoCooking
 
 # How to deploy it
 
