@@ -17,6 +17,7 @@ French old computer security ezines restaured to be used as mirrors, the sources
 * Aktivist
 * Blackclowns
 * NoCooking
+* hackoff
 
 # How to deploy it
 
