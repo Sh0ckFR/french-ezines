@@ -34,6 +34,10 @@ French old computer security ezines restaured to be used as mirrors, the sources
 
 Just clone this repository and place the content in a webroot with PHP enabled and the directory listing available.
 
+# Important note
+
+This repository contains malicious codes shared by the original authors, so you are the only one responsible to execute a binary from here even if we are trying to clean the most things possible.
+
 # How to contribute
 
 PRs are welcome, you just need to be sure that your restaured version will work directly without any broken links except if they are linked to the original website and that the original authors and papers has not been edited.
