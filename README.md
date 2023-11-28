@@ -1,12 +1,12 @@
 # French eZines
 
-French old computer security ezines restaured to be used as mirrors, the sources has been tweaked a bit to be ready to go.
+French old computer security ezines restored to serve as mirrors. The sources have been slightly tweaked for immediate use.
 
 # Important note
 
-This repository contains malicious codes shared by the original authors, so you are the only one responsible to execute a binary from here even if we are trying to clean the most things possible.
+This repository contains malicious code shared by the original authors. Therefore, you are solely responsible for executing any binaries from here, even though we are trying to clean up as much as possible.
 
-Some articles are also sensitive and may mention for example the creation of homemade bombs, we ask you not to attempt to reproduce this on your side, this project only aims to keep a historical trace of writings in the French infosec community in the 90s/2000s.
+Some articles are also sensitive and may mention, for example, the creation of homemade bombs. We urge you not to attempt reproducing these on your own. This project's sole purpose is to preserve a historical record of writings from the French infosec community in the 90s and 2000s
 
 # List of the available ezines
 
@@ -38,10 +38,10 @@ Some articles are also sensitive and may mention for example the creation of hom
 
 # How to deploy it
 
-Just clone this repository and place the content in a webroot with PHP enabled and the directory listing available.
+Just clone this repository and place its contents in a webroot with PHP enabled and directory listing activated.
 
 # How to contribute
 
-PRs are welcome, you just need to be sure that your restaured version will work directly without any broken links except if they are linked to the original website and that the original authors and papers has not been edited.
+PRs (Pull Requests) are welcome. Please ensure that your restored version functions correctly without any broken links, except those linked to the original website. Also, ensure that the original authors and papers have not been edited.
 
-Only french ezines are accepted, do not submit a PR to add an english ezine, this repository is just to trace old french papers.
+Only French ezines are accepted. Do not submit a PR to add an English ezine, as this repository is dedicated solely to archiving old French papers
