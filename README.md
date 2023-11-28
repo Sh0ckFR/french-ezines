@@ -46,7 +46,7 @@ PRs (Pull Requests) are welcome. Please ensure that your restored version functi
 
 Only French ezines are accepted. Do not submit a PR to add an English ezine, as this repository is dedicated solely to archiving old French papers.
 
-# There is a list of missing ezines that we potential need
+# There is a list of missing ezines that we potentially need
 
 * Dead-End of the DHS-Team: https://web.archive.org/web/20050206045007/http://www.dhs-team.org/root/dead-end/
 
