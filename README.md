@@ -2,6 +2,12 @@
 
 French old computer security ezines restaured to be used as mirrors, the sources has been tweaked a bit to be ready to go.
 
+# Important note
+
+This repository contains malicious codes shared by the original authors, so you are the only one responsible to execute a binary from here even if we are trying to clean the most things possible.
+
+Some articles are also sensitive and may mention for example the creation of homemade bombs, we ask you not to attempt to reproduce this on your side, this project only aims to keep a historical trace of writings in the French infosec community in the 90s/2000s.
+
 # List of the available ezines
 
 * rafale.org
@@ -33,10 +39,6 @@ French old computer security ezines restaured to be used as mirrors, the sources
 # How to deploy it
 
 Just clone this repository and place the content in a webroot with PHP enabled and the directory listing available.
-
-# Important note
-
-This repository contains malicious codes shared by the original authors, so you are the only one responsible to execute a binary from here even if we are trying to clean the most things possible.
 
 # How to contribute
 
