@@ -1,0 +1,551 @@
+
+<html>
+<head>
+<title>C5 ' Menu_</title>
+</head>
+<body bgcolor="#224016" text="#FFFFFF" link="#CCCCCC" vlink="#CCCCCC" alink="#FF0066" >
+<center>
+<br>
+<table width="600" border="0"><td>
+<p align="left"><a href="password.htm"><img src="previous.gif" border="0"></a></p></td>
+<td><p align="right"><a href="lucide.htm"><img src="next.gif" border="0"></a></p></td></table>
+
+<br>
+<I><font face="verdana, arial" size="2"><font color="#637F59"><H2>Introduction au routage</H2></I></font>
+
+<table width="600"><td>
+<HR SIZE=1 width="50%">
+<BR><BR><BR>
+<font size=2 face=verdana>
+#!/bin/handwriting<br>
+#File written at 04/01/00 by flowerz, this doc is Y2K compliant<br>
+#MAC power*f_u_c_k_i_n_g*book is not compliant with me<br>
+<p><b>
+= Introduction au routage =</b>
+<p>
+Ce petit document a ete ecrit dans un but precis , celui d'informer. 
+De donner a un certain d'entre vous des idees (@&amp;#! bon ce mac ca fait 3 
+fois qu'il me plante a la gueule avec mon texte fini donc cette fois 
+je tacherai d'etre bref...).
+En gros des  idees et des direction pour utiliser,s'amuser, exploiter 
+le routage qui offre d'enorme possibilites.
+<p><b>
+= INDEX =<p><ul>
+
+	1 - Presentation<br>
+	2 - Routage Statique<br>
+	3 - Routage Dynamique<br>
+	4 - Cas Particuliers (ICMP redir, Source routing)<br>
+	5 - Internet, et AS (Autonomous System)<br>
+	6 - Amusons nous....&gt;=&gt;<br><br></ul>
+<p>
+= Fin INDEX =
+</b><p>
+Note: Ce document ne vous expliquera pas le fonctionnement mais donnera une
+idee du fonctionnement. pour en avoir un gout plus precis reportez vous au
+rfc qui repondent en general a toutes les questions.
+<p><h4>
+
+
+			I Presentation
+</h4><p>
+Pour commencer je ne serai pas sans vous presenter internet, vous y etes
+,vous y vivez, cet espace est gouverne par certaine regles, dont certaines
+vous permettent d'envoyer vos paquets a l'autre bout de la planete avec la 
+surete (ahem!!) que vos paquets arrivent.
+<p>
+Ceci graaaaace a la magie du routage IP, he vii!!
+<p>
+Alors il faut savoir 2 choses c est que le routage sur internet est
+hierarchise, je veux dire par la que chaque fournisseur fait son
+routage (en interne) et que par la suite un routage est mis place entre
+les != fournisseurs(AS).
+<p>
+Comment ca marche, et comment un routeur il route:
+le routeur recoit un paquet en provenance de A sur une de ses interfaces
+a destination de B
+<p>
+<ul>
+        1) il regarde si l'adresse destination B appartient a
+        un meme reseau que l'adresse (1a) d'une de ses interfaces
+        si oui then send the packet a cette interface (1b. ici if1)
+        a moin qu une route particuliere soit donne pour
+        cette destination (genre route add -host 172.31.29.25 gw 172.31.33.7)
+        Si l'adresse dest n'appartient a aucun des rezo ou il a une de ses
+        interfaces il envoie sur la route par default (1c).
+</ul><p>
+pour pas faire chier on va garder des classe C et pas subnetter une classe C
+en sous reseaux de X ips (et pis chuis feignant la pas envie de reflechir
+pour calculer le netmask)
+<p><pre>
+if0=172.31.33.1                 A=172.31.33.7
+if1=172.31.32.1                 B=172.31.32.15
+if2=172.31.31.1
+if3=172.31.30.1(default route)
+
+                |
+        (1a)&gt;&gt;  |  if0
+                |______
+        (1b)&lt;&lt;  |  if1
+                |______  ROUTEUR
+                |  if2
+                |______
+        (1c)&lt;&lt;  |  if3
+                |
+</pre><p>
+Voila un exemple tout bete de routage.
+
+
+<h4>			
+			II Routage Statique
+</h4><p>
+C'est un des moyens les plus simple et basique de diriger ses paquets sur un 
+ou vers un reseau.  Les possibilites sont restreinte certes, mais non negligeable. 
+Pour le fonctionnement tout le monde doit le connaitre,  il se base sur 
+la comparaison de l'adresse destination avec la table de routage (statique). 
+Vous devez donc definir une table de routage faisant correspondre a un reseau,
+un host , une route particuliere. Le netmask connu de tous, vous permet de 
+subnetter votre reseau et par consequent les routes, s en trouvent alteré.
+l'option gw(gateway) vous permet de preciser le prochains hop a contacter pour 
+joindre le host destination. D'autres options vous permettent de definir une 
+priorite basique sur des routes :
+<p>
+root ~#route add -net 194.174.53.0 gw 130.79.200.1 eth0 metric 0	(1)<br>
+root ~#route add -net 194.174.53.0 gw 194.47.43.1 eth0 metric 1		(2)<br>
+<p>
+root ~#route -n<br><pre>
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags  Metric  Ref     Use Iface
+194.174.53.0    130.79.200.1   255.255.255.0      U      0      0       0   eth0
+194.174.53.0    194.47.43.1    0.0.0.0            UG     1      0       0   eth0
+</pre><p>
+dans cet exemple :
+<p>
+la route (1)  sera la route emprunte pour joindre le reseau 194.174.53.0 si la 
+passerelle est joignable, si la passerelle est injoingnable les paquets 
+passerons sur la route (2). Si une QoS a ete definie , le routage sera effectue
+selon la priorite du(es) services , un peu comme dans IPv6 avec l en-tete priority.
+Le kernel linux propose encore d 'autre options tel que le policy routing
+permettant de faire du routage par services, host, protocoles definissant la
+meilleur route a prendre pour tel ou tel type de traffic.
+<p><h4>
+			
+			
+			III Le Routage Dynamique
+</h4><p>
+Par opposition au routage statique, le routage dynamique permet une auto configuration 
+des routes via des informations transitant sur le reseau, un ensemble de protocoles ont 
+ete definis pour effectuer ces taches.<br>
+Deux grandes familles sont distinctes les protocoles de routage a vecteur 
+distance(IGP:IGRP,RIP,EIGRP,etc...), et les protocoles de routage a etat de 
+lien (OSPF), BGP(successeur d'EGP Exterior Gateway Protocol) etant un protocole 
+de routage entre passerelles externe.<br>
+Comme nous le savons les routes statiques peuvent etre modifie a partir du 
+moment ou l'on possede certain privilege et dependent d'une configuration 
+des 2 cotes de la route. Les routes dynamiques se basant elles sur des 
+informations concernant le reseau et transitant via le reseau peuvent 
+certainement etre exploites.
+<p>
+<u>A) les protocoles a vecteurs distance</u>
+-theoriquement<br>
+ce type de protocole se contente d'avertir les routeurs voisins (cad
+directement connecte sur les interfaces) des reseaux qu'il sait atteindre,
+ainsi que de la distance pour les atteindre (flooding routing). Les routeurs 
+voisins stockent les informations dans leur tables en rajoutant au distances 
+1 hop(celui pour joindre le dit routeur).
+De cette maniere chaque routeur annonce les routeur directement connecte
+et petit a petit chaque route est annonce sur chaque routeur.
+<p>
+<PRE>
+          R6       R7
+              \   /
+		R1 ------ host0
+            /        \
+	R3		R2
+    		       /   \
+                    /         \
+		R4		R5
+				    \ 
+					host1
+</pre><p>
+Le routeur du reseau R1 sait atteindre R2,R3,R6 et R7, le routeur du reseau
+R2 dis au routeur de R1 qu'il sait atteindre R4 et R5. host1 fait partie de
+R5.<br>
+Donc pour atteindre host1 le routeur R1 qu appelle host0 sait qu'il doit
+contacter R2 (car il sait contacter R5)pour lui envoyer ses paquets et ceci
+sans que nous ayons eu a configurer les routes juste grace aux anonces RIP
+diffuse sur le reseau petit a petit.<br>
+Un exemple bete en gros =].<br>
+<p>
+-les specs
+<p>
+3 GROS protocoles sont connus et utilise dans cette categorie: RIP (Routing
+Information Protocol),IGRP(Interior Gateway Routing Protocol),EIGRP(Extended
+Interior etc..)
+<p>
+RIP possede quelques limitations:
+	<p><ul>
+	* il  limite le nombre de hop a 15<br>
+	* impose un masque de sous reseau unique pour le reseau<br>
+	* il ne prend pas en compte le type de liaison (debit, reponse etc.)
+	  mais uniquement le nombre de sauts, les choix ne sont donc pas
+	  forcement les plus judicieux dans certain cas.</ul>
+<p>
+IGRP est une version evolue de RIP avec moin de limitation (www.cisco.com
+pour plus d'info).<br>
+EIGRP c est une version encore ameliore d'IGRP qui supprime les limitation
+du nombre de sauts et tiens egalement compte du debit,charge,reponse d 'un
+lien.
+<p>
+<u>B) Les protocoles a etat de liens</u><p>
+Ce sont les protocoles de nouvelles generations, charge d effectue un
+routage plus intelligent ( je suis loin de les connaitre parfaitement mais
+bon je vais vous en parler comme je peux ), ils sont en gros charges
+d'annoncer l'etat d un lien physique, conduisant a une map complete de la
+charge et de la topologie du reseau. Avec ce genre d 'information eterogene
+sur les differents lien d'un reseau on peut trouver la route la plus
+efficace.
+<p>
+Voila pour un presentation rapide, plus d'information sont contenu dans les
+RFC que vous trouverez n'importe ou sur le net, pour comprendre et utiliser
+ces protocoles. Je parlerai de BGP dans la partie Internet et AS il devra
+etre introduit en meme tps que la notions d'AS.
+<p>
+
+
+<h4>			IV Cas Particulier</h4>
+<p>
+Bon le routage n est pas base que sur des routes(mais a 90% quand meme =]), 
+le protocoles ICMP joue un role de chef d'orchestre quand a l evaluation de 
+la charge sur certain lien, il peut egalement prevenir du mauvais choix 
+d'une route (ICMP redir) ou d'une surcharge d'une passerelle (Source Quench)
+certain routeur tiennent compte de ces messages pour changer "eventuellement" 
+votre route vers une certaine destination.
+<p>
+ICMP redirection :<br>
+Ce message est genere quand il detecte qu'un autre hote est en train
+d'utiliser la machine comme passerelle, alors qu'une route bien plus courte
+existe.
+<p>
+Exemple:<br><pre>
+                                               host2
+       Network0                               /
+	  |                                /
+	host1                            gw2 
+          |_______________________________|
+			       |
+			      gw1(default)
+
+</pre><p>
+Bon imaginons le host1 avec une table de routage simple et incomplete.
+pour envoyer ses packets a host2 il utiliserait sa route par default (etant
+donne que host2 pas dans le meme sous reseau) ici gw1, mais gw1 se rend
+compte que la route est mauvaise, renvoie le packet a gw2 et envoie un
+message ICMP redir a host1 lui disant que la route pour host2 vers gw2 est
+meilleure.<br>
+C'est un message lie au module de routage, permettant de corriger les
+erreurs (frequentes?) de routages statiques.
+<p>
+
+Source Routing
+<p>
+Comme son nom l indique permet de forger un packet, avec la totalite de la
+route devant etre suivi par le packet a l'interieur de celui ci.
+N'ayant moi meme jamais forger de packet source route, je serai incapable de
+donner plus d'information. Il faut savoir que ca existe et la RFC (a
+lire!!!) vous donnera plus d'information sur le fonctionnement et la
+construction de ce genre de packets, l'imagination fera le reste.
+<p>
+
+
+
+<h4>			V Internet, et AS (Autonomous System)</h4>
+
+<p>
+Comme dis dans la presentation on met en oeuvre 2 type de routage le routage
+propre au fournisseur d'acces (en interne) et le routage entre les !=
+fournisseur d'acces.<br>
+Avant de vouloir echanger des informations entre fournisseur, il faut deja
+router entre les clients d'un meme fournisseur.
+Chaque client met en place son routage en interne puis choisi une route par
+default vers le fournisseur.
+<p>
+Bon ca sera plus clair avec un schema :
+<p><pre>
+	 _______                    BGP4
+	| ASXXX |___________________________________________
+	| ISP1  |					    |
+	|_______|                                           |
+						         ___|___
+		\				        |ASYYY  |
+		  \ 			         ______	| ISP2  |
+		    \  BGP4		       / BGP4   |_______|
+                      \                      /
+		        \	 _______   /           (*) default route
+			  \ _  _|ASZZZ  |_
+			      |_ OUR ISP__|
+			        |_______| \
+                  ______________/  |  |     \__________
+                 /                 |  |                \
+	       /                   |   \ (*)             \(*)
+             /(*)              (*)/      \                 \
+      _____/_____          _____/_____     \___________    __\________
+        Router 1            Routeur 2         Routeur 3      Routeur 4
+           |                    |                 |              |
+	  RIP	              EIGRP             IGRP            OSPF
+        Reseau A             Reseau B          Reseau C        Reseau D
+  
+</pre><p>
+Bon reprenons!!<br>
+Je vais essayer d'etre un maximum synthetique et clair!!<br>
+1) les client mettent en place leur routage interne et donnent la route par
+default vers le fournisseur.<br>
+2) le fournisseur choisi un proto de routage pour interconnecter
+(automatiquement) tout ses clients. Il connecte ses clients pour que les
+routes s'annonces entre eux<br>
+3) le routage s 'effectue donc a l'interieur du fournisseur OUR ISP
+pour une interconnexion efficace entre tous ses clients et que la
+configuration sache se mettre en place seule (sans gerer des tonnes de
+routes statiques)<br>
+4) Les clients mettent un proto de routage interne a leur propre reseau
+et le fournisseur demande a ses clients de configurer leur routeur afin
+d'interoperer avec les siens. Donc entre les clients on est d'accord que
+la connection (du a la propagation des routes) se fera sans blemes.
+5)lorsqu'un client voudra acceder a un reseau chez un autre ISP, il mettra
+en jeu le systeme des routes par default de son ISP.
+<p>
+Voila pour la partie routage interne.
+<p>
+Maintenant le routage entre ISP comment se passe t il?
+Des informations sur les reseaux que gerent chaque ISP sont echange par ces
+protocoles particuliers (que je connais peu) appele protocoles de
+passerelles externes tel que EGP(le premier du genre) et BGPv4 le plus
+utilise a present.<br>
+Pour pouvoir mettre en place ces systemes d'autogestion entre les
+passerelles des fournisseur et qu elles puissent echanger les informations
+les concernant, il a fallu mettre en place le concept d'AS (Autonomous
+System).<br>
+Chaque fournisseur, entite possedant un reseau public consequent et autonome
+se voit attribue par l'InterNIC, un numero unique qui est le numero d'AS.
+pour chaque route entre AS on y associe le numero de l AS origine de cette
+route.<br>
+La notion d'AS fait apparaitre encore une nouvelle notion et une nouvelle
+notation, la notation CIDR (Classless InterDomain Routing)
+<p>
+Exemple:<br><pre>
+notation CIDR      |     Masque correspondant     |   Reseaux Couvert
+______________________________________________________________________
+10.0.0.0/8	   |	     255.0.0.0            |      10.0.0.0
+10.0.0.0/7	   |         254.0.0.0            | 10.0.0.0;11.0.0.0
+etc...
+</pre><p>
+cela s'apparente au subnetting sur une classe (c est pareil :).
+
+<p>
+bon donc l'InterNIC attribue un numero d'AS permettant de definir
+grace a la notation CIDR independament des classes<br>
+(classes A,B,C,D,etc.. que nous connaissons) des groupes de reseaux,
+d'adresses gere, pour finalement permettre un routage entre ceux ci.
+(je vais y arriver :).<br>
+BGP qui est le protocole gerant les routes, ne tiens plus compte du nombre
+de passerelles traverse mais desormais du nombres d'AS.<br>
+d'autre part celui ci se decompose en 2 partie permettant a plusieur machine
+de gere le routage bgp sur un AS.<br>
+iBGP est le protocole permettant au machine de gestion de discuter entre
+elles(i for InternalBGP i mean.. :).<br>
+eBGP (for ExternalBGP) permet la gestion avec les AS directement connecte.
+Le principe se rapproche des protocoles de routages Internes (RIP,OSPF
+etc..), mais au niveau des AS le tout etant d'avoir une table complete des
+AS pour arriver a une destination voulue tout en optimisant le traffic,
+donc le choix d'une route par rapport a une autre en fonction du debit ou ce
+genre de truc.
+<p>
+Bon ensuite poru rire un coup il vous est possible de voir comment le
+routage entre AS s'effectue au niveau de votre ISP, par exemple pour moi
+Cybercable, une ptit requete sur les server du RIPE pour avoir les numeros
+d'AS du mon ISP (ipw outils tres utile :)
+<p>
+rival ~$ipw 212.198.211.60<br>
+...<br><pre>
+route:       212.198.0.0/16
+descr:       CYBERCABLE
+descr:       Lyonnaise Communication
+descr:       Paris
+origin:      AS6678 		&lt;=== et voila le numero d AS de cybercable =]
+mnt-by:      AS6678-MNT
+changed:     adm-tech@cybercable.tm.fr 19980325
+source:      RIPE
+...</pre>
+% Rights restricted by copyright. See <A href="http://www.ripe.net/ripencc/pub-services/db/copyright.html" target=_blank>http://www.ripe.net/ripencc/pub-services/db/copyright.html</A><br>
+
+
+<p>
+
+Puis pour avoir les routes des AS entrants et les routes vers les AS
+suffit de faire un whois sur le numero d'AS en question :)
+<p>
+rival ~$whois AS6678
+<p><pre>
+...
+aut-num:     AS6678
+descr:       CYBERCABLE
+descr:       Cybercable / Lyonnaise Communications
+descr:       20, Place des vins de France
+descr:       75614 Paris Cedex 12
+descr:       FRANCE
+as-in:       from AS3256 200 accept ANY AND NOT {0.0.0.0/0}
+as-in:       from AS8297 200 accept ANY AND NOT {0.0.0.0/0}
+as-in:       from AS5594 200 accept ANY AND NOT {0.0.0.0/0}
+as-in:       from AS5436 100 accept AS5436
+as-in:       from AS2686 100 accept AS-IGNEMEA
+as-in:       from AS6729 100 accept AS6729
+as-in:       from AS2917 100 accept AS-OLEANE
+as-in:       from AS8228 100 accept AS-CEGETEL AS-BTFR
+as-in:       from AS6771 100 accept AS6771 AS6774 AS5432
+as-in:       from AS3215 100 accept AS-RAIN
+as-in:       from AS3342 100 accept AS-PLANETE
+as-in:       from AS3259 100 accept AS-INETWAYFR
+as-in:       from AS3256 100 accept AS6 AS789 AS1717 AS8332 AS5410
+as-in:       from AS3256 100 accept AS5630 AS6727
+as-in:       from AS6804 100 accept AS6804 OR {194.183.193.0/24}
+as-in:       from AS6804 100 accept {194.183.194.0/24, 194.183.196.0/24}
+as-out:      to AS3256 announce AS-CYBERCABLE
+as-out:      to AS5436 announce AS-CYBERCABLE
+as-out:      to AS6729 announce AS-CYBERCABLE
+as-out:      to AS8297 announce AS-CYBERCABLE
+as-out:      to AS5594 announce AS-CYBERCABLE
+as-out:      to AS2686 announce AS-CYBERCABLE
+as-out:      to AS2917 announce AS-CYBERCABLE
+as-out:      to AS6729 announce AS-CYBERCABLE
+as-out:      to AS8228 announce AS-CYBERCABLE
+as-out:      to AS6771 announce AS-CYBERCABLE
+as-out:      to AS3215 announce AS-CYBERCABLE
+as-out:      to AS3342 announce AS-CYBERCABLE
+as-out:      to AS3259 announce AS-CYBERCABLE
+as-out:      to AS3256 announce AS-CYBERCABLE
+as-out:      to AS6804 announce AS-CYBERCABLE
+admin-c:     MGR20-RIPE
+tech-c:      DP1707-RIPE
+tech-c:      PJ187-RIPE
+remarks:     -----------------------------------------------
+remarks:     Cybercable / Lyonnaise Communications
+remarks:     Peering requests/info should be sent to:
+remarks:     noc@cybercable.fr
+remarks:     -----------------------------------------------
+mnt-by:      AS6678-MNT
+changed:     pdg@euroconnect.fr 19990817
+source:      RIPE
+...
+</pre><p>
+Et voila toutes les routes Sympa non ? &gt;=]<br>
+Il vous reste plus qu a regarder a qui sont interconnecter chacun des
+provider pour savoir qui annonce les routes a qui et ptet s'amuser un peu...
+<p>
+
+
+
+<h4>			VI Amusons nous un peu &gt;=]</h4>
+
+Je ne donnerai pas de commande, ni rien, j ai deja pu tester certain truc 
+et des potes ont teste d'autres choses.<br>
+Je vous files les idees a vous de les mettres en place.<br>
+c est pas un HOWTO_use_routing_for_hax_the_white_house.<br>
+
+
+
+<h4>			[Exemple 1]</H4>
+<p>
+Bon Cybercable a mis ses #@$!#@ de quotas en route, mais
+_MAIS_ :)<br>
+les quotas semble (normalement je confirme rien) se baser uniquement sur les
+connection TCP pour eviter de facturer les stream en UDP(real audio, media
+player, etc..) donc , _DONC_ <br>
+utilisons ca pour pas avoir 9 Go de Download a la fin du mois a payer :)
+<p>
+donc la demarche est tout simple<br>
+1) tu te prend une machine cybercable en ip fixe, genre une machine ou t as
+acces ou alors une machine au boulot, ou a l'univ, enfin un truc fixe ou tu
+puisse poser 2 , 3 truc suceptibles de t aider :)
+<p>
+2)Tu te monte un VPN avec de l'UDP en prenant soit une adresse libre
+publique de ton boulot (si boulot tu utilise) ou alors apres tu pourras
+faire du masq sur ton ip de VPN,pour le VPN tcp over UDP, y a CIPE ou Vtun 
+pour ceux que j'utilise (cf schema en dessous).
+<p>
+3)tu te fous une route vers le host ou tu connecte ton VPN via la gw cybercable
+genre :<br>
+route add -host ip_publique_remote gw gw_cybercable eth0
+<p>
+puis tu te fous une route par default via ton adresse de VPN ok ?
+route add default gw ip_de_vpn_distante
+<p>
+et le tour est joue :)<br>
+
+<p><pre>
+Schema Exemple 1
+MODE classique
+               (default route)
+[-MOI-] &lt;-- tcp/udp(pas facture) --&gt; [GW] &lt;--- tcp/udp --&gt; [INTERNET]
+</pre>    
+
+<b>		[-MACHINE_FIXE-] </b><p>
+Dans ta config normale ta passerelle par default est celle de cybercable ok?
+Tout ton traffic tcp/udp passe par la gw, et donc toutes tes connections TCP
+sont facturables.<p>
+   <p><pre>
+VPN powered
+        
+            
+[-MOI-] &lt;---- VPN UDP (only)  --------&gt;  [GW]              
+                                          |
+              		                 UDP           
+                                          |
+		                    [MACHINE_FIXE] &lt;-- tcp/udp --&gt; [INTERNET]
+</pre>
+Dans cette config tu route vers [MACHINE_FIXE] avec qui tu
+etablit ton VPN. Celle ci devient ta passerelle par default pour tout le
+traffic via son adresse de VPN (privee). Il te faut juste une route vers
+[MACHINE_FIXE] (son ip publique) avec comme gw celle de cybercable.
+<p>
+Voila le tour est joue :)<br>
+Tout bete routage statique, mais bon ca marche
+<p>
+NB: faut pas oublier de NATer le reseau privee sur [MACHINE_FIXE] pour
+pouvoir acceder au net via celle ci, config de NAT classique, je n y
+reviendrais pas.
+<p>
+
+<b><ul>				[Exemple 2]</b></ul>
+<p>
+Bon c est sur ca demande un certain nombre de trucs.
+deja te faut une machine , avec des ips que tu libere ou libres
+tu colle a nouveau un VPN vers la machine de la boite.
+<p>
+Pouf tu prend plusieurs de leurs adresses publiques pour etablir 
+ton VPN tranquillos. <br>
+Ensuite tu fais la meme chose qu avant, tu definit une route par default vers 
+le VPN et une route vers le host ou tu fais le VPN par cybercable (par exemple) ok ?
+apres, cad de l autre cote tu te route plusieur IP publique de la boite 
+chez toi, donc tu aliase sur certaine de tes machines de ton LAN 
+des ips de la boite !!!! et donc leur reverse (IN PTR) avec :)
+Tu peux aller sur le net avec leur ip tout en restant en local chez toi en
+gros tu t es route une partie de leur reseau via ton VPN @ home 
+capito ?<br>
+ca peut servir pour avoir des ips tres zoli ou simplement pour etre un
+machine trusted sur un reseau qui n est pas le tiens. Ca prend un peu de tps
+et il te faut au moin etre root sur une machine de l'autre cote pour etablir
+ton VPN.<br>
+Ce fichier etait une introduction pas un cour je le rapelle et pis j espere
+que ca vous as appris qqes trucs ou plus si oui vous pouvez toujours m
+ecrire boah je filerai mon mail la prochaine fois
+Bon je suis fatigue je donnerai pas plus de precisions, Cya on passe au
+greetz qqes uns au moin :)
+<p>
+/* #dev*this*string*crypted,spoty, shado, ank, kewly, zlz, lionel, drN0 
+and the others &gt;=] */
+<br></td></table>
+<table width="600" border="0"><td>
+<p align="left"><a href="password.htm"><img src="previous.gif" border="0"></a></p></td>
+<td><p align="right"><a href="lucide.htm"><img src="next.gif" border="0"></a></p></td></table>
+
+</BODY></HTML>
