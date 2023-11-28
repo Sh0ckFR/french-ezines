@@ -15,7 +15,7 @@
 
 
 
-<a href="telechargement.php?rafale=1">1.00 - Sommaire : Octobre 2006</a>
+<a href="zineonline/archives/Rafale1.rar">1.00 - Sommaire : Octobre 2006</a>
 
    Num  +               Titre                          ++++ Auteur
    --------------------------------------------------------------------------
@@ -32,7 +32,7 @@
    1.10 - Mot de la fin                                ---- Rafale
 
 
-<a href="telechargement.php?rafale=2">2.00 - Sommaire : Janvier 2007</a>
+<a href="zineonline/archives/Rafale2.rar">2.00 - Sommaire : Janvier 2007</a>
 
    Num  +               Titre                          ++++ Auteur
    --------------------------------------------------------------------------
@@ -43,7 +43,7 @@
    2.04 - Mot de la fin                                ---- Rafale
 
 
-<a href="telechargement.php?rafale=3">3.00 - Sommaire : Mai 2007</a>
+<a href="zineonline/archives/Rafale3.rar">3.00 - Sommaire : Mai 2007</a>
 
    Num  +               Titre                          ++++ Auteur
    --------------------------------------------------------------------------
@@ -60,7 +60,7 @@
    3.10 - Mot de la fin                                ---- Rafale
 
 
-<a href="telechargement.php?rafale=4">4.00 - Sommaire : Septembre 2007</a>
+<a href="zineonline/archives/Rafale4.rar">4.00 - Sommaire : Septembre 2007</a>
 
    Num  +               Titre                          ++++ Auteur
    --------------------------------------------------------------------------
@@ -77,7 +77,7 @@
    4.10 - Mot de la fin                                ---- Rafale
 
 
-<a href="telechargement.php?rafale=5">5.00 - Sommaire : Octobre 2007</a>
+<a href="zineonline/archives/Rafale5.rar">5.00 - Sommaire : Octobre 2007</a>
 
    Num  +               Titre                          ++++ Auteur
    ------------------------------------------------------------------------------
@@ -95,7 +95,7 @@
    5.11 - Mot de la fin                                ---- Rafale
 
 
-<a href="telechargement.php?rafale=6">6.00 - Sommaire : Janvier 2008</a>
+<a href="zineonline/archives/Rafale6.tar">6.00 - Sommaire : Janvier 2008</a>
 
    Num  +               Titre                          ++++ Auteur
    ----------------------------------------------------------------------------
@@ -113,7 +113,7 @@
    6.11 - Mot de la fin                                ---- Rafale
 
 
-<a href="telechargement.php?rafale=7">7.00 - Sommaire : Février 2008</a>
+<a href="zineonline/archives/Rafale7.tar">7.00 - Sommaire : Février 2008</a>
 
    Num  +               Titre                          ++++ Auteur
    -------------------------------------------------------------------------
@@ -130,7 +130,7 @@
    7.10 - Mot de la fin                                ---- Rafale
 
 
-<a href="telechargement.php?rafale=8">8.00 - Sommaire : Avril 2008</a>
+<a href="zineonline/archives/Rafale8.tar">8.00 - Sommaire : Avril 2008</a>
 
    Num  +               Titre                          ++++ Auteur
    -------------------------------------------------------------------------
@@ -149,7 +149,7 @@
    8.11 - Mot de la fin                                ---- Rafale
 
 
-<a href="telechargement.php?rafale=9">9.00 - Sommaire : Juin 2008</a>
+<a href="zineonline/archives/Rafale9.tar">9.00 - Sommaire : Juin 2008</a>
 
    Num  +               Titre                          ++++ Auteur
    -------------------------------------------------------------------------
@@ -160,7 +160,7 @@
    9.04 - Mot de la fin                                ---- Rafale
 
 
-<a href="telechargement.php?rafale=10">10.00 - Sommaire : Août 2008</a>
+<a href="zineonline/archives/Rafale10.tar">10.00 - Sommaire : Août 2008</a>
 
    Num  +               Titre                          ++++ Auteur
    -------------------------------------------------------------------------
@@ -177,7 +177,7 @@
    10.10 - Mot de la fin                                ---- Rafale
 
 
-<a href="telechargement.php?rafale=11">11.00 - Sommaire : Octobre 2008</a>
+<a href="zineonline/archives/Rafale11.tar">11.00 - Sommaire : Octobre 2008</a>
 
    Num   +               Titre                          ++++ Auteur
    --------------------------------------------------------------------------
@@ -195,7 +195,7 @@
    11.10 - Mot de la fin                                ---- Rafale
 
 
-<a href="telechargement.php?rafale=12">12.00 - Sommaire : Décembre 2008</a>
+<a href="zineonline/archives/Rafale12.tar">12.00 - Sommaire : Décembre 2008</a>
 
    Num   +               Titre                          ++++ Auteur
    --------------------------------------------------------------------------
@@ -214,7 +214,7 @@
    12.10 - Mot de la fin                                ---- Rafale
 
 
-<a href="telechargement.php?rafale=13">13.00 - Sommaire : Juin 2010</a>
+<a href="zineonline/archives/Rafale13.rar">13.00 - Sommaire : Juin 2010</a>
 
    Num   +               Titre                          ++++ Auteur
    --------------------------------------------------------------------------
@@ -232,7 +232,7 @@
    13.10 - Mot de la fin                                ---- Rafale
 
 
-<a href="telechargement.php?rafale=14">14.00 - Sommaire : Janvier 2011</a>
+<a href="zineonline/archives/Rafale14.rar">14.00 - Sommaire : Janvier 2011</a>
 
    Num   +               Titre                          ++++ Auteur
    --------------------------------------------------------------------------
@@ -249,7 +249,7 @@
    14.10 - Mot de la fin & Courrier du lecteur          ---- Rafale
 
 
-<a href="telechargement.php?rafale=15">15.00 - Sommaire : Avril 2011</a>
+<a href="zineonline/archives/Rafale15.rar">15.00 - Sommaire : Avril 2011</a>
 
    Num   +               Titre                            ++++ Auteur
    --------------------------------------------------------------------------
@@ -266,7 +266,7 @@
    15.10 - Mot de la fin                                  ---- Rafale
 
 
-<a href="telechargement.php?rafale=16">16.00 - Sommaire : Juillet 2011</a>
+<a href="zineonline/archives/Rafale16.rar">16.00 - Sommaire : Juillet 2011</a>
 
    Num   +               Titre                          ++++ Auteur
    --------------------------------------------------------------------------
@@ -285,7 +285,7 @@
    16.12 - Mot de la fin & Courrier du lecteur          ---- Rafale
    
    
-<a href="telechargement.php?rafale=17">17.00 - Sommaire : Mars 2012</a>
+<a href="zineonline/archives/Rafale17.zip">17.00 - Sommaire : Mars 2012</a>
 
    Num   +               Titre                          ++++ Auteur
    --------------------------------------------------------------------------
@@ -302,7 +302,7 @@
    17.10 - Mot de la fin & Courrier du lecteur          ---- Rafale
    
    
-<a href="telechargement.php?rafale=18">18.00 - Sommaire : Mars 2015</a>
+<a href="zineonline/archives/Rafale18.zip">18.00 - Sommaire : Mars 2015</a>
 
    Num   +               Titre                          ++++ Auteur
    --------------------------------------------------------------------------
@@ -324,7 +324,7 @@
    18.10 - Mot de la fin & Courrier du lecteur          ---- Rafale
    
    
-<a href="telechargement.php?rafale=19">19.00 - Sommaire : Septembre 2015</a>
+<a href="zineonline/archives/Rafale19.zip">19.00 - Sommaire : Septembre 2015</a>
 
    Num   +               Titre                          ++++ Auteur
    --------------------------------------------------------------------------
@@ -343,7 +343,7 @@
    19.10 - Mot de la fin & Courrier du lecteur          ---- Rafale
    
    
-<a href="telechargement.php?rafale=19b">19.bis - Sommaire : Novembre 2017</a>
+<a href="zineonline/archives/Rafale19bis.zip">19.bis - Sommaire : Novembre 2017</a>
 
    Num    +               Titre                          ++++ Auteur
    --------------------------------------------------------------------------
@@ -370,7 +370,7 @@
    19b.20 - Mot de la fin & Courrier du lecteur          ---- Rafale
    
    
-<a href="telechargement.php?rafale=20">20 - Sommaire : Décembre 2017</a>
+<a href="zineonline/archives/Rafale20.zip">20 - Sommaire : Décembre 2017</a>
 
    Num   +               Titre                          ++++ Auteur
    --------------------------------------------------------------------------
@@ -390,7 +390,7 @@
    20.12 - Mot de la fin & Courrier du lecteur          ---- Rafale
    
    
-<a href="telechargement.php?rafale=21">21 - Sommaire : Novembre 2018</a>
+<a href="zineonline/archives/Rafale21.zip">21 - Sommaire : Novembre 2018</a>
    
    Num   +               Titre                          ++++ Auteur
    --------------------------------------------------------------------------
