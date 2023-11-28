@@ -1,0 +1,2182 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<HTML>
+<HEAD>
+	<META HTTP-EQUIV="CONTENT-TYPE" CONTENT="text/html; charset=iso-8859-15">
+	<TITLE>Cours d'assembleur</TITLE>
+	<META NAME="GENERATOR" CONTENT="OpenOffice.org 1.1.3  (Linux)">
+	<META NAME="CREATED" CONTENT="20050212;23445500">
+	<META NAME="CHANGED" CONTENT="20050430;14393400">
+	<!-- BEGINNING OF ARTICLE -->
+	<STYLE>
+	<!--
+pre {
+     background : #ebf4fa ;
+     border : 1px solid #b1d3ec ;
+     margin: 2em;
+     padding: 0.5em;
+}
+        
+a {
+     color : #0066b2 ;
+     text-decoration : none ;
+}
+
+a:hover {
+    color : #e50066 ;
+}
+      
+table {
+   border-collapse : collapse ;
+   empty-cells : hide ;
+}
+      
+@page { size: 21.59cm 27.94cm }
+	-->
+	</STYLE>
+</HEAD>
+<BODY LANG="en-US" LINK="#0066b2" VLINK="#0066b2" DIR="LTR">
+<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=4 STYLE="font-size: 16pt"><FONT SIZE=5>Cours
+d'assembleur</FONT><BR><FONT SIZE=4>NASM, un ami qui vous veut du
+bien.</FONT></FONT></FONT></P>
+<OL TYPE=I>
+	<LI><P ALIGN=LEFT><A NAME="Sommaire"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=3>Sommaire</FONT></FONT></P>
+</OL>
+<P ALIGN=LEFT STYLE="margin-left: 2cm"><FONT SIZE=2><FONT FACE="Nimbus Sans L"><A HREF="#Preface">Pr&eacute;face</A><BR><A HREF="#Introduction">Introduction</A><BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Base
+de chiffres<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Les
+processeurs<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Les
+registres<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Les
+mn&eacute;moniques<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Le format
+ELF<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Les syscalls<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;La
+Libc<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Etude de
+cas<BR><A HREF="#Specifications">Sp&eacute;cifications</A><BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;D&eacute;claration
+des variables<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Inclure un
+fichier<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Adresses
+sp&eacute;ciales<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;D&eacute;finition
+de constantes<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;R&eacute;p&eacute;tition
+d'instructions<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Op&eacute;rateurs<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;SEG
+et WRT<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Annuler
+l'optimisation<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Expressions
+critiques<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Labels
+locaux<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;D&eacute;finition de
+structures<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Les
+comparaisons<BR><A HREF="#Macros">Macros</A><BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Macros
+simples<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Macros sur plusieurs
+lignes<BR><A HREF="#Analyse">Analyse de codes</A><BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Macro
+ENUM<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Recup de argc<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Code
+polymorphique<BR><A HREF="#Debug">Debuggers</A><BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Ndisasm<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;GBD<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Strace<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Application<BR><A HREF="#Conclusion">Conclusion</A><BR><A HREF="#References">R&eacute;f&eacute;rences</A><BR><A HREF="#Remerciements">Remerciements</A></FONT></FONT></P>
+<OL TYPE=I START=2>
+	<LI><P ALIGN=LEFT><A NAME="Preface"></A><!-- PREFACE --><FONT FACE="Nimbus Sans L"><FONT SIZE=3>Pr&eacute;face</FONT></FONT></P>
+</OL>
+<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Je vous
+pr&eacute;viens de suite, je ne suis pas un &ldquo;gourou&rdquo; de
+l'assembleur, en &eacute;crivant ces lignes je continue &agrave;
+apprendre l'assembleur. Mais je voulais partager cette exp&eacute;rience
+avec <I>toi</I> publique :).<BR>Vous me direz, mais &agrave; quoi &ccedil;a
+sert de savoir programmer en assembleur ? Et je vous r&eacute;pondrez
+que l'assembleur est un langage tr&egrave;s proche du langage
+machine. De ce fait, en sachant programmer en assembleur vous
+comprendrez beaucoup mieux les m&eacute;canismes qui r&eacute;gissent
+le fonctionnement de votre cpu, et de ses p&eacute;riph&eacute;riques.<BR>D'un
+point de vu pratique nous allons, ensemble, apprendre l'assembleur
+pour, dans une suite d'articles prochains, comprendre les principes
+du reversing et peut-&ecirc;tre commencer &agrave; programmer nos
+premiers virus.<BR>Nous allons travailler sur un i386 (comme 95% des
+PC) <B>sous linux</B> (debian sid). J'ai pr&eacute;f&eacute;r&eacute;
+travailler avec NASM car il adopte la syntaxe intel ce qui, pour un
+passage d'os &agrave; windows, pourrait &ecirc;tre pratique.<BR>Avant
+de commencer je voudrais casser quelques mythes, l'assembleur n'est
+pas plus dur &agrave; assimiler que le C, on peut l'utiliser pour
+faire des programmes de haut niveau (sockets, environnement graphique
+...). Si l'assembleur n'est pas aussi utiliser que le C c'est
+principalement d&ucirc;e au fait que le code n'est pas portable et
+qu'il est plus fastidieux &agrave; cr&eacute;er.<BR>Si vous &ecirc;tes
+d&eacute;j&agrave; familier avec le fonctionnement d'un cpu et que
+vous avez d&eacute;j&agrave; les bases en assembleur, passez
+l'introduction.<BR>Bien, nous pouvons maintenant rentrer dans le vif
+du sujet. Entrez dans mon monde.</FONT></FONT></P>
+<OL TYPE=I START=2>
+	<LI><P ALIGN=LEFT STYLE="font-style: normal"><A NAME="Introduction"></A>
+	<!-- INTRODUCTION --><FONT FACE="Nimbus Sans L"><FONT SIZE=3>Introduction</FONT></FONT></P>
+</OL>
+<UL>
+	<LI><P ALIGN=LEFT><A NAME="Chiffre"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>Base
+	de chiffres :</U><BR>Il y a l<B>a base d&eacute;cimale</B>, celle
+	que nous connaissons tous : en base 10 (de 0 &agrave; 9)<BR><BR><B>La
+	base binaire</B> : en base 2 (de 0 &agrave; 1)<BR><BR>11001<SUB>2</SUB>
+	= 1 x 2<SUP>4</SUP> + 1 x 2<SUP>3</SUP> + 0 x 2<SUP>2</SUP> + 0 x 2<SUP>1</SUP>
+	+ 1 x 2<SUP>0<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</SUP>=
+	16 + 8 + 1 = 25<BR><BR>On appel chaque &ldquo;chiffre&rdquo;, 0 ou 1
+	dans le cas pr&eacute;sent, un bit (&agrave; ne pas confondre avec
+	Byte qui est un octet).<BR><BR><B>La base h&eacute;xad&eacute;cimale</B>
+	: en base 16 (de 0 &agrave; F)<BR>On compte ainsi en h&eacute;xad&eacute;cimal.
+	<BR>0=0; 1=1; 2=2; 3=3; 4=4; 5=5; 6=6; 7=7; 8=8; 9=9; A=10; B=11;
+	C=12; D=13; E=14; F=15.<BR><BR>2AF<SUB>16</SUB> = 2 x 16<SUP>2</SUP>
+	+ 10 x 16<SUP>1</SUP> + 15 x 16<SUP>0<BR></SUP>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;=
+	512 + 160 + 15 = 687<BR><BR>L'int&eacute;r&ecirc;t de l'h&eacute;xad&eacute;cimal
+	est qu'il permet de repr&eacute;senter plus simplement des valeurs
+	binaires. Comme le binaire est en base 2 et l'h&eacute;xad&eacute;cimal
+	en base 16 il est simple de repr&eacute;senter 4 bits (2<SUP>4</SUP>
+	= 16). <BR><BR>Par exemple : 1110 1001 0110
+	1110<BR>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;E
+	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;9 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;6
+	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;E<BR><BR>Il faut &eacute;galement
+	savoir qu'un ensemble de 8 bits s'appel un octet. De l&agrave; vos
+	fichiers en ko, Mo, Go.</FONT></FONT></P>
+	<LI><P ALIGN=LEFT STYLE="font-style: normal"><A NAME="Proc"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>Les
+	processeurs :</U><BR>Un processeur est un composant &eacute;lectrique
+	compos&eacute;, pour ce qui nous int&eacute;resse, de <B>registres</B>,
+	pour stocker des informations temporairement. D'une <B>horloge</B>
+	envoyant des pulsations toutes les microsecondes ou nanosecondes.
+	Lorsque vous achetez un processeur de type 1Ghz cela repr&eacute;sente
+	la vitesse de cette horloge ; pour savoir en secondes la dur&eacute;e
+	d'un cycle de votre horloge fa&icirc;tes 1/f o&ugrave; f est la
+	fr&eacute;quence (soit 1/1e<SUP>9</SUP> = 1 ns pour notre cas). Les
+	autres composants &eacute;lectronique se basent sur cette horloge
+	pour effectuer leurs t&acirc;ches.<BR>Parlons maintenant de
+	l'organisation de la m&eacute;moire &ndash; non, pas celle de votre
+	disque dur ; la m&eacute;moire du processeur et dans certains cas de
+	la RAM &ndash;. Chaque octet est rep&eacute;r&eacute; par un nombre
+	unique dans la m&eacute;moire de votre processeur. Mais le
+	processeur traitant des quantit&eacute;s incroyable de donn&eacute;es,
+	il ne traite que rarement de simples octets. C'est pour cela que
+	l'on a nomm&eacute; des ensembles d'octets.</FONT></FONT></P>
+	<CENTER>
+		<TABLE WIDTH=302 BORDER=1 CELLPADDING=4 CELLSPACING=3>
+			<COL WIDTH=139>
+			<COL WIDTH=136>
+			<TR VALIGN=TOP>
+				<TD WIDTH=139>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>word</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=136>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>2 octets</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=139>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>double
+					word</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=136>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>4 octets</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=139>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>quad
+					word</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=136>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>8 octets</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=139>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>paragraph</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=136>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>16
+					octets</FONT></FONT></P>
+				</TD>
+			</TR>
+		</TABLE>
+	</CENTER>
+	<P ALIGN=LEFT><FONT SIZE=2><FONT FACE="Nimbus Sans L">Toutes les
+	donn&eacute;es en informatique sont des nombres. Par exemple <B>les
+	caract&egrave;res sont sous forme de chiffre</B>. On a seulement
+	cr&eacute;&eacute; une table de correspondance entre les valeurs
+	d&eacute;cimales et les caract&egrave;res.<BR><BR>Actuellement, la
+	plus grande diff&eacute;rence entre les diff&eacute;rents types de
+	processeurs se situe donc au niveau de la taille des registres et de
+	la rapidit&eacute; de l'horloge mais pas seulement. Si vous voulez
+	approfondir vos connaissances en mati&egrave;re d'architecture :
+	<A HREF="http://www.lri.fr/~temam/enseignement/x/">http://www.lri.fr/~temam/enseignement/x/</A>.</FONT></FONT></P>
+	<LI><P ALIGN=LEFT STYLE="font-style: normal"><A NAME="Reg"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>Les
+	registres :</U><BR>Nous travaillerons, comme je l'ai d&eacute;j&agrave;
+	dit, <B>sur un processeur de type 80386</B>. Ce qui veut dire que
+	<B>les registres auront une taille de 32 bits</B>.<BR>Les registres
+	sont des espaces m&eacute;moires nous permettant de stocker des
+	valeurs de 32 bits. Gr&acirc;ce &agrave; eux nous pourrons acc&eacute;der
+	&agrave; une donn&eacute;e pr&eacute;cise, r&eacute;cup&eacute;rer
+	la valeur de retour d'une fonction, passer des arguments &agrave;
+	une fonction, etc...<BR>Ils sont organis&eacute;s de cette fa&ccedil;on
+	:</FONT></FONT></P>
+	<CENTER>
+		<TABLE WIDTH=80% BORDER=1 CELLPADDING=4 CELLSPACING=3>
+			<COL WIDTH=64*>
+			<COL WIDTH=64*>
+			<COL WIDTH=64*>
+			<COL WIDTH=32*>
+			<COL WIDTH=32*>
+			<TR VALIGN=TOP>
+				<TD WIDTH=25%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>EAX</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=25%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>EBX</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=25%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>ECX</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=12%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>EDX</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=25%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>registre
+					g&eacute;n&eacute;ral</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=25%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>registre
+					g&eacute;n&eacute;ral</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=25%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>registre
+					g&eacute;n&eacute;ral</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=12%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>registre
+					g&eacute;n&eacute;ral</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=25%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>ESI</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=25%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>EDI</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=25%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>EBP</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=12%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>EIP</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=13%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>ESP</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=25%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>offset
+					m&eacute;moire</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=25%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>offset
+					m&eacute;moire</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=25%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>offset
+					m&eacute;moire gardant l'adresse de la fonction</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=12%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>offset
+					m&eacute;moire du code</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=13%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>offset
+					m&eacute;moire de la pile</FONT></FONT></P>
+				</TD>
+			</TR>
+		</TABLE>
+	</CENTER>
+	<P ALIGN=LEFT STYLE="font-style: normal"><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Les
+	registres g&eacute;n&eacute;raux servent de foure-tout. Tandis que
+	les registres d'offset pointent g&eacute;n&eacute;ralement sur une
+	adresse m&eacute;moire utile. Vous apprendrez au fur et &agrave;
+	mesure quel registre utiliser pour quoi faire. Il existe d'autres
+	registres plus sp&eacute;cifiques.</FONT></FONT></P>
+	<LI><P ALIGN=LEFT STYLE="font-style: normal"><FONT SIZE=2><FONT FACE="Nimbus Sans L"><U>La
+	pile :</U><BR>Sur les processeurs de type x86, la pile est un outil
+	permettant de stocker des donn&eacute;es de fa&ccedil;on temporaire
+	car rapide d'acc&egrave;s. La pile est dite LIFO (Last In First
+	Out), ce qui veut dire que la premi&egrave;re chose mise dans la
+	pile sera la derni&egrave;re chose enlev&eacute;e de la pile. C'est
+	donc pour cela que l'on a l'habitude de s'imaginer la pile comme des
+	assiettes empil&eacute;es les unes sur les autres, o&ugrave; chaque
+	assiette repr&eacute;senterait une donn&eacute;e, puis que l'on
+	d&eacute;sempilerait de haut en bas.<BR>Les mn&eacute;moniques pour
+	empiler et d&eacute;sempiler sont respectivement &ldquo;push&rdquo;
+	et &ldquo;pop&rdquo;. Un petit code pour illustrer &ccedil;a :</FONT></FONT></P>
+	<PRE>push val1 ; val1 = 10
+push val2 ; val2 = 20
+
+pop val1 ; val1 = 20
+pop val2 ; val2 = 10</PRE><P>
+	<FONT SIZE=2><FONT FACE="Nimbus Sans L">Vous verrez plus loin que la
+	pile est un outil indispensable dans la programmation assembleur.</FONT></FONT></P>
+	<LI><P ALIGN=LEFT><A NAME="Mnemo"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>Les
+	mn&eacute;moniques :</U><BR>Toute instruction NASM peut &ecirc;tre
+	r&eacute;sum&eacute;e ainsi :<BR>label : mn&eacute;monique op&eacute;randes
+	;commentaire<BR><BR>Il n'est pas obligatoire de retrouver tous les
+	&eacute;l&eacute;ments sur la m&ecirc;me ligne. <B>Les mn&eacute;moniques
+	repr&eacute;sentent les instructions assembleur</B>, ce qui nous
+	permet de programmer. Par exemple.</FONT></FONT></P>
+	<PRE STYLE="margin-bottom: 0.5cm">addition:       add eax,4 ; j'ajoute 4 &agrave; eax et je stock le r&eacute;sultat dans eax</PRE><P>
+	<FONT SIZE=2><FONT FACE="Nimbus Sans L">Il existe beaucoup de
+	mn&eacute;moniques, pour un listing complet allez voir le <A HREF="http://nasm.sourceforge.net/doc/html/nasmdoc0.html">manuel
+	de NASM</A>.</FONT></FONT></P>
+	<LI><P ALIGN=LEFT STYLE="font-style: normal; text-decoration: none"><A NAME="Elf"></A>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>Le format ELF :</U><BR><B>Sous
+	linux les &eacute;x&eacute;cutables ont le format ELF</B> pour
+	Executable and Linking Format. Ce format offre un d&eacute;coupage
+	modulaire de l'en-t&ecirc;te de l'&eacute;x&eacute;cutable sous
+	cette forme : (Repr&eacute;sentation tr&egrave;s simplifi&eacute;e)</FONT></FONT></P>
+	<PRE><FONT FACE="Nimbus Sans L">ELF Header</FONT>
+<FONT FACE="Nimbus Sans L">Program Header Table</FONT>
+  <FONT FACE="Nimbus Sans L">Segment #1</FONT>
+  <FONT FACE="Nimbus Sans L">Segment #2</FONT>
+  <FONT FACE="Nimbus Sans L">. . .</FONT>
+  <FONT FACE="Nimbus Sans L">Section Header Table</FONT>
+    <FONT FACE="Nimbus Sans L">Section 1</FONT>
+    <FONT FACE="Nimbus Sans L">. . .</FONT>
+    <FONT FACE="Nimbus Sans L">Section n</FONT></PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>Nous utiliserons trois
+	segments dans notre code :</FONT></FONT></P>
+	<CENTER>
+		<TABLE WIDTH=80% BORDER=1 CELLPADDING=4 CELLSPACING=3>
+			<COL WIDTH=85*>
+			<COL WIDTH=85*>
+			<COL WIDTH=85*>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>.data</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>.bss</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>.text</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33%>
+					<P><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Sert aux variables de
+					tailles fixes. Variables initialis&eacute;es.</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Sert aux variables de
+					tailles inconnues. Variables non initialis&eacute;es.</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P><FONT FACE="Nimbus Sans L"><FONT SIZE=2>C'est l&agrave; que
+					se trouve le code du programme.</FONT></FONT></P>
+				</TD>
+			</TR>
+		</TABLE>
+	</CENTER>
+	<P><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Pour plus d'informations
+	sur le format ELF : </FONT></FONT>
+	</P>
+	<PRE STYLE="margin-bottom: 0.5cm">cat /usr/include/elf.h</PRE>
+	<LI><P><A NAME="Syscall"></A><U><FONT SIZE=2><FONT FACE="Nimbus Sans L">Les
+	syscall :</FONT></FONT></U><BR><FONT SIZE=2><FONT FACE="Nimbus Sans L">En
+	assembleur sous linux, i<B>l existe une mn&eacute;monique permettant
+	de faire appel au noyau</B>. C'est &agrave; dire que gr&acirc;ce &agrave;
+	cette mn&eacute;monique on peut demander au noyau d'effectuer une
+	action pour nous. La mn&eacute;monique en question se nomme int pour
+	&ldquo;interruption&rdquo;. Pour faire appel au kernel il faut lui
+	passer l'argument 0x80.<BR>Nous verrons son utilisation dans un code
+	expliquer et commenter.<BR><BR>Pour une liste assez exhaustive des
+	diff&eacute;rents syscalls :
+	<A HREF="http://www.lxhp.in-berlin.de/lhpsyscal.html">http://www.lxhp.in-berlin.de/lhpsyscal.html</A></FONT></FONT></P>
+	<LI><P><A NAME="Libc"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>La
+	libc :</U><BR>Il est &eacute;galement possible d'<B>utiliser les
+	fonctions de la libc</B> sous certaines conditions. Cela nous permet
+	de faire pas mal de choses simplement.</FONT></FONT></P>
+	<LI><P><A NAME="Cas"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>Etude
+	de cas :</U><BR>Nous allons &eacute;tudier l&agrave; deux petits
+	programmes tout ce qu'il y a de plus banal, j'ai nomm&eacute; <B>des
+	&ldquo;hello world&rdquo;</B>.<BR><BR>Le premier utilisant les
+	syscalls. Le syscall permettant d'&eacute;crire (write) est le 4.
+	<BR>Il prend en param&egrave;tres : <BR>edx : la longueur de la
+	cha&icirc;ne &agrave; affich&eacute;e<BR>ecx : un pointeur sur le
+	d&eacute;but de la cha&icirc;ne<BR>ebx : le handle o&ugrave; l'on
+	veut &eacute;crire (en l'occurence 1 pour l'&eacute;cran)<BR>eax :
+	le num&eacute;ro du syscall &agrave; appeler</FONT></FONT></P>
+	<PRE>; NASM -f elf hello_world.asm
+; ld hello_world.o -o hello_world
+
+segment .data
+        hello db        &quot;Hello World !&quot;, 0xa      ; 0xa &eacute;quivaut &agrave; \0
+        len     equ     $ - hello           ; taille de la cha&icirc;ne (strlen(hello))
+
+segment .text
+        global  _start
+
+_start:
+        mov     edx, len           ; edx = longueur de la cha&icirc;ne a afficher
+        mov     ecx, dword hello   ; ecx pointe sur l'adresse du d&eacute;but de la cha&icirc;ne
+        mov     ebx, 1             ; file handle, ou l'on &eacute;crit (STDOUT)
+        mov     eax, 4             ; sys_write
+        int     0x80               ; call kernel
+        
+        mov     eax,1                   ; sys_exit
+        xor     ebx,ebx                 ; ebx = 0 (soit exit(0) en c)
+        int     80h                     ; call kernel</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>Au d&eacute;but on d&eacute;fini
+	les variables dans les bons segments (rappelez-vous, variables de
+	longueurs fixes dans data ; variables de longueurs non d&eacute;finies
+	dans bss). len contient la taille de la cha&icirc;ne hello, nous
+	verrons plus tard ce que repr&eacute;sente la ligne qui d&eacute;finie
+	cette variable. global sert &agrave; d&eacute;finir le point
+	d'entr&eacute;e du code (_start quand on compile avec ld et main
+	quand on compile avec gcc). Ensuite le remplissage des param&egrave;tres
+	pour appeler sys_write. dword est un mot cl&eacute; pour dire que la
+	variable est de type doubleword. Puis on quitte proprement avec un
+	sys_exit.<BR><BR>Le second utilisant la fonction printf() de la
+	libc.<BR>Pour utiliser la libc il faut lier le .o avec gcc. Pour
+	appeler une fonction de la libc il faut empiler les arguments dans
+	la pile (push) dans l'ordre inverse qu'ils sont demand&eacute;s par
+	la fonction. Un exemple : </FONT></FONT>
+	</P>
+	<PRE STYLE="margin-bottom: 0.5cm">int fprintf(FILE *stream, const char *format, ...); </PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2><BR>Il faudra donc empiler
+	le format en premier puis le stream soit :</FONT></FONT></P>
+	<PRE>push format
+push stream
+call fprintf
+pop eax ; valeur de retour de la fonction</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2><BR><B>extern</B> permet de
+	dire au compilateur que l'<B>on va appeler une fonction ext&eacute;rieure</B>
+	&agrave; notre programme.<BR>Il faut nettoyer la stack apr&egrave;s
+	chaque appel &agrave; une fonction de la libc.</FONT></FONT></P>
+	<PRE>; NASM -f elf hello_printf.asm
+; gcc hello_printf.o -o hello_printf
+
+global main
+        extern printf   ; on d&eacute;clare la fonction printf comme externe
+
+section .data
+        msg     db      &quot;Hello, World&quot;,0Dh,0Ah,0
+
+section .text
+        main:
+        push dword msg  ; pointe vers l'adresse du d&eacute;but de la cha&icirc;ne &agrave; afficher
+        call printf                 ; printf()
+        pop eax                     ; on nettoie la stack
+        ret</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>Dans la programmation NASM
+	<B>les mot-cl&eacute;s du type dword, byte ... servent &agrave;
+	sp&eacute;cifier que l'on pointe sur l'adresse de la variable</B> et
+	non pas sur son contenu. Comme dans notre cas :</FONT></FONT></P>
+	<PRE STYLE="margin-bottom: 0.5cm">dword msg</PRE>
+</UL>
+<OL TYPE=I START=3>
+	<LI><P><A NAME="Specifications"></A><!-- SPECIFICATION --><FONT FACE="Nimbus Sans L"><FONT SIZE=3>Sp&eacute;cifications</FONT></FONT></P>
+	<P><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Nous allons maintenant
+	apprendre les bases n&eacute;cessaires pour comprendre un code NASM
+	: la signification des mots cl&eacute;s, la d&eacute;claration des
+	variables, l'&eacute;tude de quelques mn&eacute;moniques ...</FONT></FONT></P>
+</OL>
+<UL>
+	<LI><P><A NAME="Var"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>D&eacute;claration
+	des variables :</U><BR>Comme nous l'avons d&eacute;j&agrave; vu, il
+	existe deux grands types de variables en assembleur : les variables
+	non-initialis&eacute;es et les variables initialis&eacute;es
+	d&eacute;clar&eacute;es respectivement dans les sections .bss et
+	.data. NASM nous permet de d&eacute;finir &agrave; l'aide de lettres
+	la taille de l'espace m&eacute;moire que nous allouons &agrave; ces
+	donn&eacute;es.<BR>La section .data :</FONT></FONT></P>
+	<PRE>db   0x55                       ; un octet : 0x55
+db   0x55, 0x56, 0x57           ; trois octets
+db   'a', 0x55                  ; deux octets (a = 0x41)
+db   'hello', 13, 10,'$'        ; &ccedil;a marche aussi avec les cha&icirc;nes de caract&egrave;res
+dw   0x1234                     ; deux octets : 0x34 0x12
+dw   'a'                        ; 0x41 0x00
+dw   'abc'                      ; 0x41 0x42 0x43 0x00
+dd   0x12345678                 ; quatre octets : 0x78 0x56 0x34 0x12
+dd   1.234567e20                ; nombre &agrave; virgule de pr&eacute;cision float
+dq   1.234567e20                ; nombre &agrave; virgule de double pr&eacute;cision float
+dt   1.234567e20                ; nombre &agrave; virgule de pr&eacute;cision float &eacute;tendue</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>La pr&eacute;cision des
+	nombres de type &ldquo;float&rdquo; d&eacute;signe le nombre de
+	chiffres, apr&egrave;s la virgule, gard&eacute;s en m&eacute;moire.<BR>La
+	section .bss :</FONT></FONT></P>
+	<PRE>resb    255     ; REServe 255 octets
+resb    1       ; REServe 1 octets
+resw    1       ; REServe 1 Word (1 Word = 2 octets )
+resd    1       ; REServe 1 Double word (soit 4 octets)
+resq    1       ; REServe 1 float &agrave; double pr&eacute;cision
+rest    1       ; REServe 1 float &agrave; pr&eacute;cision &eacute;tendue</PRE>
+	<LI><P><A NAME="Inclure"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>Inclure
+	un fichier :</U><BR>Le mot r&eacute;serv&eacute; INCBIN permet
+	d'inclure un fichier binaire dans votre source.</FONT></FONT></P>
+	<PRE>incbin   &quot;file.dat&quot;             ; inclue un fichier entier
+incbin   &quot;file.dat&quot;, 1024       ; inclue le fichier sans les 1024 premiers octets
+incbin   &quot;file.dat&quot;, 1024,512   ; inclue le fichier sans les 1024 premiers octets
+                                ; et jusqu'&agrave; 512 octets</PRE>
+	<LI><P><A NAME="Addr_spe"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>Adresses
+	sp&eacute;ciales :<BR></U>Les jetons $ et $$ d&eacute;signent eux
+	des adresses sp&eacute;cifiques : $ repr&eacute;sente l'adresse de
+	l'instruction par rapport au d&eacute;but du code et $$ l'adresse de
+	l'instruction par rapport au d&eacute;but de la section. Ainsi pour
+	cr&eacute;&eacute; une boucle infinie ou pourrait faire</FONT></FONT></P>
+	<PRE STYLE="margin-bottom: 0.5cm; text-decoration: none">jmp $</PRE>
+	<LI><P><A NAME="Const"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>D&eacute;finition
+	de constantes : EQU :<BR></U>EQU permet de d&eacute;finir une
+	constante dont la valeur ne pourra donc pas chang&eacute;e. Par
+	exemple :</FONT></FONT></P>
+	<PRE>message         db      'hello, world'
+msglen          equ     $-message</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>msglen repr&eacute;sente la
+	taille de message soit 12 octets.</FONT></FONT></P>
+	<LI><P><A NAME="Repeat"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>R&eacute;p&eacute;tition
+	d'instructions : TIMES :</U><BR>Le pr&eacute;fixe TIMES fait que
+	l'instruction est assembl&eacute;e plusieurs fois. L'avantage de
+	cette instruction est qu'elle peut permettre d'effectuer plusieurs
+	fois un ensemble d'action plus ou moins complexes.</FONT></FONT></P>
+	<PRE>buffer: db 'hello, world'
+        times 64-$+buffer db ' '</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>Cet exemple va donc r&eacute;server
+	64 octets pour y stocker buffer.<BR>On peut utiliser TIMES pour
+	r&eacute;p&eacute;ter n'importe quelle mn&eacute;monique.</FONT></FONT></P>
+	<LI><P><A NAME="Operateurs"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>Op&eacute;rateurs
+	:<BR></U>NASM, tout comme le C accepte des op&eacute;rateurs
+	arithm&eacute;tiques forts utiles. A la diff&eacute;rence que les
+	op&eacute;rateurs Nasm ne sont utilisables que dans le pr&eacute;processeur
+	(calcul d'adresse, macros ...), cf : expressions critiques.</FONT></FONT></P>
+	<TABLE WIDTH=651 BORDER=1 CELLPADDING=4 CELLSPACING=3>
+		<COL WIDTH=80>
+		<COL WIDTH=82>
+		<COL WIDTH=82>
+		<COL WIDTH=82>
+		<COL WIDTH=82>
+		<COL WIDTH=82>
+		<COL WIDTH=79>
+		<TR VALIGN=TOP>
+			<TD WIDTH=80>
+				<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2><BR>| :
+				OR</FONT></FONT></P>
+			</TD>
+			<TD WIDTH=82>
+				<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2><BR>^ :
+				XOR</FONT></FONT></P>
+			</TD>
+			<TD WIDTH=82>
+				<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2><BR>&amp;
+				: AND</FONT></FONT></P>
+			</TD>
+			<TD WIDTH=82>
+				<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2><BR>&lt;&lt;
+				et &gt;&gt; : D&eacute;calage binaire</FONT></FONT></P>
+			</TD>
+			<TD WIDTH=82>
+				<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2><BR>+ et
+				- : addition, soustraction</FONT></FONT></P>
+			</TD>
+			<TD WIDTH=82>
+				<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2><BR>*, /,
+				//, % et %%</FONT></FONT></P>
+			</TD>
+			<TD WIDTH=79>
+				<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>+, -, ~ :
+				op&eacute;rateurs s'applicant sur un argument</FONT></FONT></P>
+			</TD>
+		</TR>
+		<TR VALIGN=TOP>
+			<TD WIDTH=80>
+				<P><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Tout comme en C et en
+				&eacute;lectronique, cet op&eacute;rateur effectue un OR bit par
+				bit &agrave; vos donn&eacute;es.</FONT></FONT></P>
+			</TD>
+			<TD WIDTH=82>
+				<P><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Tout comme en C et en
+				&eacute;lectronique, cet op&eacute;rateur effectue un XOR bit par
+				bit &agrave; vos donn&eacute;es.</FONT></FONT></P>
+			</TD>
+			<TD WIDTH=82>
+				<P><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Tout comme en C et en
+				&eacute;lectronique, cet op&eacute;rateur effectue un AND bit par
+				bit &agrave; vos donn&eacute;es.</FONT></FONT></P>
+			</TD>
+			<TD WIDTH=82>
+				<P><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Comme en C cet
+				op&eacute;rateur permet de copier le nombre de bits (sp&eacute;cifier
+				par la deuxi&egrave;me op&eacute;rande) de la premi&egrave;re
+				op&eacute;rande en commen&ccedil;ant par le bit de poid faible.</FONT></FONT></P>
+			</TD>
+			<TD WIDTH=82>
+				<P><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Tout comme en C, ces
+				op&eacute;randes permettent de faire une addition ou une
+				soustraction.</FONT></FONT></P>
+			</TD>
+			<TD WIDTH=82>
+				<P><FONT FACE="Nimbus Sans L"><FONT SIZE=2>* permet de faire une
+				multiplication<BR>/ permet de faire une division non sign&eacute;e<BR>//
+				permet de faire une division sign&eacute;e<BR>% permet de faire
+				un modulo non sign&eacute;<BR>%% permet de faire un modulo sign&eacute;</FONT></FONT></P>
+			</TD>
+			<TD WIDTH=79>
+				<P><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Lorsque vous mettez un
+				+ ou un &ndash; devant une seul variable vous rendez
+				respectivement la variable en signe positif ou en signe
+				n&eacute;gatif.<BR>~ quant &agrave; lui agit comme une porte NOT
+				en &eacute;lectronique.</FONT></FONT></P>
+			</TD>
+		</TR>
+	</TABLE>
+	<P STYLE="margin-bottom: 0cm"><BR><FONT SIZE=2><FONT FACE="Nimbus Sans L">Comme
+	il est essentiel de comprendre le fonctionnement de ces op&eacute;rateurs
+	nous allons d&eacute;velopper un peu les op&eacute;rateurs agissant
+	au niveau binaire :<BR>L'op&eacute;rateur OR.</FONT></FONT> 
+	</P>
+	<CENTER>
+		<TABLE WIDTH=70% BORDER=1 CELLPADDING=4 CELLSPACING=3>
+			<COL WIDTH=85*>
+			<COL WIDTH=85*>
+			<COL WIDTH=85*>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33% BGCOLOR="#b3b3b3">
+					<P ALIGN=CENTER><FONT COLOR="#ffffff"><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Bit
+					1</FONT></FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33% BGCOLOR="#b3b3b3">
+					<P ALIGN=CENTER><FONT COLOR="#ffffff"><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Bit
+					2</FONT></FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33% BGCOLOR="#b3b3b3">
+					<P ALIGN=CENTER><FONT COLOR="#ffffff"><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Bit
+					1 | Bit 2</FONT></FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=BOTTOM>
+				<TD WIDTH=33% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+			</TR>
+			<TR VALIGN=BOTTOM>
+				<TD WIDTH=33% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+			</TR>
+			<TR VALIGN=BOTTOM>
+				<TD WIDTH=33% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+			</TR>
+			<TR VALIGN=BOTTOM>
+				<TD WIDTH=33% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+			</TR>
+		</TABLE>
+	</CENTER>
+	<P STYLE="margin-bottom: 0cm"><FONT SIZE=2><FONT FACE="Nimbus Sans L"><BR>L'op&eacute;rateur
+	AND.</FONT></FONT> 
+	</P>
+	<CENTER>
+		<TABLE WIDTH=70% BORDER=1 CELLPADDING=4 CELLSPACING=3>
+			<COL WIDTH=85*>
+			<COL WIDTH=85*>
+			<COL WIDTH=85*>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33% BGCOLOR="#b3b3b3">
+					<P ALIGN=CENTER><FONT COLOR="#ffffff"><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Bit
+					1</FONT></FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33% BGCOLOR="#b3b3b3">
+					<P ALIGN=CENTER><FONT COLOR="#ffffff"><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Bit
+					2</FONT></FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33% BGCOLOR="#b3b3b3">
+					<P ALIGN=CENTER><FONT COLOR="#ffffff"><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Bit
+					1 &amp; Bit 2</FONT></FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=BOTTOM>
+				<TD WIDTH=33% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+			</TR>
+			<TR VALIGN=BOTTOM>
+				<TD WIDTH=33% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+			</TR>
+			<TR VALIGN=BOTTOM>
+				<TD WIDTH=33% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+			</TR>
+			<TR VALIGN=BOTTOM>
+				<TD WIDTH=33% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+			</TR>
+		</TABLE>
+	</CENTER>
+	<P STYLE="margin-bottom: 0cm"><FONT SIZE=2><FONT FACE="Nimbus Sans L"><BR>L'op&eacute;rateur
+	XOR.</FONT></FONT> 
+	</P>
+	<CENTER>
+		<TABLE WIDTH=70% BORDER=1 CELLPADDING=4 CELLSPACING=3>
+			<COL WIDTH=85*>
+			<COL WIDTH=85*>
+			<COL WIDTH=85*>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33% BGCOLOR="#b3b3b3">
+					<P ALIGN=CENTER><FONT COLOR="#ffffff"><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Bit
+					1</FONT></FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33% BGCOLOR="#b3b3b3">
+					<P ALIGN=CENTER><FONT COLOR="#ffffff"><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Bit
+					2 </FONT></FONT></FONT>
+					</P>
+				</TD>
+				<TD WIDTH=33% BGCOLOR="#b3b3b3">
+					<P ALIGN=CENTER><FONT COLOR="#ffffff"><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Bit
+					1 ^ Bit 2</FONT></FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=BOTTOM>
+				<TD WIDTH=33% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+			</TR>
+			<TR VALIGN=BOTTOM>
+				<TD WIDTH=33% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+			</TR>
+			<TR VALIGN=BOTTOM>
+				<TD WIDTH=33% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+			</TR>
+			<TR VALIGN=BOTTOM>
+				<TD WIDTH=33% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+				<TD WIDTH=33% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+			</TR>
+		</TABLE>
+	</CENTER>
+	<P STYLE="margin-bottom: 0cm"><FONT FACE="Nimbus Sans L"><FONT SIZE=2><BR>L'op&eacute;rateur
+	NOT.</FONT></FONT></P>
+	<CENTER>
+		<TABLE WIDTH=70% BORDER=1 CELLPADDING=4 CELLSPACING=3>
+			<COL WIDTH=128*>
+			<COL WIDTH=128*>
+			<TR VALIGN=TOP>
+				<TD WIDTH=50% BGCOLOR="#b3b3b3">
+					<P ALIGN=CENTER><FONT COLOR="#ffffff"><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Bit</FONT></FONT></FONT></P>
+				</TD>
+				<TD WIDTH=50% BGCOLOR="#b3b3b3">
+					<P ALIGN=CENTER><FONT COLOR="#ffffff"><FONT FACE="Nimbus Sans L"><FONT SIZE=2>~Bit</FONT></FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=BOTTOM>
+				<TD WIDTH=50% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+				<TD WIDTH=50% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+			</TR>
+			<TR VALIGN=BOTTOM>
+				<TD WIDTH=50% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=CENTER>1</P>
+				</TD>
+				<TD WIDTH=50% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=CENTER>0</P>
+				</TD>
+			</TR>
+		</TABLE>
+	</CENTER>
+	<P STYLE="margin-bottom: 0cm"><FONT SIZE=2><FONT FACE="Nimbus Sans L"><BR>L'op&eacute;rateur
+	de d&eacute;calage binaire.<BR>Prenons l'exemple de 42 &lt;&lt; 2 :</FONT></FONT>
+		</P>
+	<CENTER>
+		<TABLE WIDTH=70% BORDER=1 CELLPADDING=4 CELLSPACING=3>
+			<COL WIDTH=26*>
+			<COL WIDTH=26*>
+			<COL WIDTH=26*>
+			<COL WIDTH=26*>
+			<COL WIDTH=26*>
+			<COL WIDTH=26*>
+			<COL WIDTH=26*>
+			<COL WIDTH=26*>
+			<COL WIDTH=26*>
+			<COL WIDTH=26*>
+			<TR>
+				<TD COLSPAN=10 WIDTH=100% VALIGN=TOP>
+					<P ALIGN=RIGHT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>42 en
+					binaire.</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR>
+				<TD WIDTH=10% VALIGN=TOP>
+					<P ALIGN=LEFT><BR>
+					</P>
+				</TD>
+				<TD WIDTH=10% VALIGN=TOP>
+					<P ALIGN=LEFT><BR>
+					</P>
+				</TD>
+				<TD WIDTH=10% VALIGN=BOTTOM SDVAL="0" SDNUM="1036;">
+					<P ALIGN=RIGHT>0</P>
+				</TD>
+				<TD WIDTH=10% VALIGN=BOTTOM SDVAL="0" SDNUM="1036;">
+					<P ALIGN=RIGHT>0</P>
+				</TD>
+				<TD WIDTH=10% VALIGN=BOTTOM SDVAL="1" SDNUM="1036;">
+					<P ALIGN=RIGHT>1</P>
+				</TD>
+				<TD WIDTH=10% VALIGN=BOTTOM SDVAL="0" SDNUM="1036;">
+					<P ALIGN=RIGHT>0</P>
+				</TD>
+				<TD WIDTH=10% VALIGN=BOTTOM SDVAL="1" SDNUM="1036;">
+					<P ALIGN=RIGHT>1</P>
+				</TD>
+				<TD WIDTH=10% VALIGN=BOTTOM SDVAL="0" SDNUM="1036;">
+					<P ALIGN=RIGHT>0</P>
+				</TD>
+				<TD WIDTH=10% VALIGN=BOTTOM SDVAL="1" SDNUM="1036;">
+					<P ALIGN=RIGHT>1</P>
+				</TD>
+				<TD WIDTH=10% VALIGN=BOTTOM SDVAL="0" SDNUM="1036;">
+					<P ALIGN=RIGHT>0</P>
+				</TD>
+			</TR>
+			<TR>
+				<TD COLSPAN=10 WIDTH=100% VALIGN=TOP>
+					<P ALIGN=RIGHT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Le
+					r&eacute;sultat de 42 &lt;&lt; 2 soit 168 en d&eacute;cimal.</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=BOTTOM>
+				<TD WIDTH=10% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=RIGHT>0</P>
+				</TD>
+				<TD WIDTH=10% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=RIGHT>0</P>
+				</TD>
+				<TD WIDTH=10% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=RIGHT>1</P>
+				</TD>
+				<TD WIDTH=10% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=RIGHT>0</P>
+				</TD>
+				<TD WIDTH=10% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=RIGHT>1</P>
+				</TD>
+				<TD WIDTH=10% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=RIGHT>0</P>
+				</TD>
+				<TD WIDTH=10% SDVAL="1" SDNUM="1036;">
+					<P ALIGN=RIGHT>1</P>
+				</TD>
+				<TD WIDTH=10% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=RIGHT>0</P>
+				</TD>
+				<TD WIDTH=10% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=RIGHT><FONT COLOR="#ff0000">0</FONT></P>
+				</TD>
+				<TD WIDTH=10% SDVAL="0" SDNUM="1036;">
+					<P ALIGN=RIGHT><FONT COLOR="#ff0000">0</FONT></P>
+				</TD>
+			</TR>
+		</TABLE>
+	</CENTER>
+	<LI><P><A NAME="SEG_WRT"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>SEG
+	et WRT :<BR></U>Dans un
+	programme en assembleur, il existe diff&eacute;rents types de
+	segments, dont les plus connues sont CS/DS/SS pour Code Segment,
+	Data Segment et Stack Segment. Ceux-ci permettent d'atteindre des
+	adresses lointaines. Ainsi en mode 16 bits, ces segments sont
+	&eacute;parpill&eacute;s car ne pouvant &ecirc;tre plac&eacute;s
+	dans la m&ecirc;me zone m&eacute;moire tandis qu'en mode 32 bits,
+	les segments sont accessibles dans la m&ecirc;me zone m&eacute;moire.<BR>SEG
+	et WRT permettent d'acc&eacute;der &agrave; l'adresse d'une donn&eacute;e
+	lointaine. Ce qui n'est que tr&egrave;s rarement utile en mode 32
+	bits. Les seuls diff&eacute;rences de ces mn&eacute;moniques sont au
+	niveau de la syntaxe et au niveau du r&eacute;sultat
+	obtenu.<BR>Quelques exemples :</FONT></FONT></P>
+	<PRE>mov ax, seg donnee
+mov es, ax
+mov bx, donnee          ; ES:BX contient un pointeur valide vers donnee</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>La mn&eacute;monique SEG
+	r&eacute;cup&egrave;re donc l'offset de donnee. Pour cela elle
+	utilise un &ldquo;base segment&rdquo; par d&eacute;faut pour obtenir
+	un offset exploitable.<BR>Ce que l'on peut sp&eacute;cifier gr&acirc;ce
+	&agrave; la mn&eacute;monique WRT :</FONT></FONT></P>
+	<PRE>mov ax, base_segment
+mov es, ax
+mov bx, donnee wrt base_segment ; ES:BX contient un pointeur different mais tout aussi fonctionnel vers donnee</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>Ici base_segment repr&eacute;sente
+	donc le &ldquo;base segment&rdquo; :).<BR>NASM permet de faire des
+	appels et des sauts vers des labels lointains sous la forme :</FONT></FONT></P>
+	<PRE>call segment:offset     ; ou segment et offset sont des valeurs num&eacute;riques
+   </PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>On peut donc &agrave; l'aide
+	de SEG et WRT r&eacute;aliser le calcul imm&eacute;diatement :</FONT></FONT></P>
+	<PRE>call (seg procedure):procedure                  ; les parentheses ne sont 
+call weird_seg:(procedure wrt weird_seg)        ; pas obligatoire en pratique.</PRE>
+	<LI><P><A NAME="Strict"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>Annuler
+	l'optimisation : STRICT :<BR></U>Lorsque l'on passe &agrave; NASM
+	l'argument &ldquo;-On&rdquo;, o&ugrave; n est un chiffre sp&eacute;cifiant
+	le niveau d'optimisation, NASM effectue une optimisation du code. Il
+	est possible que pour certaines instructions vous ne vouliez pas que
+	l'optimisation ai lieu. C'est pour cela que STRICT a &eacute;t&eacute;
+	invent&eacute;.<BR>Par exemple avec l'optimisation :</FONT></FONT></P>
+	<PRE>push dword 33           ; 66 6A 21
+push strict dword 33    ; 66 68 21 00 00 00</PRE>
+	<LI><P><A NAME="Critique"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>Expressions
+	critiques :<BR></U>Une limitation de NASM est qu'il assemble le code
+	en deux phases minimum (sans optimisation) ; pas comme tasm ou
+	d'autres. La premi&egrave;re phase (pr&eacute;processeur) consiste
+	pour NASM &agrave; r&eacute;cup&eacute;rer la taille globale du
+	programme, des segments de donn&eacute;es ... Ainsi lors de la
+	deuxi&egrave;me phase (runtime), la g&eacute;n&eacute;ration de
+	l'ex&eacute;cutable, NASM conna&icirc;t toutes les adresses des
+	donn&eacute;es dont fait r&eacute;f&eacute;rence le code
+	source.<BR>Donc ce que NASM ne peux prendre en compte sont les
+	instructions du code source faisant r&eacute;f&eacute;rence &agrave;
+	une donn&eacute;e d&eacute;clar&eacute;e apr&egrave;s.<BR>Par
+	exemple :</FONT></FONT></P>
+	<PRE>  times (label-$) db 0
+label: db 'Where am I ?'</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>NASM ne pourra compiler ce
+	code car la ligne d&eacute;clarant label est apr&egrave;s celle lui
+	allouant de l'espace m&eacute;moire.<BR>Ce concept a &eacute;t&eacute;
+	appel&eacute; expression critique. Il existe diff&eacute;rentes
+	instructions qui peuvent &ecirc;tre restreintent par ces expressions
+	critiques tel que TIMES, RES*, EQU ...</FONT></FONT></P>
+	<LI><P><A NAME="Label"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>Labels
+	locaux :</U><BR>Le point permet &agrave; NASM de d&eacute;clarer des
+	labels locaux, comme on le voit dans l'exemple. En plus, NASM permet
+	de faire r&eacute;f&eacute;rence &agrave; un label en-dehors du
+	domaine local.</FONT></FONT></P>
+	<PRE>label1  ; some code
+.loop           
+                        ; some more code
+        jne .loop
+        ret
+
+label2  ; some code
+.loop           
+                        ; some more code
+        jne .loop
+        ret
+        
+label3  ; some code
+                        ; some more code
+        jmp label1.loop</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>Ainsi le premier jne .loop
+	ira directement &agrave; label1.loop, le deuxi&egrave;me jne .loop
+	ira &agrave; label2.loop et le dernier jmp label1.loop ira au d&eacute;but
+	du code (label1.loop).</FONT></FONT></P>
+	<LI><P><A NAME="Struct"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>D&eacute;finition
+	de structures : STRUC :<BR></U>Pour d&eacute;finir une structure on
+	fait appel au pr&eacute;processeur par le biais du mot-cl&eacute;
+	STRUC. Il ne prend qu'un argument. STRUC n'est qu'une macro qui
+	effectue en r&eacute;alit&eacute; plusieurs EQU.</FONT></FONT></P>
+	<PRE>struc mytype 
+        .long:   resd 1
+        .word:   resw 1
+        .byte:   resb 1
+        .str:    resb 32
+endstruc</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>On d&eacute;clare donc la
+	structure mytype avec des variables locales de types diff&eacute;rents
+	: mytype.long, mytype.word, mytype.byte et mytype.str.</FONT></FONT></P>
+	<LI><P><A NAME="Comp"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>Les
+	comparaisons : CMP :<BR></U>Les langages de programmation habituels
+	tels que le C utilisent des structures de contr&ocirc;le du flux
+	d'&eacute;x&eacute;cution du programme (if, while, switch) ce qui
+	n'existe pas en assembleur. Pour pallier &agrave; cela on a recoure
+	&agrave; la mn&eacute;monique CMP qui effectue une simple
+	soustraction et stock le r&eacute;sultat dans un registre sp&eacute;cial,
+	le registre FLAGS. <BR><BR>Pour les entiers non-sign&eacute;s il y a
+	deux bits importants dans le registre FLAGS : le zero (ZF) et la
+	port&eacute;e (CF)</FONT></FONT></P>
+	<PRE STYLE="margin-bottom: 0.5cm">cmp vleft, vright</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>La soustraction entre vleft
+	et vright est effectu&eacute;e et <BR>- si vleft = vright, alors ZF
+	est mis &agrave; 1 et CF est mis &agrave; 0<BR>- si vleft &gt;
+	vright, alors ZF est mis &agrave; 0 et CF est mis &agrave; 0<BR>- si
+	vleft &lt; vright, alors ZF est mis &agrave; 0 et CF est mis &agrave;
+	1<BR><BR>Pour les entiers sign&eacute;s il y a trois bits importants
+	dans le registre FLAGS : le zero (ZF), la surcharge (OF) et le signe
+	(SF)<BR>- si vleft = vright, alors ZF est mis &agrave; 1<BR>- si
+	vleft &gt; vright, alors ZF est mis &agrave; 0 et SF = OF<BR>- si
+	vleft &lt; vright, alors ZF est mis &agrave; 0 et SF != OF<BR><BR>Les
+	valeurs que prennent ces bits servent ensuite &agrave; &eacute;guiller
+	le flux d'&eacute;x&eacute;cution du code &agrave; l'aide de
+	mn&eacute;moniques d'aiguillage dont voici un bref tableau
+	r&eacute;capitualtif :</FONT></FONT></P>
+	<TABLE WIDTH=579 BORDER=1 CELLPADDING=4 CELLSPACING=3>
+		<COL WIDTH=42>
+		<COL WIDTH=510>
+		<TR VALIGN=TOP>
+			<TD WIDTH=42>
+				<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>JZ<BR>JNZ<BR>JO<BR>JNO<BR>JS<BR>JNS<BR>JC<BR>JNC<BR>JP<BR>JNP</FONT></FONT></P>
+			</TD>
+			<TD WIDTH=510>
+				<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Commute
+				seulement si ZF = 1<BR>Commute seulement si ZF = 0<BR>Commute
+				seulement si OF = 1<BR>Commute seulement si OF = 0<BR>Commute
+				seulement si SF = 1<BR>Commute seulement si SF = 0<BR>Commute
+				seulement si CF = 1<BR>Commute seulement si CF = 0<BR>Commute
+				seulement si PF = 1<BR>Commute seulement si PF = 0</FONT></FONT></P>
+			</TD>
+		</TR>
+	</TABLE>
+	<P><FONT FACE="Nimbus Sans L"><FONT SIZE=2><BR>L'instruction JMP
+	saute quelque soit la valeur du registre FLAGS. On peut sp&eacute;cifier
+	une certaine port&eacute;e &agrave; nos mn&eacute;moniques
+	d'aiguillage pour minimiser la taille du code par exemple :<BR>-
+	SHORT permet de sauter &agrave; 128 octets vers le haut ou vers le
+	bas du code.<BR>- NEAR permet de sauter n'importe o&ugrave; dans le
+	segment courant.<BR>- FAR permet de sauter dans n'importe quel autre
+	segment.<BR><BR>De plus les processeurs de type 80x86 offrent la
+	possibilit&eacute;s de rendre ces tests plus simples par le biais de
+	mn&eacute;moniques d'aiguillage plus adapt&eacute;es :</FONT></FONT></P>
+	<CENTER>
+		<TABLE WIDTH=80% BORDER=1 CELLPADDING=4 CELLSPACING=3>
+			<COL WIDTH=128*>
+			<COL WIDTH=128*>
+			<TR VALIGN=TOP>
+				<TD WIDTH=50%>
+					<P ALIGN=CENTER>Entiers sign&eacute;s</P>
+				</TD>
+				<TD WIDTH=50%>
+					<P ALIGN=CENTER>Entiers non sign&eacute;s</P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=50%>
+					<P><FONT FACE="Nimbus Sans L"><FONT SIZE=2>JE
+					&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Commute
+					si vleft = vright<BR>JNE &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Commute
+					si vleft != vright<BR>JL, JNGE &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Commute
+					si vleft &lt; vright<BR>JLE, JNG &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Commute
+					si vleft &lt;= vright<BR>JG, JNLE &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Commute
+					si vleft &gt; vright<BR>JGE, JNL &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Commute
+					si vleft &gt;= vright</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=50%>
+					<P><FONT FACE="Nimbus Sans L"><FONT SIZE=2>JE
+					&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Commute
+					si vleft = vright<BR>JNE &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Commute
+					si vleft != vright<BR>JB, JNAE &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Commute
+					si vleft &lt; vright<BR>JBE, JNA &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Commute
+					si vleft &lt;= vright<BR>JA, JNBE &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Commute
+					si vleft &gt; vright<BR>JAE, JNB &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Commute
+					si vleft &gt;= vright</FONT></FONT></P>
+				</TD>
+			</TR>
+		</TABLE>
+	</CENTER>
+	<P><FONT SIZE=2><FONT FACE="Nimbus Sans L"><BR>Et pour finir un
+	petit bout de code exemple :</FONT></FONT> 
+	</P>
+	<PRE>   cmp eax, 0xffffffff         ; si eax != -1
+   jne thenblock               ; on saute vers thenblock
+   mov DWORD PTR [esp], 0x1    ; on empile les arguments pour le call
+   call ptrace                 ; on appel la fonction
+   jmp next                    ; on passe &agrave; la suite
+thenblock :  
+   mov DWORD PTR [esp], 0x8048564 ; on empile d'autres arguments
+   call ptrace                    ; on appel la fonction
+next :                            ; on continue l'&eacute;x&eacute;cution</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>Il ne faut pas oublier que
+	le registre FLAGS est modifiable via d'autres mn&eacute;moniques.</FONT></FONT></P>
+</UL>
+<OL TYPE=I START=4>
+	<LI><P ALIGN=LEFT><A NAME="Macros"></A><!-- MACROS --><FONT FACE="Nimbus Sans L"><FONT SIZE=3>Macros</FONT></FONT></P>
+	<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>NASM comporte
+	un outil tr&egrave;s puissant, j'ai nomm&eacute; le processeur de
+	macros. Cet outil nous permet de d&eacute;finir des instructions
+	plus ou moins complexes r&eacute;utilisables de fa&ccedil;on assez
+	simple une fois que l'on a ma&icirc;triser la syntaxe. Dans ce
+	chapitre nous allons apprendre &agrave; utiliser les macros d&eacute;j&agrave;
+	disponibles et &agrave; cr&eacute;er nos macros.</FONT></FONT></P>
+</OL>
+<UL>
+	<LI><P><A NAME="Mac_simple"></A><FONT SIZE=2><FONT FACE="Nimbus Sans L"><U>Les
+	macros simples :</U><BR>Les macros simples permettent par le biais
+	du pr&eacute;processeur de d&eacute;finir de nouvelles macros tout
+	comme en C. Le mot cl&eacute; permettant cette prouesse est
+	&ldquo;%define&rdquo; et ses d&eacute;riv&eacute;s.</FONT></FONT> 
+	</P>
+	<PRE>%define ctrl 0x1F &amp;                     ; d&eacute;finition de ctrl = 0x1F &amp;
+%define param(a,b) ((a)+(a)*(b))        ; d&eacute;finition de param()
+
+mov byte [param(2,ebx)], ctrl 'D'       ; = mov byte [(2)+(2)*(ebx)], 0x1F &amp; 'D'</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>La macro %define ne subit
+	pas la limitation des expressions critiques.</FONT></FONT></P>
+	<PRE>%define a(x) 1+b(x)
+%define b(x) 2*x
+
+mov ax, a(8)    ; mov ax, 1+2*8</PRE><P>
+	<FONT SIZE=2><FONT FACE="Nimbus Sans L">Les noms des macros sont
+	sensibles &agrave; la casse. C'est pour cela qu'il y a &ldquo;%idefine&rdquo;
+	qui permet de d&eacute;finir un ensemble de noms pour la macro.</FONT></FONT>
+		</P>
+	<PRE>%define foo bar         ; foo
+%idefine foo bar        ; foo, FOO, fOo, foO, ...</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>Il est &eacute;galement
+	possible de surcharger les arguments d'une macro :</FONT></FONT></P>
+	<PRE>%define foo(x) 1+x
+%define foo(x, y) 1+x*y
+
+mov ax, foo(4)          ; ax = 1+4
+mov ax, foo(4,5)        ; ax = 1+4*5</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>Parlons un peu de
+	&ldquo;%xdefine&rdquo;. Cette instruction permet de d&eacute;clarer
+	une macro en fonction de son contexte et non pas comme &ldquo;%define&rdquo;
+	qui elle d&eacute;clare une macro en fonction de la valeur au moment
+	de l'appelle &agrave; celle-ci. Un exemple :</FONT></FONT></P>
+	<CENTER>
+		<TABLE WIDTH=80% BORDER=1 BORDERCOLOR="#000000" CELLPADDING=2 CELLSPACING=0>
+			<COL WIDTH=128*>
+			<COL WIDTH=128*>
+			<TR VALIGN=TOP>
+				<TD WIDTH=50%>
+					<PRE>%define isTrue 1
+%define isFalse isTrue
+%define isTrue 0
+
+val1: db isFalse    ; val1 = 0
+
+%define isTrue 1
+
+val2: db isFalse    ; val2 = 1</PRE>
+				</TD>
+				<TD WIDTH=50%>
+					<PRE>%xdefine isTrue 1
+%xdefine isFalse isTrue
+%xdefine isTrue 0
+
+val1: db isFalse        ; val1 = 1
+
+%xdefine isTrue 1
+
+val2: db isFalse        ; val2 = 1</PRE>
+				</TD>
+			</TR>
+		</TABLE>
+	</CENTER>
+	<P><BR><FONT SIZE=2><FONT FACE="Nimbus Sans L">Dans le cas de
+	&ldquo;%define&rdquo;, val1 prend la valeur 0 car lorsque l'on appel
+	la macro &ldquo;isFalse&rdquo;, &ldquo;isTrue&rdquo; vaut 0 ; de
+	m&ecirc;me pour val2.<BR>Pour &ldquo;%xdefine&rdquo; val1 vaut 1 car
+	lorsque l'on d&eacute;clare &ldquo;isFalse&rdquo;, &ldquo;isTrue&rdquo;
+	vaut 1. Ainsi &ldquo;isFalse&rdquo; vaudra toujours 1 quelque soit
+	la valeur de &ldquo;isTrue&ldquo; plus loin dans le code.<BR><BR>Il
+	existe une autre instruction pour cr&eacute;er des macros :
+	&ldquo;%assign&rdquo;. Celle-ci n'est utilis&eacute;e que pour les
+	macros d'une ligne ne prenant aucuns arguments et de valeur
+	num&eacute;rique. On la retrouve souvent lorsqu'il faut effectuer
+	une incr&eacute;mentation ou d&eacute;cr&eacute;mentation dans une
+	macro.<BR><BR>Pour d&eacute;truire une macro on utilise le mot cl&eacute;
+	&ldquo;%undef&rdquo;</FONT></FONT></P>
+	<LI><P><A NAME="Mac_comp"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>Les
+	macros sur plusieurs lignes :</U><BR>La d&eacute;finition d'une
+	macro de plusieurs lignes passe par le mot-cl&eacute; &ldquo;%macro&rdquo;
+	avec cette syntaxe :</FONT></FONT></P>
+	<PRE>%macro nom_de_macro nb_arguments
+; un peu de code
+%endmacro</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>O&ugrave; nom_de_macro est
+	le nom de la macro et nb_arguments un nombre repr&eacute;sentant le
+	nombre d'arguments pass&eacute;s &agrave; la macro. Un exemple :</FONT></FONT></P>
+	<PRE>%macro silly 2
+        %2: db %1
+%endmacro</PRE><P>
+	<FONT SIZE=2><FONT FACE="Nimbus Sans L">O&ugrave; %2 repr&eacute;sente
+	le deuxi&egrave;me argument et %1 le premier argument.</FONT></FONT>
+		</P>
+	<PRE STYLE="margin-bottom: 0.5cm">silly 'hello_world', hello      ; hello: db 'hello_world'</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>De plus on peut d&eacute;clarer
+	un intervalle d'arguments et des valeurs par d&eacute;faut : </FONT></FONT>
+	</P>
+	<PRE>%macro silly 2+ ; 2 arguments ou plus
+%endmacro
+
+%macro foobar 1-3 eax, [ebx+2]  ; au minimum 1 argument
+                                ; et pas plus de 3 arguments
+%endmacro</PRE><P>
+	<FONT SIZE=2><FONT FACE="Nimbus Sans L">Pour la macro foobar,
+	lorsque les arguments %2 et %3 ne sont pas d&eacute;clar&eacute;s,
+	%2 = eax et %3 = [ebx+2].<BR>L'ast&eacute;risque (*) permet de
+	d&eacute;clarer un nombre infini d'arguments.<BR><BR>L'argument %0
+	est le nombre d'arguments pass&eacute;s &agrave; la
+	macro.<BR><BR>L'instruction %rotate permet de faire tourner les
+	arguments de la macro de x vers la gauche ou la droite
+	respectivement si x est positif ou si x est n&eacute;gatif.</FONT></FONT>
+		</P>
+	<PRE>%macro multipush 1-*   ; 1 arguments minimum
+    %rep %0            ; boucle tant qu'il y a des arguments
+       push %1         ; on push l'argument courant
+       %rotate 1       ; on passe &agrave; l'argument suivant
+    %endrep            
+%endmacro</PRE>
+</UL>
+<OL TYPE=I START=4>
+	<LI><P><A NAME="Analyse"></A><!-- ANALYSE --><FONT FACE="Nimbus Sans L"><FONT SIZE=3>Analyse
+	de Code</FONT></FONT></P>
+	<P><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Maintenant que nous
+	poss&eacute;dons les notions th&eacute;oriques essentielles (et un
+	peu plus quand m&ecirc;me :D) nous allons &eacute;tudier quelques
+	codes nasm. Histoire de voir &agrave; quoi cela peut nous servir en
+	pratique.</FONT></FONT></P>
+</OL>
+<UL>
+	<LI><P><A NAME="ENUM"></A><FONT SIZE=2><FONT FACE="Nimbus Sans L"><U>Macro
+	ENUM :</U><BR>Un petit code source de mammon_ tir&eacute; du
+	<A HREF="http://www.assembly-journal.com/index.php">Assembly
+	Programming Journal</A>. Cette macro permet de cr&eacute;er une
+	&eacute;num&eacute;ration de variables associ&eacute;es &agrave; des
+	valeurs num&eacute;riques. Tout comme le fait le mot-cl&eacute; enum
+	en C.</FONT></FONT></P>
+	<PRE>;Summary: A NASM macro emulating the C 'ENUM&quot; command
+;Assembler: NASM
+;by mammon_ &amp;&amp; modified by Flyers
+%macro ENUM 2-*     ;Usage: ENUM int SYMBOLS
+%assign i %1        ;  where int is the number to begin enumeration at [0]
+%rep %0 -1          ;  SYMBOLS is a list of Symbols to define
+  %2 EQU i          ;Example: ENUM 0, TRUE, FALSE
+  %assign i i+1     ;  this EQUates TRUE to 0 and FALSE to 1
+  %rotate 1         ;Example: ENUM 11, JACK, QUEEN, KING
+%endrep             ;  this EQUs JACK to 11, QUEEN to 12, KING to 13
+%endmacro</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>Ce code ne devrait pas vous
+	&ecirc;tre si dur &agrave; assimiler maintenant mais je vais vous
+	aider. <BR>On commence par cr&eacute;er la macro avec au minimum
+	deux param&egrave;tres. <BR>On initialise i &agrave; la valeur du
+	premier &eacute;l&eacute;ment &agrave; &eacute;num&eacute;rer (soit
+	le premier argument de la macro).<BR>On attribue ensuite &agrave;
+	chaque argument (-1 pour ne pas prendre en compte le premier
+	argument) la valeur de i que l'on incr&eacute;mente. On peut r&eacute;sumer
+	cela par une boucle &ldquo;for ( i = %1; i &lt; %0 -1; i++)&rdquo;.</FONT></FONT></P>
+	<LI><P STYLE="margin-bottom: 0cm"><A NAME="Argc"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>Recup
+	de argc :</U><BR>Nous allons &eacute;tudier un bout de code qui
+	s'occupe de r&eacute;cup&eacute;rer argc (vous savez c'est la
+	variable contenant le nombre d'arguments pass&eacute;s au programme
+	en ligne de commande), qui le transforme en caract&egrave;re et qui
+	l'affiche &agrave; l'&eacute;cran.<BR>Avant de commencer il faut que
+	vous ayez quelques connaissances indispensables : <BR><BR>- La pile,
+	lorsqu'un programme est lancer sous linux, ressemble &agrave; &ccedil;a
+	:</FONT></FONT></P>
+	<CENTER>
+		<TABLE WIDTH=50% BORDER=1 BORDERCOLOR="#000000" CELLPADDING=2 CELLSPACING=0>
+			<TR>
+				<TD BGCOLOR="#c0c0c0">
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2><B>argc</B></FONT></FONT></P>
+				</TD>
+				<TD>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>[dword]
+					compteur d'arguments (integer)</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR>
+				<TD BGCOLOR="#c0c0c0">
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2><B>argv[0]</B></FONT></FONT></P>
+				</TD>
+				<TD>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>[dword]
+					nom du programme (pointer)</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR>
+				<TD BGCOLOR="#c0c0c0">
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2><B>argv[1]</B></FONT></FONT></P>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2><B>...</B></FONT></FONT></P>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2><B>argv[argc-1]</B></FONT></FONT></P>
+				</TD>
+				<TD>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>[dword]
+					arguments du programme (pointers)</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR>
+				<TD BGCOLOR="#c0c0c0">
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2><B>NULL</B></FONT></FONT></P>
+				</TD>
+				<TD>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>[dword]
+					fin des arguments (integer)</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR>
+				<TD BGCOLOR="#c0c0c0">
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2><B>env[0]</B></FONT></FONT></P>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2><B>env[1]</B></FONT></FONT></P>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2><B>...</B></FONT></FONT></P>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2><B>env[n]</B></FONT></FONT></P>
+				</TD>
+				<TD>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>[dword]
+					variables d'environnement (pointers)</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR>
+				<TD BGCOLOR="#c0c0c0">
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2><B>NULL</B></FONT></FONT></P>
+				</TD>
+				<TD>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>[dword]
+					fin des variables d'environnement (integer)</FONT></FONT></P>
+				</TD>
+			</TR>
+		</TABLE>
+	</CENTER>
+	<P><FONT SIZE=2><FONT FACE="Nimbus Sans L">Mais il faut savoir que
+	ce sch&eacute;mas ne s'applique que lorsqu'on ne lie pas notre
+	programme avec la libc cad lorsque l'on n'utilise pas gcc. Quand la
+	libc est utilis&eacute;e il reste dans la pile une valeur de retour.
+	Il faut donc la nettoy&eacute;e comme on le fait dans le code.<BR><BR>-
+	En informatique on a cr&eacute;&eacute; des tables de caract&egrave;res
+	qui sont des correspondances entre des caract&egrave;res et des
+	valeurs num&eacute;riques. La plus vieille est <A HREF="http://www.commentcamarche.net/base/ascii.php3">la
+	table de caract&egrave;re ASCII</A>. On remarque dans celle-ci que
+	le nombre 0 est repr&eacute;senter par la valeur 48 en d&eacute;cimal
+	soit 0x30 en h&eacute;xad&eacute;cimal. C'est donc en ajoutant 0x30
+	&agrave; la valeur num&eacute;rique que j'obtiens la string
+	correspondante. Il y a un probl&egrave;me majeur &agrave; cette
+	astuce : je ne peux afficher que les valeurs ASCII des nombres
+	allant de 0 &agrave; 9 seulement. Donc le programme souffre d'un bug
+	connu (dommage pour les bidouilleurs qui auraient cru faire une
+	trouvaille).<BR><BR>- Il faut se souvenir que le registre esp pointe
+	sur le haut de la pile.<BR><BR>Voila, maintenant le code en question
+	commenter et j'esp&egrave;re compr&eacute;hensible :</FONT></FONT></P>
+	<PRE>; nasm -f elf argc.asm
+; ld argc.o -o argc
+; pour ne pas passer par la libc
+; gcc argc.o -o argc
+; pour utiliser la libc
+; by Flyers
+
+segment .text:
+        global _start   ; gcc : global main
+        
+_start:                 ; gcc : main:
+        pop eax         ; ld : argc ; gcc : valeur de retour de la libc
+;       pop eax         ; gcc : argc
+;       pop eax         ; argv[0]
+;       pop eax         ; the first real arg 
+
+        push 0x0A30             ; on push 30 pour convertir argc en ASCII 
+                                ; et 0A pour la fin de cha&icirc;ne
+        add     [esp],eax       ; on ajoute ce que contient la stack &agrave; argc
+        mov     edx, 2          ; on affichera 2 bytes (argc+\0)
+        mov     ecx, esp        ; la cha&icirc;ne &agrave; afficher
+        mov     ebx,1           ; file handle, ou l'on &eacute;crit (STDOUT)
+        mov     eax,4           ; sys_write
+        int     80h             ; call kernel
+        
+        ; pour &eacute;viter que le programme ne segfault &agrave; la fin on appel sys_exit
+        mov     eax,1
+        xor     ebx,ebx
+        int     80h</PRE>
+	<LI><P><A NAME="Polymorphique"></A><FONT SIZE=2><FONT FACE="Nimbus Sans L"><U>Code
+	s'auto-modifiant :</U><BR>Un code s'auto-modifiant est un code
+	capable de se modifier lui m&ecirc;me lors de l'&eacute;x&eacute;cution.
+	L'&eacute;tude d'un tel code peut &ecirc;tre une bonne introduction
+	&agrave; la programmation de virii polymorphiques. Pour cr&eacute;&eacute;
+	un code s'auto-modifiant, il faut &ecirc;tre capable de jongler
+	entre les adresses des diff&eacute;rentes instructions car on ne
+	peut sp&eacute;cifier d'adresse statique lorsque le programme est en
+	&eacute;x&eacute;cution, on utilise donc des adresses relatives
+	comme vous allez le voir. <BR><BR>Karsten Scheibler a &eacute;crit
+	un tr&egrave;s bon <A HREF="http://asm.sourceforge.net/articles/smc.html">article</A>
+	dont voici une br&egrave;ve traduction :<BR><BR>L'id&eacute;e
+	principale : il existe un syscall, sys_mprotect, qui permet de
+	modifier les flags pour (presque) toutes les pages. Une page est la
+	plus petite unit&eacute; dans la gestion de la m&eacute;moire
+	virtuelle. Sur les processeurs x86, la taille de la page est de 4Ko.
+	Mais il n'est pas n&eacute;cessaire de faire appel &agrave; ce
+	syscall pour donner &agrave; la section .bss les droits en &eacute;x&eacute;cution
+	car sur les processeurs x86, une page avec les droits de lecture a
+	&eacute;galement les droits en &eacute;x&eacute;cution et la section
+	.bss est en lecture/&eacute;criture. Mais ce syscall risque de
+	devenir obsol&egrave;te avec l'apparition du NX-flag sur les
+	nouveaux processeurs.<BR><BR>Les deux premiers exemples copient un
+	bout de code dans la section .bss puis l'&eacute;x&eacute;cute.
+	Parce que nous avons les droits en lecture/&eacute;criture/&eacute;x&eacute;cution
+	dans cette zone m&eacute;moire, le programme peut s'auto-modifier.
+	Le premier exemple (code1_start) copie un simple hello_world
+	(utilisant sys_write), mais avant de l'&eacute;x&eacute;cuter nous
+	modifions quelques valeurs dans le code (le d&eacute;but et la
+	taille de la cha&icirc;ne &agrave; afficher). Le deuxi&egrave;me
+	(code2_start) effectue une vraie auto-modification. L'instruction
+	&ldquo;rep stosb&rdquo; &eacute;crase les quatre premiers &ldquo;inc
+	ebx&rdquo; avec des &ldquo;nop&rdquo;, ainsi la cha&icirc;ne &agrave;
+	afficher &agrave; l'&eacute;cran contient 04h au lieu de 08h
+	attendu. Le troisi&egrave;me exemple (endless), quant &agrave; lui,
+	modifie du code dans la section .text en y ajoutant les droits en
+	lecture/&eacute;criture/&eacute;x&eacute;cution via
+	sys_mprotect.<BR><BR>Note : Si vous voyez un 08h au lieu de 04h &agrave;
+	l'&eacute;cran, vous devriez conna&icirc;tre un dr&ocirc;le de
+	comportement des codes s'auto-modifiants. Sur les processeurs clone
+	du Pentium, la modification de la queue n'est pas prise en compte
+	tout de suite. Il faut en quelque sorte rafra&icirc;chir la queue,
+	pour cela un simple jmp suffit (essayez avec un &ldquo;jmp&rdquo;
+	juste apr&egrave;s le &ldquo;rep stosb&rdquo;).</FONT></FONT> 
+	</P>
+	<PRE>;****************************************************************************
+;****************************************************************************
+;*
+;* USING SELF MODIFYING CODE UNDER LINUX
+;*
+;* written by Karsten Scheibler, 2004-AUG-09
+;*
+;****************************************************************************
+;****************************************************************************
+
+global _start
+
+;****************************************************************************
+;* some assign's
+;****************************************************************************
+%assign SYS_WRITE                       4
+%assign SYS_MPROTECT                    125
+
+%assign PROT_READ                       1
+%assign PROT_WRITE                      2
+%assign PROT_EXEC                       4
+
+;****************************************************************************
+;* data
+;****************************************************************************
+section .bss
+                                        alignb  4
+modified_code:                          resb    0x2000
+
+;****************************************************************************
+;* smc_start
+;****************************************************************************
+section .text
+_start:
+
+        ;calcul l'adresse de la section .bss, elle doit se trouv&eacute;e entre
+        ;deux pages (x86: 4KB = 0x1000)
+        ;NOTE: Dans cet exemple c'est inutile car chaque segment est align&eacute;
+        ;      en fonction des pages et nous ne l'utilisons qu'une fois, 
+        ;      donc nous savons qu'il est entre deux pages, mais si vous avez
+        ;      plus d'une section .bss dans votre programme vous ne pouvez
+        ;      en &ecirc;tre s&ucirc;r.
+
+        mov     dword ebp, (modified_code + 0x1000)
+        and     dword ebp, 0xfffff000
+
+        ;change les flags de la section en lecture/&eacute;criture/&eacute;x&eacute;cution,
+        ;NOTE: Sur les processeurs x86 cela est inutile comme cela a 
+        ;      d&eacute;j&agrave; &eacute;t&eacute; vu plus haut.
+
+        mov     dword eax, SYS_MPROTECT
+        mov     dword ebx, ebp
+        mov     dword ecx, 0x1000
+        mov     dword edx, (PROT_READ | PROT_WRITE | PROT_EXEC)
+        int     byte  0x80
+        test    dword eax, eax
+        js      near  smc_error
+
+        ;&eacute;x&eacute;cute le code non modifi&eacute;
+
+code1_start:
+        mov     dword eax, SYS_WRITE
+        mov     dword ebx, 1
+        mov     dword ecx, hello_world_1
+code1_mark_1:
+        mov     dword edx, (hello_world_2 - hello_world_1)
+code1_mark_2:
+        int     byte  0x80
+code1_end:
+
+        ;copie le code vers la bonne page (dont l'adresse est encore dans ebp)
+
+        mov     dword ecx, (code1_end - code1_start)
+        mov     dword esi, code1_start
+        mov     dword edi, ebp
+        cld
+        rep movsb
+
+        ;on y ajoute le code h&eacute;xa de l'instruction 'ret', comme cela
+        ;nous pourrons utiliser call
+        
+        mov     byte  al, [return]
+        stosb
+
+        ;change quelques valeurs dans le code: l'adresse de d&eacute;but du texte 
+        ;et sa taille
+
+        mov     dword eax, hello_world_2
+        mov     dword ebx, (code1_mark_1 - code1_start)
+        mov     dword [ebx + ebp - 4], eax
+        mov     dword eax, (hello_world_3 - hello_world_2)
+        mov     dword ebx, (code1_mark_2 - code1_start)
+        mov     dword [ebx + ebp - 4], eax
+
+        ;finalement on l'appel
+
+        call    dword ebp
+
+        ;copie le deuxi&egrave;me exemple
+
+        mov     dword ecx, (code2_end - code2_start)
+        mov     dword esi, code2_start
+        mov     dword edi, ebp
+        rep movsb
+
+        ;fait quelque chose de vraiment m&eacute;chant: edi pointe juste apr&egrave;s
+        ;l'instruction 'rep stosb', donc cela va r&eacute;ellement modifier le code
+
+        mov     dword edi, ebp
+        add     dword edi, (code2_mark - code2_start)
+        call    dword ebp
+
+        ;modifie le code dans la section .text
+
+endless:
+        ;ajoute les droits &agrave; la section .text pour la modifi&eacute;e
+
+        mov     dword eax, SYS_MPROTECT
+        mov     dword ebx, smc_start
+        and     dword ebx, 0xfffff000
+        mov     dword ecx, 0x2000
+        mov     dword edx, (PROT_READ | PROT_WRITE | PROT_EXEC)
+        int     byte  0x80
+        test    dword eax, eax
+        js      near  smc_error
+
+        ;affiche le message &agrave; l'&eacute;cran
+
+        mov     dword eax, SYS_WRITE
+        mov     dword ebx, 1
+        mov     dword ecx, endless_loop
+        mov     dword edx, (hello_world_1 - endless_loop)
+        int     byte  0x80
+
+        ;ici, les instructions emp&ecirc;chant la boucle sans fin
+
+        mov     dword ecx, (smc_end_1 - smc_end)
+        mov     dword esi, smc_end
+        mov     dword edi, endless
+        rep movsb
+
+        ;et on recommence
+
+        jmp     short endless
+
+;****************************************************************************
+;* code2
+;****************************************************************************
+
+        ;ici les adresses des instructions dont on rajoute les 
+        ;codes h&eacute;xa dans notre code 
+
+return:
+        ret
+no_operation:
+        nop
+
+        ;ici du vrai code s'auto-modifiant, s'il est bien 
+        ;copier dans .bss et edi bien charger, ebx doit contenir
+        ;0x4 au lieu de 0x8
+
+code2_start:
+        mov     byte  al, [no_operation]
+        xor     dword ebx, ebx
+        mov     dword ecx, 0x04
+        rep stosb
+code2_mark:
+        inc     dword ebx
+        inc     dword ebx
+        inc     dword ebx
+        inc     dword ebx
+        inc     dword ebx
+        inc     dword ebx
+        inc     dword ebx
+        inc     dword ebx
+        call    dword [function_pointer]
+        ret
+code2_end:
+                                        align 4
+function_pointer:                       dd      write_hex
+
+;****************************************************************************
+;* write_hex
+;****************************************************************************
+write_hex:
+        mov     byte  bh, bl
+        shr     byte  bl, 4
+        add     byte  bl, 0x30
+        cmp     byte  bl, 0x3a
+        jb      short .number_1
+        add     byte  bl, 0x07
+.number_1:
+        mov     byte  [hex_number], bl
+        and     byte  bh, 0x0f
+        add     byte  bh, 0x30
+        cmp     byte  bh, 0x3a
+        jb      short .number_2
+        add     byte  bh, 0x07
+.number_2:
+        mov     byte  [hex_number + 1], bh
+        mov     dword eax, SYS_WRITE
+        mov     dword ebx, 1
+        mov     dword ecx, hex_text
+        mov     dword edx, 9
+        int     byte  0x80
+        ret
+
+section .data
+hex_text:               db      &quot;ebx: &quot;
+hex_number:             db      &quot;00h&quot;, 10
+
+;****************************************************************************
+;* some text
+;****************************************************************************
+endless_loop:           db      &quot;No endless loop here!&quot;, 10
+hello_world_1:          db      &quot;Hello World!&quot;, 10
+hello_world_2:          db      &quot;This code was modified!&quot;, 10
+hello_world_3:
+
+;****************************************************************************
+;* smc_error
+;****************************************************************************
+section .text
+smc_error:
+        xor     dword eax, eax
+        inc     dword eax
+        mov     dword ebx, eax
+        int     byte  0x80
+
+;****************************************************************************
+;* smc_end
+;****************************************************************************
+section .text
+smc_end:
+        xor     dword eax, eax
+        xor     dword ebx, ebx
+        inc     dword eax
+        int     byte  0x80
+smc_end_1:
+;*********************************************** linuxassembly@unusedino.de *</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>Vous avez toutes les
+	connaissances th&eacute;oriques pour comprendre le fonctionnement du
+	code en g&eacute;n&eacute;ral. Si vous voulez le comprendre plus en
+	d&eacute;tail, allez voir les mn&eacute;moniques que vous ne
+	comprenez pas dans le manuel de nasm ou essayez de calculer les
+	adresses relatives en imaginant que les labels repr&eacute;sentent
+	des adresses fixes.</FONT></FONT></P>
+</UL>
+<OL TYPE=I START=5>
+	<LI><P><A NAME="Debug"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=3>Debuggers</FONT></FONT></P>
+	<P><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Pour d&eacute;couvrir les
+	sources de bugs dans un code compiler on utilise des debuggers. Il
+	en existe de deux sortes : les debuggers passifs et les debuggers
+	actifs. Les debuggers passifs sont &eacute;galement appel&eacute;s
+	d&eacute;sassembleurs car ils ne font qu'afficher le code source de
+	l'&eacute;x&eacute;cutable. Ainsi, ils sont passifs du fait qu'ils
+	n'&eacute;x&eacute;cutent pas une ligne de code. Les debuggers
+	actifs, eux, &eacute;x&eacute;cutent le code tout en permettant
+	gr&acirc;ce &agrave; certains signaux syst&egrave;me de bloquer
+	l'&eacute;x&eacute;cution du programme.</FONT></FONT></P>
+</OL>
+<UL>
+	<LI><P><A NAME="Ndisasm"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>Ndisasm
+	:<BR></U>Cet outil est le d&eacute;sassembleur Nasm. Cr&eacute;&eacute;
+	par les d&eacute;veloppeurs de notre compilo favori, il affiche en
+	sortie du code nasm (cad avec la syntaxe intel). Bien que le code de
+	sortie puisse para&icirc;tre diff&eacute;rent du fichier source.<BR>Une
+	petite astuce : si vous voulez que le code d&eacute;sassembler
+	ressemble un peu plus &agrave; ce que vous avez coder utilisez
+	l'option -b 32. Qui sp&eacute;cifie que le code sera d&eacute;sassembl&eacute;
+	en utilisant des registres de 32 bits.</FONT></FONT></P>
+	<PRE STYLE="margin-bottom: 0.5cm">ndisasm -b 32 hello_world | less</PRE>
+	<LI><P><A NAME="Gdb"></A><FONT SIZE=2><FONT FACE="Nimbus Sans L"><U>GDB
+	:<BR></U>gdb est le debugger fournie par d&eacute;faut avec Linux,
+	il est &agrave; gcc ce qu'est ndisasm &agrave; nasm. Bien qu'il soit
+	beaucoup plus d&eacute;velopp&eacute;. gdb est un debugger ce qui
+	veut dire qu'il est capable de lancer un processus, de le bloquer,
+	de le d&eacute;sassembler ...<BR>Nous allons voir comment effectuer
+	quelques op&eacute;rations de bases avec gdb via un exemple.<BR>Nous
+	allons donc chercher &agrave; debugger un programme simple qui
+	s'occupe de nous donner la moyenne de plusieurs nombres contenus
+	dans un tableau.</FONT></FONT> 
+	</P>
+	<PRE>#include &lt;stdio.h&gt;
+
+int main(void) {
+        int a[10] = {1, 58, 45, 87, 78, 98, 15, 56, 78, 21};
+        printf (&quot;Moyenne du tableau a : %d&quot;, moyenne(a, sizeof(a)));
+        return 0;
+}
+
+int moyenne(int tableau[], int taille) {
+        int total = 0, moyenne, i;
+        for( i=0; i&lt;taille; i++)
+                total += tableau[i];
+        return total/taille;
+}</PRE><P>
+	<FONT SIZE=2><FONT FACE="Nimbus Sans L">Pour compiler ce code nous
+	allons utiliser l'option -g de gcc permettant d'avoir des
+	informations de debuggage plus pr&eacute;cises : gcc moyenne.c -g -o
+	moyenne.</FONT></FONT> 
+	</P>
+	<PRE>flyers@Cyfik:~$ gdb moyenne
+
+(gdb) run
+Starting program: /home/flyers/moyenne 
+Moyenne du tableau a : 10027686
+Program exited normally.
+
+(gdb) break main
+Breakpoint 1 at 0x8048394: file moyenne.c, line 12.</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>On place un breakpoint &agrave;
+	l'adresse de la fonction main() : 0x8048394. Et on relance le
+	programme.</FONT></FONT></P>
+	<PRE>(gdb) run
+Starting program: /home/flyers/moyenne 
+
+Breakpoint 1, main () at moyenne.c:12
+12              int a[10] = {1, 58, 45, 87, 78, 98, 15, 56, 78, 21};
+
+(gdb) print a
+$1 = {0, 134518396, -1073742984, 134513293, -1208116144, -1073742972, 
+  -1073742952, 134513787, -1073742804, -1208116128}</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>On affiche notre tableau qui
+	n'est pas encore initialis&eacute; (c'est pour &ccedil;a qu'il
+	contient des valeurs fantaisistes).</FONT></FONT></P>
+	<PRE>(gdb) next
+13              printf (&quot;Moyenne du tableau a : %d&quot;, moyenne(a, sizeof(a)));
+(gdb) print a
+$2 = {1, 58, 45, 87, 78, 98, 15, 56, 78, 21}</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>Apr&egrave;s initialisation,
+	il est tout beau le tableau :)</FONT></FONT></P>
+	<PRE>(gdb) step
+moyenne (tableau=0xbffffb60, taille=40) at moyenne.c:18
+18              int total = 0, moyenne, i;</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>next permet de passer &agrave;
+	l'instruction suivante mais pas &agrave; sauter vers la fonction
+	appel&eacute;e tandis que step sert justement &agrave; cela. On
+	saute dans la fonction moyenne()</FONT></FONT></P>
+	<PRE>(gdb) display tableau[i]
+1: tableau[i] = 1
+
+(gdb) display total
+2: total = -1073742896</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>display permet d'afficher
+	les valeurs des variables de fa&ccedil;on actualis&eacute;e.</FONT></FONT></P>
+	<PRE>(gdb) next
+19              for( i=0; i&lt;taille; i++)
+2: total = -1208115591
+1: tableau[i] = -1208116128</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>Apr&egrave;s une bonne
+	vingtaine de next (lorsque l'on valide une ligne vide, gdb refait
+	l'instruction pr&eacute;c&eacute;dente), on se rend compte que des
+	valeurs bizarres sont ajout&eacute;es &agrave; la variable total.
+	Cela est d&ucirc;e &agrave; la variable taille qui est &agrave; la
+	base du fait que l'on effectue trop d'it&eacute;rations, ce qui fait
+	que la variable tableau[i] prend des valeurs au hasard dans la pile
+	et celles-ci sont ajout&eacute;es &agrave; la valeur de la variable
+	total.<BR>L'initialisation de la variable taille est donc foireuse.
+	En effet, sizeof ne renvoie pas le nombre d'&eacute;l&eacute;ments
+	contenues dans le tableau mais la taille en octet de celui-ci ce qui
+	donne donc 40 (10 * int o&ugrave; int = 4 sur notre x86).</FONT></FONT></P>
+	<PRE>(gdb) quit
+The program is running.  Exit anyway? (y or n) y</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>Ainsi si l'on modifie la
+	ligne</FONT></FONT></P>
+	<PRE STYLE="margin-bottom: 0.5cm">moyenne(a, sizeof(a))</PRE><P>
+	<FONT SIZE=2><FONT FACE="Nimbus Sans L">par</FONT></FONT> 
+	</P>
+	<PRE STYLE="margin-bottom: 0.5cm">moyenne(a, sizeof(a)/sizeof(*a))</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>notre programme fonctionnera
+	parfaitement avec une variable taille contenant 10.<BR><BR>gdb
+	permet d'utiliser de nombreuses commandes, ce qui risque d'&ecirc;tre
+	fastidieux &agrave; apprendre et &agrave; taper surtout pour les
+	gros programmes &agrave; debugger c'est pour cela qu'il existe des
+	abbr&eacute;viations de ces commandes (ainsi que l'auto-compl&eacute;tion
+	cf: touche &ldquo;TAB&rdquo;) dont voici un petit r&eacute;capitulatif
+	:</FONT></FONT></P>
+	<CENTER>
+		<TABLE WIDTH=80% BORDER=1 CELLPADDING=4 CELLSPACING=3>
+			<COL WIDTH=85*>
+			<COL WIDTH=85*>
+			<COL WIDTH=85*>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>help</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>h</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Acc&eacute;der
+					&agrave; l'aide</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>run</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>r</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Lancer le
+					processus</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>next</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>n</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Ligne
+					suivante dans le code</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>step</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>s</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Sauter
+					dans une fonction</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>break</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>b</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Mettre en
+					place un breakpoint</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>print</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>p</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Afficher
+					une variable</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>quit</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>q</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Quitter
+					gdb</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>frame</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>f</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Affiche
+					des informations sur la page de pile courante</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>backtrace</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>bt</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Affiche la
+					pile d'appels</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>info</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>i</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Donne des
+					informations (info sans arguments pour savoir sur quoi)</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>disable</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>dis</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>D&eacute;sactiver
+					momentan&eacute;ment un breakpoint</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>enable</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>en</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Activer un
+					breakpoint</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>delete</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>d</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Supprimer
+					un breakpoint</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>continue</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>c</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Continuer
+					le programme apr&egrave;s un breakpoint</FONT></FONT></P>
+				</TD>
+			</TR>
+			<TR VALIGN=TOP>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>disassemble</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=CENTER><FONT FACE="Nimbus Sans L"><FONT SIZE=2>disass</FONT></FONT></P>
+				</TD>
+				<TD WIDTH=33%>
+					<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>D&eacute;sassemble
+					tout ou partie du code.</FONT></FONT></P>
+				</TD>
+			</TR>
+		</TABLE>
+	</CENTER>
+	<P><FONT FACE="Nimbus Sans L"><FONT SIZE=2><BR>La commande set
+	permet de d&eacute;finir toute sorte de param&egrave;tres (dans gdb
+	ou dans le programme en cours de debuggage). Pour voir tout ce que
+	l'on peut d&eacute;finir : &ldquo;h set&ldquo;. Une petite astuce
+	pour nous autre asmongueurs :) &agrave; la sauce intel : gdb de base
+	d&eacute;sassemble le code dans la syntaxe gas ce qui n'est pas tr&egrave;s
+	compr&eacute;hensible pour nous, qu'&agrave; cela ne tienne, la
+	commande &ldquo;set disassembly-flavor intel&rdquo; r&eacute;parera
+	cet affront et faira en sorte que le code d&eacute;sassembl&eacute;
+	sera dans la syntaxe intel.</FONT></FONT></P>
+	<LI><P><A NAME="Strace"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>Strace
+	:<BR></U>Strace est un debugger actif permettant de suivre tous les
+	appels et les signaux &eacute;mis par le programme. Cet utilitaire
+	est tr&egrave;s utile pour commencer l'&eacute;tude du
+	fonctionnement d'un binaire au sein du syst&egrave;me.<BR>Par
+	exemple, si l'on strace notre hello_world de d&eacute;but d'article,
+	on ne verra que les appels aux syscall write et exit. Tandis que le
+	strace de hello_printf nous montreras tous les appels et signaux de
+	la libc lors du lancement du programme ainsi que lors de la sortie.
+	Je vous laisse tester par vous m&ecirc;mes :).</FONT></FONT></P>
+	<LI><P><A NAME="Debug_app"></A><FONT FACE="Nimbus Sans L"><FONT SIZE=2><U>Application
+	:<BR></U>Nous allons maintenant appliquer les notions que nous avons
+	apprises ci-avant. Pour cela on va tenter d'outre-passer une
+	protection de type anti-ptrace. Le code contenant la protection
+	&ldquo;ptraced.c&rdquo;: </FONT></FONT>
+	</P>
+	<PRE>#include &lt;sys/ptrace.h&gt;
+
+int main(){
+if (ptrace(PTRACE_TRACEME, 0, 1, 0) == -1) exit(1);
+puts(&quot;FOO&quot;);
+}</PRE><P>
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>Ainsi donc, si le programme
+	est ptrac&eacute; alors le programme quitte. Sinon il nous affiche
+	la cha&icirc;ne &ldquo;FOO&rdquo;. </FONT></FONT>
+	</P>
+	<PRE>flyers@Cyfik:~$ gdb ptraced
+
+(gdb) r
+Starting program: /home/flyers/Data/Code/tmp/ptraced
+
+Program exited with code 01.           # Le code a bien rep&eacute;r&eacute; qu'on le ptrace
+
+(gdb) set disassembly-flavor intel
+
+(gdb) disass main
+Dump of assembler code for function main:
+0x080483f4 :   push   ebp
+0x080483f5 :   mov    ebp,esp
+0x080483f7 :   sub    esp,0x18
+0x080483fa :   and    esp,0xfffffff0
+0x080483fd :   mov    eax,0x0
+0x08048402 :   sub    esp,eax
+0x08048404 :   mov    DWORD PTR [esp+12],0x0
+0x0804840c :   mov    DWORD PTR [esp+8],0x1
+0x08048414 :   mov    DWORD PTR [esp+4],0x0
+0x0804841c :   mov    DWORD PTR [esp],0x0
+0x08048423 :   call   0x80482f8 &lt;_init+56&gt;
+0x08048428 :   cmp    eax,0xffffffff          # c'est ici que le code v&eacute;rifie qu'on
+                                              # le ptrace
+0x0804842b :   jne    0x8048439               # si eax != -1 on saute &agrave; 0x8048439 
+0x0804842d :   mov    DWORD PTR [esp],0x1
+0x08048434 :   call   0x8048318 &lt;_init+88&gt;
+0x08048439 :   mov    DWORD PTR [esp],0x8048564
+0x08048440 :   call   0x80482e8 &lt;_init+40&gt;
+0x08048445 :   leave  
+0x08048446 :   ret    
+End of assembler dump.
+
+(gdb) b *0x08048428          # un breakpoint juste avant le jne
+Breakpoint 1 at 0x8048428: file ptraced.c, line 4.
+
+(gdb) r
+Starting program: /home/flyers/Data/Code/tmp/ptraced 
+
+Breakpoint 1, 0x08048428 in main () at ptraced.c:4
+4               if (ptrace(PTRACE_TRACEME, 0, 1, 0) == -1) exit(1);
+
+(gdb) p $eax
+$1 = -1
+
+(gdb) set $eax=0      # on change la valeur de eax pour faire croire au programme qu'il
+                      # n'est pas ptrac&eacute;
+
+(gdb) c
+Continuing.
+FOO
+
+Program exited with code 06.     # et &ccedil;a marche !
+(gdb) </PRE><P STYLE="margin-bottom: 0cm">
+	<FONT FACE="Nimbus Sans L"><FONT SIZE=2>Comme le montre cette
+	session, la m&eacute;thodologie est tout d'abord de regarder (si on
+	le peut) o&ugrave; se trouve la protection puis de trouver la
+	m&eacute;thode la plus adapt&eacute;e pour l'outre-passer.</FONT></FONT></P>
+</UL>
+<OL TYPE=I START=6>
+	<LI><P ALIGN=LEFT STYLE="font-style: normal"><A NAME="Conclusion"></A>
+	<!-- CONCLUSION --><FONT FACE="Nimbus Sans L"><FONT SIZE=3>Conclusion</FONT></FONT></P>
+	<P ALIGN=LEFT><FONT SIZE=2><FONT FACE="Nimbus Sans L">Vous devriez
+	maintenant poss&eacute;der toutes les notions pour faire vos propres
+	programmes mais &eacute;galement pour comprendre ceux des autres.
+	N'oubliez pas que si vous ne comprenez pas une mn&eacute;monique, <A HREF="http://nasm.sourceforge.net/doc/html/nasmdoc0.html">le
+	manuel nasm</A> est l&agrave; pour vous aidez ; si vous ne comprenez
+	pas un syscall, il y a <A HREF="http://www.lxhp.in-berlin.de/lhpsyscal.html">la
+	liste des syscalls</A> et enfin, si votre probl&egrave;me est
+	imp&eacute;n&eacute;trable, pensez &agrave; nos amis <A HREF="http://home.pages.at/f001/#tools">debuggers</A>
+	:)</FONT></FONT></P>
+	<LI><P ALIGN=LEFT STYLE="font-style: normal"><A NAME="References"></A>
+	<!-- REFERENCES --><FONT FACE="Nimbus Sans L"><FONT SIZE=3>R&eacute;f&eacute;rences</FONT></FONT></P>
+	<P ALIGN=LEFT><FONT SIZE=2><FONT FACE="Nimbus Sans L"><A HREF="http://www.drpaulcarter.com/pcasm/pcasm-book-french-pdf.zip">PC
+	Assembly Language par Paul A. Carter</A><BR><A HREF="http://www.assembly-journal.com/index.php">Assembly
+	Programming Journal</A><BR><A HREF="http://linuxassembly.org/">Linux
+	Assembly dot Org</A><BR><A HREF="http://nasm.sourceforge.net/doc/html/nasmdoc0.html">NASM
+	manual</A><BR><A HREF="http://www.lxhp.in-berlin.de/lhpsyscal.html">System
+	Calls for Assembly</A><BR><A HREF="http://www.posse-press.com/">Login
+	Hors-S&eacute;rie n&deg;18</A></FONT></FONT></P>
+	<LI><P ALIGN=LEFT><A NAME="Remerciements"></A><!-- REMERCIEMENTS --><FONT FACE="Nimbus Sans L"><FONT SIZE=3>Remerciements</FONT></FONT></P>
+	<P ALIGN=LEFT><FONT FACE="Nimbus Sans L"><FONT SIZE=2>Un grand merci
+	&agrave; tous ceux qui m'ont aid&eacute;s &agrave; &eacute;crire cet
+	article et &agrave; mieux comprendre l'assembleur. J'ai nomm&eacute;
+	:<BR>edcba<BR>Karsten Scheibler<BR>kaze<BR>mammon_<BR>neil<BR>viriiz<BR></FONT></FONT><BR><BR>
+	</P>
+</OL>
+<P ALIGN=LEFT><FONT SIZE=2><FONT FACE="Nimbus Sans L">Par <A HREF="mailto:flyers@next-touch.com">Flyers</A></FONT></FONT></P>
+</BODY>
+</HTML>

@@ -1,0 +1,774 @@
+ -----------------------------------------------------------------------------
+| ---- [ BLACKCLOWNS MAGAZINE - ISSUE 01 ]  ------------  [ Article 04 ] ---- |
+|-----------------------------------------------------------------------------|
+|             [ Audi-K - Nouvelles aventures en Kernel Land 1/2 ]             |
+|                     [ Tolwin <tolwin100@hotmail.com> ]                      |
+ -----------------------------------------------------------------------------
+
+
+Alors, les aventures dans le noyau,  vous n'en avez pas assez ?  Il y en a pour-
+tant de plus en plus ces derniers temps.  En français je veux dire.  Hé oui, at-
+tachez vos ceintures comme  Chuck Yeager dans son Bell XS-1,  nous avons franchi
+le mur du kernel grand public.  Au vu des titres (prévisionnels) des articles de
+ce mag, j'espère pour vous que vous aimez ça, parce que vous allez en manger !
+
+Allez c'est parti !
+
+Voici le menu :
+
+Partie 1:
+1 - Introduction à Audi-K
+  1.1 - Réseau dans le noyau
+  1.2 - Audi-K - TDI Kernel Socket API
+  1.3 - Audi-K - Ce qui sera dit et ce qui ne le sera pas.
+                 Ce qui est fait et ce qui n'est pas fait
+2 - Concepts de base pour TDI
+  2.1 - Création des objets
+  2.2 - Référencement du driver tcpip.sys : méthode simple
+  2.3 - Référencement du driver tcpip.sys : méthode ciblée
+  2.4 - Macros TDI de gestion des IRP
+  2.5 - Appel au driver Tcpip
+  2.6 - Structures de données
+  2.7 - Direct I/O, bienvenue dans le monde des Memory Descriptor List (MDL)
+
+
+Partie 2: 
+3 - Fonctions niveau TDI
+  3.1 - Petits elastics là pour éviter les fuites mémoire avec des
+  3.2 - Première connection, premier chat
+  3.3 - Et pour le reste ?
+4 - Parlons Winsock
+  4.1 - Kernel Sockets c'est bien, en abuser ça craint !
+  4.2 - Structures de données, encore
+  4.3 - Fonctions Audi-K
+5 - La marque du capitaine crochet
+6 - Conclusion
+7 - Références
+
+
+
+
+1 - Introduction à Audi-K
+Votre driver entend mal, ou même pas du tout, et n'est pas en capacité de commu-
+niquer sur le réseau. Ne vous inquiétez pas, ces petits désagréments surviennent
+souvent avec l'âge. 
+
+Venez découvrir Audi-K. 
+
+Développée par  des scientifiques et  des chercheurs internationaux,  Audi-K est
+une prothèse réseau qui permettra à votre driver  de profiter pleinement de tous
+les moments de l a vie quotidienne,  et de s'épanouir en société.  De forme ana-
+tomique,  Audi-K  s'insère  facilement dans  tout  projet  de  développement, et
+s'utilise presque aussi naturellement que de la programmation socket  tradition-
+nelle. Vos  amis seront  émerveillés de  voir votre  driver communiquer en toute
+liberté ! 
+
+
+
+1.1 - Réseau dans le noyau
+Adieu Userland,  terre de misère où  tout ce que l'on fait est soumis à l'appro-
+bation de droits et privilèges,  et où le Système est seul maître.  Mais en même
+temps, adieu, APIs de  haut niveau, où tout se  fait en trois coups de cuillère 
+à pot. Ah, on peut pas tout avoir, hein !
+
+En userland, le réseau  c'est facile (oui c'est  de la provoc à deux balles). Le 
+tout, c'est de se  faire aux sockets.  Et une fois digéré les  sockaddr et autre
+hostent, ca se manipule plutôt bien.  Dans le noyau, fi de sockets.  Mais alors,
+comment on cause ?
+
+Cet article  s'adresse donc  au programmeur qui  souhaite implémenter un support
+réseau dans un projet  de driver Pour  éviter de surcharger le  doc, je n'ai pas
+copié d'extrait de code. Lorsque je parlerai de fonctions particulières, je vous
+inviterai, très poliment  bien entendu, à vous  rendre à des endroits  précis du
+code source.
+
+Les codes  sources et  les commentaires  sont formatés  pour une  utilisation de
+Source Insight (gratuit  en version  d'évaluation  de 30 jours).  Pour  ceux qui
+n'utilisent pas encore ce logiciel, ses fonctions de reference tree et call tree
+sur un code source valent le détour !  
+
+
+
+1.2 - Audi-K - TDI Kernel Socket API
+On va aborder cette question sous deux angles.
+
+D'abord faire  un point sur l'utilisation  de TDI. Cette  interface s'utilise de
+manière assez simple  une fois bien  assimilé les  quelques étapes  à faire pour
+chaque  appel.  De la  documentation  sur  TDI se  trouve  dans quelques  livres
+(Rootkits - Subverting the Windows Kernel et Professional Rootkits), sur le site
+Code Project (un article de Toby Opferman  qui parle en détail de la gestion des
+IRP) et dans quelques projets sur Internet (Tdi_FW, Sebek, librairie Ksocket sur
+www.rootkit.com).
+
+Ensuite,  se pencher sur la  meilleure  manière de  rendre la  programmation TDI
+simple et efficace.  J'ai fait le choix  d'imiter le plus  possible le fonction-
+nement de l'API  Winsock classique.  L'avantage est immédiat : le programmeur se
+retrouve en terrain connu. L'inconvénient  est qu'en programmant à la Winsock on
+n'exploite  pas  TDI  de la  meilleure manière.  Pour  aller  un peu  plus loin,
+quelques fonctions  d'Audi-K reposeront  sur une  utilisation plus  optimisée de
+TDI.
+		
+Il y a plusieurs façons d'accéder aux  ressources réseau dans le noyau. Tous ces
+moyens ne sont pas accessibles dans toutes les versions de Windows.
+ - Avant vista : NDIS et TDI
+ - Vista       : NDIS, TDI et Kernel Sockets
+ - Après Vista : NDIS et Kernel Sockets
+
+Un message provenant de l'userland passe par TDI qui envoie la patate à NDIS qui
+la  refile  à la  carte réseau.  A ce sujet,  je vous  invite à lire  le blog de
+Ivanlef0u.  Oui, tout le blog.  Mais surtout l'entrée qui  propose de suivre le
+magnifique voyage d'un paquet, depuis WinSock jusqu'au fil de cuivre. 
+
+Pourquoi  utiliser  TDI  plus  qu'une autre ?  C'est vrai que TDI n'est pas sans
+défauts.  Déjà,  c'est une interface condamnée.  Vista dispose de kernel sokets,
+rien que ça, c'est à dire de fonctions ressemblant fortement à WinSock et utili-
+sables dans  un projet driver.  TDI ne sera  même plus  présent dans les futures
+versions de Windows.  En même temps, TDI n'est pas au  plus bas niveau du réseau
+dans le  système. Si on  souhaite contourner  le plus de firewalls  ou créer une
+adresse IP  virtuelle comme  le fait VmWare,  il faudrait plutôt se tourner vers
+NDIS.
+
+Les points  positifs sont  que TDI est  plus simple  que NDIS. Pour une première
+approche de la programmation réseau kernel, c'est déjà un bon début. Ensuite, il
+est possible  de réaliser des  projets sympas.  Et pour finir,  99,99% des ordi-
+nateurs  Windows feront  tourner un driver  utilisant TDI  contre heuuu beaucoup
+moins pour les kernel sockets.
+
+TDI reste actuellement un bon compromis.
+
+
+
+1.3 - Audi-K - Ce qui sera dit et ce qui ne le sera pas.
+               Ce qui est fait et ce qui n'est pas fait
+Le but d'Audi-K est de proposer une API permettant de communiquer facilement sur
+le  réseau  depuis un  driver.  Et quoi  de plus  facile qu'un truc déjà connu ?
+Audi-K va donc imiter le plus possible les fonctions WinSock.
+
+La reconstruction  des APIs winsock  est principalement  l'occasion de  regarder
+d'assez près  le fonctionnement et l'utilisation  de TDI. Je n'entrerai pas dans
+le détail de l'implémentation de la couche de niveau Winsock par dessus les fon-
+ctions de niveau  TDI. J'ai bien essayé, mais autant  la description de TDI peut
+être intéressante à lire car son  fonctionnement est typique de la programmation
+noyau Windows, autant  la reconstruction de fonctions clonant  Winsock n'est pas
+un récit  particulièrement palpitant mais  par contre relativement long. Tout ce
+qu'il ne faut pas.
+
+Pourtant, ce fut un combat épique, homérique même j'ose dire. Que de temps passé
+à voir VMWare rebooter, que de temps perdu pour un test oublié sur  un pointeur.
+Rage ! Ma copine  me trouve vulgaire  lorsque je programme.  Certains parlent de
+"pisser de la  ligne de code", dans mon cas ca serait  plutôt vomir. J'ai croisé
+une faune  de bugs étranges,  de plantages  pour des raisons  surréalistes,  des
+structures oubliant de  prendre en compte des octets en mémoire ... Un bêtisier 
+de la programmation noyau serait certainement très amusant à lire !
+
+J'ai tenté de faire un code propre et bien commenté. Par contre, j'ai eu la main
+légère sur les tests d'erreur.  Beaucoup de choses ne sont pas  testées, partant
+du principe que  l'utilisateur n'est pas un con (en violation  flagrante avec la
+règle  n° 1 de la programmation). Si vous  tentez d'appeler une fonction  sur le
+socket n° 12345, vous êtes clairement hors tableau, et votre avenir n'appartient
+plus qu'à vous. Les fonctions renvoient  -1 ou NULL en cas d'erreur. Autant dans
+le niveau socket j'ai  fait une gestion sommaire mais existante de getlasterror,
+autant  le niveau TDI en est  totalement dépourvu.  Erreur de  paramètre, erreur
+fatale, manque de ressource, timeout même punition, le retour sera -1 et vlan !
+
+Autre point négligé, le support prudent du multithreading. Il n'y a aucun dispo-
+sitif protégeant les tableaux contre des utilisations simultanées.
+
+Sorti de ces  petits défauts, dont je  confie l'amélioration  à votre  sagacité,
+ça tourne.
+	
+
+
+2 - Concepts de base pour TDI
+Attention on attache sa ceinture, c'est parti. 
+
+Travailler avec  TDI, c'est travailler  avec le \Driver\Tcpip,  provenant du bi-
+naire tcpip.sys. Celui-ci exporte plusieurs devices, 5 sur mon système, dont : 
+ - \Device\Tcp
+ - \Device\Udp
+ - \Device\RawIp. 
+ 
+Les deux autres  sont Multicast et IP.  Plutôt explicite non ?  Pour la suite de
+cette présentation, je ne  regarderai que Tcp et Udp. Les Raw Sockets c'est uti-
+lisé que par  les petits malins et les fourbes.  Et les fourbes, moi, j'aime pas
+trop ça !
+
+Pour créer une connexion et qu'un driver  puisse parler avec par exemple avec un
+serveur Web, deux 
+types d'opérations auront lieu :
+- des opérations de création / suppression d'objets
+  passant par ZwCreateFile et ZwClose
+- des opérations d'appel de driver
+  passant par la major function IRP_MJ_DEVICE_CONTROL du driver tcpip
+  via IoCallDriver.
+
+Créer des objets,  parce que  les ressources  réseau locales  (interface : port)
+sont gérées par un objet : le transport object.  Pour UDP ça s'arrête là, toutes
+les autres opérations se feront avec ce transport object.  Mais à la différence
+d'UDP, TCP créé une connexion entre le local et le remote endpoint  (gestion des
+syn / ack ect). Cette gestion de la connexion nécessite des ressources qui sont
+allouées par la création d'un connection object.  On a donc 1 objet pour UDP, et
+deux objets pour TCP.
+
+Les opérations  d'appel au driver  tcpip.sys  serviront à  faire tout le reste :
+association d'un connection object et  d'un transport object pour le cas de TCP,
+émettre, recevoir,  attendre une connexion sur un port...  IoCallDriver aura be-
+soin  d'un  IRP   qui  sera  renseigné   avec  une  major  fonction   ( toujours 
+IRP_MJ_DEVICE_CONTROL)  et  une  minor  function,  selon  ce  qu'on  veut faire.
+Fastoche non ?
+
+On aura donc à manipuler : 
+- 1 driver
+- 2 devices
+- deux types d'objets
+	
+Concernant la gestion des buffers, \Driver\Tcpip  fonctionne en mode direct I/O.
+Ca se tient : le mode direct est plus approprié que le mode buffered dans le cas
+de manipulations de gros buffers, ce qui peut être le cas.  On aura donc à mani-
+puler des MDL.
+
+Les DDK fournissent dans tdikrnl.h plusieurs  macros qui seront utiles. On verra
+aussi qu'elles peuvent être pénalisantes dans certains cas, et pourquoi.
+
+
+
+2.1 - Création des objets
+L'utilisation de ZwCreateFile sera presque sans surprise.
+- initialiser un unicode string avec le nom du device (RtlInitUnicodeString)
+- initialiser un object attribute avec cet unicode string
+  (InitializeObjectAttributes)
+- créer l'objet (ZwCreateFile), et récupérer son file handle
+- une fois le travail terminé, nettoyage (ZwClose)
+- /!\ Attention : pas de RtlFreeUnicodeString après RtlUnicodeString
+
+VOID 
+  RtlInitUnicodeString(
+    IN OUT PUNICODE_STRING  DestinationString,
+    IN PCWSTR  SourceString
+    );
+
+VOID 
+  InitializeObjectAttributes(
+    OUT POBJECT_ATTRIBUTES  InitializedAttributes,
+    IN PUNICODE_STRING  ObjectName,
+    IN ULONG  Attributes,
+    IN HANDLE  RootDirectory,
+    IN PSECURITY_DESCRIPTOR  SecurityDescriptor
+    );
+
+NTSTATUS  
+  ZwCreateFile(
+    OUT PHANDLE  FileHandle,
+    IN ACCESS_MASK  DesiredAccess,
+    IN POBJECT_ATTRIBUTES  ObjectAttributes,
+    OUT PIO_STATUS_BLOCK  IoStatusBlock,
+    IN PLARGE_INTEGER  AllocationSize  OPTIONAL,
+    IN ULONG  FileAttributes,
+    IN ULONG  ShareAccess,
+    IN ULONG  CreateDisposition,
+    IN ULONG  CreateOptions,
+    IN PVOID  EaBuffer  OPTIONAL,
+    IN ULONG  EaLength
+    );
+
+NTSTATUS 
+  ZwClose(
+    IN HANDLE  Handle
+    );
+
+Petite subtilité :  l'appel à ZwCreateFile utilisera un  Extended Attribute afin
+de communiquer  des paramètres à la création. Souvent,  pour paramétrer la créa-
+tion d'un objet, on communique des  informations dans la chaîne du nom du device
+utilisée pour créer  l'object attributes, comme pour l'accès à  des fichiers par
+exemple  : \??\c:\autoexec.bat ou  \DosDevices\c:\autoexec.bat.  Mais pour créer
+les objets  TDI, il faut  passer tout une structure  en paramètre.  Ca n'est pas
+très bien adapté à un passage de paramètres sous forme de chaîne de caractère.
+
+ZwCreateFile peut accepter des paramètres sous forme de structures,  buffers etc
+qui seront  encapsulés dans  une structure  Extended Attributes.  Ce système est
+donc très bien adapté à nos besoins, très polyvalent, et très simple car la ges-
+tion de la structure Extended Attributes est vraiment triviale, le tout étant de
+ne pas se tromper lorsqu'on mesure la taille totale des extended attributes.
+
+On a  vu plus  haut que  ZwCreateFile  sert  principalement à  créer deux  types
+d'objets : le transport object et le connection  object. On peut également créer
+une troisième  catégorie d'objet : le  control object, qui  permet d'obtenir des
+informations sur l'état global des  connections réseau, des statistiques et tout
+plein de choses  qui ne m'intéressent  pas, et qui  seront donc  impitoyablement
+passées sous silences. Oui, c'est totalement injuste, mais c'est moi qui décide.
+Pour créer un  control object, il suffit  de faire un appel à  ZwCreateFile sans
+Extended Attributes.
+
+
+
+2.2 - Référencement du driver tcpip.sys : méthode simple
+Pour les appels à IoCallDriver,  il faudra passer une IRP à  \Driver\Tcpip. Pour
+obtenir le driver object et les devices objects :
+- initialiser un unicode string avec le nom du device (RtlInitUnicodeString).
+- récupérer un device object grâce à l'unicode string (IoGetDeviceObjectPointer)
+  Ceci référence également le file object correspondant.
+- récupérer l'adresse du driver object : pDeviceObject->DriverObject (offset 8)
+- une fois le travail terminé, nettoyage en déréférençant le file object
+  (ObDereferenceObject)
+- /!\ Attention : en procédant ainsi,  on obtiendra les informations relatives à
+  l'élément top of stack
+
+NTSTATUS 
+  IoGetDeviceObjectPointer(
+    IN PUNICODE_STRING  ObjectName,
+    IN ACCESS_MASK  DesiredAccess,
+    OUT PFILE_OBJECT  *FileObject,
+    OUT PDEVICE_OBJECT  *DeviceObject
+    );
+
+VOID 
+  ObDereferenceObject(
+    IN PVOID  Object
+    );
+
+
+
+2.3 - Référencement du driver tcpip.sys : méthode ciblée
+Tout ceci est bien  joli mais ne donnera pas le  résultat voulu si le but est de
+se faufiler  sous un éventuel firewall TDI. Le IO Manager permet  la création de
+Device Stacks, c'est à  dire d'enchaînement de devices,  à des fins de filtrage,
+pré et post traitement. Ce mécanisme peut être utilisé par un pare-feu.  Lorsqu'
+un firewall attache un de ses devices, par exemple \Device\FwTcp, à \Device\Tcp,
+ces deux devices sont  alors enchainés. Tous les  appels à \Device\Tcp  sont ai-
+guillés  vers  \Device\FwTcp  de  manière   transparente.  Et  c'est  ainsi  que
+IoGetDeviceObjectPointer  nous renverra  en fait l'adresse de  \Device\FwTcp, et
+que FwTcp->DriverObject nous donnera l'adresse du driver du firewall et pas l'a-
+dresse de  \Driver\Tcpip. Dans  le  cadre d'une  utilisation  normale,  charge à
+\Device\FwTcp de faire son business,  et de faire suivre s'il le souhaite la re-
+quête à \Device\Tcp. Mais cette transparence peut donc nous empêcher d'arriver à
+nos fins.
+
+Si on se soucie de toucher au  plus près \Driver\Tcpip,  il faudra donc procéder
+autrement. On utilisera alors la fonction ObReferenceObjectByName.  Celle-ci est
+bien exportée par le système mais n'est pas documentée. Du coup : pas de défini-
+tion dans les fichiers .h, il faudra le rajouter nous-même.  Cette fonction sera
+utilisée sur le nom du driver, mes essais pour l'utiliser directement sur un nom
+de device n'ont pas donné de bon résultat.
+
+Une fois obtenu le  driver object de \Device\Tcp, restera à  localiser parmi les
+devices objects exportés par ce driver quels  sont ceux qui nous intéressent. Je
+n'ai pas  trouvé de méthode  pour obtenir  la chaîne  du nom du  device object à
+partir de son adresse.  Il y a sans doute une bête Api  ObGetDeviceName, un truc
+du style,  mais elle a échappé à mes recherches.  Pas de problème,  feinter fait
+aussi partie du plaisir : il faudra en passer par une méthode un peu hybride. 
+
+On va comparer d'une  part le device trouvé avec la méthode 2  (on est sûr qu'il
+ne s'agit pas  du device d'un firewall mais on ne sait  pas si c'est Tcp, Udp ou
+Raw) avec chaque device de  la méthode 1 (on est sûr qu'il s'agit par exemple de
+Tcp mais pas qu'il n'appartienne pas à un firewall). Le jeu consiste à  regarder
+chaque device exporté par  le driver tcpip, à regarder  s'il est inscrit dans un
+stack, et si lui-même ou son top of  stack correspond au device trouvé plus haut
+lorsqu'on a demandé le top of stack de Tcp et Udp. Sur tous les devices exportés
+par tcpip, on aura alors trouvé les deux correspondant très précisément à tcp et
+udp.
+
+1. récupérer l'adresse exacte du driver object \Driver\Tcpip
+   (ObReferenceObjectByName)
+2. récupérer l'adresse de son premier device object :
+   driver_object.DeviceObject (offset 4). On a alors de device object tcpip
+3. Récupérer l'adresse du device object top of stack
+   (IoGetAttachedDeviceReference). 
+4. comparer l'adresse du device object top de avec les adresses de \Device\Tcp
+   et \Device\Udp trouvées plus haut avec IoGetDeviceObjectPointer. 
+5. Lorsqu'on a une égalité, on a identifié un device object exact, sans être
+   trompé par un device stack
+6. on passe au device suivant de Tcpip en trouvant son adresse dans le champ
+   NextDevice du device object (offset 0Ch). Ce champ vaut NULL lorsqu'on est
+   déjà sur le dernier device. S'il reste des devices, retour au point 3 
+
+extern POBJECT_TYPE IoDriverObjectType; 
+extern "C"  
+NTSYSAPI   
+NTSTATUS NTAPI ObReferenceObjectByName(  
+    IN PUNICODE_STRING ObjectPath,  
+    IN ULONG Attributes, //OBJ_CASE_INSENSITIVE 
+    IN PACCESS_STATE PassedAccessState OPTIONAL,  
+    IN ACCESS_MASK DesiredAccess OPTIONAL, //KernelMode 
+    IN POBJECT_TYPE ObjectType OPTIONAL, 
+    IN KPROCESSOR_MODE AccessMode,  
+    IN OUT PVOID ParseContext OPTIONAL,  
+    OUT PVOID *ObjectPtr  
+);
+
+PDEVICE_OBJECT
+  IoGetAttachedDeviceReference(
+    IN PDEVICE_OBJECT  DeviceObject
+    );
+
+
+ 
+2.4 - Macros TDI de gestion des IRP
+Pour la fabrication de l'IRP, TDI met à notre disposition une macro : 
+TdiBuildInternalDeviceControlIrp.  Les  macros  TDI  sont  consultables  dans le
+fichier tdikrnl.h.
+
+Comme on peut le voir, cette macro appelle IoBuildDeviceIoControlRequest, ce qui
+n'ira pas sans poser quelques problèmes. Je m'explique.  Les IRP se rangent dans
+deux grandes  catégories,  les synchrones et les asynchrones.  On parle aussi de
+threadées et de non threadées.
+
+- Une IRP synchrone  ou threadée est  plus simple à utiliser, dans le sens où il 
+est facile de bloquer  jusqu'à  la  fin  de son traitement (par exemple attendre
+qu'une demande recv  soit satisfaite). Par contreelles sont liées au thread dans
+lequel  elles  ont été  créées.   Une IRP  threadée  doit  être  complétée  avec
+IoCompleteRequest : cette fonction se charge  de désenregistrer  l'IRP du thread
+et de  libérer l'IRP  en elle-même. Ces IRP ne sont absolument pas conçues  pour
+une utilisation  asynchrone :  il ne faut pas  libérer dans un  thread b une IRP
+threadée créée  dans le thread  a !  De plus, un thread ne pourra se fermer tant
+qu'il compte encore des IRP synchrones non complétées.
+Fonctions créant des requêtes threadées :
+  IoBuildSynchronousFsdRequest
+  IoBuildDeviceIoControlRequest
+  TdiBuildInternalDeviceControlIrp
+
+- Une IRP asynchrone est donc plus  flexible car elle n'oblige pas à contrôler à
+ce point que son exécution se termine à temps et  au bon endroit. Par contre, il
+est plus  complexe de bloquer  sur son exécution. D'un autre côté, c'est le tra-
+vail d'une requête synchrone ! Les requêtes  asynchrones sont prévues  pour fon-
+ctionner avec  des fonctions de completion. Ces IRP ne doivent pas êtres complé-
+tées avec  IoCompleteRequest,  et pour cause : désenregistrer  du thread courant
+une IRP non threadée  est la meilleure idée pour voir un bel écran bleu. Il faut
+juste les libérer avec IoFreeIrp.
+Fonctions créant des requêtes non threadées : 
+  IoAllocateIrp
+  IoBuildAsynchronousFsdRequest.
+
+TdiBuildInternalDeviceControlIrp  va donc créer  des IRP synchrones.  C'est loin
+d'être un simple  petit détail :  le temps viendra où  on voudra passer  en mode
+asynchrone. Mais pour commencer, restons dans le basique.
+
+Cette IRP fraîchement créée par  TdiBuildInternalDeviceControlIrp doit être spé-
+cialisée.  Tdi met  aussi disposition  un lot de  macros destinées  à configurer
+finement  l'IRP  selon  ce  que  l'on  veut  faire,  par  exemple  TduBuildSend,
+TdiBuildRecieve.  Ces macros enregistrent  une completion routine  avec son con-
+texte, règlent  la major et minor  fonction de l'IRP,  le driver object  et file
+object, et des paramètres  spécifiques à chaque fonction.  Le travail  sur l'IRP
+fonctionnera donc comme suit :
+
+- récupérer le file object depuis le handle de ZwCreateFile
+  (ObReferenceObjectByHandle)
+- initialiser un événement (KeInitializeEvent)
+- créer une irp (TdiBuildInternalDeviceControlIrp)
+- renseigner l'IRP selon ce que l'on veut faire (lire, écouter...) (TdiBuildxxx)
+
+Avec ObReferenceObjectByHandle, c'est  la seconde fois qu'on croise une fonction
+de  la   famille   ObReferenceObjectXXX  que   l'on  croise.   Il  existe  aussi
+ObReferenceObjectByPointer  et ObReferenceObject. Ces fonctions  servent à récu-
+pérer l'adresse  d'un objet,  mais ceci n'est  au final qu'en  effet secondaire.
+Comme leur nom l'indique, on référence  l'objet, donc on incrémente son compteur
+de  référence.  C'est  pourquoi  il  est  indispensable  de  penser  à  utiliser
+ObDereferenceObject lors de la libération des ressources.
+
+NTSTATUS 
+  ObReferenceObjectByHandle(
+    IN HANDLE  Handle,
+    IN ACCESS_MASK  DesiredAccess,
+    IN POBJECT_TYPE  ObjectType  OPTIONAL,
+    IN KPROCESSOR_MODE  AccessMode,
+    OUT PVOID  *Object,
+    OUT POBJECT_HANDLE_INFORMATION  HandleInformation  OPTIONAL
+    );
+
+VOID 
+  KeInitializeEvent(
+    IN PRKEVENT  Event,
+    IN EVENT_TYPE  Type,
+    IN BOOLEAN  State
+    );
+
+#define TdiBuildInternalDeviceControlIrp(IrpSubFunction,DeviceObject,FileObject,
+                                         Event,IoStatusBlock) 
+\
+    IoBuildDeviceIoControlRequest (\
+        0x00000003,\
+        DeviceObject, \
+        NULL,   \
+        0,      \
+        NULL,   \
+        0,      \
+        TRUE,   \
+        Event,  \
+        IoStatusBlock)
+
+#define TdiBuildConnect(Irp, DevObj, FileObj, CompRoutine, Contxt, Time,
+                        RequestConnectionInfo, ReturnConnectionInfo)\
+    {                                                                        \
+        PTDI_REQUEST_KERNEL p;                                               \
+        PIO_STACK_LOCATION _IRPSP;                                           \
+        if ( CompRoutine != NULL) {                                          \
+           IoSetCompletionRoutine( Irp, CompRoutine, Contxt, TRUE, TRUE, TRUE);\
+        } else {                                                             \
+           IoSetCompletionRoutine( Irp, NULL, NULL, FALSE, FALSE, FALSE);    \
+        }                                                                    \
+        _IRPSP = IoGetNextIrpStackLocation (Irp);                            \
+        _IRPSP->MajorFunction = IRP_MJ_INTERNAL_DEVICE_CONTROL;              \
+        _IRPSP->MinorFunction = TDI_CONNECT;                                 \
+        _IRPSP->DeviceObject = DevObj;                                       \
+        _IRPSP->FileObject = FileObj;                                        \
+        p = (PTDI_REQUEST_KERNEL)&_IRPSP->Parameters;                        \
+        p->RequestConnectionInformation = RequestConnectionInfo;             \
+        p->ReturnConnectionInformation = ReturnConnectionInfo;               \
+        p->RequestSpecific = (PVOID)Time;                                    \
+    }
+
+
+
+2.5 - Appel au driver Tcpip
+- lancer l'appel (IoCallDriver)
+- bloquer sur l'événement jusqu'à fin de traitement de l'IRP, parfois avec
+  timeout (KeWaitForSingleObject)
+- une fois le travail terminé, nettoyage (ObDereferenceObject)
+
+Quelles  sont  les différentes  opérations permises  par TDI  lors  d'un appel à
+IoCallDriver  ?  Voici  un  tableau  des   codes  d'opération  à  utiliser  avec
+TdiBuildInternalDeviceControlIrp  et la  fonction de  spécialisation qui  y cor-
+respond.  On  retrouve  beaucoup de  choses qui  rappellent  fortement  le monde
+WinSock ! En fait, tout ce qui manque, c'est la gestion des échanges asynchrones
+et la gestion de la  résolution de noms.  Ce qui n'existe  pas sera à  recréer !
+Pour le reste, manipuler TDI revient en gros à faire du WinSock, avec pas mal de
+code en plus mais le cœur y est.
+
+UDP :
+TDI_SEND_DATAGRAM 	TdiBuildSendDatagram.
+TDI_RECEIVE_DATAGRAM 	TdiBuildReceiveDatagram.
+
+TCP :
+TDI_ASSOCIATE_ADDRESS 	TdiBuildAssociateAddress.
+TDI_DISASSOCIATE_ADDRESS 	TdiBuildDisassociateAddress.
+TDI_CONNECT 	TdiBuildConnect.
+TDI_LISTEN 	TdiBuildListen.
+TDI_ACCEPT 	TdiBuildAccept.
+TDI_DISCONNECT 	TdiBuildDisconnect.
+TDI_SEND 	TdiBuildSend.
+TDI_RECEIVE 	TdiBuildReceive.
+
+GESTION D'EVENTS :
+TDI_SET_EVENT_HANDLER 	TdiBuildSetEventHandler.
+
+AUTRES :
+TDI_QUERY_INFORMATION 	TdiBuildQueryInformation.
+TDI_SET_INFORMATION 	TdiBuildSetInformation.
+TDI_ACTION 	TdiBuildAction.
+
+/!\ Attention : la fonction IoCallDriver ne fait pas dans la dentelle. Elle ren-
+voie un STATUS et peut donc, en théorie,  informer l'appelant de ses petits pro-
+blèmes  existentiels.  Mais  ne  vous  y  trompez  pas  !   Performance  oblige,
+IoCallDriver  part du  principe que  vous savez  ce que  vous faites de  vos dix
+doigts, et que  vous avez  préparé une IRP  aux petits oignons.  Vous  passez un
+pointeur  NULL au lieu  de l'adresse d'un buffer ?  IoCallDriver ne va pas venir
+vers vous, gentiment, en vous sachant gré  des dispositions que vous saurez bien
+vouloir entreprendre  afin d'apporter une modification  constructive à votre IRP
+qui est,  au demeurant,  d'un intérêt  remarquable.  Un bon  BSOD dans  ta face,
+plutôt,  non  mais  des  fois  !  Alors  gaffe   ! J'ai  bien  songé  mettre les
+IoCallDriver  dans des  blocs try/except,  mais partant du problème que mon code
+sera bon et que l'utilisateur  ne fera pas trop le con,  j'ai préféré  gagner en
+vitesse et ne pas les mettre. Il paraît que  l'expression savante pour "je bâcle
+mes tests d'erreur  parce que ca me  gave et  que je suis un fainéant" est "pro-
+grammation offensive".  Alors comme  j'aime faire  le savant,  je ferai donc  le
+fainéant.
+
+
+NTSTATUS 
+  IoCallDriver(
+    IN PDEVICE_OBJECT  DeviceObject,
+    IN OUT PIRP  Irp
+    );
+
+NTSTATUS 
+  KeWaitForSingleObject(
+    IN PVOID  Object,
+    IN KWAIT_REASON  WaitReason,
+    IN KPROCESSOR_MODE  WaitMode,
+    IN BOOLEAN  Alertable,
+    IN PLARGE_INTEGER  Timeout  OPTIONAL
+    );
+
+
+
+2.6 - Structures de données
+Les deux principaux  mécanismes utilisés  pour interagir avec tcpip.sys  ont été
+présentés. De quoi aurait-on besoin d'autre ? Ah, les structures. Winsock abonde
+de hostent  et autre  sockaddr. Pour  programmer en  TDI,  plusieurs  structures
+seront utiles.
+
+Lors de ZwCreateFile, pour le passage des Extended Attributes
+En tête de buffer :
+ 	typedef struct _FILE_FULL_EA_INFORMATION {
+		ULONG NextEntryOffset;
+		BYTE Flags;
+		BYTE EaNameLength;
+		USHORT EaValueLength;
+		CHAR EaName[1];
+} FILE_FULL_EA_INFORMATION, *PFILE_FULL_EA_INFORMATION;
+puis juste après, les informations
+
+typedef struct _TDI_ADDRESS_IP {
+	USHORT sin_port;
+	ULONG  in_addr;
+	UCHAR sin_zero[8];
+} TDI_ADDRESS_IP, *PTDI_ADDRESS_IP;
+
+typedef struct _TA_ADDRESS_IP {
+	LONG TAAddressCount;
+	struct _AddrIp {
+		USHORT AddressLength;
+		USHORT AddressType;
+		TDI_ADDRESS_IP Address[1];
+	} Address [1];
+} TA_IP_ADDRESS, *PTA_IP_ADDRESS;
+
+typedef struct _TDI_CONNECTION_INFORMATION {
+	LONG UserDataLength;
+	PVOID UserData;
+	LONG OptionsLength;
+	PVOID Options;
+	LONG RemoteAddressLength;
+	PVOID RemoteAddress;
+} TDI_CONNECTION_INFORMATION, *PTDI_CONNECTION_INFORMATION;
+
+Plusieurs de ces structures fonctionnent à la manière de poupées russes,  notam-
+ment l'enchaînement : 
+TDI_CONNECTION_INFORMATION  -> TA_IP_ADDRESS -> TDI_ADDRESS_IP
+Cette dernière structure est l'équivalent TDI d'un sockaddr, on y retrouve l'IP,
+le port, et le  padding nul.  Par contre il  manque ce qui concerne  le hostent,
+mais rien de surprenant.  Lorsqu'on a regardé les fonctions mises  à disposition
+par TDI, on avait déjà remarqué qu'il n'y avait rien ressemblant à gethostbyname
+ou gethostbyaddr.
+
+
+
+2.7 - Direct I/O, bienvenue dans le monde des Memory Descriptor List (MDL)
+\Driver\Tcpip fonctionne en mode Direct I/O.  Si vous avez regardé mon précédent
+amusement noyau,  interception  et modification  d'IRP pour tir  automatique  de
+souris, vous vous souvenez peut-être que celui-ci marchait en mode Buffered I/O.
+
+Le Buffered est  simple à utiliser,  pas de fonction  particulière  à manipuler,
+mais consomme plus de ressources :  le buffer utilisateur est copié dans un nou-
+veau buffer par le I/O Manager.  Pour des petits messages, ça va.  Mais TCP a un
+payload maximum théorique de 65415 octets. Gasp. Même si on peut lire qu'en pra-
+tique TCP serait limité à  1380 octets sous les systèmes Windows.  Dans tous les
+cas, ca fait pas mal,  et le temps de recopier tout ça  deux fois à chaque appel
+au driver risque  de dissiper  la vitesse en  pure chaleur, et  contribuerait au
+réchauffement de la planète.
+
+Les drivers manipulant de gros buffers passent par le mode Direct. Plus de copie
+de buffer, on se contente de le bloquer en mémoire.  L'appelant n'est plus auto-
+risé à y toucher tant que le traitement n'est pas fini. Pour le bloquer, il faut
+l'inscrire dans un MDL.  Bon,  ca a l'air particulier  comme ça mais  c'est très
+simple.
+
+- Création d'un MDL pour envelopper le buffer (IoAllocateMdl). A ce stade, on
+  peut fractionner le buffer en plusieurs MDLs car on indique à la fonction
+  l'adresse de départ et la taille du buffer traité. Ca peut permettre un trai-
+  tement différent. Ca ne sera pas utilisé dans ce projet.
+- Verrouillage du buffer, en pratique des pages mémoire contenant le buffer 
+  (MmProbeAndLockPages). Attention cette fonction est sale ! Elle ne retourne
+  pas un joli code d'erreur en cas de plantage, mais une exception ! Erkkkk !
+  Sortez donc les try / except sinon en cas de pépin c'est le BSOD immédiat.
+- Pratique, quand on transfère un MDL à une fonction, inutile de spécifier la
+  taille du buffer qu'elle contient, car ca se retrouve simplement
+  (MmGetMdlByteCount)
+- Parfois il faut libérer tout ça nous même (MmUnlockPages puis IoFreeMdl)
+- Si cette MDL est envoyée à un driver dans une IRP synchrone via IoCallDriver,
+  la libération n'est pas à notre charge : le IO Manager s'en occupera. Si cette
+  MDL est envoyée dans une IRP asynchrone, l'IRP ne sera pas nettoyée par le
+  IO Manager et ca sera par contre à nous de le faire.
+
+Les MDL permettent pas mal de fun, notamment l'enchaînement au moyen du pointeur
+du champ nommé Next.  Les fonctions TDI traiteront alors  la chaine de MDL comme
+représentant  un seul buffer. Il est alors  facile d'ajouter un buffer  avant ou
+après les données utilisateur,  et de faire passer l'ensemble comme un seul élé-
+ment. Comme on a vu plus haut qu'un buffer peut être mappé en plusieurs MDLs, on
+gagne encore  en souplesse,  et on peut directement  intercaler un  MDL en plein
+milieu de buffer.
+
+Buffer utilisateur : un seul buffer, virtuellement découpé en deux car mappé en
+MDL_A et MDL_B
+Buffers à rajouter : MDL_X, MDL_Y, MDL_Z
+Chaîne de MDL : MDL_X -> MDL_A -> MDL_Y -> MDL_B -> MDL_Z -> NULL
+
+On peut tout  aussi bien droper une partie d'un buffer, en  chainant directement
+X à Z par exemple.  Le tout est de ne pas  oublier de bien  positionner le champ
+Next du dernier maillon de la chaîne des MDLs sur NULL ! Les MDL, c'est la puis-
+sance des LEGOs sur vos buffers.
+
+La fonction send()  du niveau socket contient,  en commentaire,  un bref bout de
+code pour constater l'efficacité de l'enchaînement de MDLs.
+
+Outre les fonctions de base sur les MDL mise  à disposition par le IO Manager et
+le Memory Manager, TDI nous offre quelques fonctions supplémentaires.
+
+PMDL 
+  IoAllocateMdl(
+    IN PVOID  VirtualAddress,
+    IN ULONG  Length,
+    IN BOOLEAN  SecondaryBuffer,
+    IN BOOLEAN  ChargeQuota,
+    IN OUT PIRP  Irp  OPTIONAL
+    );
+
+VOID 
+  MmProbeAndLockPages(
+    IN OUT PMDL  MemoryDescriptorList,
+    IN KPROCESSOR_MODE  AccessMode,
+    IN LOCK_OPERATION  Operation
+    );
+
+ULONG 
+  MmGetMdlByteCount(
+    IN PMDL  Mdl
+    );
+
+VOID 
+  MmUnlockPages(
+    IN PMDL  MemoryDescriptorList
+    );
+
+VOID 
+  IoFreeMdl(
+    IN PMDL  Mdl
+    );
+
+Dump de la structure MDL
+   +0x000 Next             : Ptr32 _MDL
+   +0x004 Size             : Int2B
+   +0x006 MdlFlags         : Int2B
+   +0x008 Process          : Ptr32 _EPROCESS
+   +0x00c MappedSystemVa   : Ptr32 Void
+   +0x010 StartVa          : Ptr32 Void
+   +0x014 ByteCount        : Uint4B
+   +0x018 ByteOffset       : Uint4B
+
+NTSTATUS   TdiCopyBufferToMdl(    
+IN PVOID  SourceBuffer,    
+IN ULONG  SourceOffset,    
+IN ULONG  SourceBytesToCopy,    
+IN PMDL  DestinationMdlChain,    
+IN ULONG  DestinationOffset,    
+IN PULONG  BytesCopied    );
+
+NTSTATUS   TdiCopyMdlToBuffer(    
+IN PMDL  SourceMdlChain,    
+IN ULONG  SourceOffset,    
+IN PVOID  DestinationBuffer,    
+IN ULONG  DestinationOffset,    
+IN ULONG  DestinationBufferSize,    
+OUT PULONG  BytesCopied    );
+
+NTSTATUS   TdiCopyMdlChainToMdlChain (    
+IN PMDL  SourceMdlChain,    
+IN ULONG  SourceOffset,    
+IN PMDL DestinationMdlChain,    
+IN ULONG DestinationOffset,    
+OUT PULONG  BytesCopied    );
+
+
+|------------------------------------------------------------------[ EOF ]----|
+|-----------------------------------------------------------------------------|
+
+

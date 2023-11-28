@@ -1,0 +1,488 @@
+|=--------------------=[ T O O L Z   A R M O R Y ]=----------------------=|
+
+
+----[ 2 - Scapy v0.9.15.1beta
+
+URL          : http://www.cartel-securite.fr/pbiondi/projects/scapy/
+Author       : Philippe Biondi
+               <biondi@cartel-securite.fr>
+Commentaires : Flyers <http://flyers.lyua.org>
+
+Introduction
+------------
+
+  Scapy est un utilitaire réseau sous license GPL. Ce qui veut dire que le code source est 
+disponible, que l'on peut le modifier et le redistribuer sous les termes de la GNU General 
+Public License [1]. 
+
+  Le fonctionnement de scapy peut sembler assez "bizarre" pour les accros de la ligne de 
+commande et aux non-initiés à python. Comme vous le pensez, scapy a été développé en python [2]
+ce qui implique l'utilisation de la Programmation Orientée Objet. De plus scapy fonctionne de 
+façon intéractive, j'entend par là que lorsque l'on lance scapy on a accès à un interpréteur de 
+commande (représenté par ">>>") où l'on spécifie les paquets à forger et à envoyer.
+
+  Comme je dis toujours, un exemple vaut mieux qu'un long discours, passons aux choses sérieuses.
+
+flyers@Cyfik:~$ scapy
+Welcome to Scapy (0.9.15.1beta)
+>>> conf
+L2listen   = <class scapy.L2ListenSocket at 0xb7dd9f5c>
+L2socket   = <class scapy.L2Socket at 0xb7dd9f2c>
+L3socket   = <class scapy.L3PacketSocket at 0xb7dd9efc>
+except_filter = ''
+filter     = 'not implemented'
+histfile   = '/root/.scapy_history'
+iface      = 'eth0'
+nmap_base  = '/usr/share/nmap/nmap-os-fingerprints'
+p0f_base   = '/etc/p0f.fp'
+padding    = 1
+promisc    = 'not implemented'
+queso_base = '/etc/queso.conf'
+session    = ''
+sniff_promisc = 0
+stealth    = 'not implemented'
+verb       = 2
+>>> conf.iface='ppp0'
+>>> conf
+L2listen   = <class scapy.L2ListenSocket at 0xb7dd9f5c>
+L2socket   = <class scapy.L2Socket at 0xb7dd9f2c>
+L3socket   = <class scapy.L3PacketSocket at 0xb7dd9efc>
+except_filter = ''
+filter     = 'not implemented'
+histfile   = '/root/.scapy_history'
+iface      = 'ppp0'
+nmap_base  = '/usr/share/nmap/nmap-os-fingerprints'
+p0f_base   = '/etc/p0f.fp'
+padding    = 1
+promisc    = 'not implemented'
+queso_base = '/etc/queso.conf'
+session    = ''
+sniff_promisc = 0
+stealth    = 'not implemented'
+verb       = 2
+>>> lsc()
+sr               : Send and receive packets at layer 3
+sr1              : Send packets at layer 3 and return only the first answer
+srp              : Send and receive packets at layer 2
+sniff            : Sniff packets
+p0f              : Passive OS fingerprinting: which OS emitted this TCP SYN ?
+arpcachepoison   : Poison target's cache with (your MAC,victim's IP) couple
+send             : Send packets at layer 3
+sendp            : Send packets at layer 2
+traceroute       : Instant TCP traceroute
+arping           : Send ARP who-has requests to determine which hosts are up
+ls               : List  available layers, or infos on a given layer
+lsc              : List user commands
+queso            : Queso OS fingerprinting
+nmap_fp          : nmap fingerprinting
+report_ports     : portscan a target and output a LaTeX table
+>>> ls()
+Dot11Elt   : 802.11 Information Element
+Dot11      : 802.11
+IPerror    : IP in ICMP
+BOOTP      : BOOTP
+Ether      : Ethernet
+TCP        : TCP
+Dot11ProbeResp : 802.11 Probe Response
+TCPerror   : TCP in ICMP
+Dot11AssoResp : 802.11 Association Response
+Packet     : abstract packet
+UDPerror   : UDP in ICMP
+Dot11ProbeReq : 802.11 Probe Request
+Dot11Beacon : 802.11 Beacon
+DNSRR      : DNS Resource Record
+STP        : Spanning Tree Protocol
+ARP        : ARP
+UDP        : UDP
+Dot11ReassoResp : 802.11 Reassociation Response
+Dot11ReassoReq : 802.11 Reassociation Request
+Dot1Q      : 802.1Q
+ICMPerror  : ICMP in ICMP
+Raw        : Raw
+SNAP       : SNAP
+LLPPP      : PPP Link Layer
+IP         : IP
+LLC        : LLC
+Dot11Deauth : 802.11 Deauthentication
+Dot11AssoReq : 802.11 Association Request
+ICMP       : ICMP
+Dot3       : 802.3
+EAPOL      : EAPOL
+Dot11Disas : 802.11 Disassociation
+Padding    : Padding
+DNS        : DNS
+Dot11Auth  : 802.11 Authentication
+Dot11ATIM  : 802.11 ATIM
+DNSQR      : DNS Question Record
+EAP        : EAP
+
+  Comme vous l'aurez compris, lsc() permet de lister les commandes implémentées (et documentées)
+et ls() de lister les protocoles supportés. Et la variable conf sert à la configuration.
+
+
+Paquet
+------
+
+  En ce qui concerne le forgeage de paquets, il faut savoir que scapy les gère comme des 
+objets : chaque protocole est géré à l'aide d'une classe, et chaque protocole a la possibilité 
+d'hériter d'un protocole de couche inférieure. Ceci permet de créer des paquets de la couche 2 à 
+5 ou 6 du modèle OSI. C'est là que se trouve la puissance de scapy (entre autres).
+
+>>> ls(IP)
+version    : BitField             = (4)
+ihl        : BitField             = (None)
+tos        : XByteField           = (0)
+len        : ShortField           = (None)
+id         : ShortField           = (1)
+flags      : FlagsField           = (0)
+frag       : BitField             = (0)
+ttl        : ByteField            = (64)
+proto      : ByteEnumField        = (0)
+chksum     : XShortField          = (None)
+src        : SourceIPField        = (None)
+dst        : IPField              = ('127.0.0.1')
+options    : IPoptionsField       = ('')
+>>> ls(TCP)
+sport      : ShortField           = (80)
+dport      : ShortField           = (80)
+seq        : IntField             = (0)
+ack        : IntField             = (0)
+dataofs    : BitField             = (None)
+reserved   : BitField             = (0)
+flags      : FlagsField           = (2)
+window     : ShortField           = (0)
+chksum     : XShortField          = (None)
+urgptr     : ShortField           = (0)
+options    : TCPOptionsField      = ({})
+>>> a = IP()/TCP()
+>>> ls(a)
+version    : BitField             = 4               (4)
+ihl        : BitField             = None            (None)
+tos        : XByteField           = 0               (0)
+len        : ShortField           = None            (None)
+id         : ShortField           = 1               (1)
+flags      : FlagsField           = 0               (0)
+frag       : BitField             = 0               (0)
+ttl        : ByteField            = 64              (64)
+proto      : ByteEnumField        = 6               (0)
+chksum     : XShortField          = None            (None)
+src        : SourceIPField        = '127.0.0.1'     (None)
+dst        : IPField              = '127.0.0.1'     ('127.0.0.1')
+options    : IPoptionsField       = ''              ('')
+--
+sport      : ShortField           = 80              (80)
+dport      : ShortField           = 80              (80)
+seq        : IntField             = 0               (0)
+ack        : IntField             = 0               (0)
+dataofs    : BitField             = None            (None)
+reserved   : BitField             = 0               (0)
+flags      : FlagsField           = 2               (2)
+window     : ShortField           = 0               (0)
+chksum     : XShortField          = None            (None)
+urgptr     : ShortField           = 0               (0)
+options    : TCPOptionsField      = {}              ({})
+
+  On voit ici les noms des champs, leurs types et leurs valeurs par défaut. Au lieu de "types" 
+on pourrait dire objets car ce sont en réalité des données complexes. On voit par exemple le 
+champ dport de la couche TCP qui est de type ShortField et qui a pour valeur par défaut 80.
+
+  Comme vous le voyez il est possible de définir des variables à l'aide de scapy. En réalité 
+scapy lance l'interpréteur python en se chargeant en module (les pythonniseur me comprendront). 
+Les variables créées à l'aide de Scapy sont des objets complexes que nous verrons plus loin.
+Ce qui veut dire que tout ce qui est faisable avec l'interpréteur python est faisable avec scapy:
+
+>>> a = 0
+>>> while a < 3:
+...     a = a+1
+...     print a, a**2, a**3
+... 
+1 1 1
+2 4 8
+3 9 27
+
+  Créons maintenant un paquet IP/TCP à destination de google.com envoyant une demande de 
+connexion sur le port 80 :
+
+>>> pkt = IP(dst="www.google.fr")/TCP(dport=80)
+>>> pkt.display()
+---[ IP ]---
+version   = 4
+ihl       = 0
+tos       = 0x0
+len       = 0
+id        = 1
+flags     = 
+frag      = 0
+ttl       = 64
+proto     = TCP
+chksum    = 0x0
+src       = 81.56.255.176
+dst       = <Net www.google.fr>
+options   = ''
+---[ TCP ]---
+   sport     = 80
+   dport     = 80
+   seq       = 0
+   ack       = 0
+   dataofs   = 0
+   reserved  = 0
+   flags     = S
+   window    = 0
+   chksum    = 0x0
+   urgptr    = 0
+   options   = {}
+
+  Ensuite on essaye d'envoyer le paquet avec la fonction sr() (cf. listing des fonctions) :
+
+>>> sr(pkt)
+Traceback (most recent call last):
+  File "<console>", line 1, in ?
+  File "/usr/bin/scapy.py", line 3219, in sr
+    s = conf.L3socket(filter=filter, iface=iface)
+  File "/usr/bin/scapy.py", line 2836, in __init__
+    self.ins = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(type))
+  File "/usr/lib/python2.3/socket.py", line 154, in __init__
+    _sock = _realsocket(family, type, proto)
+error: (1, 'Operation not permitted')
+
+  Oh la belle erreur. On voit d'après le traceback que l'on n'a pas les droits suffisant pour 
+utiliser SOCK_RAW, ce qui est normal vu que je ne suis pas root. Pour quitter scapy on fait 
+CTRL+D.
+
+>>> 
+flyers@Cyfik:~$ su -
+Password: 
+Cyfik:~# scapy
+Welcome to Scapy (0.9.15.1beta)
+>>> pkt = IP(dst="www.google.fr")/TCP(dport=80)
+>>> pkt.display()
+---[ IP ]---
+version   = 4
+ihl       = 0
+tos       = 0x0
+len       = 0
+id        = 1
+flags     = 
+frag      = 0
+ttl       = 64
+proto     = TCP
+chksum    = 0x0
+src       = 81.56.255.176
+dst       = <Net www.google.fr>
+options   = ''
+---[ TCP ]---
+   sport     = 80
+   dport     = 80
+   seq       = 0
+   ack       = 0
+   dataofs   = 0
+   reserved  = 0
+   flags     = S
+   window    = 0
+   chksum    = 0x0
+   urgptr    = 0
+   options   = {}
+
+  Ensuite on essaye d'envoyer le paquet avec la fonction sr() (cf. listing des fonctions) :
+
+>>> sr(pkt)
+Begin emission:
+..Finished to send 1 packets.
+.*
+Received 4 packets, got 1 answers, remaining 0 packets
+([(<IP proto=TCP dst=66.102.9.99 |<TCP dport=80 |>>, <IP version=4 ihl=5 tos=0x0 len=44 
+id=36133 flags= frag=0 ttl=246 proto=TCP chksum=0x9af4 src=66.102.9.99 dst=81.56.255.176 
+options='' |<TCP sport=80 dport=80 seq=80368614L ack=1L dataofs=6 reserved=0 flags=SA 
+window=4356 chksum=0x94ab urgptr=0 options=[('MSS', 536)] |>>)], [])
+
+  Merci google :D.
+  
+  Les listes permettent de spécifier un "range" (de port, d'adresses, de ttl ...) :
+
+>>> pkt = IP(dst="www.google.com", ttl=(5,30))/TCP()
+>>> pkt.display()
+---[ IP ]---
+version   = 4
+ihl       = 0
+tos       = 0x0
+len       = 0
+id        = 1
+flags     = 
+frag      = 0
+ttl       = (5, 30)
+proto     = TCP
+chksum    = 0x0
+src       = 81.56.255.176
+dst       = <Net www.google.com>
+options   = ''
+---[ TCP ]---
+   sport     = 80
+   dport     = 80
+   seq       = 0
+   ack       = 0
+   dataofs   = 0
+   reserved  = 0
+   flags     = S
+   window    = 0
+   chksum    = 0x0
+   urgptr    = 0
+   options   = {}
+
+  Il faut savoir que les paquets créés sont des classes de type Packet. Cette classe implémente
+quelques méthodes utiles. Comme display() que l'on a déjà utilisé. De plus lorsque l'on rentre 
+le nom de notre paquet on obtient l'affichage des champs qui ne sont pas à la valeur par défaut.
+Pour plus d'informations allez voir le code source de scapy.py et recherchez "class Packet".
+
+
+Autres fonctions
+----------------
+
+  Une autre fonction sympathique est str() qui permet d'afficher le paquet sous forme brute 
+(héxadécimale). Il est aussi possible d'effectuer l'opération inverse en spécifiant le protocole:
+
+>>> str(ICMP())
+'\x08\x00\xf7\xff\x00\x00\x00\x00'
+>>> ICMP('\x08\x00\xf7\xff\x00\x00\x00\x00')
+<ICMP type=echo-request code=0 chksum=0xf7ff id=0x0 seq=0x0 |>
+
+  Scapy est également capable de lire et d'écrire des fichiers au format pcap (manipulable avec 
+tcpdump par exemple) avec les fonctions rdpcap() et wrpcap().
+petite parenthèse: le fichier log.log vient du sniffing traq de www.infoshackers.com.
+
+>>> proot = rdpcap("/home/flyers/Data/tmp/log.log") 
+>>> proot[0]
+<Ether dst=ff:ff:ff:ff:ff:ff src=00:50:da:58:72:df type=0x800 |<IP version=4 ihl=5 tos=0x0 
+len=229 id=2196 flags= frag=0 ttl=128 proto=UDP chksum=0xad17 src=192.168.1.13 
+dst=192.168.1.255 options='' |<UDP sport=138 dport=138 len=209 chksum=0x9b52 
+|<Raw load='\x11\x02\x80!\xc0\xa8\x01\r\x00\x8a\x00\xbb\x00\x00 EEEEENDADDCACACACACACACACACACACA\x00 
+FGEJFCEHEJEMEFCACACACACACACACABN\x00\xffSMB%\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00
+\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x11\x00\x00!\x00\x00\x00\x00\x00
+\x00\x00\x00\x00\xe8\x03\x00\x00\x00\x00\x00\x00\x00\x00!\x00V\x00\x03\x00\x01\x00\x00\x00\x02
+\x002\x00\\MAILSLOT\\BROWSE\x00\x01\x00\x80\xfc\n\x00DDM03\x00\x00\x00\x00\x00\x00\x00\x00\x00
+\x00\x00\x05\x00\x03\x10\x01\x00\x0f\x01U\xaa\x00' |>>>>
+>>> a=0
+>>> [proot[a+1].sprintf("%Ether.src% -> %IP.src%") for k in proot]
+Affichera l'adresse MAC et l'adresse IP correspondante pour chaque paquet du log.
+
+  Ca aide un peu pour le challenge ;D. Pour plus d'information sur sprintf allez dans le source 
+de scapy et recherchez "def sprintf".
+
+  Il existe également la commande sniff() qui permet de sniffer (nan juuure :)) des paquets en 
+fonction d'un filtrage et/ou d'un nombre de paquets:
+
+>>> proot = sniff(count=2)
+>>> proot
+[<IP version=4 ihl=5 tos=0x0 len=619 id=41463 flags=DF frag=0 ttl=64 proto=TCP chksum=0xcc25 
+src=81.56.255.176 dst=213.30.164.104 options='' |<TCP sport=35034 dport=80 seq=379518484L 
+ack=4230683723L dataofs=8 reserved=0 flags=PA window=4132 chksum=0x2715 urgptr=0 
+options=[('NOP', None), ('NOP', None), ('Timestamp', (17012396L, 1357811678L))] 
+|<Raw load='GET / HTTP/1.1\r\nHost: www.infoshackers.com\r\nUser-Agent: Mozilla/5.0 
+(X11; U; Linux i686; en-US; rv:1.7.5) Gecko/20041219 Firefox/1.0 
+(Debian package 1.0+dfsg.1-1)\r\nAccept: text/xml,application/xml,application/xhtml+xml,
+text/html;q=0.9,text/plain;q=0.8,image/png,*/*;q=0.5\r\nAccept-Language: en-us,en;q=0.5\r\n
+Accept-Encoding: gzip,deflate\r\nAccept-Charset: ISO-8859-1,utf-8;q=0.7,*;q=0.7\r\n
+Keep-Alive: 300\r\nConnection: keep-alive\r\nCookie: cook_lang=fr; cook_pass=yauudygeivddydV; 
+cook_pseudo=XXXXXX; PHPSESSID=e4be631036d4e1354a042089bc051bf0\r\nCache-Control: 
+max-age=0\r\n\r\n' |>>>, <Ether dst=00:90:1a:40:a2:1e src=00:50:fc:4e:c2:9d type=0x8864 
+|<Raw load="\x11\x00\x14\x89\x02m\x00!E\x00\x02k\xa1\xf7@\x00@\x06\xcc%Q8\xff\xb0\xd5\x1e\xa4h
+\x88\xda\x00P\x16\x9e\xfe\x14\xfc+\x1cK\x80\x18\x10$'\x15\x00\x00\x01\x01\x08\n\x01\x03\x96
+\xacP\xee\x8f\xdeGET / HTTP/1.1\r\nHost: www.infoshackers.com\r\nUser-Agent: Mozilla/5.0 
+(X11; U; Linux i686; en-US; rv:1.7.5) Gecko/20041219 Firefox/1.0 
+(Debian package 1.0+dfsg.1-1)\r\nAccept: text/xml,application/xml,application/xhtml+xml,
+text/html;q=0.9,text/plain;q=0.8,image/png,*/*;q=0.5\r\nAccept-Language: en-us,en;q=0.5\r\n
+Accept-Encoding: gzip,deflate\r\nAccept-Charset: ISO-8859-1,utf-8;q=0.7,*;q=0.7\r\n
+Keep-Alive: 300\r\nConnection: keep-alive\r\nCookie: cook_lang=fr; cook_pass=yauudygeivddydV; 
+cook_pseudo=XXXXXX; PHPSESSID=e4be631036d4e1354a042089bc051bf0\r\nCache-Control: 
+max-age=0\r\n\r\n" |>>]
+
+
+Rajout de fonctions
+-------------------
+
+  Il est très simple de rajouter des commandes à scapy pour effectuer des actions prédéterminées.
+  Prenons l'exemple de la fonction arping() (allez voir dans scapy.py et recherchez def arping),
+elle sert à savoir la correspondance adresse MAC -> adresse IP du réseau local.
+
+def arping(net, iface=None):			#net correspond aux adresses à scanner
+    """Send ARP who-has requests to determine which hosts are up
+arping(net, iface=conf.iface) -> None"""
+    ans,unans = srp(Ether(dst="ff:ff:ff:ff:ff:ff")/ARP(pdst=net),  
+                    filter="arp and arp[7] = 2", timeout=2, iface=iface)
+    #ans stock les réponses positivies
+    #unans stock les réponses négatives
+
+    for s,r in ans:
+        print r.sprintf("%Ether.src% %ARP.psrc%") #Affichage des adresses
+    last = ans,unans
+
+  Vous voyez qu'il est extrêmement simple de rajouter ses propres fonctions. Ce que nous allons 
+faire.
+
+  Un petit coup de firewalking pour la forme ? Cette technique consiste à envoyer un paquet 
+censer mourrir en arrivant au pare-feu ainsi seul les paquets dont l'adresse IP de destination 
+est un host derrière le pare-feu, ne répondront pas par un ICMP 
+time-exceeded/ttl-zero-during-transit.
+
+def firewalk(target, ttl, iface=None):
+	"""Send an IP packet with low ttl who should die when he 
+	meet the firewall. If we haven't an ICMP response then 
+	the host exist next the firewall"""
+	ans,unans = sr(IP(dst=target, ttl=ttl)/TCP(), iface=iface)
+	for r in unans:
+		print r.dst
+	last = ans,unans
+
+  Une fois la fonction rajoutée dans scapy.py, il suffit de relancer le logiciel et de taper 
+firewalk("192.168.45.0",7,"eth0") par exemple.
+
+Coder avec Scapy:
+-----------------
+
+  Il est également possible d'utiliser scapy dans vos programmes en le chargeant comme un module.
+Un chti exemple :
+
+#!/usr/bin/env python
+# By Philippe Biondi <biondi@cartel-securite.fr>
+# arping2tex : arpings a network and outputs a LaTeX table as result
+
+import sys
+if len(sys.argv) != 2:
+	print "Usage: arping2tex <net>\n eg: arping2tex 192.168.1.0/24"
+	sys.exit(1)
+	
+from scapy import srp, Ether, ARP, conf
+
+conf.verb = 0
+ans, unans = srp(Ether(dst="ff:ff:ff:ff:ff:ff")/ARP(pdst=sys.argv[1]), timeout=2)
+
+print "\\begin{tabular}{|1|1|}"
+print "\\hline"
+print "MAC & IP\\\\"
+print "\\hline"
+for r,s in ans:
+	print r.sprintf("%Ether.src% & %ARP.psrc%\\\\")
+print "\\hline"
+print "\end{tabular}"
+
+Pour ceux qui ne comprennent pas l'anglais ce programme utilise la fonction arping() pour 
+obtenir les correspondances adresses MAC - adresses IP et affiche en sortie un tableau au 
+format LaTeX.
+
+Conclusion:
+-----------
+
+Nous n'avons pas vu la configuration interne de Scapy mais si vous vous y connaissez un peu en 
+python vous devriez pouvoir implémenter vos propres protocoles, fonctions.
+Il faut aussi savoir que Scapy utilise PF_PACKET ou la libnet ce qui fait que votre firewall ne 
+peut interférer avec vos paquets contrairement à nmap ou hping par exemple.
+
+
+
+[1] http://www.gnu.org/licenses/gpl.html
+
+[2] http://www.python.org
+
+J'espère que vous aurez autant de plaisir à lire ce texte que j'en ai eu à l'écrire.
+Flyers
+
+|=[ EOF ]=---------------------------------------------------------------=|

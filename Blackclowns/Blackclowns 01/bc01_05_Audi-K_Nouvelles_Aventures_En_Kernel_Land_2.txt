@@ -1,0 +1,1873 @@
+ -----------------------------------------------------------------------------
+| ---- [ BLACKCLOWNS MAGAZINE - ISSUE 01 ]  ------------  [ Article 05 ] ---- |
+|-----------------------------------------------------------------------------|
+|             [ Audi-K - Nouvelles aventures en Kernel Land 2/2 ]             |
+|                     [ Tolwin <tolwin100@hotmail.com> ]                      |
+ -----------------------------------------------------------------------------
+
+
+1 - Introduction à Audi-K
+  1.1 - Réseau dans le noyau
+  1.2 - Audi-K - TDI Kernel Socket API
+  1.3 - Audi-K - Ce qui sera dit et ce qui ne le sera pas.
+                 Ce qui est fait et ce qui n'est pas fait
+2 - Concepts de base pour TDI
+  2.1 - Création des objets
+  2.2 - Référencement du driver tcpip.sys : méthode simple
+  2.3 - Référencement du driver tcpip.sys : méthode ciblée
+  2.4 - Macros TDI de gestion des IRP
+  2.5 - Appel au driver Tcpip
+  2.6 - Structures de données
+  2.7 - Direct I/O, bienvenue dans le monde des Memory Descriptor List (MDL)
+
+
+Partie 2: 
+3 - Fonctions niveau TDI
+  3.1 - Petits elastics là pour éviter les fuites mémoire avec des
+  3.2 - Première connection, premier chat
+  3.3 - Et pour le reste ?
+4 - Parlons Winsock
+  4.1 - Kernel Sockets c'est bien, en abuser ça craint !
+  4.2 - Structures de données, encore
+  4.3 - Fonctions Audi-K
+5 - La marque du capitaine crochet
+6 - Conclusion
+7 - Références
+
+
+
+
+3 - Fonctions niveau TDI
+Pour commencer  simplement et bien se  concentrer sur les mécanismes TDI,  on va
+réaliser une implémentation peu efficace. Toutes les opérations seront réalisées
+pour le moment  de manière bloquante.  Ce système va permettre  d'utiliser tran-
+quillement les macros fournies par TDI, de  penser son code de  manière linéaire
+sans trop se prendre le chou avec des completion routines, et avoir un fonction-
+nement  ressemblant  à du WinSock  lorsqu'on  ne  débloque pas les  sockets. Bon
+début.
+
+
+
+3.1 - Petits elastics là pour éviter les fuites mémoire avec des 
+Pour la gestion de la mémoire,  je réutilise les fonctions memtrack.  Celles-ci,
+développées pour ndis_fw, se retrouvent dans plusieurs projets, dont le honeypot
+Sebek où je les ai découvertes et où j'en suis tombé fou amoureux. Ces fonctions
+assurent un contrôle des allocations mémoire, contre les  débordements et contre
+les oublis de  libération de mémoire allouée.  Pour cela, memtrack maintient une
+liste de tous  les blocs alloués,  et ajoute un "canari"  avant et après  chaque
+bloc. Lors du nettoyage  final, memtrack s'assure que chaque  mémoire demandée a
+bien été restituée, et indique le problème en cas d'erreur. Ca n'a l'air de rien
+mais c'est tout simplement excellent !
+
+void	memtrack_init(void);
+
+void	memtrack_free(void);
+
+void	*mt_malloc(	ULONG size, 
+ 		const char *file, 
+ 		ULONG line);
+
+#define malloc_np(size)	mt_malloc((size), __FILE__, __LINE__)	
+
+void free(void *ptr);
+
+
+
+3.2 - Première connection, premier chat
+On parle, on parle,  mais quand  est-ce qu'on code ?  Et bien c'est le  moment !
+Dans ce chapitre, on va mettre en pratique tout le blabla qui précède pour enfin
+établir une  connexion !  On sera en mesure de  connecter un serveur  distant, à
+partir de son adresse IP, et donc par exemple d'aller demander la page d'accueil
+de Google.
+
+Prenons le cas de TCP. Comme on l'a vu plus haut,  pour créer un  socket TCP, il
+faut  un  transport  object,  pour  les  ressources  du  local  endpoint,  et un
+connection object pour les ressources propres à la gestion de la session TCP.
+
+Transport Object
+Pour la création du transport object, il  faut préparer  une structure  extended
+attributes qui contiendra  les informations  requises. Il s'agit  ici du  couple 
+local interface : port. Comme en WinSock lors d'un  bind(), ces valeurs  peuvent
+être mises à zéro si on ne veut pas spécifier d'interface  particulière et si on
+souhaite  une  allocation  dynamique  du port.  Les extended  attributes doivent
+spécifier ce qu'ils encapsulent. Ceci est fait par une chaîne de caractères.
+
+Les extended attributes sont un gros buffer. Assez gros pour contenir à la suite
+- une structure FILE_FULL_EA_INFORMATION
+- la chaîne de caractères spécifiant le type d'infos passées dans le extended
+  attributes
+- une structure TA_IP_ADDRESS pour donner les infos sur interface : port
+
+Pour le premier et le dernier élément, pas de problème, un sizeof et le tour est
+réglé. Pour la chaîne ce n'est pas plus dur. D'une part,  cette chaîne est défi-
+nie dans tdi.h sous le nom TdiTransportAddress. D'autre part, sa taille est éga-
+lement  définie  sous le  nom  TDI_TRANSPORT_ADDRESS_LENGTH.  Par contre,  cette
+taille mesure  la chaine ASCII du nom,  et pas la chaîne ASCIIZ :  elle ne prend
+pas en compte le caractère \0 indicateur de fin de chaîne. Dans la gestion de la
+mémoire de notre buffer, il faudra en tenir compte.
+
+La pile  est une ressource rare et chère  dans le noyau. Des  structures volumi-
+neuses ne devraient  pas y être utilisées dans les fonctions, mais il  vaut mieux
+les allouer dynamiquement.  Même si dans ce  code SIZE_EA_TRANSPORT  ne vaut que
+0x33, c'est tout  de même une bonne habitude à  prendre. D'un  autre côté, on va
+fragmenter  la mémoire. On n'a rien  sans rien.  Dans ce  projet, je n'ai pas eu
+l'impression  d'utiliser très  fréquemment des  buffers de taille fixe, alors je
+n'ai pas mis en place les fonctions basées sur les lookasides. Mais ça peut être
+une idée d'optimisation à apporter.
+
+Un transport object  peut être créé avec le device attributes  de \Device\Tcp ou
+\Device\Udp. Par contre, seuls  les transports objects relevant  de Tcp pourront
+être plus tard  associés avec  un connection object.  Du Udp connecté,  non mais
+vraiment, vous n'y pensez pas !
+
+Code à voir : Niveau_TDI : MyTdiCreateTransport
+
+Connection Object
+Pour la création du connection object,  il faut également une structure extended
+attributes. Elle sera bien plus simple car elle n'a qu'à encapsuler un seul élé-
+ment : un contexte. Pour le moment sans utilité,  on considèrera qu'il est mis à
+NULL par l'appelant. L'extended attribute contiendra donc :
+- une structure FILE_FULL_EA_INFORMATION
+- la chaîne de caractères spécifiant le type d'infos passées dans l'extended
+  attributes
+- une structure CONNECTION_CONTEXT qui est un PVOID
+
+La chaîne de caractères s'appellera cette fois TdiConnectionContextet sa taille,
+toujours en ASCII et pas ASCIIZ, sera TDI_CONNECTION_CONTEXT_LENGTH. 
+
+Un transport object ne peut se  demander que sur l'object  attributes initialisé
+pour \Device\Tcp.
+
+Code à voir : Niveau_TDI : MyTdiCreateConnection
+
+Association
+Maintenant, la  première fonction TDI utilisant  IoCallDriver va entrer  en jeu.
+Il s'agit en effet de procéder à l'association de ces deux handles.  Pas exacte-
+ment les deux handles : il nous faut le file object  du connection object et pas
+juste son  handle retourné par  MyTdiCreateConnection.  Il faudra donc  utiliser
+ObReferenceObjectByHandle,  et garder dans  un coin de  sa tête qu'au  moment de
+libérer les ressources, un déréférencement s'imposera.
+
+Ce traitement d'IRP n'a pas de  completion routine.  On n'a pas à se  soucier de
+l'utilisation de IoFreeIrp ou de IoCompleteRequest.
+
+Code à voir : Niveau_TDI : MyTdiAssociateHandles
+
+La fonction  inverse,  MyTdiDisassociateHandles,  devra  être  appelée  avant de
+pouvoir libérer les objets en toute tranquillité. Son fonctionnement est exacte-
+ment le même que  MyTdiAssociateHandles donc je ne m'étends  pas dessus, je vous
+invite à vérifier vos intuitions dans le code source.
+
+Connexion sortante
+Pour notre première connexion, qui sera de type  sortante, on prend les mêmes et
+on recommence. La connexion suit la même architecture que l'association, en mode
+synchrone, à quelques détails près.
+- Il est possible de spécifier un timeout. Lors du traitement de l'IRP par les
+  couches inférieures de tcpip, si il y a dépassement du timeout alors l'IRP
+  sera immédiatement complétée avec comme status 0xc00000b5.
+- La destination est identifiée par une structure TDI_CONNECTION_INFORMATION,
+  qui contiendra le TA_IP_ADDRESS donné en paramètres.
+
+En cas d'erreur, je réserve un traitement spécial à quelques cas : le timeout et
+la connexion refusée dans le cas où le serveur filtre les ip :port autorisés. En
+cas de succès, un petit test permet de  confirmer qu'on est bien connecté sur la
+destination voulue.
+
+Code à voir : Niveau_TDI : MyTdiConnect
+
+
+Comme pour la désassociation, la déconnection est quasiment identique. Goto code
+source.
+
+Emettre et recevoir
+Il nous reste à  émettre et à recevoir. Comme  d'habitude depuis  le début de ce
+chapitre, ces  opérations se dérouleront  de manière synchrone. Le driver  Tcpip
+fonctionne  en mode  Direct IO, il y aura  donc des MDL  au programme.  Pour ces
+fonctions, je partirai du principe que le MDL est alloué par l'appelant.
+Code à voir : Niveau_TDI : MyTdiSend_s
+
+Pour la réception, un compteur de timeout a été ajouté. C'est bien beau d'écou-
+ter, mais si  rien n'arrive  on peut rester longtemps,  très longtemps comme ça.
+Alors mieux vaut prévoir le timeout !  Celui-ci entre en  action lorsque la fon-
+ction attend la fin  de traitement de l'IRP.  Si l'attente se termine pour cause
+de timeout, on procède alors à une demande d'annulation de l'IRP.
+- Enregistrer une fonction d'annulation d'Irp (IoSetCancelRoutine)
+- Lancer l'IRP (IoCallDriver)
+- Attendre la completion ou le timeout (KeWaitForSingleObject)
+- Si l'IRP timeout, demander l'annulation (IoCancelIrp)
+- Dans la fonction d'annulation, libérer le spinlock propre aux annulations
+  (IoReleaseCancelSpinLock), puis compléter l'IRP (IoCompleteRequest)
+
+PDRIVER_CANCEL 
+  IoSetCancelRoutine(
+    IN PIRP  Irp,
+    IN PDRIVER_CANCEL  CancelRoutine
+    );
+
+BOOLEAN 
+  IoCancelIrp(
+    IN PIRP  Irp
+    );
+
+VOID 
+  IoReleaseCancelSpinLock(
+    IN KIRQL  Irql
+    );
+
+VOID 
+  IoCompleteRequest(
+    IN PIRP  Irp,
+    IN CCHAR  PriorityBoost
+    );
+
+Code à voir : Niveau_TDI : MyTdiRecv_s, Niveau_TDI : CancelIrp
+
+
+
+3.3 - Et pour le reste ?
+Après cette petite présentation,  vous devriez être bien  à l'aise avec  le fon-
+ctionnement de base de TDI.  MDLs, création d'objets,  appel au driver,  attente
+sur event.  Je vais juste attirer  votre attention  sur quelques  fonctions  qui
+exploitent des mécanismes particuliers :
+
+Serveur TCP
+Placer un port TCP en écoute pour  faire office de serveur se fait  en plusieurs
+temps. 
+- Il faut donc associer une fonction sur l' event TDI_EVENT_CONNECT par un appel
+  à TDI_SET_EVENT_HANDLER.
+- Puis placer le connection object en écoute avec un appel à TDI_LISTEN. La pile
+  réseau est désormais avertie que le couple interface : port du transport
+  object est ouvert et accepte les connections de clients.
+- l'IRP complète immédiatement.
+- Lorsqu'un client pointe le bout de son nez, l'événement TDI_EVENT_CONNECT est
+  activé.
+- La fonction de l'event handler pourra alors accepter le client par un appel à
+  TDI_ACCEPT.
+
+Mais il est  possible de simplifier le traitement  et de se passer de la gestion
+de l'event. On perd  un peu de souplesse car  tous les traitements  auxquels pou-
+vait procéder l'event  handler ne sont plus  faisable :  test de diverses condi-
+tions avant d'accepter  le candidat  à la connexion  par exemple.  Cette méthode 
+simplifiée est celle que j'ai retenue. Le port est toujours ouvert en écoute par
+un appel à TDI_LISTEN. Mais l'IRP ne complète que lorsqu'un client se connecte.
+
+Code à voir : Niveau TDI : MyTdiListenAutoAccept, MyTdiSetEventHandler
+
+
+UDP
+L'utilisation de l'UDP est archi simple.  Le tout est de bien garder en tête que
+les opérations se feront toutes sur le transport object et pas sur le connection
+object. Normal, il n'y en a pas !
+
+Code à voir : Niveau TDI : MyTdiSendto_s, MyTdiRecvfrom_s
+
+
+Filtrage
+TDI permet de mettre en place ce à quoi beaucoup de princesses ont du rêver dans
+leur  château  :  un  filtre  automatique  des  prétendants.  Les fonctions  TDI
+"d'écoute" permettent de définir  des critères de  sélection permettant un rejet
+automatique   des  remote  endpoints  ne   correspondant  pas  à  ces  critères,
+typiquement adresse IP et  /  ou port.  On peut filtrer les candidats à une con-
+nection TCP  lors d'un  TDI_LISTEN,  ou bien l'origine des datagrammes  que l'on
+écoute avec  TDI_RECEIVE_DATAGRAM.  Ces filtres  sont archi  simples à mettre en
+place.
+
+Code à voir : Niveau TDI : MyTdiListenAutoacceptFiltre, MyTdiRecvfromFiltre_s
+
+
+
+4 - Parlons Winsock
+C'est sur ce socle de fonctions TDI que vient se greffer Audi-K, le module de
+compatibilité WinSock. Si vous n'avez pas encore eu l'occasion de bricoler avec
+winsock, je vous renvoie à la lecture de différents docs sur le sujet, notamment
+le classique Beej's Guide.
+
+Audi-K tente de recréer une grande partie des fonctions winsock. Certaines
+seront impitoyablement laissées de côté : les fonctions WSAGetOption /
+WSASetOption et les fonctions relatives à la gestion des sockets non bloquants,
+FD_SET et compagnie. Donc pas de sockets débloqués, pas de mode promiscuous.
+
+Les fonctions de support classiques sont faites : ntoh et hton, itoa et atoi.
+
+Les fonctions de gestion des noms sont implémentées : nom de l'ordinateur local,
+récupération de ses adresses Ips, résonution DNS d'un nom de domaine et résolu-
+tion RDNS d'une adresse IP.
+
+
+
+4.1 - Kernel Sockets c'est bien, en abuser ça craint !
+*DONG DONG DONG*  Tiens, c'est l'heure  pour  un peu d'autodénigrement ?  Bah, à
+*petite dose ca ne peut pas faire  de mal ! Qu'est-ce qu'il y a à dénigrer ici ? 
+*Le concept même de Kernel Socket. 
+
+Avec des kernel sockets bloquants, on va disposer d'une interface facile à mani-
+puler, mais qui va forcer le driver à travailler non pas comme un driver devrait
+le faire, mais comme un programme userland banal. Tout simplement parce qu'on va
+diluer massivement l'efficacité dans de l'attente en bloquant jusqu'à completion
+des traitements. Pire que de la térébenthine. Or dans le noyau, s'il ne devait y
+avoir qu'une seule consigne,  ça serait celle-ci :  NE  PAS  BLOQUER  BORDEL  DE 
+MERDE !!!  C'est notamment pour cette  raison que beaucoup d'articles et de code
+sur TDI ne regardent pas la création  de kernel sockets : ca écarterait l'utili-
+sateur des bonnes pratiques TDI.
+
+Pour un projet  utilisant  le réseau  de manière légère,  comme  pour établir un
+canal de communication et de contrôle,  alors pas de  problème. Mais  la méthode
+bloquante sera  atrocement  pénalisante pour  un projet utilisant  le réseau de
+manière intensive et principale,  comme un serveur FTP.  Tout  ce temps  passé à
+bloquer est du temps perdu !
+
+Avant d'aller  plus loin,  car on va les faire  quand même,  ces kernel sockets,
+quelques mots sur ce que devrait faire un bon driver utilisant TDI.
+
+Premièrement, se passer du mode synchrone et fonctionner  de manière asynchrone.
+Le code source  devra proposer les  fonctions send et  recv TCP  implémentées en
+asynchrone : on ne bloque pas après le IoCallDriver. Pour mémoire, les IRP trai-
+tées en  asynchrone doivent  être non  threadées.  On ne sait  pas quel  sera le
+contexte courant au moment de leur  completion,  on ne peut  pas les  laisser se
+terminer sous le  contrôle du  IO Manager,  et elles  doivent  donc se  nettoyer
+elles-mêmes dans leur completion routine.
+
+Code à voir : Niveau_TDI : MyTdiSend_a, MyTdiRecv_a, MyTdiCompletion_routine_a
+
+
+Deuxièmement donc, il faut utiliser les TDI Events.  Si on ne bloque pas lors de
+la fonction,  mais que  juste après  on rentre dans un WaitForXxxxx  afin d'être
+certain que le message  est arrivé à destination ou que notre buffer contient la
+réponse, on ne peut pas vraiment parler d'asynchrone ! 
+
+Il est  possible de  définir des  fonctions qui seront appelées  automatiquement
+dans certaines situations, typiquement en réponse à une action du remote peer ou
+en cas d'erreur. On a un peu soulevé ce point en parlant de TDI_LISTEN. Voici la
+liste des événements utilisables :
+
+Connection et déconnection d'un remote peer 
+TDI_EVENT_CONNECT 
+TDI_EVENT_DISCONNECT 
+
+Réception TCP
+TDI_EVENT_RECEIVE 
+TDI_EVENT_CHAINED_RECEIVE 
+TDI_EVENT_RECEIVE_EXPEDITED 
+TDI_EVENT_CHAINED_RECEIVE_EXPEDITED 
+
+
+Réception UDP
+TDI_EVENT_RECEIVE_DATAGRAM 
+TDI_EVENT_CHAINED_RECEIVE_DATAGRAM 
+
+Prêt à envoyer
+TDI_EVENT_SEND_POSSIBLE 
+
+Remontée d'erreur
+TDI_EVENT_ERROR 
+TDI_EVENT_ERROR_EX
+
+La bonne  architecture pour  un driver  utilisant  TDI n'est  donc pas de  mimer
+WinSock mais par exemple pour un échange de message :
+- Enregistrer une fonction sur l'event TDI_EVENT_RECEIVE
+- Envoyer un message avec TDI_SEND. On ne bloque pas, on balance juste la sauce
+  et on laisse TDI se débrouiller. On peut donc passer à autre chose mais
+  SURTOUT on ne touche pas à ce qui a été alloué pour cet envoi : buffer, MDLs
+  On ne libère rien, on ne réutilise rien, on ne touche à rien.
+- Lorsqu'un message est envoyé par le remote peer, l'event est déclenché et la
+  fonction appelée
+- Cette fonction peut alors faire un appel receive pour récupérer l'intégralité
+  du message. C'est également le gestionnaire d'event qui se charge de la
+  libération des ressources. Le gestionnaire d'event peut poursuivre tout seul
+  la conversation, relançant des TDI_SEND.
+
+Pour une  utilisation  plus concrète des  événements de  réception,  vous pouvez
+aller regarder  le fonctionnement  de query_dns.  Bien que la  requête  DNS soit
+envoyée de manière synchrone, la réponse n'est pas écoutée via un  recvfrom mais
+via un événement.
+
+Code à voir : Niveau socket : query_dns, ReceiveDnsAnswer
+
+Si on  fonctionne  en mode asynchrone,  l'IRP et les MDL ne seront plus libérées
+automatiquement  par le IO Manager.  On ne peut plus  la créer en  utilisant les
+macros TDI prévues à  cet effet. Voici donc  quelques APIs  supplémentaires  qui
+peuvent servir :
+
+PIRP 
+  IoAllocateIrp(
+    IN CCHAR  StackSize,
+    IN BOOLEAN  ChargeQuota
+    );
+
+LONG 
+  KeSetEvent(
+    IN PRKEVENT  Event,
+    IN KPRIORITY  Increment,
+    IN BOOLEAN  Wait
+    );
+
+VOID 
+  IoFreeIrp(
+    IN PIRP  Irp
+    );
+
+Un autre  avantage  à utiliser des IRP  asynchrones :  la fonction IoAllocateIRP
+peut  tourner jusqu'au  niveau IRQL DISPATCH_LEVEL  alors que les  macros TDI de
+création d'IRP  threadées ne  tournent qu'à  PASSIVE_LEVEL. Pour  pleinement ex-
+ploiter cet avantage, il faut que tout le reste du code autour de la création de
+l'IRP puisse  également tourner au  dessus de Passive  Level. Mais  avec un code
+soigneusement prévu dans  cette intention, il est possible  de se faire des fon-
+ctions tournant à un haut IRQL et donc ne pas avoir à utiliser de thread système
+pour faire baisser l'IRQL.
+
+
+
+4.2 - Structures de données, encore
+	
+ Les fonctions  Audi-K reposent  sur l'utilisation  d'un tableau  structure dont
+ l'int manipulé sous  le nom sock_fd est un index. Ca se voit bien dans l'utili-
+ sation des fonctions  WinSock, où le numéro  de socket n'a pas du  tout la tête
+ d'une adresse comme pour bien des  handles, mais commence  à zéro ou un, et est
+ incrémenté lorsqu'on demande de nouveaux sockets.
+
+	typedef struct _SOCKET_OBJECT
+	{
+		//Pour la gestion du socket
+		int					current_status;
+
+		//Infos récupérées à la création du socket
+		int					domain;
+		int					type;
+		
+		//Elements TDI
+		HANDLE				TransportHandle;	
+		PFILE_OBJECT			pTransportObject;	 
+		HANDLE				ConnectionHandle;	
+		PFILE_OBJECT			pConnectionObject;	
+		
+		//Gestion du backlog, pour listen(x) avec x > 1
+		int					backlog_is_head;
+		int					backlog_is_element;
+		int					backlog_who_is_my_head;
+		int					backlog_size;
+		int					*backlog_list;
+
+		//Utilisé pour shutdown()
+		int					send_forbiden;
+		int					recv_forbiden;
+
+		//Pour les connections TCP
+		int					remote_host;
+		short				remote_port;
+
+		//Pour fonctionner en asynchrone
+		async_context		contexte;
+	} SOCKET_OBJECT, *PSOCKET_OBJECT;
+
+La structure globale WSADATA est allouée  lors de l'appel à WSAStartup. Diverses
+informations sont contenues dedans :  pointeurs vers les devices objects,  poin-
+teur vers le nom de l'ordinateur local, adresse d'un serveur DNS :
+
+	typedef struct _WSADATA
+	{
+		//Infos pour chacun des protocoles : TCP, UDP et Raw
+		struct protocol_info
+		{
+			UNICODE_STRING		usDeviceName;
+			OBJECT_ATTRIBUTES	oaDeviceAttributes;
+			PDEVICE_OBJECT		pDeviceObject;
+		} Protocol[3];
+
+		int					in_use;
+		PSOCKET_OBJECT		pskSocketArray;
+		PDRIVER_OBJECT		pDriverObject;
+
+		//Adresse des event handlers
+		PVOID EventDisconnected;
+		PVOID EventPeerAckDisconnect;
+		PVOID EventDnsAnswer;
+
+		//Valeur du serveur DNS
+		int serveur_dns;
+		char* hostname;
+	} WSADATA, *PWSADATA;
+
+
+
+4.3 - Fonctions Audi-K
+
+Pour le reste, je ne vais pas décrire les fonctions Audi-K dans le menu détail.
+Je vais présenter les grandes lignes des fonctions et la manière dont elles uti-
+lisent l'interface TDI. Pour le reste, je vous renvoie au code source pour de
+plus amples informations.
+
+Je vous donne également  quelques pistes d'amélioration qui me  trottent dans la
+tête. Mais je n'ai pas plus de temps  à consacrer à Audi-K pour le moment, alors
+ces belles idées  resteront des doux rêves jusqu'à ce que  vous les implémentiez
+si elles vous plaisent.
+
+o L'emplacement dans le tableau des sockets est alloué lors de l'appel à
+  socket().
+
+o Le transport object est alloué lors du bind(), qui peut être implicite lors
+  d'un connect() ou d'un sendto().
+
+o Le connection object est créé lors des appels à connect() ou listen(). Les
+  associations se font dans la foulée.
+
+o La désassociation et fermeture des objets se fait lors d'un close().
+
+o Les fonctions listen() et accept() sont un peu complexes car elles permettent
+  de gérer un backlog de plusieurs connections de clients sur un seul port
+  serveur. Listen() créé l'ensemble des objets pour tout le backlog, et c'est en
+  fait accept() qui fait un appel à TDI_LISTEN. 
+
+o L'astuce pour accepter plusieurs clients sur un seul port serveur est
+  d'utiliser un seul objet transport et l'associer à plusieurs objets transport.
+
+o Les fonctions établissant une connection, listen() et connect(), placent un
+  évent de détection de déconnexion par le remote peer. 
+
+o Lors de la déconnexion, close() utilise un event pour détecter la confirmation
+  de déconnexion par le remote peer.
+
+o La fonction close() doit se dépatouiller avec les status des sockets au moment
+  de la fermeture, ainsi que l'appartenance d'un socket à un backlog actif ou
+  ayant existé. Pour l'analyse de l'état du backlog, je procède par un parcours
+  de tout le tableau de backlog. Une méthode utilisant des compteurs de
+  référence et des suppressions automatique lorsque les références tombent à
+  zéro pourraient être plus efficaces, notamment pour la gestion du transport
+  object utilisé par un backlog.
+
+o La gestion des sockets UDP "connectés" est supportée. Un socket UDP peut être
+  "connecté" sur un ordinateur distant au moyen de connect(). Il peut alors être
+  utilisé avec les fonctions send() et recv(). Recv() renvoie alors vers
+  recvfrom_filtre afin d'exploiter la possibilité de filtrer les interlocuteurs
+  afin de ne recevoir des datagrammes que de l'ordinateur sur lequel on a
+  connecté.
+
+o Les fonctions de gestion de noms utilisent beaucoup la base de registre.
+  Celle-ci contient les adresses des serveurs DNS, les adresses du localhost sur
+  ses diverses interfaces, et le nom des interfaces. 
+
+o Lors de l'appel à gethostbyname() sur le nom du localhost obtenu par
+  gethostname(), un hostent est généré contenant les adresses IP des différentes
+  interfaces. Je n'ai pas extrait le nom des interfaces de la base de registre,
+  mais il pourrait être pratique de les recopier dans le hostent.
+
+o Les fonctions gethostname() et getpeername() reposent principalement sur la
+  fonction de support query_dns(). Celle-ci utilise les fonctions Audi-K UDP
+  afin de procéder aux résolutions DNS et aux reverse DNS. Le code de query_dns
+  utilise un évent pour détecter les réponses du serveur DNS. Celles-ci peuvent
+  être très rapides, plus rapides que compléter la demande et se mettre en
+  écoute ! Placer un event avant d'envoyer la requête permet d'être certain de
+  ne pas louper la réponse. C'est notamment le cas lors de l'utilisation de
+  VmWare qui induit un petit lag : testée sur le système hôte, la méthode sans
+  event fonctionne, mais testée sur le système virtuel, elle ne fonctionne plus !
+
+o Quelques fonctions n'ont pas leur équivalent winsock :
+  o accept_filter() fonctionne comme accept() mais bénéficie des capacités de
+    filtrage offertes par TDI.
+  o recvfrom_filter() pour les mêmes raisons.
+  o Getlocalname() s'utilise comme getpeername() sur un socket TCP connecté. Le 
+    sockaddr en retour indique l'IP de l'interface utilisée et le port local qui
+    sert à cette connexion.
+
+o Les fonctions de support comme itoa, atoi, ntohs etc ne sont pas dans les
+  fichiers source du niveau_socket mais dans les netutil.
+
+
+
+5 - La marque du capitaine crochet
+
+
+
+Fun with razors... and TDI
+
+Oh god !
+
+Il est  maintenant  temps, sur un fond de Velvet  Acid Christ,  de retourner les
+tripes de TDI afin de le faire gémir ! Je parle bien d'attaquer directement TDI.
+Il ne s'agit pas d'une mise en situation d'Audi-K.
+
+Je prévoyais  de mettre en place quelques hooks pour monter un sniffer TDI. Mais
+finalement  cette idée ne me  plait pas trop.  Le mécanisme des events,  le fait
+qu'un  event ne reçoit  pas  forcément  le  message  entier  mais  doit  parfois
+procéder à des recv  pour  avoir la suite,  tout ceci  rend la réalisation  d'un
+sniffer TDI très lourdingue.  Ce projet devrait migrer vers NDIS pour  être plus
+simple à réaliser. J'ai par contre trouvé une utilisation divertissante du hook.
+
+Que serait  le monde  sans Google ?  Voilà  ce que  je  vous propose  de faire !
+Plonger un ordinateur  dans un monde de ténêbres  et d'obscurantisme  médiéval !
+Plus de gmail, plus de google news,  plus rien que le silence. Pis encore que le
+silence :  une réponse  inattendue  et  méprisante.  Et  pourquoi  pas remplacer
+Google par Yahoo ?  (Mes excuses aux utilisateurs de Yahoo,  il me faut une tête
+de turc répondant à certains critères)
+
+Comme vous  vous en doutez,  tout ça va se  baser sur des  manipulations de DNS.
+Internet Explorer, Firefox, tout et n'importe quoi en Userland se repose sur les
+fonctions de résolution  DNS fournies par Windows,  typiquement gethostbyname en
+WinSock.  Cette application peut  être plus  discrète avec les  fonctions réseau
+évoluées  où il  suffit d'indiquer  une URI  à la  fonction  pour  rapatrier  le
+résultat. J'ai un blanc, mais vous voyez ce que je veux dire.
+
+Les programmes  développés par  des petits malins peuvent, comme Audi-K,  recom-
+poser les requêtes DNS à la main en UDP.
+
+Mais dans le noyau et vu par TDI, tout ça revient (presque) au même : demander à
+un transport object  d'envoyer  un  buffer  mappé  en  MDL  à  destination  d'un
+TA_IP_ADDRESS  dont le port est 53.  Voilà un point  d'interception  unique  qui
+semble intéressant !
+
+J'explique le  (presque)  de tout à l'heure, ou plutôt je vais décrire des symp-
+tômes observés : cette méthode marche dans mon XP virtuel, sur un autre poste XP
+doté de McAfee, mais pas sur un 3eme XP doté d'Avast! Allez un peu de franchise:
+je n'ai pas cherché plus loin. Mon code actuel change les adresses des fonctions
+majeures du  driver object en Top  de Stack et pas directement  de TcpIp,  et je
+n'ai  même pas  essayé  de voir si ça  changeait  quelque chose.  C'est donc  un
+"article dons vous êtes le héro",  et si vous voulez  vous attaquer à  ce point,
+allez en <76>.
+
+Ensuite,  si un programme passe par un proxy, typiquement le navigateur Web, on
+ne verra qu'une seule résolution  DNS : le nom du proxy. Et encore,  si ca n'est
+pas directement  l'IP  qui est configurée  dans le  browser. Ensuite, le naviga-
+teur ne fait que parler au proxy.  On ne verra pas l'historique des navigations.
+Par contre s'il n'y a pas de proxy, c'est tout bon.
+
+Le moteur  de hook est  simple, basé sur le  changement d'adresses des fonctions
+dans le tableau  IRP_MJ  du  driver  object.  Les  fonctions do_the_hook_stuff()
+et  do_the_unhook_stuff() font l'affaire.  Cette méthode est plus que connue, je
+ne vais pas entrer dans les détails.
+ - Allocation d'un driver object  en variable globale, et  renseignement  de son
+   tableau IRP_MJ en recopiant les adresses contenues  dans le tableau IRP_MJ du
+   driver object de TcpIp.
+ - Renseignement du tableau IRP_MJ du driver object de TcpIp avec l'adresse d'un
+   handler générique
+ - Traitement spécial réservé au handler de l'IRP IRP_MJ_INTERNAL_DEVICE_CONTROL
+   vu que  c'est elle  qui fait tout  le  travail.  J'y place  l'adresse  de  ma
+   fonction dispatch_device_io_control()
+
+C'est justement dispatch_device_io_control qui va faire le petit  tour de magie,
+rendant google invisible:
+ - Accéder au stack location courant
+ - vérifier que la minor function est 09 (send datagram)
+ - maper les paramètres de l'irp dans une structure pTdiRequest
+ - celle-ci contient une structure TA_IP_ADDRESS décrivant la destination
+ - je veux parler à un port distant 53 ?
+
+Hahaaaa on a intercepté ce qui semble très fortement être une demande de résolu-
+tion DNS / RDNS ! Accéder au buffer est facile : il suffit de calculer l'adresse
+en mémoire à partir  de l'adresse de page et de  l'offset dans la page depuis le
+champ MDL de l'IRP.
+
+Que peut-on  faire avec  ces requêtes ?
+ - Les logger, pour surveiller l'activité DNS de l'ordinateur. Ca peut mettre en
+   évidence le fait par exemple que tel peogramme, tel jeu, l'air de rien, tente
+   de connecter le serveur de l'éditeur pour faire je ne sais quoi.  Vérifier si
+   il y a une nouvelle version peut-être ?
+   
+ - Si je souhaite être moins permissif, un test sur le nom que l'ordinateur veut
+   résoudre permet de droper des requêtes. Au lieu de faire un :
+   return OriginalTdiDriverObject.MajorFunction[pIoStackLocation->MajorFunction]
+  (pDeviceObject, pIrp);
+  un return STATUS_UNSUCCESSFUL;  bloquera l'émission  de la requête  DNS.  Vous
+  vouliez rendre tout google inaccessible ?  Si la chaine du nom à résoudre con-
+  tient la sous-chaine "google", alors drop ! (toute référence à  un geste spor-
+  tif   d'une quelconque coupe de monde est purement fortuite. Ce genre d'événe-
+  ments   a déjà trop tendance à envahir les médias pour que je m'y mette !  Non
+  aux OPA lancées sur nos esprits !)
+    
+ - Le remplacement à  la volée de la requête me  pose encore des problèmes. J'ai
+   bien tenté  la chose suivante :  si demande de www.google.com,  faire en fait
+   résoudre www.yahoo.fr.  C'est très con et ca ne sert à rien.  Mais en plus ça
+   ne marche pas très bien. Il reste une solution  plus brutale et moins poliva-
+   lente :  écraser  le nom dans la  requête d'origine...  si et seulement si le
+   nouveau nom a la même taille que l'ancien !
+
+L'écrasement du buffer à la volée est le plus fun. Mais le moins flexible. Pour-
+quoi se limiter à avoir le même nom ? J'ai cherché à contourner la difficulté
+mais je suis arrivé à ces conlusions :
+- je ne suis pas maître de la chaîne MDL
+- je ne suis pas maître du (des) buffer(s) décrits dans cette chaîne
+- si je remplace le  MDL de l'IRP par  un MDL custom, décrivant un buffer custom
+  contenant une requête custom, je ne le maîtrise plus
+- c'est l'aveuglette totale
+- les IRP provenant de résolutions DNS "classiques"  venant de gethostbyname par
+  exemple marhceront toujours pareil. Je pourrais reverser ce qui se passe avant
+  l'appel à send  datagram, regarder la  completion routine,  le callback, et me
+  faire une  idée de  commenr ça marche.  Je serais alors en mesure  de nettoyer
+  proprement la MDL, et  vraisemblablement le buffer.  Je m'arrangerais pour que
+  ma propre MDL et mon propre buffer soient  bien nettoyées par le mécanisme que
+  je parasite. Ca peut marcher nickel...
+- Jusqu'au jour où je tombe sur un send datagram  procédant à une résolution DNS
+  codée  à la main  par un utilisateur.  Le buffer ne se désalloue plus,  il est
+  en mémoire  globale dans  son projet par exemple. Alors mon buffer  n'est plus
+  libété  automatiquement  et ma mémoire  fuit.  En plus je tente de  libérer le 
+  buffer d'origine alors qu'il n'a pas été alloué dynamiquement. Catastrophe !
+- Moralité : pas bon !
+
+- Autre solution : droper la requête d'origine et envoyer une nouvelle. Hmmmmmmm
+  alors il faut  que je colle  sur MA requête la même  completion routine, et le
+  même TDI  event. Donc  il faut que j'espionne les créations  d'event pour tous
+  les transports  objects sur le device UDP  du système afin de  l'avoir sous le
+  coude. Ben oui, comme on l'a vu pour les fonctions DNS d'Audi-K, la réception
+  de la réponse DNS doit passer par un  event sinon on va  la louper si le poste
+  rame, typiquement un VMWARE. Les  résolutions DNS de  Windows ne plantent  pas
+  sous VMWARE,  c'est  donc  qu'elles  passent  par  un  event de  réception  de
+  datagramme. Solution trop lourdingue, ca ne me plait pas. 
+  
+- Encore une approche qui semble sympa : droper la demande initiale mais envoyer
+  un nouvel appel à send  datagram avec un socket  custom dans une nouvelle  IRP
+  mais sur le même transport object.  Du coup on récupère l'event sans même s'en
+  soucier.  Reste à gérer la completion routine.  Mais là encore, je ne suis pas
+  maître de  trop de choses :  la completion  routine nettoie-t-elle des buffers
+  que je souhaite voir rester en mémoire ? Catastrophe !
+  
+Même en tentant des approches différentes (changer la MDL dans l'IRP, envoyer
+carrément tout une nouvelle requête DNS à partir de rien, renvoyer une requête
+DNS sur le même transport object), on se retrouve dans la même situation : on ne
+maîtrise PAS des facteurs  systèmes de la requête d'origine, et on ne maîtrisera
+PLUS nos propres facteurs  systèmes. Les facteurs systèmes, c'est le buffer, son
+allocation, sa libération, le MDL seul ou en chaîne...
+
+Voilà pourquoi il faut que la chaîne résolue de  remplacement et la chaîne réso-
+lue parasite aient la même taille.  Et dans ces conditions ça fonctionne parfai-
+tement et de manière très stable.
+
+
+
+6 - Conclusion
+
+Et voilà  c'est terminé.  Je regrette de vous refiler Audi-K comme ça,  un peu à
+poil.  Je prévoyais  de faire  quelques trucs  fun avec  histoire  d'ajouter  du
+piment.  Malheureusement,  je manque un peu de temps en ce moment, alors ça sera
+pour une prochaine fois.  Mais les idées ne manquent pas :  comme l'envoi à dis-
+tance de  clefs de  registre  (HKLM\SAM\SAM\Domains\Account\Users ?),  de  pages
+mémoire du noyau ou  de process  utilisateur,  la construction d'un  mini-kernel
+shell...
+
+
+J'ai laissé la grosse fonction  faisant tourner les jeux de test dans  le source
+new_tdi. A défaut de donner des exemples concrets d'utilisation, cette fonction
+permet de montrer les diverses utilisations de l'ensemble des fonctions d'Audi-K
+
+
+
+7 - Références
+
+Articles :
+Trip in da TCPIP
+http://ivanlef0u.free.fr/?p=60
+
+Driver Development Part 5: Introduction to the Transport Device Interface
+http://www.codeproject.com/system/driverdev5asp.asp
+
+Kernel mode sockets library for the masses
+http://www.rootkit.com/newsread.php?newsid=416
+
+High performance kernel mode web server for Windows
+http://www.acc.umu.se/~bosse/High%20performance%20kernel%20mode%20web%20server
+%20for%20Windows.pdf
+
+NDIS and TDI Hooking, Part II
+http://www.rootkit.com/newsread.php?newsid=253
+
+Answers to TDI Frequently Asked Questions
+http://www.pcausa.com/resources/tdifaq.htm
+
+Windows Driver Kit: Network Devices and Protocols : TDI Drivers
+http://msdn2.microsoft.com/en-us/library/aa505007.aspx
+
+DNS Query - Retrieve IPv4 address of hostnames
+http://www.codeproject.com/internet/dns_query.asp
+
+
+Livres :
+Chacun de ces livres sur la programmation  système et noyau sur Windows comporte
+une partie, plus ou moins bien détaillée, de la programmation TDI.
+ - Rootkits: Subverting the Windows Kernel
+ - Professional Rootkits
+
+A bientôt pour de nouvelles aventures !
+
+Code:
+
+begin 644 DNSpy.tar.gz
+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
+#V`0`
+`
+end
+
+
+
+|------------------------------------------------------------------[ EOF ]----|
+|-----------------------------------------------------------------------------|
+

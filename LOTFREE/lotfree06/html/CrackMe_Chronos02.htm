@@ -1,0 +1,190 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<!-- #06                   03/12/2003//-->
+<!--        kharneth@free.fr         //-->
+<!--    Page codée sous HTML-KIT     //-->
+<!-- http://www.chami.com/html-kit   //-->
+
+<html>
+<head>
+
+<title>CrackMe Chronos02</title>
+<style type="text/css">
+<!--
+td { border-width:1;border-style:solid;border-color:#FFFFFF;font-size:12; }
+a:active { color: #E00000; }
+a:hover { color: #E00000; }
+a:link { color: #E00000; }
+a:visited { color: #E00000; }
+
+-->
+</style>
+</head>
+
+<body bgcolor="#000000" color="#FFFFFF" style="font-family:Arial;">
+<table style="color:#FFFFFF;" align="center" width="650" cellspacing="8" cellpadding="6" border="0">
+<tr><th colspan="4" style="font-size:30;color:#E00000;">CrackMe 02 de Chronos<br><i style="font-size:20;">par Kharneth</i></th></tr>
+<tr><th colspan="4">&nbsp;</th></tr>
+<tr><th colspan="2" width="33%">Outils utilisés</th><th width="34%">Public</th><th width="33%">Cible</th></tr>
+<tr><td colspan="2">&nbsp;- PEId<br>&nbsp;- SmartCheck<br>&nbsp;- Exdec<br>&nbsp;- OllyDbg<br>&nbsp;- Calculatrice<br>&nbsp;- Papier, Crayon, Cerveau 5.0</td><td width="34%" align="center">&nbsp;Débutant en Cracking<br>ayant de bonnes connaissances en programmation</td>
+    <td width="33%" align="center">&nbsp;<a href="../cracking/CrackMe_Chronos.exe">CrackMe02_Chronos</a></td>
+  </tr>
+
+<tr><th colspan="4">&nbsp;</th></tr>
+
+<tr><td width="20%"><b>1 - PEId</b></td><th colspan="3">&nbsp;</th></tr>
+<tr><td></td><td colspan="3"><p align="justify">
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Une petite analyse de <i>PeId</i> pour vérifier que le programme n'est pas compressé ou crypté. 
+Il ne l'est pas. Par contre on voit qu'il a été compilé avec Visual Basic 5.0. <br>Pour étudier les programmes VB, l'outil idéal est <i>Smartcheck</i>.
+</p></td></tr>
+
+<tr><td nowrap><b>2 - SmartCheck</b></td><th colspan="3">&nbsp;</th></tr>
+<tr><td></td><td colspan="3"><p align="justify">
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;On lance SmartCheck et on charge le programme avec <i>Ctrl+o</i>.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Mais là, petit problème! <i>Smartcheck</i> nous indique que le programme a été compilé en P-Code (<i>Pseudo-code généré par Visual Basic et interprété à l'exécution</i>)! Si on l'ouvre avec un debugger ou un désassembleur, on ne verra pas grand chose puisque le programme ne saura pas traduire les opcodes.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;On va quand même voir ce qu'arrive à capturer <i>SmartCheck</i>. On click sur "Continue Opening Programm" puis on lance le crackme avec <i>F5</i>. On entre un code bidon (<i>123456</i>), une MsgBox apparaît, on la ferme ainsi que le crackme.
+</p><center>
+        <img src="../media/Smart01.gif" alt="" width="501" height="49">
+</center><p align="justify">
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;De retour dans <i>SmartCheck</i>, on double-click sur l'événement <i>_Click</i>, et on ne voit que la MsgBox... Pas bon! :o( On se démonte pas, on sélectionne la MsgBox puis on click sur le bouton "Show All Events".
+</p><center>
+        <img src="../media/Smart02.gif" alt="" width="500" height="370">
+</center><p align="justify">
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;On parcours chaque ligne en surveillant la fenêtre de droite mais la seule ligne intéressante est <i>varR8FromStr</i> qui convertie notre chaîne en Réel. On remarque aussi que toutes les adresses données par <i>SmartCheck</i> sont dans la dll. Il va donc falloir regarder plus profondément en utilisant <i>OllyDbg</i>. Avant de se lancer, il faut comprendre comment fonctionne le P-Code. 
+</p>
+</td></tr>
+
+<tr><td width="20%"><b>3 - P-Code</b></td><th colspan="3">&nbsp;</th></tr>
+<tr><td></td><td colspan="3"><p align="justify">
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Un programme compilé en P-code utilise une machine virtuelle (<i>MSVBVM60.DLL ou 50 suivant la version de VB</i>) qui charge les opcodes pour les interpréter à l'exécution. Chaque fonction utilisée dans un programme VB possède un numéro identifiant. Lorsque le programme est compilé, c'est ce numéro qui est écrit à la place des instructions ASM classiques. Puis quand on l'exécute, le moteur est chargé en mémoire et lit la liste d'opcode en exécutant les fonctions correspondantes, au fur et à mesure. Ces opcodes étant propres à VB, le debugger ne sait pas les traduire et les affiche tel quel:
+</p><center>
+        <img src="../media/Olly01.gif" alt="" width="500" height="189">
+</center><p align="justify">
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Les opcodes sont codés sur 8 bits et offrent donc 256 fonctions différentes. En réalité, il en existe pas loin de 1500! En fait, les 5 dernières valeurs, 0xFB à 0xFF sont réservés pour spécifier une nouvelle table offrant 256 nouvelles fonctions. Par exemple, dans le listing ci-dessus, pour accéder à la fonction CR8Str, le moteur lit l'opcode 0xFC à l'adresse 00402AD2, voit qu'il doit utiliser la table Lead1, puis lit l'opcode suivant, 0x33 à l'adresse 00402AD3, correspondant à la fonction dans la nouvelle table.  Nous avons donc la table de base plus les 5 tables Lead0 à Lead4. Les opcodes servent à déterminer l'adresse de la fonction dans la dll.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Voici la structure d'une fonction telle qu'on peut la voir dans la dll:
+</p><center>
+        <img src="../media/Olly02.gif" alt="" width="500" height="45">
+</center><p align="justify">
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Ceci est la fonction MulR8, son opcode est 0xB3 et elle ne prend aucun paramêtre. Toutes les instructions avant <i>XOR EAX, EAX</i> sont propres à la fonction. Ici on voit que cette fonction multiplie 2 réels entre eux stockés dans ST0 et ST1. Ensuite, toutes les fonctions respectent le schéma suivant:<br>
+- Le nombre d'octet utilisé par la fonction est ajouté à ESI<br>
+- EAX est mis à 0<br>
+- L'opcode suivant est chargé dans AL<br>
+- ESI est incrémenté de 1<br>
+- Un saut est effectué vers la fonction suivante après avoir calculé son adresse à partir de son opcode<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Ici, la fonction ne prend aucun paramêtre. Elle n'utilise donc qu'un seul octet, celui de son opcode. ESI contient en permanence l'adresse de l'opcode suivant.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Mais pour cracker un programme compilé en P-code, il serait assez fastidieux de tracer dans la dll en essayant de compendre chaque fonction! Heureusement pour nous, certains Reversers ont eu la bonne idée de traduire tous les opcodes par leur nom de fonction plus ou moins compréhensible! On va donc utiliser <i>Exdec</i> pour "désassembler" le programme et traduire les opcodes.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Il faut cependant savoir comment sont nommées les fonctions avant de pouvoir déchiffrer le listing.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Les types de variables sont abrégés ainsi:<br>
+- <b>Bool</b> pour Boolean<br>
+- <b>Str</b> pour String<br>
+- <b>I2</b> pour Byte<br>
+- <b>UI2</b> pour Unsigned Byte<br>
+- <b>I4</b> pour Long<br>
+- <b>R4</b> pour Single<br>
+- <b>R8</b> pour Double<br>
+- <b>Var</b> pour Variant (<i>Variable qui peut être de n'importe quel type!</i>)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Dans les fonctions, les abréviations suivantes sont également employées:<br>
+<b>C</b> indique une conversion (<i>ex: CR8Str convertie une chaîne en Réel</i>).<br>
+<b>Lit</b> déclare une valeur (<i>ex: LitI2 place un Byte sur la pile</i>).<br>
+<b>Ld</b> pour Load.<br>
+<b>Rf</b> pour Référence.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Les 2 dernières sont utilisées pour la gestion des variables. Le moteur doit accomplir quelques opérations avant d'utiliser les variables. La variable est d'abord copiée dans une cellule d'un tableau, puis une référence vers cette cellule est créée pour être finalement chargée dans une adresse mémoire. Lorsque le programme veut accéder à cette valeur, le moteur charge l'adresse mémoire dans la pile puis remonte jusqu'à la variable par la référence.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Par exemple, la fonction <i>FStVar</i> crée une référence vers un variant, puis la fonction <i>FLdRfVar</i> charge l'adresse de la référence sur la pile.<br>   
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;On note aussi que:<br>
+- <b>Branch</b> correspond à un saut.<br>
+- <b>BranchF</b> saute si faux (False).<br>
+- <b>BranchT</b> saute si vrai (True).<br> 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;On peut maintenant passer à l'analyse du listing grâce à <i>Exdec</i>.
+</p>
+</td></tr>
+
+<tr><td width="20%"><b>4 - Exdec</b></td><th colspan="3">&nbsp;</th></tr>
+<tr><td></td><td colspan="3">
+<pre>
+Proc: 402b90
+402AB4: 00 LargeBos               
+402AB6: 00 LargeBos               
+402AB8: 4b OnErrorGoto            
+402ABB: 00 LargeBos               
+402ABD: 04 FLdRfVar                local_008C
+402AC0: 21 FLdPrThis              
+402AC1: 0f VCallAd                 text
+402AC4: 19 FStAdFunc               local_0088
+402AC7: 08 FLdPr                   local_0088
+402ACA: 0d VCallHresult            get__ipropTEXTEDIT
+402ACF: 6c ILdRf                   local_008C
+402AD2: Lead1/33 CR8Str           
+402AD4: f3 LitI2:                  0x29a   666  (..)
+402AD7: eb CR8I2                  
+402AD8: b3 MulR8                  
+402AD9: Lead2/6b CVarR8           
+402ADD: Lead1/f6 FStVar            local_009C
+402AE1: 2f FFree1Str               local_008C
+402AE4: 1a FFree1Ad                local_0088
+402AE7: 00 LargeBos               
+402AE9: Lead3/c1 LitVarI4:         ( local_61FF00AC )0x1c9e00 (1875456)
+402AF1: Lead1/f6 FStVar            local_00BC
+402AF5: 00 LargeBos               
+402AF7: 04 FLdRfVar                local_009C
+402AFA: 04 FLdRfVar                local_00BC
+402AFD: 28 LitVarI2:               ( local_00AC ) 0x2  (2)
+402B02: Lead0/b4 MulVar           
+402B06: Lead0/33 EqVarBool        
+402B08: 1c BranchF:                402B46
+402B0B: 00 LargeBos               
+402B0D: 27 LitVar_Missing         
+402B10: 27 LitVar_Missing         
+402B13: 27 LitVar_Missing         
+402B16: f5 LitI4:                  0x0  0  (....)
+402B1B: 3a LitVarStr:              ( local_00AC ) Bravo, tu peu aller 
+</pre>
+<p align="justify">
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Voici le début du listing généré par <i>Exdec</i>, la fin n'étant pas intéressante. Les adresses indiquées sont les mêmes que dans le debugger. On peut donc mettre un point d'arrêt sous <i>OllyDbg</i> (<i>Memory On Access</i>) à l'adresse voulue puis tracer dans la dll pour étudier ou suivre l'exécution d'une fonction. Lorsque le moteur lira l'opcode, l'exécution du programme s'arrètera au début de la fonction.<br>
+Analyse du listing:<br>
+&nbsp;402AB4: - L'opcode 00 correspond au NOP, la fonction ne fait rien. <br>
+&nbsp;402AB8: - OnErrorGoto est assez explicite même si on ne voit pas où il doit aller...(<i>Next ?</i>)<br>
+&nbsp;402ABD: - La référence à l'indice 8C est placée sur la pile. Elle correspond à la variable qui contiendra notre pass.<br>
+&nbsp;402ACA: - 4 paramêtres sont passés à la fonction VCallHresult qui récupère les caractères du champ texte (<i>Notre pass!</i>).<br>
+&nbsp;402ACF: - La référence à la variable qui contient notre pass est placé sur la pile.<br>
+&nbsp;402AD2: - Pour être convertie en Réel.<br>
+&nbsp;402AD4: - Le Byte 666 est déclaré sur la pile<br>
+&nbsp;402AD7: - Pour être convertie en Réel<br>
+&nbsp;402AD8: - Et multiplié par notre passe.<br>
+&nbsp;402AD9: - Le résultat est convertie en Variant.<br>
+&nbsp;402ADD: - Puis stocké avec la référence 9C.<br>
+&nbsp;402AE1: - Les 2 références précédemment utilisées par la fonction VCallHresult sont détruites.<br>
+&nbsp;402AE9: - Déclaration de la valeur 1875456.<br>
+&nbsp;402AF1: - Référencé en BC.<br>
+&nbsp;402AF7: - La référence du résultat de l'opération sur notre passe est placée sur la pile.<br>
+&nbsp;402AFA: - Ainsi que la référence à 1875456.<br>
+&nbsp;402AFD: - La valeur 2 est déclarée<br>
+&nbsp;402B02: - Pour être multipliée par 1875456.<br>
+&nbsp;402B06: - L'égalité entre les 2 précédentes références est testée.<br>
+&nbsp;402B08: - Si le résultat est faux, on saute vers l'affichage de la MsgBox "Pas Bon..." sinon la MsgBox "Bravo..." est affichée.<br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Pour simplifier tout ça, notre pass, convertie en réel, multiplié par 666 doit être égal à 1875456 multiplié par 2 soit:<br><br>
+<center>Bon Pass = 1875456 * 2 / 666 = <b>5632</b></center>
+
+</p>
+</td></tr>
+<tr><td align="center"><i>Kharneth</i></td><th colspan="3">&nbsp;</th></tr>
+
+<tr><th colspan="4" style="font-family:Times;font-weight:normal;"><br><i>
+
+ Ride the snake, ride the snake<br>
+To the lake, the ancient lake, baby 
+
+</i><br><br></th></tr>
+<tr><td colspan="4"><center>
+Merci à toutes les personnes qui se battent pour que l'Information soit accessible à tous!</center>
+</td></tr>
+
+<tr>
+    <th colspan="4"><img src="../media/chaos2.jpg" alt="" width="100" height="105"> 
+    </th>
+  </tr>
+
+</table>
+</body>
+</html>
