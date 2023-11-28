@@ -18,6 +18,17 @@ French old computer security ezines restaured to be used as mirrors, the sources
 * Blackclowns
 * NoCooking
 * hackoff
+* CounterStrike
+* Cyber Hackers Guide
+* Brain Storm Crew
+* Blast
+* Black Lotus
+* Belgian Hackers Zone
+* Apocalypse
+* AOH
+* Alternative
+* Allianx
+* Alcibiade
 
 # How to deploy it
 

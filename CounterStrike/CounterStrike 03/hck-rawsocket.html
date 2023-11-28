@@ -1,0 +1,427 @@
+<html>
+<head>
+<title>Les RAW Sockets</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+</head>
+
+<body bgcolor="#FFFFF8" text="#000000" link="#339966" vlink="#339966" alink="#339966">
+<table width="283" border="0" cellspacing="0" cellpadding="0" background="IMAGES/fnd_stitre.jpg" height="40">
+  <tr> 
+    <td width="23">&nbsp;</td>
+    <td width="294"><font face="Verdana, Arial, Helvetica, sans-serif" color="#FFCC00"><font color="#CCCCCC" size="2"> 
+      LES RAW-SOCKETS EN C SOUS LINUX </font></font></td>
+  </tr>
+</table>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+  <u><b>Introduction</b></u><br>
+  <br>
+  Dans cet article je vais tenter (je dis bien tenter) de vous expliquer comment 
+  utiliser les RAW Sockets en C sous UNIX. Je tiens a preciser que cet article 
+  a ete ecrit a partir de la traduction de &quot;Documentation about native raw 
+  socket programming&quot; ecrit par Nitr0gen de Exile 2000 (www.exile2k.org). 
+  J'espere que son auteur ne verra pas d'inconvenient a une telle utilisation 
+  de sa documentation, dans ce cas, s'il lit ces mots et qu'il est en desaccord, 
+  qu'il me mail. Fermons maintenant cette parenthese pour revenir a nos moutons. 
+  Cet article est le premier d'une suite qui vous expliquera la programmation 
+  avec les RAW_SOCK. Dans cet article vous apprendrez a faire vous-memes un header 
+  IP. J'attends de vous d'avoir des connaissances en C et en TCP/IP, car sinon 
+  vous ne comprendrez rien... Sur ce, bonne lecture :)</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> <b><u>1) Definition</u></b><br>
+  <br>
+  Qu'est-ce qu'un socket RAW certains pourront se demander... Un RAW socket est 
+  un socket (sans blagues ? ;) dans lequel les champs des en-tetes des paquets 
+  envoyes sont remplis a la main. On accede donc a un niveau de programmation 
+  reseau assez bas puisqu'on atteins directement les couches de TCP/IP. Cela va 
+  nous permettre de forger des paquets comme bon nous semble et ainsi de nous 
+  adonner a des occupations telles que le spoofing (RIP,ICMP,IP...) le hijacking, 
+  le portmap 'furtif' et bien d'autres choses encore!</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> <u><b>2) Comment 
+  programmer un RAW_Socket?</b></u><br>
+  <br>
+  En soit, programmer avec des RAW n'est pas tres complique, il suffit de savoir 
+  faire (comme toutes choses vous me direz). Il suffit de remplir les structures 
+  concernees et de faire un appel a la fonction socket() remplie comme suit (soit 
+  dit en passant, si vous n'y connaissez rien en programmation reseau, allez lire 
+  l'article sur ce sujet dans ce mag, c'est indispensable!) :<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;socket(DOMAIN,TYPE,PROTO)</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> Dans DOMAIN on 
+  met AF_INET pour l'IPv4 ou AF_INET6 pour l'IPv6.<br>
+  Dans TYPE, vu qu'on fait des sockets RAW, on met SOCK_RAW.<br>
+  Dans PROTO, et bien ca depend du protocole que l'on veut utiliser. Allez voir<br>
+  votre /etc/protocols et trouvez le nombre correspondant : ce sera la valeur<br>
+  a mettre a la place de PROTO.</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> Ok, maintenant 
+  on va remplir nos en-tetes, puis on va envoyer nos<br>
+  paquets tout simplement avec &quot;send&quot;. Voyons comment remplir l'en-tete 
+  IP...</font></p>
+<p><br>
+  <font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b><u>3) Comment 
+  remplir l'en-tete IP</u></b><br>
+  <br>
+  Voyons tout d'abord la structure correspondant a un tel en-tete :<br>
+  struct iphdr {<br>
+  #if __BYTE_ORDER == __LITTLE_ENDIAN<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;unsigned int ihl:4;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;unsigned int version:4;<br>
+  #elseif __BYTE_ORDER == __BIG_ENDIAN<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;unsigned int version:4;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;unsigned int ihl:4;<br>
+  #else<br>
+  # error &quot;Please fix &lt;bits/endian.h&gt;&quot;<br>
+  #endif<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;u_int8_t tos;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  /* correspond au TOS */<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;u_int16_t tot_len; &nbsp;&nbsp;/* 
+  correspond a la taille totale */<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;u_int16_t id; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/* 
+  correspond a l'identification */<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;u_int16_t frag_off; &nbsp;/* 
+  correspond au fragment offset */<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;u_int8_t ttl; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/* 
+  correspond au TTL */<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;u_int8_t protocol; &nbsp;&nbsp;/* 
+  correspond au protocole de transport */<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;u_int16_t check; &nbsp;&nbsp;&nbsp;/* 
+  correspond a la somme de controle */<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;u_int32_t saddr; &nbsp;&nbsp;&nbsp;&nbsp;/* 
+  correspond a l'IP source */<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;u_int32_t daddr; &nbsp;&nbsp;&nbsp;/* 
+  correspond a l'IP destination */<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/* the options start here. 
+  */<br>
+  };</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">(Nota : les commentaire 
+  francais ne sont pas dans le .h a la base, c'est moi qui les ai rajoute pour 
+  cet article).<br>
+  Bon, voila notre structure a remplir. Maintenant, interessons nous au shema 
+  de l'en-tete IP d'un paquet...</font></p>
+<table width="567" border="1" cellspacing="0" cellpadding="0">
+  <tr bordercolor="#FFFFFF"> 
+    <td width="99"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0</font></div>
+    </td>
+    <td width="54"> 
+      <div align="center"></div>
+    </td>
+    <td width="110"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">15-16</font></div>
+    </td>
+    <td colspan="2"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">31</font></div>
+    </td>
+  </tr>
+  <tr> 
+    <td width="99" height="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">version<br>
+        (4) </font></div>
+    </td>
+    <td width="54" height="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">IHL<br>
+        (4) </font></div>
+    </td>
+    <td width="110" height="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">TOS<br>
+        (8) </font></div>
+    </td>
+    <td colspan="2" height="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Taille 
+        totale<br>
+        (16) </font></div>
+    </td>
+  </tr>
+  <tr> 
+    <td colspan="3" height="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Identification<br>
+        (16) </font> </div>
+    </td>
+    <td width="135" height="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Flags<br>
+        (3) </font></div>
+    </td>
+    <td width="157" height="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Frag 
+        Offset<br>
+        (13) </font></div>
+    </td>
+  </tr>
+  <tr> 
+    <td width="153" colspan="2" height="45"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">TTL<br>
+        (8) </font></div>
+    </td>
+    <td width="110" height="45"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Protocole<br>
+        (8) </font></div>
+    </td>
+    <td width="292" colspan="2" height="45"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Somme 
+        de controle<br>
+        (16) </font></div>
+    </td>
+  </tr>
+  <tr> 
+    <td width="555" colspan="5" height="47"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Adresse 
+        IP source<br>
+        (32) </font></div>
+    </td>
+  </tr>
+  <tr> 
+    <td width="555" colspan="5" height="45"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Adresse 
+        IP destination<br>
+        (32) </font></div>
+    </td>
+  </tr>
+  <tr> 
+    <td width="555" colspan="5" height="44"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Options<br>
+        (si il en a) </font></div>
+    </td>
+  </tr>
+  <tr> 
+    <td width="555" colspan="5" height="44"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Donnees</font></div>
+    </td>
+  </tr>
+</table>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> <br>
+  Ok, les chiffres entre parentheses representent la longueur, en bits, des champs. 
+  La taille de l'en-tete IP options et donnees exceptees est de 20 octets. Voyons 
+  a quoi correspondent les differents champs :</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> *Version(4bits) 
+  : il s'agit de la version d'IP utilisee. Actuellement nous en sommes a IPv4 
+  (donc version 4), IPv6 va bientot etre officialise.<br>
+  *IHL(4bits) : l'IHL (Internet Header Lenght) est la taille, en words de 32bits 
+  (donc en DWord, ceux qui ignorent a quoi cela correspond allez apprendre l'ASM), 
+  de l'en-tete IP du paquet. Si aucune option n'est utilisee, la valeur de l'IHL 
+  devrait etre 5.<br>
+  *TOS(8bits) : TOS (Type Of Service) est utilise pour specifier de quels services 
+  on veut profiter.</font></p>
+<table width="90%" border="1" cellspacing="0" cellpadding="0" bgcolor="#CCCCCC" align="center">
+  <tr>
+    <td height="321"> 
+      <p align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b>-----------------------------{EXPRESS 
+        NOTE}-----------------------------</b></font></p>
+      <p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> Nous avons 
+        4 choix pour remplir le champs TOS. Voici leur nom et leur<br>
+        valeur en hexadecimal :<br>
+        NOM &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Valeur<br>
+        -------------------------- &nbsp;------<br>
+        1- Minimize delay&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0x10<br>
+        2- Maximize throughtput &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0x08<br>
+        3- Maximize reliability &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0x04<br>
+        4- Minimize monatary cost &nbsp;&nbsp;&nbsp;0x02</font></p>
+      <p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> 1: Ceci 
+        est utilise par les applications qui envoient de petits paquets de donnees 
+        et qui ont besoin d'une reponse rapide.<br>
+        2: Ceci, a contrario du premier, est utilise par les applications qui 
+        envoient beaucoup de donnees.<br>
+        3: prime sur la qualit&eacute; de la connexion<br>
+        4: prend le chemin qui occasionnera le moins de cout mon&eacute;taire</font></p>
+      <p align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> 
+        <b>-----------------------------{END OF EXPRESS NOTE}-----------------------------</b></font></p>
+    </td>
+  </tr>
+</table>
+<p><br>
+  <font face="Verdana, Arial, Helvetica, sans-serif" size="2"> * Taille totale(8bits) 
+  : ce champs correspond a la taille du datagramme. Par exemple nous avons un 
+  header (= en-tete, mais header c'est plus court ;) IP et un header TCP (flag 
+  syn) sans donnee. Ces deux headers ayant chacun une taille de 20, nous mettrons 
+  dans le champs de la taille totale du header IP 40 (20+20).<br>
+  * Identification(16bits) : l'identification est utilisee pour identifier les 
+  fragments. Quand les datagrammes ne sont pas<br>
+  fragmentes, ce champs est inutile. Generalement, l'identification est incrementee 
+  de datagrammes en datagrammes. Chaque fragment a la meme identification que 
+  le premier datagramme.<br>
+  * Flags(3bits) : Attention, il ne s'agit pas des flags des headers TCP (SYN, 
+  ACK,FIN,RST,...), ne confondez pas. Ce champs est utilise pour la fragmentation.</font></p>
+<table width="90%" border="1" cellspacing="0" cellpadding="0" bgcolor="#CCCCCC" align="center">
+  <tr> 
+    <td height="275"> 
+      <p align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b>-----------------------------{EXPRESS 
+        NOTE}-----------------------------</b></font></p>
+      <p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> Nous avons 
+        4 flags differents. Les voici :<br>
+        Nom &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Valeur(hexa)<br>
+        ------------------------ ------<br>
+        No flags &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0x00<br>
+        More fragment&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0x01<br>
+        Don't fragment&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0x02<br>
+        More and don't fragment &nbsp;&nbsp;0x03<br>
+        <br>
+        More fragment indique qu'il y a d'autres fragments apres ce paquet, don't 
+        fragment indique de ne pas fragmenter ce paquet et More and don't fragment 
+        est la combinaison des deux. Il est evident que lorsque vous<br>
+        fragmentez un datagramme, le dernier paquet n'a pas le flag More Fragment!</font></p>
+      <p align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> 
+        <b>-----------------------------{END OF EXPRESS NOTE}-----------------------------</b></font></p>
+    </td>
+  </tr>
+</table>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+  * Fragment Offset(13bits) : Ceci est l'offset a l'interieur du paquet. Le datagramme 
+  aura un offset de 0. Ce champs est calcule sur 64bits. Le dernier offset sera 
+  egal a tot_len.<br>
+  * TTL(8bits) : Le champs TTL (time to live) est utilise pour specifier combien 
+  de sauts (etudiez le routage des reseaux et RIP si vous ne savez pas a quoi 
+  ceci correspond) que le datagramme va pouvoir effectuer avant d'etre balance 
+  aux oubliettes. A chaque saut, le TTL est decremente de 1. Lorsque le TTL atteins 
+  0, le paquet &quot;meurt&quot;. Ceci est utilise afin de ne pas avoir de paquets 
+  lances dans des boucles infinies sur un reseau (si on pouvait faire de telles 
+  boucles, je ne vous explique meme pas le flood qu'on pourrait balancer sur le 
+  reseau!!!!).<br>
+  * Protocol(8bits) : Ce champs est utilise pour indiquer le protocole de la couche 
+  transport utilise. Pour connaitre ces protocoles, allez voir dans '/usr/include/linux/in.h'. 
+  Sinon, voici les trois principaux :<br>
+  </font><font face="Verdana, Arial, Helvetica, sans-serif" size="2">IPPROTO_TCP 
+  0x06<br>
+  IPPROTO_UDP 0x11<br>
+  IPPROTO_ICMP 0x01</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> * Somme de controle(16bits) 
+  : La somme de controle est utilisee pour verifier l'integrite des datagrammes 
+  et donc eviter toute modification exterieure de ces derniers. Voyez le paragraphe 
+  pour la calculer.<br>
+  * Adresse IP source(32bits) : IP source du datagramme.<br>
+  * Adresse IP destination(32bits) : IP destination du datagramme.<br>
+  * Options (taille variable) : je ne m'attarderai pas sur ce point.</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b><u>4) La fragmentation</u></b><br>
+  <br>
+  Il y a fragmentation lorsque le MTU (Maximum Transfert Unit) est inferieur a 
+  la taille totale du datagramme. Dans ce cas la, on opere une fragmentation : 
+  le datagramme est divise en plusieurs pieces plus petites que l'on envoie. A 
+  l'arrivee, les pieces sont reassemblees pour reformer le datagramme. Mais, pour 
+  que la machine de destination puisse reformer le<br>
+  datagramme convenablement il faut que :</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> * Le flag 'More 
+  Fragment' soit mis a tous les fragments sauf le dernier<br>
+  * Le Fragment Offset pour le premier paquet doit etre a 0<br>
+  * L'identification doit etre la meme pour tous les fragments, pour savoir<br>
+  a quel datagramme appartient quel fragment<br>
+  * Si le header IP d'un fragment est modifie, la somme de controle doit etre<br>
+  recalculee<br>
+  * La taille totale des premiers fragments a pour valeur le MTU</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b><u>5) Le calcul 
+  de la somme de controle</u></b><br>
+  <br>
+  Calculer la valeur de la somme de controle n'est pas complique, il suffit d'utiliser 
+  cette fonction :</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> unsigned short 
+  in_cksum(unsigned short *addr, int len);</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> - unsigned short 
+  *addr est un pointeur sur le header IP (donc sur la structure)<br>
+  - int len est la taille du header IP</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><u><b>6) Exemple 
+  de code</b></u><br>
+  <br>
+  Voici un exemple de code tire de l'article de Nitr0gen. Meme si j'ai supprime 
+  le commentaire ou le copyright figurait, ce dernier s'applique toujours. J'ai 
+  traduit les commentaires. La fonction buildip_nf() forge un<br>
+  header IP sans fragmentation, la fonction buildip_f() forge un header IP avec<br>
+  fragmentation : le datagramme est separe en deux fragments et le MTU est de<br>
+  280 octets...</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+  /* debut du code */</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> void buildip_nf() 
+  { &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<font color="#339933">/* 
+  fonction forgeant un header IP */</font></font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;struct 
+  iphdr *ip;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<font color="#339933">/* 
+  un petit pas pour l'homme, un grand pas pour l'humanite */</font></font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ip 
+  = (struct iphdr *) malloc(sizeof(struct iphdr));<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<font color="#339933">/* 
+  allocation dynamique de memoire */</font></font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ip-&gt;ihl 
+  = 5; <font color="#339933">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/* 
+  IHL en octets */</font><br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ip-&gt;version 
+  = 4; <font color="#339933">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/* 
+  version du protocole IP */</font><br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ip-&gt;tos 
+  = 0; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<font color="#339933">/* 
+  tos est une implementation experimentale de IP */</font><br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ip-&gt;tot_len 
+  = sizeof(struct iphdr) + 452 <font color="#339933">/* taille totale du paquet 
+  */</font></font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ip-&gt;id 
+  = htons (getuid());<br>
+  <font color="#339933">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/* 
+  identification du paquet, inutile pour nous */</font></font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ip-&gt;ttl 
+  = 255; <font color="#339933">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/* 
+  le paquet peut effectuer 255 sauts */</font><br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ip-&gt;protocol 
+  = IPPROTO_TCP; <font color="#339933">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/* 
+  si nous utilisons TCP en transport */</font><br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ip-&gt;saddr 
+  = inet_addr(&quot;127.0.0.1&quot;); <font color="#339933">&nbsp;&nbsp;&nbsp;&nbsp;/* 
+  ip source */</font><br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ip-&gt;daddr 
+  = inet_addr(&quot;127.0.0.1&quot;); <font color="#339933">&nbsp;&nbsp;&nbsp;&nbsp;/* 
+  ip destination */</font></font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ip-&gt;check 
+  = in_cksum((unsigned short *)ip, sizeof(struct iphdr));<br>
+  <font color="#339933">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/* 
+  somme de controle */<br>
+  </font>}</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+  void buildip_f() {<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;struct 
+  iphdr *ipf;</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ipf 
+  = (struct iphdr *) malloc(sizeof(struct iphdr));</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> <font color="#339933">/**** 
+  PREMIER FRAGMENT ****/</font><br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ipf-&gt;ihl 
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= 5;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ipf-&gt;version 
+  &nbsp;&nbsp;= 4;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ipf-&gt;tos 
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= 0;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ipf-&gt;tot_len 
+  &nbsp;&nbsp;= sizeof(struct iphdr)+256 <font color="#339933">/*taille du premier 
+  fragment*/</font><br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ipf-&gt;id 
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= htons(1); <font color="#339933">/* 
+  pour identifier nos fragments */</font><br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ipf-&gt;ttl 
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= 255;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ipf-&gt;protocol 
+  = IPPROTO_TCP;<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ipf-&gt;saddr 
+  &nbsp;&nbsp;&nbsp;&nbsp;= inet_addr(&quot;127.0.0.1&quot;);<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ipf-&gt;daddr 
+  &nbsp;&nbsp;&nbsp;&nbsp;= inet_addr(&quot;127.0.0.1&quot;);<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ipf-&gt;frag_off 
+  &nbsp;= htons(0x2000); <font color="#339933">/* Fragment 0 et More Fragment 
+  */</font><br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ipf-&gt;check 
+  &nbsp;&nbsp;= in_cksum((unsigned short *)ipf,sizeof(struct iphdr)+256);</font></p>
+<p align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> <font face="Verdana, Arial, Helvetica, sans-serif" size="2">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<font color="#339933">/* 
+  ON ENVOIE LE PREMIER FRAGMENT ICI */</font></font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><font color="#339933">/**** 
+  DEUXIEME FRAGMENT ****/</font><br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ipf-&gt;tot_len 
+  = sizeof(struct iphdr) + 196 <font color="#339933">/* update de la taille */</font><br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ipf-&gt;frag_off 
+  = htons(32); <font color="#339933">/* offset du fragment, pas de MF */</font><br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ipf-&gt;check 
+  = incksum((unsigned short *)ipf,sizeof(struct iphdr)+196);<br>
+  <font face="Verdana, Arial, Helvetica, sans-serif" size="2">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<font color="#339933">/* 
+  on est force de recalculer la somme de controle */</font><br>
+  <font face="Verdana, Arial, Helvetica, sans-serif" size="2">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<font color="#339933">/* 
+  vu qu'on a modifie l'en-tete du paquet */ </font></font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<font color="#339933">/* 
+  ON ENVOIE LE SECOND FRAGMENT ICI */</font>}<br>
+  </font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b><u>7) Conclusion</u></b><br>
+  <br>
+  Voila, c'est tout pour l'instant. Dans la prochaine partie de cet article, qui 
+  paraitra dans Counter Strike #4, vous apprendrez a forger des headers TCP et 
+  UDP. En attendant, amusez-vous avec le peu que je vous ai donn&eacute;... </font> 
+</p>
+</body>
+</html>

