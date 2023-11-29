@@ -35,6 +35,8 @@ Some articles are also sensitive and may mention, for example, the creation of h
 * Alternative
 * Allianx
 * Alcibiade
+* TDC mag by DHS
+* Dead End mag by DHS
 
 # How to deploy it
 
@@ -46,7 +48,8 @@ PRs (Pull Requests) are welcome. Please ensure that your restored version functi
 
 Only French ezines are accepted. Do not submit a PR to add an English ezine, as this repository is dedicated solely to archiving old French papers.
 
-# There is a list of missing ezines that we potentially need
+Here is the list of the actual contributors:
 
-N/A
-
+- [@Xyl2k](https://github.com/Xyl2k)
+- [@tobozo](https://github.com/tobozo)
+- [@vbouzon](https://github.com/vbouzon)
