@@ -1,0 +1,178 @@
+<html>
+<head>
+<title>Serial Fishing de Winamp Skinmaker 1.05</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{  Serial Fishing  }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center> </font> </pre> <font size=3 color=#ffffff>
+<br><br>
+<font size=2 color=#00ffff>
+Serial Fishing de Winamp Skinmaker 1.05<br>
+********************************<br><br>
+</font>
+<font size=3 color=#ffffff>
+Ce cours s'adresse a tous, en plus la technique est réelement simple a comprendre.
+Si vous voulez un peu plus compliqué lisez le tut sur le hard-patching.<br><br>
+
+<font color=#ff0000>Qu'est ce qu'un serial fishing ?</font><br><br>
+
+Le sérial Fishing revient a trouver le bon numéro de série en fonction de son
+nom pour s'enregistrer dans un shareware.<br>
+Par exemple ici on a winamp skinmaker mais il est limité a 30 jours.
+Bien que ce prog n'ait aucun interet (lol!) on a pas envie d'etre limité.<br>
+Pour s'enregistrer on va dans help->about->register on met :<br><br>
+<font color=#ff0000>
+nom : TiPiaX<br>
+serial : 123456<br><br>
+</font>
+et la le prog nous dit : "Fail","Wrong registration number"<br>
+
+
+Et nous on se dit :"si seulement j'avais un bon numéro de série".<br>
+Hehe on va donc le trouver par nous meme.<br><br>
+
+Vous l'aurez donc compris le serial fishing represente un crack "propre"
+car il n'y a pas besoin de modifier le prog (logique ...)<br><br>
+
+</font><font size=2 color=#00ffff>
+Les outils :<br>
+*********
+</font>
+<font size=3 color=#ffffff>
+<br><br><font color=#ff0000>
+Softice (le 4 fera l'affaire)<br><br>
+</font>
+pour ceux qui ne savent pas l'utiliser, lisez ma doc toute simple sur hccc#1
+ou sur www.fcf2000.cjb.net.<br><br>
+</font><font size=2 color=#00ffff>
+Le crack :<br>
+********<br><br>
+</font>
+</font><font size=3 color=#ffffff>
+hehe, on retourne dans help->about->register puis on met :<pre>
+<font color=#ff0000>
+nom : TiPiaX
+serial : 1911
+</font></pre>
+puis on fait ctrl+d pour reveiller softice et on tape ce breakpoint:<br><br>
+
+bpx getdlgitemtexta<br><br>
+</font>
+</font><font size=2 color=#00ffff>
+explication :<br>
+**********<br><br>
+</font><font size=3 color=#ffffff>
+
+-on met 1911 car ça fait 777 en hexa (j'avais vu ça dans un tut de bama il
+ y a longtemps et je l'ai gardé)<br><br>
+
+-getdlgitemtexta c'est l'API qui va chercher le chaines de caractères dans
+ une boite de dialogue, ici pour récupérer le nom et le sérial.<br><br>
+
+
+On refait ctrl+d pour quitter softice puis on fait OK dans la boite de dialogue.<br><br>
+
+Miracle : Softice s'est reveillé, le bpx a donc fonctionné.<br>
+On fait F5 pour continuer car il y a 2 chaines a loader et Si rebreak encore.<br>
+kewl.<br>
+Mais la on est dans les apis windows.
+On fait donc F12 pour revenir dans le prog et voila ce qu'on a :<br>
+(regarder en haut de l'ecran de softice pour voire la valeur des registres)<br>
+a partir de 0040A117 :<br>
+<pre><font color=#ff0000>
+***************************************************************************************
+
+PUSH  1E
+PUSH  EAX
+PUSH  000003FD
+PUSH  ESI
+CALL  EDI           <-- L'appel a getdlgitemtexta
+LEA   EAX,[ESP+0C]  <-- fout notre nom dans eax, pour le voir faites bouton droit dessus
+                        puis display, Ho y a marque TiPiaX
+PUSH  EAX           <-- met le nom sur la pile
+CALL  0040B1C0      <-- call qui verifie que le nom fait 4 lettres au moins
+ADD   ESP,04
+MOV   EBX,EAX
+LEA   EAX,[ESP+2C]
+PUSH  EAX
+CALL  0040B090      <-- Fait apparaitre 777 dans EAX (eh oui c'est notre serial)
+ADD   ESP,04
+MOV   EDI,EAX       <-- y fout notre serial dans EDI
+TEST  EDI,EDI
+JNZ   0040A17B ---------  <-- on saute
+                       |
+                       |
+                       |
+|----------------------- <-- on atteris
+|
+>  CMP  EDI,EBX     <-- y compare notre serial a un truc
+   JNZ  0040A1B4    <-- puis nous balance ou non sur : "Wrong registration number"
+
+***************************************************************************************
+</font></pre>
+Arf ça ne sert a rien de forcer ce dernier saut car on obtiendrait le bon message
+mais on serait pas enregistré.<br>
+Vous remarquez qu'il faut donc un nom de plus de 4 lettres.<br>
+pour ceux que ça interresse la procédure appelée par le call qui vérifie ça est :<br><br>
+<pre><font color=#ff0000>
+------------------------
+
+CALL [KERNEL32!lstrlen]  <-- renvoie taille dans esp+2c
+MOV  [ESP+2C],EAX        <-- met la taille dans eax
+CMP  EAX,04              <-- compare la taille a 4
+JGE  0040B1F3            <-- si > 4 on saute et on peut s'enregistrer sinon on saute pas
+                             et on peut pas s'enregistrer
+------------------------
+</font></pre>
+La ligne intéressante est celle ci :
+<pre>
+
+CMP  EDI,EBX
+
+
+</pre>
+Et oui a quoi le programme peut il bien comparer notre serial entré.<br>
+Mais bien sur ! Il le compare au bon serail pour savoir si le notre est valide.<br><br>
+
+On trace donc jusqu'a cette ligne avec F10 puis on tape (sous Si bien sur) :<br><br>
+<pre>
+? EBX
+</pre>
+on obtient :<br>
+<pre>
+0023BC97  0002342039
+</pre>
+23BC97 correspond a notre bon serial en hexa et :<br>
+2342039 au bon serial en decimal.<br><br>
+
+Il n'y a plus qu'a s'enregistrer avec :<font color=#ff0000><pre>
+
+nom : TiPiaX
+serial : 2342039
+
+</font></pre>
+Enfin quand meme, maintenant que je connais comment il est foutu j'aimerais bien essayer
+de le keygener. Lol j'ai peur de me surestimer. Si vous lisez ce qui suit c'est que non.
+hehe<br>
+
+
+
+
+
+Et ça RouLeZ.<br>
+J'espere avoir ete clair. Merci d'avoir lu ce tut.<br>
+ps: pour enlever vos breakpoints faites : "bc*" sous Si<br><br>
+<font color=#ffff00><center><br>
+<pre>TiPiaX / French Cracking Force</pre><br>
+</font>
+</center>
+</body>
+</html>
+
+

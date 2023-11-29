@@ -1,0 +1,86 @@
+Cible: QuickClear
+~~~~~~
+Tools: SoftICE, Delphi
+~~~~~~
+Dispo: 32bit.com
+~~~~~~
+
+Intro:
+~~~~~~
+QuickClear est un prog pour supprimer les cookies, les fichiers temporaires, etc... On peut difficilement faire plus simple que son algorythme de generation de serial. Allons-y...
+
+Keygen:
+~~~~~~~
+Lancons le soft, on nous propose tout de suite de nous enregistrer, donc rentrez des infos bidons (pour moi: Kahel/1638). Puis appuyez sur Ctrl+D pour faire apparaitre la fenetre de SoftICE. Posez un breakpoint sur hmemcpy (bpx hmemcpy). Puis appuyez sur F5 pour retournez sous windows. Validez vos informations dans le programme. SoftICE se lance, appuyez une fois sur F5 (car 2 textboxs remplies). Puis faites un peu de backtrace pour arriver jusqu'ici: 
+
+0177:004012DD	52		push edx
+0177:004012DE	50		push eax    << d eax = notre nom
+0177:004012DF	E8ACFEFFFF	call 00401190
+
+Executons le "call 00401190" pour arriver à ceci:
+
+0177:00401190 8B542404                mov edx, dword ptr [esp+04]	<<------|
+0177:00401194 56                      push edi					|
+0177:00401195 33F6                    xor esi, esi				|
+0177:00401197 85D2                    test edx, edx				|
+0177:00401199 7438                    je 004011D3				|
+0177:0040119B 57                      push edi					|
+0177:0040119C 8BFA                    mov edi, edx				|
+0177:0040119E 83C9FF                  or ecx, FFFFFFFF				| Sans interêt particulier...
+0177:004011A1 33C0                    xor eax, eax				|
+0177:004011A3 F2                      repnz					|
+0177:004011A4 AE                      scasb					|
+0177:004011A5 F7D1                    not ecx					|
+0177:004011A7 49                      dec ecx					|
+0177:004011A8 5F                      pop edi					|
+0177:004011A9 7428                    je 004011D3			<<------|
+0177:004011AB 8A02                    mov al, byte ptr [edx]            <<------ Mets dans "al" la première lettre de notre nom (nom=edx)
+0177:004011AD 8BCA                    mov ecx, edx			<<------ Mets notre nom dans ecx
+0177:004011AF 84C0                    test al, al			<<------ Teste si un nom est entré
+0177:004011B1 740D                    je 004011C0			<<------ Si pas de nom (al=0) alors on se casse
+0177:004011B3 0FBEC0                  movsx eax, al			<<------ Al passe dans Eax = lettres de notre nom (? eax)
+0177:004011B6 03F0                    add esi, eax			<<------ Ajoute ces lettres dans esi
+0177:004011B8 8A4101                  mov al, byte ptr [ecx+01]		<<------ Met la lettre suivante dans al
+0177:004011BB 41                      inc ecx				<<------ Puis incrémente ecx
+0177:004011BC 84C0                    test al, al			<<------ Si al = 0 plus de lettres au nom et on se casse
+0177:004011BE 75F3                    jne 004011B3			<<------ Sinon on refait un tour de routine
+0177:004011C0 69F6B8110100            imul esi, 000111B8		<<------ On multiplie le resultat de la routine par 111B8h (70072d)
+0177:004011C6 8B4C240C                mov ecx, dword ptr [esp+0C]       <<------ Met notre serial (1638) dans ecx
+0177:004011CA 33C0                    xor eax, eax			<<------ Remet eax à 0
+0177:004011CC 3BCE                    cmp ecx, esi			<<------ Compare ecx (faux serial) à esi (bon serial)
+0177:004011CE 5E                      pop esi				<<------ Restaure esi
+0177:004011CF 0F94C0                  sete al
+0177:004011D2 C3                      ret				<<------ Retour à la routine principale
+
+~~~~~~~~~~
+
+0177:004012E4 83C408                  add esp, 00000008
+0177:004012E7 85C0                    test eax, eax			<<------ Si notre serial est faux eax=1 et on se casse sinon ...
+0177:004012E9 0F848A000000            je 00401379			<<------ On continue et on est enregistré
+
+
+Donc voilà pour le programme, la routine de verification du serial est donc trés simple:
+-On ajoute la valeur héxadécimale de chaque lettre qq part
+-On multiplie cette valeur par 111B8 ou 70072 en décimal
+La valeur obtenue est le bon serial. Programmer le serial est trés simple dans tous les langages, j'ai fait le mien en delphi car la source est trés simple à comprendre. Voici le code du keygen ou Edit1.Text est la textbox ou le nom sera rentré et et Edit2.Text la textbox ou le serial sera affiché:
+
+procedure TForm1.Edit1Change(Sender: TObject);
+var ascii,i,result: integer;
+var serial: string;
+begin
+
+	for i:=1 to length(edit1.text) do	//boucle
+begin
+
+ascii:=ord(edit1.text[i]); //ascii contient les lettres de notre nom
+result:=result+ascii;	   //qui sont ajoutées dans result
+end;
+result:=result*70072;      //on multiplie le tout par 70072
+serial:=inttostr(result);  //on convertit notre resultat en chaine de caractéres
+edit2.text:=serial;        //que l' on affiche dans edit2.text
+end;
+
+Ce qui me donne Nom: Kahel/Serial: 33984920 Et ca roule.
+
+Kahel
+kahel@citeweb.net

@@ -1,0 +1,199 @@
+<html>
+<head>
+<title>Asm et les Virii</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{{{{{{{{{{{{{{{  Asm et les Virii  }}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center> </font> </pre> <font size=3 color=#ffffff>
+<br><br>
+<font size=3 color=#ffffff>
+Ah les virii !(traduisez virus au pluriel pour les neuneus)
+En ce moment c'est la folie, tout le monde en parle, a la télé, a la radio...
+Tout ça car toute la planète c'est bouffée un macro-virus.(ILoveYou)<br><br>
+
+Un macro-virus est un virus écrit grace aux outils microsoft (word,excel...) codé
+dans un language très similaire au visual basic.<br>
+En d'autres termes on dit un virus de merde.<br><br>
+
+Mais bon il se rattrappe quand meme car il est pas mal foutu,bref.<br><br>
+
+M'enfin tout de meme c'est surement marrant de coder un virus qui nike que des blaireaux
+utilisant outlook mais pour moi un virus, c'est un prog en ASM !<br>
+Oui moi fervant défenseur du c++ vous le dit, un virus ce code en asm !
+C'est une convention, c'est tout.<br><br>
+
+Non seulement pour la mini-taille du prog mais aussi pour les possibilités
+démultipliés. (et oui l'asm est le language le plus proche de la machine).<br><br>
+
+J'ajouterais a ceci que lorsqu'on prog un programme en asm, c'est votre programme.
+Désassemblez le et vous verrez ce que vous avez écrit (enfin presque quoi).
+Mais faites le en c, ou en delphi etc... puis desassemblez le.
+ArGGG c'est quoi c'te merde, votre prog y part en couille, les 98% du listing a 
+l'écran c'est pas de vous et vous osez dire que c'est votre programme !<br><br>
+
+Vous comprenez maintenant mon point de vue, mais comme je le dis sur #asm.fr on
+ne code pas quake3 en asm !(meme si une partie est faite en asm)<br>
+En revanche dans le cas d'un virus il n'y a pas de raison de ne pas le coder en
+asm (j'en connais qu'on le sourire jusqu'aux oreilles de me voir dire ça !lol)<br><br>
+
+On va donc s'interresser a la programmation des virus mais pas tout d'un coup.<br>
+On va d'abord faire un .exe (le com sera utilisé pour le code final du virus car
+c'est plus petit) qui cherche des fichiers .com(c'est plus simple a infecter aussi)
+et qui affiche un message dans le dos quand il en trouve un.<br><br>
+
+En effet un virus a besoin de trouver les fichiers qu'il va contaminer !lol!<br><br>
+<font size=2 color=#00ffff>
+recherche de .com<br>
+***************<br><br>
+</font>
+Cela peut vous aider peut etre de lire mon tut asm dans hccc#3 (encore que...)<br>
+(sauf si vous connaissez deja).<br>
+Pour que vous ayez moins de mal lisez :<br>
+"Assembleur théorie,pratique et exercices de Bernard Fabros aux éditions Marabout".
+Appelé aussi : "l'indispensable pour l'assembleur" ou encore "assembleur pratique"<br><br>
+
+(je viens de l'acheter !lol, il coute que 50 FF)<br><br>
+
+Le Matos indispensable : Il vous faut SOFTICE ! cet outil bien connude nous autres crackers
+mais cette fois ci c'est pour DEBUGGER pour de VRAI ! Eh oui, vous pensiez pas que ça vous
+arriverais un jour.<br>
+-Un éditeur hexa (je crois que c'est clair quand même)<br>
+-Une doc sur les interruptions (si vous trouvez pas mailez moi, j'en mettrais une sur mon site)
+<br><br>
+
+Pour chercher un fichier on utilisera les API dos necessaires.<br><br><br>
+
+
+La premiere est en c: findfirst()<br><br>
+<font size=3 color=#00ffff><pre>
+---------------------------------------------------------------- 
+
+ce qui correspond en asm a : l'interruption 21h code 4Eh 
+pour l'appeler :
+
+mettre en ah : 4Eh
+       en dx : l'offset ou il y a le nom du fichier a rechercher
+               (finissant par un 0)
+puis   int 21h pour appeler l'interruption
+note : renvoie le handle du fichier en ax
+       nom du fichier a l'offset 9Eh
+
+----------------------------------------------------------------
+</pre></font>
+ensuite on utilise (en c toujours) : findnext()
+<font size=3 color=#00ffff><pre>
+----------------------------------------------------------------
+
+soit en asm : l'interruption 21h code 4Fh
+pour l'appeler :
+
+mettre en ah : 4Fh
+puis      int 21h pour appeler l'interruption
+note : renvoie le handle du fichier en ax
+       nom du fichier a l'offset 9Eh
+
+----------------------------------------------------------------
+</pre></font>
+Maintenant le code source a copier dans un fichier texte puis a 
+renommer en tipiax.asm :<br>
+<font size=3 color=#ff0000><pre>
+************************ tipiax.asm ****************************
+
+.386
+
+donnees segment para public use16    ;segment des datas
+
+fichiercom db '*.COM',0 ; 
+chaine1 db '-fichier com detecte ','$' ;termine par $ pour marquer la fin
+chaine2 db 'pas de fichier com','$'    ;la chaine pour afficher du texte
+
+donnees ends                         ;fin du segment
+
+code segment para public use16       ;segment de code
+     assume cs:code, ds:donnees      ;cs pointe sur code et ds sur donnees
+
+debut:
+   mov ax, donnees             ;ax recoit l'adresse du segment de donnees
+   mov ds,ax                   ;ds recoit ax
+
+;--findfirst----------
+
+   mov ah,4Eh
+   mov dx,offset fichiercom
+   int 21h
+   jc pasdecom                ;si on trouve pas on va a pasdecom
+
+trouve:
+
+;--affichage----------       ;sinon on affiche a l'ecran
+
+   mov dx, offset chaine1
+   push ax
+   mov ax,0900h
+   int 21h
+   pop ax
+
+;--findnext----------        ;et on cherche encore
+
+   mov ah,4Fh
+   int 21h
+   jc fin                    ;si y en a pas on se casse
+   jmp trouve                ;si y en a on revient
+
+pasdecom:
+
+   mov dx, offset chaine2    ;affichage de pas de com trouve
+   push ax                   ;on sauve ax car on le modifie
+   mov ax,0900h
+   int 21h
+   pop ax                    ;on recupere ax
+
+
+fin:
+
+   mov ax,4C00h             ;on quitte
+   int 21h
+
+endp
+code ends
+pile segment para stack use16 'stack' ;segment de la pile
+     db 2048 dup (?)                  ;de 2048 octets
+pile ends                             ;fin du segment
+end debut
+
+
+****************************************************************
+</pre></font>
+<br>
+Ca a l'air long comme ça mais c'est tout con, je vous promet.<br>
+pourquoi ne declare t'on pas les segments avec :<br>
+.data<br>
+.code<br>
+....<br>
+et bien parce que la, contrairement a la derniere fois c'est un prog
+16 bits et non 32 bits.<br>
+Donc toute les merdes ou y a marqué segment etc vous vous en foutez c'est juste
+pour montrer comment on fait en .exe 16 bits mais si vous captez pas laissez tomber
+car notre virus se sera un .com<br><br>
+
+pour afficher le message on utilise l'int 21h et le code 09h.
+Tout en mettant l'offset de la chaine de caractere dans dx<br><br>
+
+pour compiler :<br><br>
+<font size=3 color=#00ffff><pre>
+tasm tipiax.asm
+tlink tipiax.obj
+</font></pre>
+Vous vous en serez rendu compte je suis en merde en asm (beh oui j'avoue).
+Donc vous pouvez me poser des questions mais y a des chances que je sache pas
+y repondre (sauf sur mon code evidemment)<br><br><br>
+<font size=3 color=#ffff00><center>
+<pre>TiPiaX / French Cracking Force</pre>
+<br>
+</font></body></html>

@@ -1,0 +1,143 @@
+<html>
+<head>
+<title>Self-Keygen de FTP Xpert 1.30</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{{{{{{{  Self-Keygen de FTP Xpert 1.30  }}}}}}}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center> </font> </pre> <font size=3 color=#ffffff>
+<br>
+
+Ftp Expert est un bon client FTP qui peut servir très souvent. Il serait donc bon de le cracker.<br>
+On va voir une façon peu fréquente de cracker un soft, il va s'auto keygener !<br>
+Bon tout d'abord on se démerde pour avoir un nom ainsi q'un sérial valide. C'est ce qu'on appelle
+le sérial fishing (bah oui, c'est la pêche au sérial :)<br><br>
+
+On va donc dans :<br>
+aide->à propos->enregistrer<br>
+et un joile boite d'enregistrement s'affiche demandant le nom et le sérial. Arrivé ici on essaie les bpx
+habituels (GetDlgItemTextA et GetWindowTextA) mais ça marche pas. On passe donc à la manière
+brute, on remplie les champs de cette manière:
+<font size=3 color=#0000FF>
+<pre>
+nom: TiPiaX
+sérial : 1911
+</font></pre>
+j'ai comme l'impression que je met la même chose à chaque fois ;)<br>
+et on fait un:
+<font size=3 color=#0000FF>
+<pre>
+bpx hmemcpy
+</font></pre>
+Puis on fait ok. Le prog va breaker 4 fois (le bpx hmemcpy est le bpx sur le load des chaines en mémoire).
+on refait la démarche mais quand ça va breaker on va passer les 3 premiers avec F5 puis on va matter
+le code. (faites bc* pour effacer vos bpx). Il faut faire 7 fois F12 pour revenir car pour l'instant nous sommes
+dans les APIs de windows.<br><br>
+
+On trace avec F10 et on voit beaucoup de ret (retour d'un call) on revient donc de loin :). On trace jusqu'à
+arriver en 004BA126:
+<font size=3 color=#0000FF>
+<pre>
+:004BA120 8B55EC                  mov edx, dword ptr [ebp-14]
+:004BA123 8B45FC                  mov eax, dword ptr [ebp-04]
+:004BA126 E80DA0F4FF              call 00404138
+:004BA12B 0F8580000000            jne 004BA1B1
+:004BA131 A128484F00              mov eax, dword ptr [004F4828]
+</font></pre>
+Le call va tester qqchose puis le jne va sauter selon la condition reçue. Regardez par vous même, un simple
+R FL Z pour changer les conditions de saut lorsque vous vous trouvez sur le jne et le prog nous dit
+merci de nous être enregistré. Heureusement pour nous il n'est pas enregistré (sinon pour le keygener
+on est mal, lol).<br><br>
+
+on va rentrer dans le call en faisant un F8 quand on est dessus et on matte encore. On voit pas mal
+de cmp ?,? . (les ? étant des valeurs de registres, lol) on fait des bouton droit->display sur les registres
+testés et on trouve une valeur bizarre dans esi:
+<font size=3 color=#0000FF>
+<pre>
+3434YP-8BV5V7-C1Y48P-4HABLM
+</font></pre>
+Avant de tester voir si c'est le sérial on sauvegarde les fichiers user.dat et system.dat qui sont dans
+c:\windows\    (ce sont les fichiers de la base de registres) comme ça avec un peu de chance on pourra
+se désenregistrer.<br>
+On essaie donc et boudiou c'est le bon sérial ! (on s'en doutait pas un peu, lol)<br>
+Mais putain il doit s'en passer des trucs pour faire un sérial comme ça. J'ai la flemme de le keygener moi.
+On va donc se démerder pour que le prog se keygen tout seul. (la hantise d'un programme, s'autohacker).
+Quand le sérial est faux un boite de message s'affiche. On va se débrouiller pour que celle ci balance
+le sérial valide.<br>
+Le probleme c'est de se désenregistrer. On replace les fichiers copiés de la base de registre, rien n'y fait.
+Le prog s'enregistre d'une autre manière. On le réinstalle, idem, ARGGG.<br>
+on trifouille quand même avec regedit et on trouve en:<br>
+HKEY_CURRENT_USER\Software\Visicom Media\FTPExpert\Enregistrement<br>
+une clé name et sérial. Ya plus qu'a les effacer :). On m'aurait donc menti system.dat et user.dat c'est pas
+tout le reg. (si quelqu'un sait quels sont les fichiers à sauvegarder ça m'aiderait.)<br><br>
+
+Bon retournons à nos moutons :). On sait que le registre ESI pointait sur notre sérial. La valeur de ESI
+était 011CF78. J'ai fait beaucoup d'essai ensuite, mais la meilleure pour éviter les plantages est d'appeler
+un boite de message et de quitter tout de suite après.<br><br>
+
+Vous vous souvenez de notre call en 004BA126, eh bien on va l'écraser et mettre
+tout notre code à la suite. (c'est pas très subtil mais efficace)
+Voici la procédure avant: (offset B9526h donné par Wdasm :)
+<font size=3 color=#0000FF>
+<pre>
+:004BA126 E80DA0F4FF              call 00404138
+:004BA12B 0F8580000000            jne 004BA1B1
+:004BA131 A128484F00              mov eax, dword ptr [004F4828]
+:004BA136 8B00                    mov eax, dword ptr [eax]
+:004BA138 C6806007000000          mov byte ptr [eax+00000760], 00
+:004BA13F 8D55E8                  lea edx, dword ptr [ebp-18]
+:004BA142 8B83D8020000            mov eax, dword ptr [ebx+000002D8]
+:004BA148 E8DB51F8FF              call 0043F328
+</font></pre>
+avant même que ESI ait le serial EAX l'a. On utilise donc EAX.<br>
+après:
+<font size=3 color=#FF0000>
+<pre>
+:004BA126 6A00                    push 00000000
+:004BA128 50                      push eax
+:004BA129 50                      push eax
+:004BA12A 6A00                    push 00000000
+:004BA12C E8FD9FA9BF              call BFF5412E  //call MessageBoxA
+:004BA131 6A00                    push 00000000
+:004BA133 E89233ADBF              call BFF8D4CA  //call ExitProcess
+</font></pre>
+
+Ce code est obtenu par la commande "a 004BA126" de Softice. Tapez cette commande
+puis écrivez le code puis faites echap. Petit rappel sur les messagebox,
+les paramètres 2 et 3 sont le titre et le texte ici remplacés par le
+bon numéro de série :) (pointé par eax).
+On relance et ça marche ! youpi. Je pense que le prog sera joint au mag
+pour vous éviter toute cette foutue manip, mais désormais il sert de keygen,
+l'utiliser pas pour faire du ftp car vous pourrez pas l'enregistrer :)<br><br>
+
+Dernier petit truc, j'ai envie de mettre un petit message:
+"Cracked by TiPiaX - Hccc", pas de problème. On place ça qq lignes
+après notre code, en B9550h par exemple. (soit dans la mémoire:004BA150)
+et on réécrit le code:
+<font size=3 color=#FF0000>
+<pre>
+:004BA126 6A00                    push 00000000
+
+* Possible StringData Ref from Code Obj ->"Cracked By TiPiaX - Hccc!"
+                                  |
+:004BA128 6850A14B00              push 004BA150
+:004BA12D 50                      push eax
+:004BA12E 6A00                    push 00000000
+:004BA130 E8F99FA9BF              call BFF5412E
+:004BA135 6A00                    push 00000000
+:004BA137 E88E33ADBF              call BFF8D4CA
+</font></pre>
+Le tout bien sûr grace à la commande "a" de softice qui convertit votre code
+asm en hexa. Voila c'est fini, si vous avez des questions, vous savez où me
+joindre :)
+
+<font size=3 color=#ffff00><br><br>
+<center>
+<pre>TiPiaX/VDS</pre>
+<br>
+</font></body></html>

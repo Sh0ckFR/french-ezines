@@ -1,0 +1,127 @@
+<html>
+<head>
+<title>Win32 viruses</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{{{{{{{{{{{{{  The Stack Method  }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center> </font> </pre> <font size=3 color=#ffffff>
+<br>
+Pour povoir utiliser les apis il faut tout d'abord localiser kernel32 en mémoire.
+Pour ceci il existe différentes méthodes. Celle que je vais vous expliquer ici
+est la méthode de la pile. Je ne sais pas qui la trouvée en premier mais ça
+m'étonnerait pas que ce soit une des 29A. Bref, lorsque un programme démarre
+dans windows, une valeur est mise sur la pile pour permettre au programme de
+quitter. Par exemple vous avez du remarquer que vous pouviez stopper votre
+programme à l'aide d'une simple instruction RET.<br>
+<br>
+Cette adresse qui est mise sur la pile est une adresse de kernel32. Cependant
+nous ce que nous désirons c'est le début de kernel en mémoire. C'est à dire
+là où on trouve le MZ header.<br><br>
+
+En faisant :
+<font size=3 color=#0000FF>
+<pre>
+mov edx,[esp]
+</font></pre>
+on récupère cette valeur. Attention à ne pas modifier la pile avant. (je ne citerais
+personne...). Cette adresse est du type BFF8XXXX. La première opération à réaliser
+est un:
+<font size=3 color=#0000FF>
+<pre>
+AND edx,0FFFF0000h
+</font></pre>
+Certains rajoutent un F mais cela nous éloigne du MZ au lieu de nous en rapprocher.
+Un petite explication de cette instruction est nécéssaire.
+Le AND agit sur les bits. pour mettre un bit à 1 il faut que les deux bits comparés
+soient à 1.
+F étant une succession de 1 et 0 une succession de 0.<br>
+Par exemple dans notre cas si la valeur de edx était BFF85632 (pris au hasard), après
+ce AND, la valeur sera BFF80000. Ensuite on va décrémenter edx jusqu'à trouver
+le MZ header. Si on le trouve on regarde si il y a le PE header pas loin. Si on trouve
+le PE header, c'est bon c'est finit.<br>
+<br>
+Voila un petit exemple en Masm pour tester tout ça:
+<font size=3 color=#FF0000>
+<pre>
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+;
+;Kernel32 Search Routine - TiPiaX/2001
+;HTTP://www.multimania.com/hccc
+;
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+
+.386
+.model flat, stdcall
+option casemap :none   ; case sensitive
+
+include \masm32\include\windows.inc
+include \masm32\include\kernel32.inc
+include \masm32\include\user32.inc
+includelib \masm32\lib\kernel32.lib
+includelib \masm32\lib\user32.lib
+
+.data
+
+kernel   db "Kernel adress:",0
+kernel32 dd 0
+buffer   db 50 dup (0)
+print    db "%lX",0
+
+.code
+
+start:
+;*********************************************************
+;  Kernel Search Proc
+;*********************************************************
+
+mov	edx, [esp]
+mov	eax,edx
+
+AND	edx,0FFFF0000h
+inc edx
+
+boucle:
+	dec	edx
+	cmp	word ptr [edx],"ZM"
+	jnz	boucle
+
+MZ_found:
+	mov	ecx,edx
+	mov	ecx,[ecx+03ch] 
+	add	ecx,edx 
+	cmp	ecx,eax
+	jg	boucle            ;vérifie que c'est une adresse valide
+	cmp	word ptr [ecx] ,"EP"
+	jnz	boucle
+
+	mov	kernel32,edx
+
+pushad
+   invoke wsprintf,offset buffer,offset print,edx
+   invoke MessageBox,NULL,offset buffer,offset kernel,NULL
+popad
+invoke ExitProcess,0
+
+end start
+
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+</font></pre>
+Bon bah voila je pense que là c'est assez simple à comprendre. Cette méthode de la
+pile est à mon avis la meilleure, mais après c'est à vous de voir.
+ps: l'exe compilé est <a href="../zips/kernel32.exe">joint</a>.<br><br>
+
+Un petit message à certains vxers, arrêtez de copier coller du code que vous ne
+comprenez même pas, c'est vraiment con je trouve. Voila.
+
+
+<font size=3 color=#ffff00><br><br>
+<center>
+<pre>TiPiaX/VDS</pre>
+<br>
+</font></body></html>

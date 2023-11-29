@@ -1,0 +1,299 @@
+<html>
+<head>
+<title>CRACKING - Pas de lamers ici :)</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{{{{{{  Solution du KeygenMe de Analyst  }}}}}}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center> </font> </pre> <font size=3 color=#ffffff>
+<br>
+Sur le site <a href="http://www.keygenning4newbies.cjb.net">http://www.keygenning4newbies.cjb.net</a>
+on peux trouver les KeygenMe de l'Analyst (AcidBurn) qui sont apparemment codés avec un compilateur
+borland. Ces KeygenMe sont très bien pour apprendre. Cependant les solutions proposées sont
+toutes en anglais et je me suis dis qu'une solution en français pourrait en intéresser
+certains. Je vous propose donc ma solution de ce KeygenMe très simple.<br><br>
+
+La première chose à faire est de regarder le programme. On voit qu'on doit donner
+un nom et un sérial et qu'ensuite dans une EditBox on nous dit si le sérial est
+valide ou non. On met donc un nom et un sérial au hasard et on place un:
+<font size=3 color=#0000FF>
+<pre>
+bpx GetWindowTextA
+</font></pre>
+Ensuite on clique sur check sérial. Softice break un fois, on appuie sur F5 et softice
+break une deuxième fois. Il lis donc notre nom et notre sérial.
+On fait un petit F12 pour revenir dans le prog et on matte un peu ce qu'on a.
+Bon y a pas grand chose dans le coin alors on trace un petit peu avec F10 et on arrive
+ici: (vu par Wdasm, j'allais pas tout recopier à la main ;)
+
+<font size=3 color=#FF0000>
+<pre>
+------------------------------------------------------------------------------
+:004010F0 837DD803                cmp dword ptr [ebp-28], 00000003 // nom >= 4 lettres
+:004010F4 7E7B                    jle 00401171
+:004010F6 90                      nop
+:004010F7 90                      nop
+:004010F8 90                      nop
+:004010F9 90                      nop
+:004010FA 33C9                    xor ecx, ecx
+:004010FC 33D2                    xor edx, edx
+:004010FE 33DB                    xor ebx, ebx
+:00401100 33C0                    xor eax, eax
+:00401102 837DD832                cmp dword ptr [ebp-28], 00000032 // nom < 50 lettres
+:00401106 7D69                    jge 00401171
+:00401108 90                      nop
+:00401109 90                      nop
+:0040110A 90                      nop
+:0040110B 90                      nop
+
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:0040111C(C)
+|
+:0040110C 0FBE840D48FFFFFF        movsx eax, byte ptr [ebp+ecx-000000B8] //une lettre dans eax
+:00401114 41                      inc ecx                        //ecx = ecx + 1 = compteur
+:00401115 33C1                    xor eax, ecx                   //xor entre lettre et compteur
+:00401117 03D8                    add ebx, eax                   //resultat dans ebx
+:00401119 3B4DD8                  cmp ecx, dword ptr [ebp-28]    //compare ecx avec taille totale du nom
+:0040111C 75EE                    jne 0040110C                   //si pas fini on prend la
+                                                                 //prochaine lettre et on refait une boucle
+:0040111E 6BC006                  imul eax, 00000006             // eax = eax * 6
+:00401121 C1E307                  shl ebx, 07                    //decalage de bits à gauche
+:00401124 03C3                    add eax, ebx                   //additionne eax et ebx
+:00401126 8945C8                  mov dword ptr [ebp-38], eax    //eax = bon sérial
+:00401129 FF75C8                  push [ebp-38]
+
+* Possible StringData Ref from Data Obj ->"%lX"
+                                  |
+:0040112C 6838B44000              push 0040B438
+:00401131 8D8D80FEFFFF            lea ecx, dword ptr [ebp+FFFFFE80]
+:00401137 51                      push ecx
+:00401138 E8873D0000              call 00404EC4
+:0040113D 83C40C                  add esp, 0000000C
+:00401140 8D8580FEFFFF            lea eax, dword ptr [ebp+FFFFFE80]
+:00401146 50                      push eax
+:00401147 8D95E4FEFFFF            lea edx, dword ptr [ebp+FFFFFEE4]
+:0040114D 52                      push edx
+
+* Reference To: KERNEL32.lstrcmpA, Ord:0000h
+                                  |
+:0040114E E8339C0000              Call 0040AD86
+:00401153 85C0                    test eax, eax
+:00401155 750D                    jne 00401164
+
+* Possible StringData Ref from Data Obj ->"Congratulations! IF this number "
+                                        ->"comes *FROM YOUR* keygen, Write "
+                                        ->"a tutorial dude ;)."
+------------------------------------------------------------------------------
+
+</font></pre>
+
+On recapitule: le programme choppe votre sérial et votre nom avec GetWindowTextA
+ensuite il prend votre nom lettre par lettre. Il crée donc une boucle contenant un
+compteur pour savoir à quelle lettre il en est (ici ecx).
+Ensuite là c'est la mort qui tue, il fait un XOR entre le compteur et la valeur
+de la lettre en hexa puis il additionne toutes les valeurs obtenues dans ebx.
+Quand il a fini le traitement de toutes les lettres il multiplie la valeur de eax
+par 6 (eax étant le résultat du xor entre le compteur et la dernière lettre).
+Il fait un petit décalage de bits avec ebx puis il additionne eax et ebx.
+Ensuite on a notre sérial en eax.<br><br>
+
+Voyons comment on pourrait coder une keygen pour ça. Déja on se prend pas la tête pour
+le coder en c on le fait en asm (copier coller rulez).<br><br>
+
+Voila un exemple de procédure donnant le sérial:
+<font size=3 color=#FF0000>
+<pre>
+------------------------------------------------------------------------------
+
+GenKey proc hwnd:HWND
+	invoke GetDlgItemText,hwnd,IDC_NAME,offset nom,60
+	mov taille,eax
+	cmp eax,03h
+	jle tooshort
+	cmp eax,032h
+	jge toolong
+
+;generate the code
+
+	xor ecx,ecx
+	xor edx,edx
+	xor ebx,ebx
+	xor eax,eax
+
+	lea edx,nom
+
+boucle:
+	movsx eax,byte ptr[edx]
+	inc ecx
+	xor eax,ecx
+	add ebx,eax
+	inc edx
+	cmp ecx,taille
+	jne boucle
+
+	imul eax,06
+	shl  ebx,07
+	add  eax,ebx
+
+
+;end of keygen
+
+------------------------------------------------------------------------------
+
+</font></pre>
+plus simple tu meurt, enfin non, plus simple c'est mon dernier KeygenMe.
+Bref, je vous balance le code entier et n'hésitez pas à essayer le keygen
+qui est joint: (pour Masm)
+
+<font size=3 color=#FF0000>
+<pre>
+------------------------------------------------------------------------------
+
+
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+;
+;ANOTHER KEYGEN by TiPiaX
+;
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+
+.386
+.model flat, stdcall
+option casemap :none   ; case sensitive
+
+include \masm32\include\windows.inc
+include \masm32\include\kernel32.inc
+include \masm32\include\user32.inc
+include \masm32\include\comdlg32.inc
+includelib \masm32\lib\kernel32.lib
+includelib \masm32\lib\user32.lib
+includelib \masm32\lib\comdlg32.lib
+
+DlgProc PROTO :DWORD,:DWORD,:DWORD,:DWORD
+GenKey  PROTO :DWORD
+
+IDD_DIALOG   =   100
+IDC_QUIT     =   600
+IDC_ABOUT    =   500
+IDC_NAME     =  1000
+IDC_SERIAL   =  2000
+
+.data
+titre    db "TiPiaX/VDS",0
+message  db "Greetz to all the cracking and vx scene",13,10
+         db "and to: Drak, Cynabs, Sboub, Artif, Analyst, Kerberos",13,10
+         db "Christal, titi, Bendi, Androgyne, Kerberos and TsT",0
+
+petit    db "The name is too short",0
+long     db "The name is too long",0
+
+ok       db "serial",0
+
+nom      db 60 dup (0)
+serial   db 60 dup (0)
+
+taille   dd 0
+print    db "%lX",0
+
+.data?
+hInstance HINSTANCE ?
+
+.code
+
+start:
+
+   invoke DialogBoxParam, hInstance,IDD_DIALOG,NULL,addr DlgProc,NULL
+
+
+DlgProc proc hwnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM
+
+.IF uMsg==WM_CLOSE
+	invoke ExitProcess,0
+.ELSEIF uMsg==WM_COMMAND
+	mov eax,wParam
+
+	.IF ax==IDC_ABOUT
+		invoke MessageBox,NULL,offset message,offset titre,NULL
+	.ELSEIF ax==IDC_QUIT
+		invoke ExitProcess,0
+	.ELSEIF ax==IDC_NAME
+		invoke GenKey,hwnd
+	.ENDIF
+
+.ELSE
+	mov eax,FALSE
+	ret
+.ENDIF
+mov eax,TRUE
+ret
+DlgProc endp	;fin de dlgproc
+
+GenKey proc hwnd:HWND
+	invoke GetDlgItemText,hwnd,IDC_NAME,offset nom,60
+	mov taille,eax
+	cmp eax,03h
+	jle tooshort
+	cmp eax,032h
+	jge toolong
+
+;generate the code
+
+	xor ecx,ecx
+	xor edx,edx
+	xor ebx,ebx
+	xor eax,eax
+
+	lea edx,nom
+
+boucle:
+	movsx eax,byte ptr[edx]
+	inc ecx
+	xor eax,ecx
+	add ebx,eax
+	inc edx
+	cmp ecx,taille
+	jne boucle
+
+	imul eax,06
+	shl  ebx,07
+	add  eax,ebx
+
+
+;end of keygen
+	invoke wsprintfA,offset serial,offset print,eax
+	invoke SetDlgItemText,hwnd,IDC_SERIAL,offset serial
+	ret
+
+
+tooshort:
+	invoke SetDlgItemText,hwnd,IDC_SERIAL,offset petit
+	ret
+toolong:
+	invoke SetDlgItemText,hwnd,IDC_SERIAL,offset long
+	ret
+
+GenKey endp
+
+end start
+
+------------------------------------------------------------------------------
+</font></pre>
+On compile ça avec Masm:
+<font size=3 color=#FF0000>
+<pre>
+d:\masm32\bin\ml /c /coff /Cp keygen.asm
+d:\masm32\bin\link /SUBSYSTEM:WINDOWS /LIBPATH:d:\masm32\lib keygen.obj keygen.res
+</font></pre>
+Vous pouvez voir le résultat <a href="../zips/keygen1.exe">ici</a>.<br>
+Petit message à Analyst, c'est bien ce que tu fais, continue :)
+
+<font size=3 color=#ffff00><br><br>
+<center>
+<pre>TiPiaX/VDS</pre>
+<br>
+</font></body></html>
+

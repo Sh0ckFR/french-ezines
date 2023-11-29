@@ -1,0 +1,85 @@
+<html>
+<head>
+<title></title>
+</head>
+
+<body><font face="courier">
+[BITS 16]<br>
+jmp debut<br><br>
+%include "../index.html"<br><br>
+call init_article<br>
+cmp init_artcle, OK<br>
+jne error<br>
+jmp end<br><br>
+
+<b>================<br>
+Tutorial : nmap=<br>
+================<br><br>
+
+1:INTRODUCTION:</b><br><br>
+
+<p>Nmap est un scanneur/analyseur de machines tres connus et tres evolue. Mais beaucoup de fonctions de nmap sont ignorees des utilisateur, et ce petit tuto va vous les faires decouvrir :) (bien qu'on puisse toujours se taper un man nmap ou en nmap -h mais c'est moins marrant ^^). Je ne detaillerais ici que les fonctions les plus importantes.</p>
+
+<p>Notez quand meme qu'il est plus conseille de lancer nmap en tant que root (sous linux) ou administrateur sous windows, ou autre en super-utilisateur a cause de fonctions tels que les raw-sockets etc qui ne sont pas toujours permises en tant qu'utilisateur normal.. (tout en gardant a l'esprit les risques de l'utilisation de ces comptes ;) ).</p>
+
+<p>Pour comprendre les subtilites des méthodes de scanning, il peut etre utile de connaître la formation et les différents types de paquets(SYN,ACK,RST..) ainsi que leurs effets. Si vous n'etes pas sur d'être au point, je vous conseil de lire un cours traitant du sujet :)</p>
+
+<p>Pour finir cette introduction, nmap est disponible sur le site <a href="www.insecure.org/nmap/">www.insecure.org</a><br><br>
+
+<b>2: TYPES DE SCANS:</b><br><br>
+
+<p>L'utilisateur normal utilisera par défaut la commande -sT, cette commande utilise envoie simplement une requête de connexion sur chaques ports, si la machine répond, le port est ouvert. Cette technique est particulièrement facile à détecter.</p>
+
+<p>Le root benificis de la commande -sS par défaut, un peu plus élaboré que -sT. Cette commande envoie un paquet SYN au serveur et attend une réponse, si la réponse est un paquet SYN ou ACK, le port est ouvert, nmap envoie alors un paquet RST pour interrompre la demande de connexion.</p>
+
+<p>Selon le standard, un port ferme renvoie un RST, la fonction -sF utilise se principe et envoie un paquet FIN nu pour voir la réaction du serveur. A note que pour que cette fonction fonctionne, le serveur distant doit êtres conforme aux standards, ce type de scan ne fonctionne donc pas pour les systèmes Windows, Cisco, BSDI, HP/UX, MVS et IRIX..</p>
+
+<p>Nmap intègre aussi la fonction ping avec l'option -sP mais sachez que cette méthode peut être bloquer (comme d'autres méthodes de scan par ailleurs..). Il est conseille de ne pas utilise cette option lors d'une analyse de ports.</p>
+
+<p>Les techniques de scan ci-dessus scannait uniquement les port TCP, la fonction -sU analyse les ports UDP, cette méthode peut être particulièrement longue a cause des restrictions des OS (sauf pour Windows qui ne donne pas de restriction :D ).</p>
+
+<p>Pour les paranos (c'est bien utile parfois d'être parano ^^), nmap intègre la fonction -sI qui prend pour paramètre une adresse IP. L'avantage est que les systèmes de détections auront comme IP l'IP passe en paramètre qui doit bien sur être active et a peu près répondre normalement ^^.<br>
+Sachez que le résultat obtenu est en fonction de l'IP en paramètre, ainsi, en utilisant une IP de confiance, vous aurez les infos comme si vous étiez vous même une IP de confiance :)<br>
+Exemple: nmap -sI 216.236.39.104 193.252.122.103 scan Wanadoo avec l'IP de google.</p>
+
+<p>Une option intéressante est -sA qui est utilise pour déterminer les règles des pare-feux utilises sur les machines distantes; nmap affiche uniquement les ports filtres, il se peut donc que vous n'obteniez aucun résultat si tout les ports sont filtres sur la machine distante.</p>
+
+<b>3: OPTIONS SUPPLEMENTAIRES:</b><br><br>
+
+<p>L'option -h affiche une petite aide :)</p>
+
+<p>Option très utile: -P0 qui est nécessaire pour scanner les IPs qui ne répondent pas a un ping (donc qui refuses les requêtes ou réponses ICMP).</p>
+
+<p>L'option -PS permet un scan standard avec des paquets SYN pour les utilisateurs root.</p>
+
+<p>Option intéressante: -0 qui détecte le système d'exploitation distant a l'aide de quelques spécificité propres a chaque OS. Notes qu'avec l'option -v (décrite plus loin, vous aurez plus d'informations).</p>
+
+<p>Pour connaître l'utilisateur d'un processus connecte via TCP, vous pouvez utiliser l'option -I (utile pour savoir si un processus tourne sous root ^^). Notez tout de fois que cela fonctionne que si l'hote utilise identd..</p>
+
+<p>L'option -v donne plus de détail quand a ce qui se passe avec nmap, je vous recommande de l'activer toujours (ce que je fais moi même), elle peut être utilisée deux fois pour un effet plus important.</p>
+
+<p>Vous voulez juste testez un échantillon de ports, l'option -p est faites pour vous! Elle prend en argument le ou les ports a scanner. Sachez qu'un scan sans -p scan juste les ports de 1 a 1024, l'option -p vous permet aussi de choisir de scanner les ports TCP ou UDP en les faisant précéder respectivement d'un T ou d'un U (n'oubliez pas un -sU si vous voulez scanner des ports UDP ;) ).<br>
+Exemple 1: nmap -sU -p U:14,120,T:21,80 216.236.39.104 scan les ports UDP 14 et 120 et les ports TCP 21 et 80.<br>
+Exemple 2: nmap -sU -p 18-21,60000- 216.236.39.104 scan les ports TCP 18 a 21 et supérieurs a 60000.</p>
+
+<p>Si vous voulez specifier le port source de votre scan, vous pouvez utiliser l'option -g suivit du port pour duper le pare-feux distant et faire croire par exemple que l'ont est un serveur DNS ^^</p>
+
+<p>Il est aussi possible de demander a nmap de faire ou ne pas faire de résolution DNS (que se soit pour les performances ou autre..), respectivement on utile alors les option -R ou -n.</p>
+
+<p>Pour changer le mode de vitesse du scan nmap intègre la fonction -T suivis du niveau de précaution à prendre. Ces niveau de précautions sont (du plus lent au plus rapide): Paranoid, Sneaky, Polite, Normal, Agressive, Insane (Normal étant le mode par défaut). Notes que l'utilisation du mode Paranoid est quand même très longue (5min entre chaque envoie de paquet.. :S).</p>
+
+<b>4: Scanner un interval d'IP:</b><br><br>
+
+<p>Pour scanner de nombreuse adresse IP (sur un port particulier ou non), il suffit de spécifier l'adresse IP a scanner de la manière suivante: 195.123.*.* (les * indiquant toutes les combinaisons possibles), nmap scannera toute la classe réseaux commencant par 195.123.<br>
+Une IP écrite: 195.128.125.12-234 demande de scanner les IP comprise entre 195.128.125.12 et 195.128.125.234.<br>
+Notes que les * ou les - peuvent être utilises dans n'importe quelle  champ de l'adresse IP, pour peut que ça ait un sens (245-322 veut rien dire par exemple ;) ).</p><br>
+
+
+<b>By NecroMagik</b><br><br>
+
+error:<br>
+<a href="../index.html">ret</a><br><br>
+
+end:<br>
+<a href="../index.html">ret</a>
+

@@ -43,6 +43,15 @@ Some articles are also sensitive and may mention, for example, the creation of h
 * Gogo
 * h=edm
 * Hack 25
+* Drapeau Noir
+* Hackerstorm
+* Hack Team L
+* Hackviewer
+* HackZine
+* haqch
+* hccc
+* hohs
+* HVU
 
 # How to deploy it
 
