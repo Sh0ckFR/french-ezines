@@ -1,0 +1,1216 @@
+<html>
+<head>
+<title>Dead-End issue II - API HOOKING : un gendarme de l'acc&egrave;s au r&eacute;seau</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<link href="../../../../Dead-End%20MAG/Files/Html/Pages/style.css" rel="stylesheet" type="text/css">
+<style type="text/css">
+<!--
+.style2 {font-size: 12px}
+.style7 {font-size: 13px}
+.style8 {
+	font-size: 16px;
+	font-weight: bold;
+}
+.style12 {
+	font-family: "Courier New", Courier, mono;
+	color: #666666;
+}
+.style13 {
+	font-size: 12px;
+	font-family: "Courier New", Courier, mono;
+	color: #666666;
+}
+.style14 {color: #FFFFFF}
+.style15 {color: #000000}
+.style19 {
+	color: #666666;
+	font-size: 12px;
+}
+.style26 {font-size: 12px; font-family: Verdana, Arial, Helvetica, sans-serif; color: #000000; }
+.style35 {
+	font-family: "Courier New", Courier, mono;
+	font-size: 12px;
+	color: #666666;
+}
+.style36 {
+	font-family: "Courier New", Courier, mono;
+	font-size: 12px;
+	color: #666666;
+}
+.style38 {font-size: 12px; color: #000000; }
+.style41 {
+	font-size: 12px;
+	color: #000000;
+	font-weight: bold;
+}
+-->
+</style></head>
+
+<body>
+<hr>
+<p align="center"><img src="Images/api_hooking.jpg" width="469" height="60"></p>
+<hr>
+<p align="LEFT"><em><a href="page6.htm" target="_blank">AFFICHER CET ARTICLE EN MODE PAGE 
+ENTIERE</a></em></p><p align="center"><strong><font size="3"><u>SOMMAIRE</u></font></strong></p>
+<p align="left"><span class="style41"><a href="page6.htm#1">1) Introduction</a></span></p>
+<p align="left" class="style38"><strong><a href="page6.htm#2">2) Petits rappels</a></strong></p>
+<p align="left" class="style38"><strong><a href="page6.htm#3">3) Conception g&eacute;n&eacute;rale</a></strong></p>
+<p align="left" class="style38"><strong><a href="page6.htm#4">4) Surveillance du r&eacute;seau</a></strong></p>
+<p align="left" class="style38"><strong><a href="page6.htm#5">5) Un peu plus loin</a></strong></p>
+<p align="left" class="style38"><strong><a href="page6.htm#6">6) Pour aller plus loin</a></strong></p>
+<p align="left"><span class="style15 style2"><strong><a href="page6.htm#7">7) Pour finir</a></strong></span></p>
+<hr>
+<p align="left" class="style7"><u><strong><a name="1"></a>1) Introduction </strong></u></p>
+<p align="left" class="style7"><span class="style8">D</span>ans un pr&eacute;c&eacute;dent papier sorti chez DHS, on s'est aventur&eacute; dans le territoire de l'API hooking. Dans ce petit article, je vous propose de continuer la ballade avec un exemple concret d'utilisation. Rien de tel qu'un peu d'action pour se faire la main sur une technique !</p>
+<p class="style2"><span class="style8">L</span>e programme en d&eacute;monstration est un moniteur d'acc&egrave;s au r&eacute;seau. Les applications demandant l'acc&egrave;s au net devront montrer patte blanche sous peine de se prendre la porte dans la figure. L'exemple est facile &agrave; suivre, mais permet de voir comment l'API hooking peut rendre de fiers services. Ca n'est pas r&eacute;serv&eacute; aux rootkits, certains effets peuvent avoir pour but de se montrer, et non pas juste de cacher les choses !<br>
+</p>
+<p class="style2"><span class="style8">J</span>e vais commencer par un bref rappel technique sur les DLLs, afin que m&ecirc;me un lecteur dont les yeux ne seraient jamais tomb&eacute;s sur un article de hooking ne soit pas trop paum&eacute;. Je ne vais pas entrer dans les d&eacute;tails, pas de code, pas de diagramme : c'est programm&eacute; en &quot;fran&ccedil;ais++&quot;. <br>
+  Ensuite je vais aborder l'ossature g&eacute;n&eacute;rale d'un programme de ce type, &agrave; savoir ce qu'il faut pour avoir la main sur tout le syst&egrave;me et s'assurer qu'un programme lanc&eacute; ult&eacute;rieurement ou une DLL charg&eacute;e dynamiquement ne puisse pas esquiver l'application. Puis je discuterais, toujours en fran&ccedil;ais++ des hooks mis en place dans le programme, et enfin des &eacute;volutions possibles voire m&ecirc;me souhaitables.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="style7"><u><strong><a name="2"></a>2) Petits rappels</strong></u></p>
+<p class="style2"><span class="style8">U</span>n programme n'est pas seul dans l'univers de Windows. Ni seul ni ind&eacute;pendant, car pour r&eacute;aliser bon nombre d'actions, ce petit assist&eacute; se contente de faire appel &agrave; des fonctions partag&eacute;es mises &agrave; la disposition de tous. Ces fonctions, ce sont les APIs, contenues dans les DLLs. Un programme en m&eacute;moire fait donc appara&icirc;tre dans son espace d'adressage les DLLs dont il va avoir besoin, et ex&eacute;cuter les APIs voulues. On dirait une bonne vieille invocation de d&eacute;mon pour nous pr&ecirc;ter main forte. Finalement, la programmation syst&egrave;me, c'est parfois bien proche de Diablo !!</p>
+<p class="style2"><span class="style8">I</span>l y a un programme, et il y a les APIs. D'une ex&eacute;cution &agrave; l'autre, les DLLs peuvent ne pas &ecirc;tre charg&eacute;es au m&ecirc;me emplacement m&eacute;moire. L'adresse de chaque API est donc susceptible de bouger. Lorsqu'un programme d&eacute;cide de charger dynamiquement une DLL, afin d'acc&eacute;der &agrave; une API, il fait appel &agrave; LoadLibrary et GetProcAddress. Ainsi il a toutes les cartes en main : DLL charg&eacute;e et adresse de d&eacute;but du code de API localis&eacute;e.</p>
+<p class="style2"><span class="style8">M</span>ais d'o&ugrave; sortent LoadLibrary et GetProcAddress ? Ce sont des APIs comme les autres, alors elles sont susceptibles de flotter dans l'espace d'adressage pourtant. Comment le programme conna&icirc;t-il &agrave; coup sur les adresses de ces deux fonctions-l&agrave; ? </p>
+<p class="style2"><span class="style8">C</span>ertaines APIs de DLLs sont li&eacute;es au moment de la compilation. Le programme n'a pas &agrave; les charger, ni &agrave; rechercher l'adresse des APIs qu'il va utiliser. Le code source dit au compilateur qu'on va avoir besoin des APIs a, b, c, d et e de la DLL F, et ce dernier l'inscrit dans l'EXE. Le chargement des DLLs et la localisation des APIs est alors pris en charge par le Loader d'Images de Windows. Sympa, le Loader ! Il charge le programme, voit les DLLs requises, les charge &agrave; leur tour, et enfin renseigne une structure, l'IAT, avec l'adresse en m&eacute;moire des APIs. Et le loader charge toujours certaines DLLs syst&egrave;me comme Kernel32.dll, la DLL de fonctions syst&egrave;me dans l'userland.</p>
+<p class="style2"><span class="style8">L</span>orsque le programme appelle LoadLibrary, il saute en fait dans l'IAT et non pas dans l'API. C'est de l'IAT qu'il rebondit dans le code de l'API. On parle de code trampoline. Par contre si le programme charge dynamiquement la DLL a pour avoir l'adresse de l'API b, alors le programme doit sauter directement dans b. Bon bien s&ucirc;r, il y a des petits malins qui ne veulent jamais faire comme les autres. Alors oui, il est possible de faire une esp&egrave;ce d'IAT utilisateur maintenue par le programme lui-m&ecirc;me. Aucun emp&ecirc;chement &agrave; cela.<br>
+</p>
+<p class="style2"><span class="style8">L</span>e hook d'API consiste &agrave; hooker une API. Sisi c'est vrai, pas de bobard ! Pour gagner le contr&ocirc;le, apr&egrave;s ce rappel, on voit que plusieurs possibilit&eacute;s existent :</p>
+<p class="style2">* parcourir tout le code du programme, et contr&ocirc;ler son saut dans l'IAT. Cette m&eacute;thode est, disons-le, plut&ocirc;t bidon. Si le programme appelle 10 fois LoadLibrary dans son code, c'est 10 interceptions qu'il faut mettre en place. En plus, le temps de parcourir tout le code du programme p&eacute;nalise l'ex&eacute;cution du programme. D&eacute;finitivement, on laisse tomber. Bien s&ucirc;r, il y a des petits malins... </p>
+<p class="style2">* rep&eacute;rer l'entr&eacute;e de l'IAT qui fait rebondir vers l'API et contr&ocirc;ler ce saut : IAT Hooking. Cette m&eacute;thode est sympa, rapide et facile. M&ecirc;me si le programme appelle 10 fois LoadLibrary, une seule interception g&egrave;re sans probl&egrave;me le hook. Par contre, cette m&eacute;thode n'est pas, mais alors vraiment pas tr&egrave;s discr&egrave;te. Pour une fonction donn&eacute;e, il suffit de comparer l'adresse dans le trampoline de l'IAT et l'adresse renvoy&eacute;e par GetProcAddress pour d&eacute;tecter l'embrouille. De plus, cette m&eacute;thode ne hook que les APIs appartenant &agrave; des DLLs li&eacute;es &agrave; la compilation. Si le programme charge une DLL lui-m&ecirc;me avec LoadLibrary, puis en trouve une API avec GetProcAddress, alors il est impossible de le hooker.</p>
+<p class="style2">* rep&eacute;rer l'adresse de l'API en m&eacute;moire et l'y intercepter : API Patching. Ahhh voil&agrave; une m&eacute;thode qu'elle est bonne ! M&ecirc;me une API provenant d'une DLL charg&eacute;e dynamiquement par le programme se fera prendre. Par contre cette m&eacute;thode n&eacute;cessite quelques pr&eacute;cautions. Comme on va placer notre interception par dessus le code &quot;l&eacute;gal&quot; de l'API, il faut s'assurer de sauvegarder les instructions du code l&eacute;gal sinon l'API plantera. Il est bon aussi de placer le hook non pas tout de suite au d&eacute;but, mais apr&egrave;s plusieurs octets. En effet, certains logiciels antivirus et autre moniteurs de comportement sonnent une alarme lorsque le corps d'une API commence par un saut. Mais &agrave; l'inverse, plus on s'&eacute;loigne du d&eacute;but de l'API plus on risque de se trouver non plus dans le pr&eacute;ambule de l'API mais par exemple apr&egrave;s un label ou dans une boucle. Dans ce cas l&agrave; le d&eacute;tour va s'ex&eacute;cuter plus d'une fois par appel &agrave; l'API l&eacute;gale. Or comme notre d&eacute;tour se doit de lancer l'API d'origine apr&egrave;s son ex&eacute;cution, on arrive &agrave; une situation o&ugrave; l'API appelle le d&eacute;tour qui rappelle l'API qui rappelle le d&eacute;tour qui ... ad infinitam. Et l&agrave; tout d'un coup, &ccedil;a marche moins bien...<br>
+</p>
+<p class="style2"><span class="style8">C</span>ette m&eacute;thode, l'API patching, reste la plus efficace au niveau userland. Par contre, si on veut l'impl&eacute;menter de mani&egrave;re plus fine, il faut alors bien conna&icirc;tre le code de l'API cibl&eacute;e pour placer le d&eacute;tour le plus loin possible du d&eacute;but pour ne pas se faire d&eacute;tecter tout en &eacute;vitant de se placer apr&egrave;s un retour de boucle. Un bon d&eacute;bugger, il n'y a que &ccedil;a de vrai !</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="style7"><u><strong><a name="3"></a>3) Conception g&eacute;n&eacute;rale</strong></u></p>
+<p class="style2"><span class="style8">O</span>n doit d&eacute;j&agrave; pouvoir charger la DLL dans l'espace d'adressage de tous les programmes en cours. Forc&eacute;ment, si on n'a pas le contr&ocirc;le sur tout le syst&egrave;me, la surveillance surveille moins bien. Il nous faut donc un loader, et des fonctions d'injection cibl&eacute;e, de r&eacute;cup&eacute;ration des processus, d'injection globale. Pour se d&eacute;patouiller dans les processus, il vaut mieux avoir sous le coude quelques fonctions utiles comme passer d'un nom de processus &agrave; son PID et inversement.</p>
+<p class="style2"><span class="style8">P</span>our que le hook soit durable dans le temps, il faut aussi surveiller la cr&eacute;ation de processus. Sinon, on a bien le contr&ocirc;le sur l'ensemble du syst&egrave;me, mais seulement &agrave; un instant t. Il y a donc des d&eacute;tours &agrave; mettre en place sur quelques apis de Kernel32. CreateProcess en fait partie. En creusant dans kernel32, on trouve plusieurs apis homologues comme CreateProcessA, CreateProcessW. En examinant CreateProcessA sous la loupe d'un d&eacute;bugger, on voit que cette API est juste l&agrave; pour renvoyer sur CreateProcessW. Si vous tentez l'exp&eacute;rience, vous verrez d'ailleurs que l'explorateur Windows utilise directement CreateProcessW. Si vous ne hookez que CreateProcessA, alors vous passez &agrave; c&ocirc;t&eacute; du jackpot ! Par contre, CreateProcessW travaille avec des cha&icirc;nes de caract&egrave;re en unicode. Pour rendre le travail plus facile, une fonction de conversion de l'unicode vers l'ascii est n&eacute;cessaire.</p>
+<p class="style2"><span class="style8">L</span>a DLL de notre application ne doit pas pouvoir &ecirc;tre d&eacute;gag&eacute; comme &ccedil;a de l'espace d'adressage d'un programme, non mais ! C'est qui le patron ? Il faut donc surveiller &ccedil;a et du coup, un hook de FreeLibrary est imp&eacute;ratif. De m&ecirc;me, il faut surveiller Loadlibrary. En effet, si un programme ne lie pas la DLL winsock lors de la compilation, il faut pouvoir s'y attacher lorsqu'elle sera charg&eacute;e dynamiquement !</p>
+<p class="style2"><span class="style8">H</span>ooker demande d'avoir le privil&egrave;ge d&eacute;bug, on aura donc une fonction rapide pour &ccedil;a. Et qui dit hooker dit aussi nettoyer derri&egrave;re soi, donc il faudra une fonction de d&eacute;hook. Pour une gestion facile des DLLs cibl&eacute;es, une routine globale de hook et d&eacute;hook de toutes les apis d'une m&ecirc;me DLL sera r&eacute;alis&eacute;e. Ca &eacute;vitera de tout faire en bordel...</p>
+<p class="style2"><span class="style8">L</span>e squelette n&eacute;cessaire comporte d&eacute;j&agrave; un bon nombre de fonctions. Dans le projet, celles-ci se trouvent dans deux fichiers source : hookutils pour les utilitaires, et kernel32 pour les hooks n&eacute;cessaires.</p>
+<p class="style2">Privil&egrave;ge d&eacute;bug<br>
+  Injection d'un processus<br>
+  Injection globale<br>
+  Hook d'une api<br>
+  D&eacute;hook d'une api<br>
+  Conversion pid vers nom<br>
+  Conversion nom vers pid<br>
+  Conversion unicode vers ascii<br>
+  Hook de CreateProcessW<br>
+  Hook de FreeLibrary<br>
+  Hook de LoadLibrary<br>
+  Hook g&eacute;n&eacute;ral de kernel32<br>
+  D&eacute;hook g&eacute;n&eacute;ral de kernel32<br>
+</p>
+<p class="style2"><span class="style8">J</span>e vais d&eacute;tailler chaque fonction. Sur le site de DHS, vous trouverez les sources du projet pour VC++. Vous y trouverez des choses que je ne vais pas coller ici, comme par exemple les variables globales pour les apis hook&eacute;es, les includes pour g&eacute;rer les r&eacute;f&eacute;rences faites d'une source &agrave; l'autre etc. Mais le principal est l&agrave;, de quoi tout saisir en tout cas.</p>
+<p class="style2"><u>Privil&egrave;ge d&eacute;bug :</u></p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style2 style12">int WINAPI EnableDebugPriv (void)<br>
+  {<br>
+  <span class="style14">_</span>HANDLE hToken = 0;<br>
+  <span class="style14">_</span>DWORD dwErr = 0;<br>
+  <span class="style14">_</span>TOKEN_PRIVILEGES newPrivs;</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>if (!OpenProcessToken (GetCurrentProcess (),TOKEN_ADJUST_PRIVILEGES,&amp;hToken))<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>return 0;</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>if (!LookupPrivilegeValue (NULL, SE_DEBUG_NAME,&amp;newPrivs.Privileges[0].Luid))<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>{CloseHandle (hToken);return 0;}</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>newPrivs.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;<br>
+        <span class="style2 style12"><span class="style14">_</span></span>newPrivs.PrivilegeCount = 1;<br>
+  <br>
+  <span class="style2 style12"><span class="style14">_</span></span>if (!AdjustTokenPrivileges (hToken, FALSE, &amp;newPrivs, 0, NULL, NULL))<br>
+  <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>{CloseHandle (hToken);return 0;}</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>return 1;<br>
+  }</p></td>
+  </tr>
+</table>
+<span class="style14">
+<p class="style2"><br>
+</p>
+<p class="style2 style15"><u>Injection d'un processus :</u></p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style2 style12">int WINAPI injector (DWORD le_pid, char* dll_name)<br>
+  { <br>
+  <span class="style14">_</span>//Localise l'adresse de LoadLibraryA<br>
+  <span class="style14">_</span>HMODULE module = GetModuleHandle(&quot;kernel32.dll&quot;);<br>
+  <span class="style14">_</span>FARPROC code_a_executer = GetProcAddress(module,&quot;LoadLibraryA&quot;);</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>//Ouvre le processus<br>
+        <span class="style2 style12"><span class="style14">_</span></span>HANDLE hProcess = NULL; <br>
+        <span class="style2 style12"><span class="style14">_</span></span>hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, le_pid);<br>
+        <span class="style2 style12"><span class="style14">_</span></span>if(hProcess == NULL) return 0;</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>//Alloue de l'espace pour le nom de la dll<br>
+        <span class="style2 style12"><span class="style14">_</span></span>char *pInjData; <br>
+        <span class="style2 style12"><span class="style14">_</span></span>pInjData = (char *)VirtualAllocEx(hProcess, 0, strlen(dll_name)+1, MEM_COMMIT, PAGE_READWRITE );<br>
+        <span class="style2 style12"><span class="style14">_</span></span>if(pInjData == NULL) return 0;</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>//Copie le nom de la DLL<br>
+        <span class="style2 style12"><span class="style14">_</span></span>DWORD lpNumberOfBytesWritten=0;<br>
+        <span class="style2 style12"><span class="style14">_</span></span>WriteProcessMemory(hProcess, pInjData, dll_name, strlen(dll_name)+1, &amp;lpNumberOfBytesWritten);<br>
+        <span class="style2 style12"><span class="style14">_</span></span>if (strlen(dll_name)+1 != lpNumberOfBytesWritten) return 0;</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>/* BOOL FlushInstructionCache(<br>
+        <span class="style2 style12"><span class="style14">_</span></span>HANDLE hProcess,<br>
+        <span class="style2 style12"><span class="style14">_</span></span>LPCVOID lpBaseAddress,<br>
+        <span class="style2 style12"><span class="style14">_</span></span>SIZE_T dwSize<br>
+        <span class="style2 style12"><span class="style14">_</span></span>); */</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>//Lance l'ex&eacute;cution<br>
+        <span class="style2 style12"><span class="style14">_</span></span>DWORD dwThreadId = 0;<br>
+        <span class="style2 style12"><span class="style14">_</span></span>HANDLE hThread = NULL; <br>
+        <span class="style2 style12"><span class="style14">_</span></span>hThread = CreateRemoteThread(hProcess, NULL, 0, (unsigned long (__stdcall *)(void *))code_a_executer, <span class="style2 style12"><span class="style14">_</span></span>pInjData, 0 , &amp;dwThreadId);<br>
+        <span class="style2 style12"><span class="style14">_</span></span>if(hThread == NULL) return 0;</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>return 1;<br>
+  }</p></td>
+  </tr>
+</table>
+<p class="style2"><br>
+</p>
+<p class="style2 style15"><u>Injection globale : </u></p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style2 style12"><br>
+  int WINAPI megainject (char* dll_name) <br>
+  { <br>
+  <span class="style14">_</span>HANDLE hProcessSnap = NULL; <br>
+  <span class="style14">_</span>DWORD th32ProcessID = 0;<br>
+  <span class="style14">_</span>BOOL bRet = FALSE; <br>
+  <span class="style14">_</span>PROCESSENTRY32 pe32 = {0}; <br>
+    </p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>/* Snapshot de tous les processus */<br>
+        <span class="style2 style12"><span class="style14">_</span></span>hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0); </p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>if(hProcessSnap == INVALID_HANDLE_VALUE) <br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>return 0; <br>
+  <br>
+  <span class="style2 style12"><span class="style14">_</span></span>/* Initialisation de la structure d'un processus */<br>
+  <span class="style2 style12"><span class="style14">_</span></span>pe32.dwSize = sizeof(PROCESSENTRY32); <br>
+  <br>
+  <span class="style2 style12"><span class="style14">_</span></span>/* Parcours de tous les processus et comparaison avec le nom recherche */ <br>
+  <span class="style2 style12"><span class="style14">_</span></span>th32ProcessID = Process32First(hProcessSnap, &amp;pe32);<br>
+  <span class="style2 style12"><span class="style14">_</span></span>while(th32ProcessID) <br>
+  <span class="style2 style12"><span class="style14">_</span></span>{ <br>
+  <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>if (injector(pe32.th32ProcessID, dll_name))<br>
+  <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">__</span></span><span class="style2 style12"><span class="style14">_</span></span>printf(&quot;Succes avec le processus %s - %i\n&quot;, pe32.szExeFile, pe32.th32ProcessID);<br>
+  <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>else<br>
+  <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>printf(&quot;Erreur avec le processus %s - %i\n&quot;, pe32.szExeFile, pe32.th32ProcessID);</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>pe32.dwSize = sizeof(PROCESSENTRY32);<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>th32ProcessID = Process32Next(hProcessSnap, &amp;pe32);<br>
+        <span class="style2 style12"><span class="style14">_</span></span>}<br>
+  <br>
+  <span class="style2 style12"><span class="style14">_</span></span>CloseHandle(hProcessSnap);<br>
+  <span class="style2 style12"><span class="style14">_</span></span>/* Retourne le PID trouve */<br>
+  <span class="style2 style12"><span class="style14">_</span></span>return(1); <br>
+  }</p></td>
+  </tr>
+</table>
+<p class="style2">&nbsp;</p>
+<p class="style2 style15"><u>Hook d'une API : </u></p>
+<table width="97%"  border="1" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style2 style12">int WINAPI initialise_hook (char* nom_dll, char* nom_fonction, DWORD new_handler, char** backup)<br>
+  {<br>
+  <span class="style14">_</span>HMODULE module;<br>
+  <span class="style14">_</span>DWORD adresse_api;<br>
+  <span class="style14">_</span>int taille;<br>
+  <span class="style14">_</span>DWORD ancienne_protection;<br>
+  <span class="style14">_</span>int verdict;</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>// Initialise backup s'il ne l'est pas<br>
+        <span class="style2 style12"><span class="style14">_</span></span>*backup = NULL;<br>
+  <br>
+  <span class="style2 style12"><span class="style14">_</span></span>// Localise la DLL<br>
+  <span class="style2 style12"><span class="style14">_</span></span>module = GetModuleHandle(nom_dll);</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>// Si la DLL n'est pas charg&eacute;e, CASSOS<br>
+        <span class="style2 style12"><span class="style14">_</span></span>if (module == 0)<br>
+        <span class="style2 style12"><span class="style14">_</span></span>{<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>_snprintf((char*)debug_string,2048, &quot;% 20s - %s:%s non charg&eacute;e, hook <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>impossible\n&quot;,GetNameByPID(GetCurrentProcessId()), <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>nom_dll,nom_fonction);<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>send_debug ((char*)debug_string);<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>return 0;<br>
+        <span class="style2 style12"><span class="style14">_</span></span>}</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>// Localise l'API<br>
+        <span class="style2 style12"><span class="style14">_</span></span>adresse_api = (DWORD) GetProcAddress(module, nom_fonction);</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>// Si l'API est introuvable, CASSOS<br>
+        <span class="style2 style12"><span class="style14">_</span></span>if (adresse_api == 0)<br>
+        <span class="style2 style12"><span class="style14">_</span></span>{<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>_snprintf((char*)debug_string,2048, &quot;% 20s - %s:%s introuvable \n&quot;,GetNameByPID(GetCurrentProcessId()), nom_dll,nom_fonction);<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>send_debug ((char*)debug_string);<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>return 0;<br>
+        <span class="style2 style12"><span class="style14">_</span></span>}</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>//Teste si l'API commence par un detour<br>
+        <span class="style2 style12"><span class="style14">_</span></span>if ( *(char*) adresse_api == '\xe9')<br>
+        <span class="style2 style12"><span class="style14">_</span></span>{<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>_snprintf((char*)debug_string,2048, &quot;% 20s - %s/%s deja hook&eacute;e\n&quot;,GetNameByPID(GetCurrentProcessId()), nom_dll,nom_fonction);<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>send_debug ((char*)debug_string);<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>return 0;<br>
+        <span class="style2 style12"><span class="style14">_</span></span>}</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>// Mesure la taille de l'API &agrave; archiver<br>
+        <span class="style2 style12"><span class="style14">_</span></span>taille = 0;<br>
+        <span class="style2 style12"><span class="style14">_</span></span>while(taille &lt; 5)<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>taille += disasm_main( (BYTE*) (adresse_api+taille) );<br>
+  <br>
+  <span class="style2 style12"><span class="style14">_</span></span>// Alloue le tampon<br>
+  <span class="style2 style12"><span class="style14">_</span></span>*backup = (char*) malloc(21);<br>
+  <br>
+  <span class="style2 style12"><span class="style14">_</span></span>// Teste l'allocation du tampon<br>
+  <span class="style2 style12"><span class="style14">_</span></span>if (*backup == NULL)<br>
+  <span class="style2 style12"><span class="style14">_</span></span>{<br>
+  <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>_snprintf((char*)debug_string,2048, &quot;% 20s - %s:%s erreur d'allocation\n&quot;,GetNameByPID(GetCurrentProcessId()), <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>nom_dll,nom_fonction);<br>
+  <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>send_debug ((char*)debug_string);<br>
+  <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>return 0;<br>
+  <span class="style2 style12"><span class="style14">_</span></span>}</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>// Initialise le tampon<br>
+        <span class="style2 style12"><span class="style14">_</span></span>memcpy (*backup, &quot;\x90\x90\x90\x90\x90\x90\x90\x90&quot;<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>&quot;\x90\x90\x90\x90\x90\x90\x90\x90&quot;<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>&quot;\xE9\x00\x00\x00\x00&quot;,<br>
+        <span class="style2 style12"><span class="style14">_ ______________</span></span>/* <span class="style2 style12"><span class="style14">_</span></span> <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>^ <span class="style2 style12"><span class="style14">_</span></span> <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span> <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span> <span class="style2 style12"><span class="style14">_</span></span>^ ici @FROM<br>
+        <span class="style2 style12"><span class="style14">_</span></span> <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>|<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_ ______________</span></span><span class="style2 style12"><span class="style14">_ _______</span></span>\------- offset 17 : @jump : o&ugrave; &eacute;crire le d&eacute;placement<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_ _____________</span></span>*/<br>
+        <span class="style2 style12"><span class="style14"> _____________</span></span>21);</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14"> _</span></span>// Copie ce qu'il faut dedans<br>
+        <span class="style2 style12"><span class="style14">_</span></span>__asm{<br>
+        <span class="style2 style12"><span class="style14">_</span></span>// Copie &lt;taille&gt; octets des anciennes instructions dans le tampon<br>
+        <span class="style2 style12"><span class="style14">_</span></span>mov esi,adresse_api<br>
+        <span class="style2 style12"><span class="style14">_</span></span>mov edi,backup<br>
+        <span class="style2 style12"><span class="style14">_</span></span>mov edi,[edi]<br>
+        <span class="style2 style12"><span class="style14">_</span></span>push edi<br>
+        <span class="style2 style12"><span class="style14">_</span></span>mov ecx,taille<br>
+        <span class="style2 style12"><span class="style14">_</span></span>rep movsb<br>
+  <br>
+  <span class="style2 style12"><span class="style14">_</span></span>// Saut : backup_api -&gt; adresse_api<br>
+  <span class="style2 style12"><span class="style14">_</span></span>// Met edi sur @jump<br>
+  <span class="style2 style12"><span class="style14">_</span></span>pop edi<br>
+  <span class="style2 style12"><span class="style14">_</span></span>add edi,17<br>
+  <br>
+  <span class="style2 style12"><span class="style14">_</span></span>// Calcul de @TO : API d'origine + &lt;taille&gt;<br>
+  <span class="style2 style12"><span class="style14">_</span></span>mov eax,adresse_api<br>
+  <span class="style2 style12"><span class="style14">_</span></span>add eax,taille</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>// Calcul de @FROM : juste apres le jmp<br>
+        <span class="style2 style12"><span class="style14">_</span></span>mov ebx, edi<br>
+        <span class="style2 style12"><span class="style14">_</span></span>add ebx,4</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>// Jmp relatif sur DWORD : @TO - @FROM<br>
+        <span class="style2 style12"><span class="style14">_</span></span>sub eax,ebx<br>
+  <br>
+  <span class="style2 style12"><span class="style14">_</span></span>// Ecrit cette valeur &agrave; l'emplacement jmp @<br>
+  <span class="style2 style12"><span class="style14">_</span></span>stosd<br>
+  <span class="style2 style12"><span class="style14">_</span></span>}</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>// Oter la protection du handler<br>
+        <span class="style2 style12"><span class="style14">_</span></span>verdict = VirtualProtect((LPVOID)adresse_api,16,PAGE_READWRITE, &amp;ancienne_protection);</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>//Si echec : cassos<br>
+        <span class="style2 style12"><span class="style14">_</span></span>if (!verdict)<br>
+        <span class="style2 style12"><span class="style14">_</span></span>{<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>free(*backup);<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>*backup = NULL;<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>_snprintf((char*)debug_string,2048, &quot;% 20s - %s:%s erreur de protection\n&quot;,GetNameByPID(GetCurrentProcessId()), <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>nom_dll,nom_fonction);<br>
+        <span class="style2 style12"><span class="style14">__</span></span>send_debug ((char*)debug_string);<br>
+        <span class="style2 style12"><span class="style14">__</span></span>return 0;<br>
+        <span class="style2 style12"><span class="style14">_</span></span>}</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>// Ecrase le handler<br>
+        <span class="style2 style12"><span class="style14">_</span></span>__asm<br>
+        <span class="style2 style12"><span class="style14">_</span></span>{<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>//EDI sur endroit o&ugrave; &eacute;crire<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>mov edi,adresse_api<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>//EAX sur @TO<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>mov eax,new_handler<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>//EBX sur @FROM<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>mov ebx, edi<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>add ebx,5<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>//Calcule le d&eacute;placement dans EAX<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>sub eax,ebx<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>//Ecrit le jmp<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>mov byte ptr [edi], 0xe9<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>inc edi<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>//Et le d&eacute;placement<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>stosd<br>
+        <span class="style2 style12"><span class="style14">_</span></span>}</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>// Remettre l'ancienne protection<br>
+        <span class="style2 style12"><span class="style14">_</span></span>verdict = VirtualProtect((LPVOID)adresse_api,16,ancienne_protection, &amp;ancienne_protection);<br>
+        <span class="style2 style12"><span class="style14">_</span></span>if (!verdict)<br>
+        <span class="style2 style12"><span class="style14">_</span></span>{<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>_snprintf((char*)debug_string,2048, &quot;% 20s - %s:%s restauration de la protection impossible\n&quot;,GetNameByPID(GetCurrentProcessId()), <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>nom_dll,nom_fonction);<br>
+        <span class="style2 style12"><span class="style14">_</span></span><span class="style2 style12"><span class="style14">_</span></span>send_debug ((char*)debug_string);<br>
+        <span class="style2 style12"><span class="style14">_</span></span>}</p>
+      <p class="style13"> <span class="style2 style12"><span class="style14">_</span></span>return TRUE;<br>
+  }</p></td>
+  </tr>
+</table>
+<p class="style2"><br>
+</p>
+<p class="style2 style15"><u>D&eacute;hook d'une api :</u></p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style12 style2 style36">int WINAPI enleve_hook (char* nom_dll, char* nom_fonction, char** backup)<br>
+      {<br>
+// R&eacute;cupere l'adresse de la fonction dans le module<br>
+HMODULE module = GetModuleHandle(nom_dll);<br>
+DWORD adresse_api;<br>
+if (module != 0)<br>
+adresse_api = (DWORD) GetProcAddress(module, nom_fonction);<br>
+else<br>
+return 0;</p>    
+      <p class="style36"> // Mesure la taille de l'API &agrave; archiver<br>
+  int taille = 0;<br>
+  while(taille &lt; 5)<br>
+  taille += disasm_main( (BYTE*) (*backup+taille) );</p>
+      <p class="style36"> // Oter la protection du handler<br>
+  DWORD ancienne_protection;<br>
+  int verdict;<br>
+  verdict = VirtualProtect((LPVOID)adresse_api,16,PAGE_READWRITE, &amp;ancienne_protection);<br>
+  if (!verdict)<br>
+  {free(*backup);*backup = NULL;return 0;}</p>
+      <p class="style36"> // Restaurer le handler<br>
+  __asm{<br>
+  //Copie les anciennes instructiond<br>
+  mov edi,adresse_api<br>
+  mov esi,backup<br>
+  mov esi,[esi]<br>
+  mov ecx,taille<br>
+  rep movsb<br>
+  }</p>
+      <p class="style36"> // Remettre l'ancienne protection<br>
+  verdict = VirtualProtect((LPVOID)adresse_api,16,ancienne_protection, &amp;ancienne_protection);<br>
+  if (!verdict)<br>
+  {free(*backup);*backup = NULL;return 0;}</p>
+      <p class="style36"> free(*backup);<br>
+  *backup = NULL;<br>
+  return 1;<br>
+  }</p></td>
+  </tr>
+</table>
+<p class="style2"><br>
+</p>
+<p class="style2 style15"><u>Conversion pid vers nom : </u></p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style12 style2">char* WINAPI GetNameByPID (DWORD ProcID) <br>
+  { <br>
+  HANDLE hProcessSnap = NULL; <br>
+  DWORD th32ProcessID = 0;<br>
+  BOOL bRet = FALSE; <br>
+  PROCESSENTRY32 pe32 = {0}; <br>
+  <br>
+  // Snapshot de tous les processus</p>
+      <p class="style12 style2">int WINAPI enleve_hook (char* nom_dll, char* nom_fonction, char** backup)<br>
+  {<br>
+  // R&eacute;cupere l'adresse de la fonction dans le module<br>
+  HMODULE module = GetModuleHandle(nom_dll);<br>
+  DWORD adresse_api;<br>
+  if (module != 0)<br>
+  adresse_api = (DWORD) GetProcAddress(module, nom_fonction);<br>
+  else<br>
+  return 0;</p>
+      <p class="style13 style19"> // Mesure la taille de l'API &agrave; archiver<br>
+  int taille = 0;<br>
+  while(taille &lt; 5)<br>
+  taille += disasm_main( (BYTE*) (*backup+taille) );</p>
+      <p class="style13"> // Oter la protection du handler<br>
+  DWORD ancienne_protection;<br>
+  int verdict;<br>
+  verdict = VirtualProtect((LPVOID)adresse_api,16,PAGE_READWRITE, &amp;ancienne_protection);<br>
+  if (!verdict)<br>
+  {free(*backup);*backup = NULL;return 0;}</p>
+      <p class="style13"> // Restaurer le handler<br>
+  __asm{<br>
+  //Copie les anciennes instructiond<br>
+  mov edi,adresse_api<br>
+  mov esi,backup<br>
+  mov esi,[esi]<br>
+  mov ecx,taille<br>
+  rep movsb<br>
+  }</p>
+      <p class="style13"> // Remettre l'ancienne protection<br>
+  verdict = VirtualProtect((LPVOID)adresse_api,16,ancienne_protection, &amp;ancienne_protection);<br>
+  if (!verdict)<br>
+  {free(*backup);*backup = NULL;return 0;}</p>
+      <p class="style13"> free(*backup);<br>
+  *backup = NULL;<br>
+  return 1;<br>
+  }</p>
+      <p class="style13"><br>
+        hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0); </p>
+      <p class="style13"> if(hProcessSnap == INVALID_HANDLE_VALUE) <br>
+  return 0; <br>
+  <br>
+  // Initialisation de la structure d'un processus<br>
+  pe32.dwSize = sizeof(PROCESSENTRY32); <br>
+  <br>
+  // Parcours de tous les processus et comparaison avec le nom recherche<br>
+  th32ProcessID = Process32First(hProcessSnap, &amp;pe32);<br>
+  <br>
+  while(th32ProcessID) <br>
+  { <br>
+  if(pe32.th32ProcessID == ProcID)<br>
+  break;<br>
+  <br>
+  pe32.dwSize = sizeof(PROCESSENTRY32);<br>
+  th32ProcessID = Process32Next(hProcessSnap, &amp;pe32);<br>
+  }<br>
+  <br>
+  CloseHandle(hProcessSnap); </p>
+      <p class="style13"> // Retourne le PID trouve<br>
+  return(pe32.szExeFile); <br>
+  }</p></td>
+  </tr>
+</table>
+<p class="style2"><br>
+</p>
+<p class="style2 style15"><u>Conversion nom vers pid : </u></p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style12 style2">  DWORD WINAPI GetPIDByName (TCHAR *szProcName) <br>
+  { <br>
+  HANDLE hProcessSnap = NULL; <br>
+  DWORD th32ProcessID = 0;<br>
+  BOOL bRet = FALSE; <br>
+  PROCESSENTRY32 pe32 = {0}; <br>
+  <br>
+  // Snapshot de tous les processus<br>
+  hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0); </p>
+      <p class="style13"> if(hProcessSnap == INVALID_HANDLE_VALUE) <br>
+  return 0; <br>
+  <br>
+  // Initialisation de la structure d'un processus<br>
+  pe32.dwSize = sizeof(PROCESSENTRY32); <br>
+  <br>
+  // Parcours de tous les processus et comparaison avec le nom recherche<br>
+  th32ProcessID = Process32First(hProcessSnap, &amp;pe32);</p>
+      <p class="style13"> while(th32ProcessID) <br>
+  { <br>
+  if(strcmp(strlwr(szProcName), strlwr(pe32.szExeFile)) == 0)<br>
+  {<br>
+  th32ProcessID = pe32.th32ProcessID;<br>
+  break;<br>
+  }</p>
+      <p class="style13"> pe32.dwSize = sizeof(PROCESSENTRY32);<br>
+  th32ProcessID = Process32Next(hProcessSnap, &amp;pe32);<br>
+  }<br>
+  <br>
+  CloseHandle(hProcessSnap); <br>
+  <br>
+  // Retourne le PID trouve<br>
+  return(th32ProcessID); <br>
+  }</p></td>
+  </tr>
+</table>
+<p class="style2">&nbsp;</p>
+<p class="style2 style15"><u>Conversion unicode vers ascii : </u></p>
+<table width="82%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><span class="style13">int wide_to_ascii (char* wide_name, char* buffer, int buffer_size)<br>
+{<br>
+return WideCharToMultiByte(CP_ACP, 0, (const unsigned short *) wide_name , -1, buffer, buffer_size, NULL, NULL);<br>
+}</span></td>
+  </tr>
+</table>
+<p class="style2"><br>
+</p>
+<p class="style2 style15"><u>Hook de CreateProcessW : </u></p>
+<table width="95%"  border="1" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style12 style2">BOOL _stdcall NewCreateProcessInternalW (DWORD unknown1, LPCTSTR lpApplicationName,LPTSTR lpCommandLine,LPSECURITY_ATTRIBUTES lpProcessAttributes,LPSECURITY_ATTRIBUTES lpThreadAttributes,BOOL bInheritHandles,DWORD dwCreationFlags,LPVOID lpEnvironment,LPCTSTR lpCurrentDirectory,LPSTARTUPINFO lpStartupInfo,LPPROCESS_INFORMATION lpProcessInformation, DWORD unknown2)<br>
+  {<br>
+  BOOL return_val;<br>
+  char nom_proggy [1024];<br>
+  int bibi = 0;</p>
+      <p class="style13"> // R&eacute;cup&egrave;re la ligne de commande qui va etre lanc&eacute;e<br>
+  memset (nom_proggy,0,1024);<br>
+  strcpy(nom_proggy,&quot;unknown&quot;);<br>
+  if (lpCommandLine)<br>
+  {<br>
+  bibi = wide_to_ascii( (char*)lpCommandLine, nom_proggy, 1024);<br>
+  if (!bibi)<br>
+  strcpy(nom_proggy,&quot;unknown&quot;);<br>
+  }<br>
+  <br>
+  // Ancien appel<br>
+  __asm<br>
+  {<br>
+  push dword ptr [ebp+34h]<br>
+  push dword ptr [ebp+30h]<br>
+  push dword ptr [ebp+2Ch]<br>
+  push dword ptr [ebp+28h]<br>
+  push dword ptr [ebp+24h]<br>
+  push dword ptr [ebp+20h]<br>
+  push dword ptr [ebp+1Ch]<br>
+  push dword ptr [ebp+18h]<br>
+  push dword ptr [ebp+14h]<br>
+  push dword ptr [ebp+10h]<br>
+  push dword ptr [ebp+0Ch]<br>
+  push dword ptr [ebp+8]</p>
+      <p class="style13"> call backup_api_CreateProcessInternalW<br>
+  mov return_val,eax<br>
+  }</p>
+      <p class="style13"> //Affiche la chaine de debug<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - appel &agrave; CreateProcessInternalW -&gt; %i:%s\n&quot;,GetNameByPID(GetCurrentProcessId()), lpProcessInformation-&gt;dwProcessId, nom_proggy);<br>
+  send_debug ((char*)debug_string);<br>
+  <br>
+  // Injecte le processus cr&eacute;&eacute;<br>
+  injector (lpProcessInformation-&gt;dwProcessId, DLL_LOCATION);<br>
+  <br>
+  // Fin<br>
+  return return_val;<br>
+  }</p></td>
+  </tr>
+</table>
+<p class="style2"><br>
+</p>
+<p class="style2 style15"><u>Hook de FreeLibrary :</u> </p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style12 style2">BOOL _stdcall NewFreeLibrary (HMODULE hModule)<br>
+  {<br>
+  int return_val;</p>
+      <p class="style13"> // Si tentative de virer le rootkit : ne le vire pas<br>
+  if ( hModule == GetModuleHandle(DLL_NAME))<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - appel &agrave; FreeLibrary -&gt; rootkit.dll\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  return 0;<br>
+  }<br>
+  <br>
+  // Si on vire une DLL hook&eacute;e, nettoyage avant<br>
+  else if ( hModule == GetModuleHandle(&quot;ws2_32.dll&quot;))<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - appel &agrave; FreeLibrary -&gt; ws2_32.dll\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  free_ws2_32();<br>
+  }<br>
+  else if ( hModule == GetModuleHandle(&quot;wininet.dll&quot;))<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - appel &agrave; FreeLibrary -&gt; wininet.dll\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  free_wininet();<br>
+  }<br>
+  else<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - appel &agrave; FreeLibrary -&gt; ?\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  }</p>
+      <p> <span class="style13"><br>
+  // Ancien appel<br>
+  __asm<br>
+  {<br>
+  push dword ptr [ebp+8]<br>
+  call backup_api_freelibrary<br>
+  mov return_val,eax<br>
+  }<br>
+  <br>
+  // Fin<br>
+  return return_val;<br>
+  }</span></p></td>
+  </tr>
+</table>
+<p class="style2"><br>
+</p>
+<p class="style2 style15"><u>Hook de LoadLibrary : </u></p>
+<table width="97%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style12 style2">HMODULE _stdcall NewLoadLibrary (LPCTSTR lpFileName)<br>
+  {<br>
+  HMODULE return_val;</p>
+      <p class="style13"> _snprintf( (char*)debug_string,2048, &quot;% 20s - appel &agrave; LoadLibraryA -&gt; %s\n&quot;,GetNameByPID(GetCurrentProcessId()), lpFileName);<br>
+  send_debug ((char*)debug_string);<br>
+      </p>
+      <p class="style13"> // Ancien appel<br>
+  __asm<br>
+  {<br>
+  push dword ptr [ebp+8]<br>
+  call backup_api_loadlibrary<br>
+  mov return_val,eax<br>
+  }</p>
+      <p class="style13"> // Si on a chargn&eacute; des DLLs &agrave; hooker, ACTION !<br>
+  if (stricmp(lpFileName,&quot;ws2_32.dll&quot;) == 0)<br>
+  hook_ws2_32();</p>
+      <p class="style13"> if (stricmp(lpFileName,&quot;wininet.dll&quot;) == 0)<br>
+  hook_wininet();</p>
+      <p class="style13"> <br>
+  // Fin<br>
+  return return_val;<br>
+  }<br>
+  </p>    </td>
+  </tr>
+</table>
+<p>&nbsp;</p>
+<p><span class="style26"><u>Hook g&eacute;n&eacute;ral de kernel32</u></span></p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style13">int WINAPI hook_kernel32()<br>
+  {<br>
+  DWORD offset_new_fx;<br>
+  <br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - kernel32.dll hook\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style13"> // Hook de loadlibrary<br>
+  __asm lea eax,NewLoadLibrary<br>
+  __asm mov offset_new_fx,eax<br>
+  if (!backup_api_loadlibrary)<br>
+  initialise_hook(&quot;kernel32.dll&quot;,&quot;LoadLibraryA&quot;,offset_new_fx,&amp;backup_api_loadlibrary);</p>
+      <p class="style13"> if (backup_api_loadlibrary)<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - kernel32.dll:LoadLibraryA hook succes\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  }<br>
+  else<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - kernel32.dll:LoadLibraryA hook echec\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  }</p>
+    <p class="style13"><span class="style2"><br>
+    //Hook de freelibrary<br></span>__asm lea eax,NewFreeLibrary<br>
+  __asm mov offset_new_fx,eax<br>
+  if (!backup_api_freelibrary)<br>
+  initialise_hook(&quot;kernel32.dll&quot;,&quot;FreeLibrary&quot;,offset_new_fx,&amp;backup_api_freelibrary);</p>    
+    <p class="style2 style12"> if (backup_api_freelibrary)<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - kernel32.dll:FreeLibrary hook succes\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  }<br>
+  else<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - kernel32.dll:FreeLibrary hook echec\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  }</p>
+    <p class="style2 style12"><span class="style2">// Hook de CreateProcessInternalW<br>
+      __asm lea eax,NewCreateProcessInternalW<br>
+__asm mov offset_new_fx,eax<br>
+if (!backup_api_CreateProcessInternalW)<br>
+initialise_hook(&quot;kernel32.dll&quot;,&quot;CreateProcessInternalW&quot;,offset_new_fx,&amp;backup_api_CreateProcessInternalW);<br>
+<br>
+if (backup_api_CreateProcessInternalW)<br>
+{<br>
+_snprintf((char*)debug_string,2048, &quot;% 20s - kernel32.dll:CreateProcessInternalW hook succes\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+send_debug ((char*)debug_string);<br>
+}<br>
+else<br>
+{<br>
+_snprintf((char*)debug_string,2048, &quot;% 20s - kernel32.dll:CreateProcessInternalW hook echec\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+send_debug ((char*)debug_string);<br>
+}<br>
+<br>
+// Fin <br>
+return TRUE;<br>
+}<br></span></p>    </td>
+  </tr>
+</table>
+<p class="style2"><br>
+  <br>
+</p>
+<p class="style2 style15"><u>D&eacute;hook g&eacute;n&eacute;ral de kernel32 :</u></p>
+<table width="96%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style12 style2">int WINAPI free_kernel32 ()<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - kernel32.dll lib&eacute;ration\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style13"> if (backup_api_loadlibrary)<br>
+  enleve_hook(&quot;kernel32.dll&quot;,&quot;LoadLibraryA&quot;,&amp;backup_api_loadlibrary);<br>
+  <br>
+  if (backup_api_freelibrary)<br>
+  enleve_hook(&quot;kernel32.dll&quot;,&quot;FreeLibrary&quot;,&amp;backup_api_freelibrary);</p>
+      <p class="style13"> if (backup_api_CreateProcessInternalW)<br>
+  enleve_hook(&quot;kernel32.dll&quot;,&quot;CreateProcessInternalW&quot;,&amp;backup_api_CreateProcessInternalW);</p>
+      <p class="style13"> // Fin<br>
+  return TRUE;<br>
+  }</p></td>
+  </tr>
+</table>
+<p class="style2"><br>
+</p>
+<p>&nbsp;</p>
+<p class="style7 style15"><u><strong><a name="4"></a>4) Surveillance du r&eacute;seau</strong></u></p>
+<p class="style38">Si on a en t&ecirc;te les s&eacute;quences de fonctions lors d'&eacute;changes via winsock, on voit que les bons candidats semblent &ecirc;tre connect et listen. En effet en amont on a socket, bind, des fonctions de pr&eacute;paration qui ne mettent pas directement en jeu le r&eacute;seau. Et en aval on a send, recv, des fonctions qui entrent en jeu lorsqu'une connexion a d&eacute;j&agrave; eu lieu.</p>
+<p class="style38">Les nouvelles fonctions pour connect et listen sont bas&eacute;es sur le m&ecirc;me mod&egrave;le. Je n'ai donc impl&eacute;ment&eacute; que celles concernant connect. H&eacute; oui, l'article est interactif : charge &agrave; toi, &ocirc; lecteur, de t'amuser &agrave; coder le d&eacute;tour de listen. Lorsqu'on arrive dans le d&eacute;tour, un messagebox est affich&eacute;, demandant &agrave; l'utilisateur si le programme Untel a le droit d'acc&eacute;der au r&eacute;seau au moyen de l'API bidule. Si oui, une variable est mise &agrave; jour pour qu'&agrave; l'avenir le d&eacute;tour s'en souvienne et ne pose plus la question, puis l'API d'origine est appell&eacute;e. Si non, l'API d'origine n'est m&ecirc;me pas invoqu&eacute;e, on renvoie directement une erreur.</p>
+<p class="style38">Attention, il faut penser exhaustif !! Connect c'est bien joli mais il existe WSAConnect, &agrave; qui il faut faire subir le m&ecirc;me traitement. Pour trouver ces APIS relevant d'une m&ecirc;me fonction, il vous faut utiliser par exemple depends.exe, fourni avec visual studio, ou bien regarder sur le site de MSDN. Pour chaque API, vous trouverez des liens vers celles qui ont un rapport avec.</p>
+<p class="style38">Vous pouvez &eacute;galement d&eacute;bugger l'API. Ainsi pour LoadLibrary, on trouve LoadLibraryA et LoadLibraryW. Un coup de d&eacute;buggage montre que LoadLibraryA invoque en fait LoadLibraryW. Du coup, il n'y a besoin de hooker que la version unicode. Mais &ccedil;a n'est pas le cas pour connect et WSAConnect donc il faut bien en faire deux.</p>
+<p class="style38">On trouvera dans le source les hooks dans le fichier ws2_32.</p>
+<p class="style38"><u>Importer les fonctions utiles de ws2_32 : </u></p>
+<table width="97%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><span class="style36">int importe_fx ()<br>
+{<br>
+// Chope les fx qu'on utilisera<br>
+HMODULE adresse_ws2_32;<br>
+if ((adresse_ws2_32 = GetModuleHandle(&quot;ws2_32.dll&quot;)) == 0) return FALSE;<br>
+if ((import_send = (type_send) GetProcAddress(adresse_ws2_32,&quot;send&quot;)) == 0) return FALSE;<br>
+if ((import_recv = (type_recv) GetProcAddress(adresse_ws2_32,&quot;recv&quot;)) == 0) return FALSE;<br>
+if ((import_closesocket = (type_closesocket) GetProcAddress(adresse_ws2_32,&quot;closesocket&quot;)) == 0) return FALSE;<br>
+if ((import_wsasetlasterror = (type_wsasetlasterror) GetProcAddress(adresse_ws2_32,&quot;WSASetLastError&quot;)) == 0) return FALSE;<br>
+if ((import_wsagetlasterror = (type_wsagetlasterror) GetProcAddress(adresse_ws2_32,&quot;WSAGetLastError&quot;)) == 0) return FALSE;<br>
+<br>
+return TRUE;<br>
+}</span></td>
+  </tr>
+</table>
+<p class="style2"><br>
+</p>
+<p class="style2 style15"><u>Handler de WSAConnect :</u></p>
+<table width="97%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style2 style12">int _stdcall NewWSAConnect (SOCKET s, const struct sockaddr* name, int namelen, LPWSABUF lpCallerData, LPWSABUF lpCalleeData, LPQOS lpSQOS, LPQOS lpGQOS)<br>
+  {<br>
+  int return_val;</p>
+      <p class="style36"> _snprintf((char*)debug_string,2048, &quot;% 20s - appel &agrave; WSAConnect\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style36"> char chaine_autorisation[1024];<br>
+  sprintf(chaine_autorisation,&quot;Autoriser %s &agrave; initier une connexion cliente au r&eacute;seau (WSAConnect) ?&quot;,GetNameByPID(GetCurrentProcessId()));</p>
+      <p class="style36"> if (!ALLOW_OUTBOUND)<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Pas autoris&eacute; par defaut\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Demande envoy&eacute;e\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style36"> if ( demande_autorisation (chaine_autorisation))<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Demande accept&eacute;e\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  <br>
+  ALLOW_OUTBOUND = true;<br>
+  __asm<br>
+  {<br>
+  push dword ptr [ebp+20h]<br>
+  push dword ptr [ebp+1Ch]<br>
+  push dword ptr [ebp+18h]<br>
+  push dword ptr [ebp+14h]<br>
+  push dword ptr [ebp+10h]<br>
+  push dword ptr [ebp+0Ch]<br>
+  push dword ptr [ebp+8]<br>
+  call backup_api_WSAConnect<br>
+  mov return_val,eax<br>
+  }<br>
+  }<br>
+  else<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Demande refus&eacute;e\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style36"> return_val = SOCKET_ERROR;<br>
+  import_wsasetlasterror(WSAECONNREFUSED);<br>
+  }<br>
+  }<br>
+  else<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Autoris&eacute; par defaut\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style36"> __asm<br>
+  {<br>
+  push dword ptr [ebp+20h]<br>
+  push dword ptr [ebp+1Ch]<br>
+  push dword ptr [ebp+18h]<br>
+  push dword ptr [ebp+14h]<br>
+  push dword ptr [ebp+10h]<br>
+  push dword ptr [ebp+0Ch]<br>
+  push dword ptr [ebp+8]<br>
+  call backup_api_WSAConnect<br>
+  mov return_val,eax<br>
+  }<br>
+  }<br>
+  return return_val;<br>
+  } </p></td>
+  </tr>
+</table>
+<p class="style2"><u></u></p>
+<p class="style2"> <br>
+</p>
+<p class="style2 style15"><u>Handler de Connect :</u></p>
+<table width="97%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style2 style35">int _stdcall Newconnect (SOCKET s, const struct sockaddr* name, int namelen)<br>
+  {<br>
+  int return_val;</p>
+      <p class="style36"> _snprintf((char*)debug_string,2048, &quot;% 20s - appel &agrave; connect\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  <br>
+  char chaine_autorisation[1024];<br>
+  sprintf(chaine_autorisation,&quot;Autoriser %s &agrave; initier une connexion cliente au r&eacute;seau (connect) ?&quot;,GetNameByPID(GetCurrentProcessId()));</p>
+      <p class="style36"> if (!ALLOW_OUTBOUND)<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Pas autoris&eacute; par defaut\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Demande envoy&eacute;e\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style36"> if ( demande_autorisation (chaine_autorisation))<br>
+  {<br>
+  <br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Demande accept&eacute;e\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style36"> ALLOW_OUTBOUND = true;<br>
+  __asm<br>
+  {<br>
+  push dword ptr [ebp+10h]<br>
+  push dword ptr [ebp+0Ch]<br>
+  push dword ptr [ebp+8]<br>
+  call backup_api_connect<br>
+  mov return_val,eax<br>
+  }<br>
+  }<br>
+  else<br>
+  {<br>
+  <br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Demande refus&eacute;e\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style36"> return_val = SOCKET_ERROR;<br>
+  import_wsasetlasterror(WSAECONNREFUSED);<br>
+  }<br>
+  }<br>
+  else<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Autoris&eacute; par defaut\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  <br>
+  __asm<br>
+  {<br>
+  push dword ptr [ebp+10h]<br>
+  push dword ptr [ebp+0Ch]<br>
+  push dword ptr [ebp+8]<br>
+  call backup_api_connect<br>
+  mov return_val,eax<br>
+  }<br>
+  }</p>
+      <p class="style36"> return return_val;<br>
+  } </p></td>
+  </tr>
+</table>
+<p class="style2"><br>
+</p>
+<p class="style2"><u>Hook global de ws2_32 :</u></p>
+<table width="97%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style2 style13">int WINAPI hook_ws2_32 ()<br>
+  {<br>
+  <br>
+  DWORD offset_new_fx;<br>
+  <br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - ws2_32.dll hook\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style13"> <br>
+  importe_fx ();<br>
+  <br>
+  // Hook de WSAConnect<br>
+  __asm lea eax,NewWSAConnect<br>
+  __asm mov offset_new_fx,eax<br>
+  if (!backup_api_WSAConnect)<br>
+  initialise_hook(&quot;WS2_32.dll&quot;, &quot;WSAConnect&quot;, offset_new_fx, &amp;backup_api_WSAConnect );</p>
+      <p class="style35"> if (backup_api_WSAConnect)<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - ws2_32.dll:WSAConnect hook succes\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  }<br>
+  else<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - ws2_32.dll:WSAConnect hook WSAConnect echec\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  }<br>
+  <br>
+  // Hook de connect<br>
+  __asm lea eax,Newconnect<br>
+  __asm mov offset_new_fx,eax<br>
+  if (!backup_api_connect)<br>
+  initialise_hook(&quot;WS2_32.dll&quot;, &quot;connect&quot;, offset_new_fx, &amp;backup_api_connect );</p>
+      <p class="style35"> if (backup_api_WSAConnect)<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - ws2_32.dll:connect hook succes\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  }<br>
+  else<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - ws2_32.dll:connect hook echec\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  }<br>
+  <br>
+  // Fin<br>
+  return TRUE;<br>
+  }</p></td>
+  </tr>
+</table>
+<p class="style2"><br>
+</p>
+<p class="style2 style15"><u>D&eacute;hook global de ws2_32 : </u></p>
+<table width="97%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style2 style12">int WINAPI free_ws2_32 ()<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - ws2_32.dll lib&eacute;ration\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+    </p>
+      <p class="style36"> if (backup_api_WSAConnect)<br>
+  enleve_hook(&quot;WS2_32.dll&quot;, &quot;WSAConnect&quot;, &amp;backup_api_WSAConnect );</p>
+      <p class="style36"> if (backup_api_connect)<br>
+  enleve_hook(&quot;WS2_32.dll&quot;, &quot;connect&quot;, &amp;backup_api_connect );<br>
+      </p>
+      <p class="style36"> // Fin<br>
+  return TRUE;<br>
+  }</p></td>
+  </tr>
+</table>
+<p class="style2"><br>
+</p>
+<p>&nbsp;</p>
+<p class="style7 style15"><u><strong><a name="5"></a>5) Un peu plus loin</strong></u></p>
+<p class="style38">En testant l'application, on peut voir que les r&eacute;sultats sont l&agrave;. Messenger, FireFox, j'en passe et des meilleurs. Tout le monde demande maintenant gentiment la permission de sortir. Tout le monde ou presque. Internet Explorer reste r&eacute;calcitrant et fait le mur pour aller gambader dans la nature. Hmmm c'est inacceptable. Si faire berner par IE, c'est le comble. Pourtant il acc&egrave;de bel et bien au net, sinon il ne chargerait pas ses pages web. Mais il ne passe pas par l'interface socket.</p>
+<p class="style38">Un outil utile est Developer Playground, qui liste les processus actifs, les DLLs qu'ils ont de charg&eacute;es, et permet de tracer les appels &agrave; leurs apis. Il en ressort qu'Internet Explorer utilise la biblioth&egrave;que de haut niveau wininet.dll. Et cette wininet travaille comme une grande, elle ne s'appuie pas sur ws2_32 pour acc&eacute;der au r&eacute;seau. Voil&agrave; enfin la fuite !</p>
+<p class="style38">Sur le site de msdn, on peut trouver des explications sur le fonctionnement de wininet, notamment les s&eacute;quences de fonctions qui permettent d'aller titiller un site web ou un serveur http. Il y a des fonctions communes, et la plus int&eacute;ressante de notre point de vue est IntenetConnect. Ni trop en amont, ni trop en aval. Et en examinant la dll de plus pr&egrave;s, on remarque que InternetConnect se d&eacute;cline en A et en W, ascii et wide. Et cette fois ci, les deux versions sont ind&eacute;pendantes. In va falloir impl&eacute;menter un hook pour ces deux l&agrave;. Le principe en est exactement le m&ecirc;me que pour connect : demander la permission, relayer ou non la demande &agrave; l'ancienne API, et si besoin m&eacute;moriser le fait que l'utilisateur accepte que le programme aille sur le net via wininet.</p>
+<p class="style38">En testant, effectivement d&eacute;sormais IE ne fait plus son petit malin en agissant derri&egrave;re notre dos.</p>
+<p class="style38"><u>Handler de InternetConnectW :</u> </p>
+<table width="97%"  border="1" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style2 style12">int _stdcall NewInternetConnectW (HINTERNET hInternet,LPCTSTR lpszServerName,INTERNET_PORT nServerPort,LPCTSTR lpszUsername,LPCTSTR lpszPassword,DWORD dwService,DWORD dwFlags,DWORD_PTR dwContext)<br>
+  {<br>
+  int return_val;<br>
+  char chaine_autorisation[1024];</p>
+      <p class="style13"> _snprintf((char*)debug_string,2048, &quot;% 20s - appel &agrave; InternetConnectW\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style13"> sprintf(chaine_autorisation,&quot;Autoriser %s &agrave; acc&eacute;der r&eacute;seau (InternetConnectW) ?&quot;,GetNameByPID(GetCurrentProcessId()));</p>
+      <p class="style13"> if (!ALLOW_WININET)<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Pas autoris&eacute; par defaut\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Demande envoy&eacute;e\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style13"> if ( demande_autorisation (chaine_autorisation))<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Demande accept&eacute;e\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  <br>
+  ALLOW_WININET = true;<br>
+  __asm<br>
+  {<br>
+  push dword ptr [ebp+24h]<br>
+  push dword ptr [ebp+20h]<br>
+  push dword ptr [ebp+1Ch]<br>
+  push dword ptr [ebp+18h]<br>
+  push dword ptr [ebp+14h]<br>
+  push dword ptr [ebp+10h]<br>
+  push dword ptr [ebp+0Ch]<br>
+  push dword ptr [ebp+8]<br>
+  call backup_api_InternetConnectW<br>
+  mov return_val,eax<br>
+  }<br>
+  }<br>
+  else<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Demande refus&eacute;e\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style13"> return_val = NULL;<br>
+  }<br>
+  }<br>
+  else<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Autoris&eacute; par defaut\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style13"> __asm<br>
+  {<br>
+  push dword ptr [ebp+24h]<br>
+  push dword ptr [ebp+20h]<br>
+  push dword ptr [ebp+1Ch]<br>
+  push dword ptr [ebp+18h]<br>
+  push dword ptr [ebp+14h]<br>
+  push dword ptr [ebp+10h]<br>
+  push dword ptr [ebp+0Ch]<br>
+  push dword ptr [ebp+8]<br>
+  call backup_api_InternetConnectW<br>
+  mov return_val,eax<br>
+  }<br>
+  }<br>
+  return return_val;</p>
+    <p class="style13"> }</p></td>
+  </tr>
+</table>
+<p class="style2"><br>
+</p>
+<p class="style2 style15"><u>Handler de InternetConnectA : </u></p>
+<table width="97%"  border="1" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style2 style12">int _stdcall NewInternetConnectA (HINTERNET hInternet,LPCTSTR lpszServerName,INTERNET_PORT nServerPort,LPCTSTR lpszUsername,LPCTSTR lpszPassword,DWORD dwService,DWORD dwFlags, DWORD_PTR dwContext)<br>
+  {<br>
+  int return_val;<br>
+  char chaine_autorisation[1024];</p>
+      <p class="style13"> _snprintf((char*)debug_string,2048, &quot;% 20s - appel &agrave; InternetConnectA\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style13"> sprintf(chaine_autorisation,&quot;Autoriser %s &agrave; acc&eacute;der r&eacute;seau (InternetConnectA) ?&quot;,GetNameByPID(GetCurrentProcessId()));</p>
+      <p class="style13"> if (!ALLOW_WININET)<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Pas autoris&eacute; par defaut\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Demande envoy&eacute;e\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style13"> if ( demande_autorisation (chaine_autorisation))<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Demande accept&eacute;e\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  <br>
+  ALLOW_WININET = true;<br>
+  __asm<br>
+  {<br>
+  push dword ptr [ebp+24h]<br>
+  push dword ptr [ebp+20h]<br>
+  push dword ptr [ebp+1Ch]<br>
+  push dword ptr [ebp+18h]<br>
+  push dword ptr [ebp+14h]<br>
+  push dword ptr [ebp+10h]<br>
+  push dword ptr [ebp+0Ch]<br>
+  push dword ptr [ebp+8]<br>
+  call backup_api_InternetConnectA<br>
+  mov return_val,eax<br>
+  }<br>
+  }<br>
+  else<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Demande refus&eacute;e\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  return_val = NULL;<br>
+  }<br>
+  }<br>
+  else<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Autoris&eacute; par defaut\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style13"> __asm<br>
+  {<br>
+  push dword ptr [ebp+24h]<br>
+  push dword ptr [ebp+20h]<br>
+  push dword ptr [ebp+1Ch]<br>
+  push dword ptr [ebp+18h]<br>
+  push dword ptr [ebp+14h]<br>
+  push dword ptr [ebp+10h]<br>
+  push dword ptr [ebp+0Ch]<br>
+  push dword ptr [ebp+8]<br>
+  call backup_api_InternetConnectA<br>
+  mov return_val,eax<br>
+  }<br>
+  }<br>
+  return return_val;<br>
+  }</p></td>
+  </tr>
+</table>
+<p class="style2"><br>
+</p>
+<p class="style2 style15"><u>Hook global de wininet : </u></p>
+<table width="97%"  border="1" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style2 style12">int WINAPI hook_wininet ()<br>
+  {<br>
+  DWORD offset_new_fx;<br>
+  <br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - hook Wininet.dll\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style13"> // Hook de InternetConnectW<br>
+  __asm lea eax,NewInternetConnectW<br>
+  __asm mov offset_new_fx,eax<br>
+  if (!backup_api_InternetConnectW)<br>
+  initialise_hook(&quot;wininet.dll&quot;, &quot;InternetConnectW&quot;, offset_new_fx, &amp;backup_api_InternetConnectW );</p>
+      <p class="style13"> if (backup_api_InternetConnectW)<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Wininet.dll:InternetConnectW hook succes\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  }<br>
+  else<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Wininet.dll:InternetConnectW hook echec\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  }<br>
+      </p>
+      <p class="style13"> // Hook de InternetConnectA<br>
+  __asm lea eax,NewInternetConnectA<br>
+  __asm mov offset_new_fx,eax<br>
+  if (!backup_api_InternetConnectA)<br>
+  initialise_hook(&quot;wininet.dll&quot;, &quot;InternetConnectA&quot;, offset_new_fx, &amp;backup_api_InternetConnectA);</p>
+      <p class="style13"> if (backup_api_InternetConnectA)<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Wininet.dll:InternetConnectA hook succes\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  }<br>
+  else<br>
+  {<br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - Wininet.dll:InternetConnectA hook echec\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+  }</p>
+      <p> <span class="style13"><br>
+  // Fin<br>
+  return TRUE;<br>
+  }</span></p></td>
+  </tr>
+</table>
+<p class="style2"><br>
+</p>
+<p class="style2 style15"><u>Dehook global de wininet :</u></p>
+<table width="97%"  border="1" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style2 style12">int WINAPI free_wininet ()<br>
+  {<br>
+  //return false;</p>
+      <p class="style13"> _snprintf((char*)debug_string,2048, &quot;% 20s - Wininet.dll lib&eacute;ration\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);<br>
+      </p>
+      <p class="style13"> if (backup_api_InternetConnectW)<br>
+  enleve_hook(&quot;wininet.dll&quot;, &quot;InternetConnectW&quot;, &amp;backup_api_InternetConnectW );</p>
+      <p class="style13"> if (backup_api_InternetConnectA)<br>
+  enleve_hook(&quot;wininet.dll&quot;, &quot;InternetConnectA&quot;, &amp;backup_api_InternetConnectA );</p>
+      <p class="style13"> // Fin<br>
+  return TRUE;<br>
+  }</p></td>
+  </tr>
+</table>
+<p class="style2"> <br>
+  <br>
+</p>
+<p class="style2 style15"><u>Maintenant que tout ca est en place, voici le code du DLLMAIN : </u></p>
+<table width="97%"  border="1" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style12 style2">BOOL APIENTRY DllMain (HANDLE hModule, DWORD reason_for_call, LPVOID lpReserved)<br>
+  {<br>
+  switch (reason_for_call)<br>
+  {<br>
+  <br>
+  // PARTIE 1 : MISE EN PLACE DES HOOKS<br>
+  // ----------------------------------/<br>
+  case DLL_PROCESS_ATTACH:<br>
+  <br>
+  init_debug_file (DEBUG_FILE);</p>
+      <p class="style13"> _snprintf((char*)debug_string,2048, &quot;% 20s - chargement du rootkit\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string);</p>
+      <p class="style13"> hook_kernel32();<br>
+  hook_ws2_32();<br>
+  hook_wininet();<br>
+  <br>
+  break;<br>
+      </p>
+      <p class="style13"> // PARTIE 2 : RESTAURATION DE L'ESPACE D'ADRESSAGE<br>
+  // -----------------------------------------------/<br>
+  case DLL_PROCESS_DETACH:<br>
+  <br>
+  _snprintf((char*)debug_string,2048, &quot;% 20s - fermeture du rootkit\n&quot;,GetNameByPID(GetCurrentProcessId()));<br>
+  send_debug ((char*)debug_string); </p>
+      <p class="style13"> free_wininet();<br>
+  free_ws2_32();<br>
+  free_kernel32();</p>
+      <p class="style13"> end_debug_file();<br>
+          <br>
+  break;</p>
+      <p class="style2"><span class="style13"> default:<br>
+  break;<br>
+  }<br>
+  <br>
+  return TRUE;<br>
+  }</span><br>
+    </p></td>
+  </tr>
+</table>
+<p class="style2"><br>
+</p>
+<p class="style7 style15"><u><strong><a name="6"></a>6) Pour aller plus loin</strong></u></p>
+<p class="style38">L'application, dans sa version actuelle, manque de la petite couche de vernis qui transforme un exemple en programme utilisable. Principalement, un peu de centralisation. Actuellement, chaque programme est totalement ind&eacute;pendant. Si vous lancez firefox et acceptez au premier popup, vous &ecirc;tes tranquille. Mais si vous le fermez et le relancez, alors le popup va revenir. L'application n'enregistre nulle part les listes de programmes amis.</p>
+<p class="style38">Mais la gestion centralis&eacute;e implique que par exemple l'utilisateur puisse shooter le processus Monitor.exe. Alors il y a moyen de faire une version centralis&eacute;e mais flottante. L'id&eacute;e m'a bien plu mais j'ai manqu&eacute; de temps pour l'impl&eacute;menter. Je vais en parler un peu tout de m&ecirc;me.</p>
+<p class="style38">Un processus se retrouve promu au rang de processus central. Il ouvre un named pipe en &eacute;coute. Les autres process communiquent avec lui pour les demandes d'autorisation, et l'&eacute;criture de fichier de log / debug. Si &agrave; un moment donn&eacute; le fichier principal est ferm&eacute;, alors le premier processus qui le d&eacute;tecte prend le relais. Pour le d&eacute;tecter ca n'est pas bien dur : la connexion sur le named pipe &eacute;chouera.</p>
+<p class="style38">Bref, avec cette id&eacute;e en t&ecirc;te, j'ai commenc&eacute; &agrave; rassembler dans le fichier source serveur les fonctions de d&eacute;bug et de demande d'autorisation. Mais ca n'est pas finalis&eacute; pour le moment. Encore un coup du document interactif, ou du syndrome d&eacute;merde-toi...</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="style7 style15"><u><strong><a name="7"></a>7) Pour finir</strong></u></p>
+<p class="style15"><span class="style2">Et bien pour finir, bon test ! Vous trouverez les sources ainsi qu'une version compil&eacute;e dans la partie [ Annexes ]. </span><br>
+</p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right" class="style15"><em><font size="3" face="Lucida Console">BY TOLWIN</font></em></p>
+<p align="right" class="style15">Copyright &copy; 2005 ARENHACK - DHS</p>
+<p></p>
+<p align="center"><br>
+  <strong><a href="page6.htm"><u>HAUT DE PAGE</u></a></strong><br>
+</p>
+</body>
+</html>

