@@ -1,0 +1,1542 @@
+<html>
+<head>
+<title>Dead-End issue 2 - How to code an IP Range Scanner with ECHO REQUESTS &amp; REPLIES</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<style type="text/css">
+<!--
+.style1 {font-size: 16px}
+.style2 {font-size: 12px}
+.style3 {color: #FF0000}
+.style7 {font-size: 13px}
+.style9 {font-size: 16px; font-weight: bold; }
+.style10 {color: #F8F8F8}
+.style11 {color: #666666}
+.style13 {font-size: 24px}
+.style14 {color: #FFFFFF}
+.style15 {
+	font-family: "Courier New", Courier, mono;
+	color: #666666;
+}
+.style16 {color: #000066}
+.style17 {color: #006633}
+.style18 {color: #000000}
+.style19 {
+	font-family: "Courier New", Courier, mono;
+	font-size: 12px;
+	color: #666666;
+}
+.style23 {font-family: "Courier New", Courier, mono}
+.style24 {font-family: Verdana, Arial, Helvetica, sans-serif}
+-->
+</style>
+<link href="style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body>
+<hr>
+<p align="center"><img src="Images/ip_scanning.jpg" width="469" height="60"></p>
+<hr>
+<p align="LEFT"><em><a href="page3.htm" target="_blank">AFFICHER CET ARTICLE EN MODE PAGE 
+ENTIERE</a></em></p><p align="center"><strong><font size="3"><u>SOMMAIRE</u></font></strong></p>
+<p align="left"><font size="2"><a href="#1">1) Introduction</a></font></p>
+<p align="left" class="style7"><a href="page3.htm#2">2) Prelude &agrave; TCP/IP : revenir &agrave; la source<br>
+  <span class="style10">__</span></a><a href="page3.htm#21">2.1)Principes</a><a href="page3.htm#21"><br>
+  <span class="style10">__</span></a><a href="page3.htm#23">2.2)Qu'est-ce qu'une adresse IP ?</a><br>
+  <span class="style2"><a href="page3.htm#21"><span class="style10">__</span></a><a href="page3.htm#23"></a><a href="page3.htm#24">2.3)Le protocole ICMP : l'ordonnanceur des &quot;Echo request&quot; et des &quot;Echo reply&quot;<br>
+  </a><a href="page3.htm#21"><span class="style10">__</span></a><a href="page3.htm#23"></a><a href="page3.htm#24">2.4) Le Reverse DNS : &quot;Dis moi qui tu es et je ne te dirai pas qui je suis....&quot;</a><br>
+  <a href="page3.htm#21"><span class="style10">__</span></a><a href="page3.htm#23"></a><a href="page3.htm#25">2.5)Les classes d'adresses : indices des caract&eacute;ristiques d'un r&eacute;seau</a></span></p>
+<p align="left" class="style2"><a href="page3.htm#3">3) IP RANGE SCANNING : principe et r&ocirc;le dans la prise d'empreintes d'un r&eacute;seau </a><br>
+  <span class="style7"><a href="page3.htm#21"><span class="style10">__</span></a><a href="page3.htm#23"></a></span><a href="page3.htm#31">3.1) Introduction</a> <br>
+  <span class="style7"><a href="page3.htm#21"><span class="style10">__</span></a><a href="page3.htm#23"></a></span><a href="page3.htm#32">3.2) Principe et r&ocirc;le</a> </p>
+<p align="left" class="style2"><span class="style7"><a href="page3.htm#4">4) IPnSCAN : un troisi&egrave;me oeil</a></span><br>
+  <span class="style7"><a href="page3.htm#21"><span class="style10">__</span></a><a href="page3.htm#23"></a></span><a href="page3.htm#41">4.1) fichier header : structures, liste cha&icirc;n&eacute;e, variables globales et macros<BR>
+  </a><span class="style7"><a href="page3.htm#21"><span class="style10">__</span></a><a href="page3.htm#23"></a></span><a href="page3.htm#42">4.2) Les fonctions de notre scanner<br></a><span class="style7"><a href="page3.htm#21"><span class="style10">__</span></a><a href="page3.htm#23"></a></span><a href="page3.htm#43">4.3) Le parser</a><br>
+  <span class="style7"><a href="page3.htm#21"><span class="style10">__</span></a><a href="page3.htm#23"></a></span><a href="page3.htm#44">4.4) Tests</a></p>
+<p align="left" class="style2"><a href="page3.htm#5">5) Conclusion</a></p>
+<p align="left" class="style2"><a href="page3.htm#6">6) R&eacute;f&eacute;rences</a> </p>
+<hr>
+<p align="left">&nbsp;</p>
+<p align="left"><font size="2"><strong><u><a name="1"></a></u></strong></font><strong><u><span class="style7">1) Introduction</span></u></strong></p>
+<p align="left"><strong><span class="style1">L</span></strong><span class="style2">a technique de prise d'empreintes d'un r&eacute;seau ou d'un serveur, appel&eacute; plus commun&eacute;ment &quot;<em>fingerprinting</em>&quot;, est la premi&egrave;re &eacute;tape d'une longue s&eacute;rie qui constitue la pr&eacute;paration d'une attaque ayant pour objectif dans la plupart des cas une tentative d'intrusion. En effet il n'est possible de compromettre un serveur qu'apr&egrave;s le rassemblement d'une multitude d'informations le concernant (OS, daemons...) afin de pouvoir &eacute;laborer la meilleure strat&eacute;gie d'attaque. Cette prise d'empreintes sur un serveur peut-&ecirc;tre r&eacute;sum&eacute;e en une suite d'actions fastidieuses n&eacute;cessitant indispensablement l'aide de programmes afin d'obtenir des r&eacute;sultats fiables et exhaustifs ; on pourra par exemple citer l'excellent <u>nmap</u> &eacute;crit par fyodor <span class="style3">[1]</span>, ou encore nessus etc... L'approche de l'attaque d'un r&eacute;seau est sensiblement similaire dans la mesure o&ugrave; comme un serveur, un r&eacute;seau poss&egrave;de des caract&eacute;ristiques qui lui sont propres (classe...) et qui l'identifient par rapport &agrave; certaines vuln&eacute;rabilit&eacute;s qui ne feront pas l'objet de cet article. En effet l'objectif de ce papier est de senbiliser le lecteur au principe du l'IP Scanning d'un point de vue programmation puisque j'expliquerai comment concevoir pas &agrave; pas et simplement un scanner en C permettant d'analyser des plages d'adresses IP ainsi que d'effectuer des <em>reverses DNS</em>. </span></p>
+<p align="left">&nbsp;</p>
+<p align="left" class="style7"><strong><u><a name="2"></a>2) Prelude &agrave; TCP/IP : revenir &agrave; la source</u> </strong></p>
+<p align="left" class="style2"><span class="style9">A</span>vant toute chose il est &eacute;videmment indispensable d'expliquer le pourquoi du comment i.e les caract&eacute;ristiques des protocoles r&eacute;gissant le fonctionnement des communications sur un r&eacute;seau afin qu'une information puisse &ecirc;tre achemin&eacute;e d'un point A &agrave; un point B sans contraintes.</p>
+<blockquote>
+  <p align="left" class="style2"><u><em><a name="21"></a>2.1)Principes</em></u></p>
+</blockquote>
+<p align="left" class="style1"><strong>T</strong><span class="style2">CP/IP est une suite de protocoles pour l'exploitation des r&eacute;seaux de communication, on peut alors se demander &quot;qu'est-ce qu'une r&eacute;seau?&quot; et quel r&ocirc;le joue les protocoles dans son fonctionnement. Un r&eacute;seau est en fait un ensemble de machines informatiques qui communiquent ensemble gr&acirc;ce &agrave; une technique commune de transmission. Ainsi si une machine A veut communiquer avec une machine B, la machine A doit pouvoir envoyer une message &agrave; la machine B et cette derni&egrave;re doit pourvoir comprendre ce message, plus pr&eacute;cis&eacute;ment des applications (i.e des logiciels) de la machine A vont discuter avec des applications de la machines B, or pour que ces deux machines se comprennent il faut qu'elles reconnaissent toutes les deux un ensemble de r&egrave;gles r&eacute;gissant les op&eacute;rations de transfert sur un r&eacute;seaux, c'est cet ensemble de r&egrave;gles qui va constituer un protocole (c'est exactement comme si un allemand et un italien se retrouvait dans la m&ecirc;me pi&egrave;ce sans que l'un ne parle un mot de la langue de l'autre, et bien pour pouvoir se comprendre il vont devoir utiliser un langage auxiliaire afin de communiquer, ce langage va &ecirc;tre soumis &agrave; un ensemble de r&egrave;gles comme le vocabulaire etc... c'est exactement la m&ecirc;me chose en ce qui concerne un protocole). Evidemment je ne d&eacute;velopperait pas tous les points de la suite de protocole TCP/IP, la tache est beaucoup trop importante et c'est pourquoi je vous invite &agrave; consulter les <em><strong>RFC </strong></em>(<em><strong>R</strong>equest <strong>F</strong>or <strong>C</strong>omment</em>)<span class="style3">[2]</span> qui sont de vrai mines d'or pour ceux qui souhaiterait se plonger dans le fonctionnement du r&eacute;seau des r&eacute;seaux. Ainsi nous n'allons ne nous int&eacute;resser qu'&agrave; certains points principaux de TCP/IP indispensable &agrave; la compr&eacute;hension de la suite de l'article.</span></p>
+<blockquote>
+  <p align="left" class="style2">&nbsp;</p>
+  <p align="left" class="style2"><u><em><a name="23"></a>2.2)Qu'est-ce qu'une adresse IP ?</em></u></p>
+</blockquote>
+<p class="style2"><span class="style9">U</span>ne carte r&eacute;seau est pourvut d'une adresse physique unique qui l'identifie et qui lui est attribu&eacute; lors de sa fabrication. Dans le cas d'un r&eacute;seau local &eacute;thernet, la carte va analyser la totalit&eacute; du traffic afin d'en extraire les messages concernant sa propre adresse physique. Cette m&eacute;thode n'est bien &eacute;videmment pas acceptable lorqu'il d'agit d'un r&eacute;seau d'envergure mondiale comme Internet. Pour son fonctionnement, une autre m&eacute;thode a &eacute;t&eacute; envisag&eacute;e ; en effet les administrateurs r&eacute;seaux segmentent leurs r&eacute;seaux en sous-r&eacute;seaux appel&eacute;s &quot;<em>subnet</em>&quot; au moyen de routeurs (dispositifs permettant de lire les adresses IP et d'orienter les donn&eacute;es &agrave; transmettre vers leur destinataire). Ces <em>subnets </em>vont &ecirc;tre hierarchis&eacute;s de fa&ccedil;on &agrave; ce que un message soit achemin&eacute; de fa&ccedil;on optimale vers son destinataire, TCP/IP offre cette possibilit&eacute; de hierarchisation gr&acirc;ce aux adresses IP. Ces adresses IP sont soumisent &agrave; un ensemble de r&egrave;gles d&eacute;finis par le protocole IP dont on peut &eacute;tudier toutes les caract&eacute;ristiquent dans la RFC n&deg;791 . Les adresses IP d'un r&eacute;seau sont organis&eacute;es de telle fa&ccedil;on que l'emplacement d'une machine soit d&eacute;finit par son adresse, voici &agrave; quoi ressemble une adresse IP :</p>
+<table width="274" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><div align="center">
+      <p align="left" class="style11"><span class="style13">192.128.75.46</span><br>
+        -------<span class="style14"><span class="style11">--^--</span><span class="style11">-------<span class="style14">__<span class="style11">--^--<span class="style14">__<span class="style11">--^-- -&gt;ID de l'h&ocirc;te<br>
+         <span class="style14">__</span>ID du r&eacute;seau <span class="style14">______<span class="style11">|<br>
+         <span class="style14">____________________-<span class="style11">|-&gt;ID du sous-r&eacute;seau</span></span>
+         </span></span><br>
+        </span></span></span></span></span></span></p>
+      </div></td>
+  </tr>
+</table>
+ <p class="style2">&nbsp;</p>
+ <p class="style2"><span class="style9">C</span>haque datagramme IP (paquet envoy&eacute; sur le r&eacute;seau &agrave; une adresse IP et contenant des donn&eacute;es) commence par une en-t&ecirc;te IP. C'est le logiciel TCP/IP de la machine &eacute;mettrice qui construit l'en-t&ecirc;te IP. Le logiciel TCP/IP de la machine de destination utilise l'informmation cod&eacute;e dans l'en-t&ecirc;te IP afin de traiter ce datagramme. </p>
+<div align="center">
+   <table width="75%" border="1" bordercolor="#FFFFFF">
+     <tr>
+       <td width="13%" bordercolor="#000000" bgcolor="#FFFFFF">
+         <div align="center" class="style18"><font face="Verdana, Arial, Helvetica, sans-serif">Version</font></div></td>
+       <td width="12%" bordercolor="#000000" bgcolor="#FFFFFF">
+         <div align="center" class="style18"><font face="Verdana, Arial, Helvetica, sans-serif">IHL</font></div></td>
+       <td width="25%" bordercolor="#000000" bgcolor="#FFFFFF">
+         <div align="center" class="style18"><font face="Verdana, Arial, Helvetica, sans-serif">TOS</font></div></td>
+       <td width="50%" bordercolor="#000000" bgcolor="#FFFFFF">
+         <div align="center" class="style18"><font face="Verdana, Arial, Helvetica, sans-serif">Longueur totale</font></div></td>
+     </tr>
+  </table>
+   <table width="75%" border="1" bordercolor="#FFFFFF">
+     <tr bordercolor="#000000" bgcolor="#FFFFFF">
+       <td width="50%">
+         <div align="center" class="style18"><font face="Verdana, Arial, Helvetica, sans-serif">Identification</font></div></td>
+       <td width="15%">
+         <div align="center" class="style18"><font face="Verdana, Arial, Helvetica, sans-serif">Drapeau</font></div></td>
+       <td width="35%">
+         <div align="center" class="style18"><font face="Verdana, Arial, Helvetica, sans-serif">D&eacute;calage de framents</font></div></td>
+     </tr>
+  </table>
+   <table width="75%" border="1" bordercolor="#FFFFFF">
+     <tr bordercolor="#000000" bgcolor="#FFFFFF">
+       <td width="25%">
+         <div align="center" class="style18"><font face="Verdana, Arial, Helvetica, sans-serif">Dur&eacute;e de vie</font></div></td>
+       <td width="25%">
+         <div align="center" class="style18"><font face="Verdana, Arial, Helvetica, sans-serif">Protocole</font></div></td>
+       <td width="50%">
+         <div align="center" class="style18"><font face="Verdana, Arial, Helvetica, sans-serif">Somme de contr&ocirc;le de l'en-t&ecirc;te</font></div></td>
+     </tr>
+  </table>
+   <table width="75%" border="1" bordercolor="#FFFFFF">
+     <tr>
+       <td bordercolor="#000000" bgcolor="#FFFFFF">
+         <div align="center" class="style18"><font face="Verdana, Arial, Helvetica, sans-serif">Adresse IP source</font></div></td>
+     </tr>
+  </table>
+   <table width="75%"  border="1" bordercolor="#FFFFFF">
+     <tr>
+       <td bordercolor="#000000" bgcolor="#FFFFFF"><div align="center" class="style18"><font face="Verdana, Arial, Helvetica, sans-serif">Adresse IP de destination</font></div></td>
+     </tr>
+  </table>
+   <table width="75%" border="1" bordercolor="#FFFFFF">
+     <tr bordercolor="#000000" bgcolor="#FFFFFF">
+       <td width="75%">
+         <div align="center" class="style18"><font face="Verdana, Arial, Helvetica, sans-serif">Options IP (optionnel)</font></div></td>
+       <td width="25%">
+         <div align="center" class="style18"><font face="Verdana, Arial, Helvetica, sans-serif">Bits de bourrage</font></div></td>
+     </tr>
+  </table>
+   <table width="75%" border="1" bordercolor="#FFFFFF">
+     <tr>
+       <td bordercolor="#000000" bgcolor="#FFFFFF">
+         <div align="center" class="style18"><font face="Verdana, Arial, Helvetica, sans-serif">Donn&eacute;es</font></div></td>
+     </tr>
+  </table>
+   <table width="75%"  border="1" bordercolor="#FFFFFF">
+     <tr>
+       <td bordercolor="#000000" bgcolor="#FFFFFF"><div align="center"><span class="style18"><font face="Verdana, Arial, Helvetica, sans-serif">Champs r&eacute;serv&eacute; &agrave; d'autres possibles donn&eacute;es</font></span></div></td>
+     </tr>
+  </table>
+   <p align="left">&nbsp;</p>
+</div>
+ <ol>
+   <li><span class="style2">[ Version ] : ce champ de 4 bits indique la version IP. Le scanner que nous allons concevoir sera compatible IP version 4 et IP version 6, ainsi ce champs sera remplit par [ 0100 ] (4 en binaire) pour une adresse IP version 4 et [ 0101 ](6 en binaire) pour une adresse IP version 6. </span></li>
+   <li><span class="style2">[ IHL ] ou " <em><strong>I</strong>nternet <strong>H</strong>earder <strong>L</strong>enght</em> " : longueur de l'en-t&ecirc;te. Ce champ de 4 bits repr&eacute;sente la longueur de l'en-t&ecirc;te IP en mots de 32 bits. </span></li>
+   <li><span class="style2">[ TOS ] ou &quot; <em><strong>T</strong>ype <strong>O</strong>f <strong>S</strong>ervice</em> &quot; : type de service. Le but initial de ce champ de 8 bits est de prioriser le passage de datagrammes au travers d'un routeur. Il est souvent remplit par des 0 soit [ 0000 0000 ].</span></li>
+   <li><span class="style2">[ Longueur total ] : ce champs de 16 bits repr&eacute;sente la longueur, en octet, du datagramme IP. Cette longueur inclut l'en-t&ecirc;te IP et les donn&eacute;es utiles. </span></li>
+   <li><span class="style2">[ Identification ] : ce champs de 16 bits est un num&eacute;ro de s&eacute;quence assign&eacute; aux messages &eacute;mis par la source IP. </span></li>
+   <li><span class="style2">[ Drapeaux ] : ce champs pr&eacute;cise les possiblit&eacute;s de framentation. En effet lorsqu'un message est envoy&eacute; &agrave; la couche IP et qu'il est trop large pour &ecirc;tre contenu dans un datagramme, IP le framente en plusieurs datagrammes en attribuant le m&ecirc;me identificateur &agrave; chaque datagramme. </span></li>
+   <li><span class="style2">[  D&eacute;calage(offset ) de framents ] : ce champs de 13 bits est une valeur num&eacute;rique assign&eacute;e &agrave; chaque frament sucessif. A la destination, IP utilise ce param&egrave;tre pour r&eacute;assembler les framents dans l'ordre. </span></li>
+   <li><span class="style2">[ Dur&eacute;e de vie ] ou [ TTL ] ou &quot; <em><strong>T</strong>ime <strong>T</strong>o <strong>L</strong>ive</em> &quot; : ce champs de 8 bits indique la dur&eacute;e en secondes, ou le nombre de sauts de routeurs , pendant laquelle le datagramme peut survivre avant d'&ecirc;tre rejet&eacute;, c'est pourquoi notre scanner devra comprendre une option qui permette de r&eacute;gler ce TTL afin de pourvoir choisir entre un scan rapide mais peu pr&eacute;cis et scan pr&eacute;cis mais lent. </span></li>
+   <li><span class="style2">[ Protocole ] : ce champs de 8 bits indique quel est le protocole qui traitera les donn&eacute;es utiles. Par exemple l'identificateur de protocole de TCP est 6. Nous n'utiliserons pas ce protocole pour envoyer nos paquet sur le r&eacute;seau car un autre s'adapte beaucoup mieux &agrave; ce que nous voulons faire, c'est le sujet de la partie qui suit. </span></li>
+   <li><span class="style2">[ Somme de contr&ocirc;le de l'en-t&ecirc;te ] : ce champs est un entier calcul&eacute; de 16 bits permettant de v&eacute;rifier la seule int&eacute;grit&eacute; de l'en-t&ecirc;te. </span></li>
+   <li><span class="style2">[ Adresse IP source ] : ce champs de 32 bits contient l'adresse de la source du datagramme. </span></li>
+   <li><span class="style2">[ Adresse IP de destination ] : ce champs de 32 bits contient l'adresse de destination du datagramme et il est utilis&eacute; pour assurer la d&eacute;livrance correcte &agrave; la machine destinatrice. </span></li>
+   <li><span class="style2">[ Options IP ] : ce champs contient des param&egrave;tres optionnels de l'en-t&ecirc;te, destin&eacute;s initialement aux tests, au d&eacute;bogage et &agrave; la s&eacute;curit&eacute;. </span></li>
+   <li><span class="style2">[ Bits de bourrage ] : ce champs de bourrage rajoute des 0 de telle fa&ccedil;on que la longueur totale de l'en-t&ecirc;te soit un multiple de 32 bits. </span></li>
+   <li><span class="style2">[ Charge utile ] : ce champs contient les donn&eacute;es destin&eacute;es &agrave; &ecirc;tre transmises aux couches TCP, UDP, ICMP ou IGMP. </span></li>
+ </ol>
+ <p align="center">&nbsp;</p>
+ <p align="left" class="style2"><span class="style9">R</span>assurez vous il ne sera pas n&eacute;cessaire d'ajuster chacun de ces champs avant le d&eacute;but d'un scan puisque qu'ils pr&eacute;sentent tous une valeur par d&eacute;faut (mis &agrave; part l'adresse de destination bien s&ucirc;r) qui pour certain champs conviendra parfaitement. N&eacute;anmoins je dois revenir sur un de ces champs &agrave; savoir le champs protocole. Comme dis pr&eacute;c&eacute;demment ce champs de 8 bits indique quel protocole sera utilis&eacute; pour le traitement des donn&eacute;es, nous utiliserons le protocole <strong>ICMP</strong> qui a pour identificateur de protocole &quot;1&quot;, ainsi ce champs sera remplit de la fa&ccedil;on suivante [ 0000 0001 ]. </p>
+ <p align="left" class="style2">&nbsp;</p>
+ <blockquote>
+   <p align="left" class="style2"><u><em><a name="23"></a>2.3)Le protocole ICMP : l'ordonnanceur des &quot;Echo request&quot; et des &quot;Echo reply&quot;</em></u></p>
+</blockquote>
+ <p align="left" class="style2"><span class="style9">T</span>CP/IP est un protocole orient&eacute; connection, i.e il effectue, contrairement au protocole <strong>UDP </strong>(<em><strong>U</strong>ser <strong>D</strong>atagramme <strong>P</strong>rotocole) </em>qui lui est orient&eacute; non connection, une surveillance de l'&eacute;tat de la liaison durant la transmission. Autrement dit, le r&eacute;cepteur envoie un accus&eacute; de r&eacute;ception des donn&eacute;es re&ccedil;ues tandis que l'emetteur re&ccedil;oit des informations sur la validit&eacute; des donn&eacute;es achemin&eacute;es, c'est sur ce principe que s'effectue une connection entre 2 machines par TCP, plus commun&eacute;ment appel&eacute;e la &quot;poign&eacute;e de main en trois temps&quot;. TCP assure donc le contr&ocirc;le int&eacute;gral des erreurs et des flots de donn&eacute;es pour garantir une livraison correcte &agrave; destination. Ainsi les donn&eacute;es envoy&eacute;es &agrave; une machine distante traversent souvent un ou plusieurs routeurs. Or ces routeurs peuvent rencontrer un certains nombre de probl&egrave;mes avant de remettre le message &agrave; sa destination ultime. Les routeurs utilisent <strong>ICMP</strong> pour rendre compte de ces probl&egrave;mes &agrave; la machine source. <strong>ICMP</strong> est &eacute;galement utilis&eacute; &agrave; d'autres t&acirc;ches de diagnostics, voici que ceux que nous utiliserons : </p>
+ <blockquote>
+   <p align="left" class="style2">_Requ&ecirc;te et r&eacute;ponse Echo : souvent utilis&eacute;es lors de tests. Lorsqu'on utilise la commande <span class="style15">Ping</span> pour tester la connectivit&eacute; avec une autre <span class="style10">______________________-</span>machine, c'est <strong>ICMP </strong>qui est mis &agrave; contribution. <span class="style15">Ping </span>envoie un datagramme &agrave; l'adresse IP et demande &agrave; la <span class="style10">______________________-</span>machine de destination de retourner les donn&eacute;es &eacute;mises dans un datagramme de r&eacute;ponse. Dans ce cas, les <span class="style10">______________________-</span>commandes sont la requ&ecirc;te echo =<em> Echo request </em>et la r&eacute;ponse echo = <em>Echo reply.</em></p>
+   <p align="left" class="style2">_Destination inaccessible (Destination unreachable) : si un routeur re&ccedil;oit un datagramme qu'il est est incapable de d&eacute;livrer, <strong>ICMP</strong> envoie un <span class="style10">______________________-</span><span class="style10">____________________</span>message destination inaccessible &agrave; la source IP.</p>
+   <p align="left" class="style2">_Dur&eacute;e d&eacute;pass&eacute;e (Time Exceeded) : <strong>ICMP</strong> ce message &agrave; la source IP si le datagramme est rejet&eacute; parce que le <strong>TTL</strong> atteint z&eacute;ro. Cela <span class="style10">______________________-______-</span>indique que la destination est situ&eacute;e au-del&agrave; d'un trop grand nombre de routeurs par rapport &agrave; la <span class="style10">____________________________--</span>valeur du TTL. </p>
+ </blockquote>
+<p align="left" class="style2">Selon le type de message <span class="style2"><strong>ICMP </strong>d&eacute;sir&eacute;, l'allure du datagramme va &ecirc;tre sensiblement diff&eacute;rente puisqu'il en existe diff&eacute;rente sorte (<strong>ICMP </strong>redirect message, <strong>ICMP</strong> error message etc...). Nous allons nous int&eacute;resser aux <strong><em>ICMP query messages </em></strong>dont font partie les &quot;requ&ecirc;tes et r&eacute;ponses Echo&quot;. La forme g&eacute;n&eacute;rale d'un message ICMP query est le suivant :</span></p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr bordercolor="#000000">
+    <td width="25%" bgcolor="#FFFFFF"><div align="center">TYPE</div></td>
+    <td width="25%" bgcolor="#FFFFFF"><div align="center">CODE</div></td>
+    <td width="50%" bgcolor="#FFFFFF"><div align="center">CHECKSUM</div></td>
+  </tr>
+</table>
+<div align="center">
+  <table width="75%"  border="1" bordercolor="#F8F8F8">
+    <tr bordercolor="#000000">
+      <td width="50%" bgcolor="#FFFFFF"><div align="center">IDENTIFIER</div></td>
+      <td width="50%" bgcolor="#FFFFFF"><p align="center">SEQUENCE MEMBER</p>      </td>
+    </tr>
+  </table>
+  <table width="75%"  border="1" bordercolor="#F8F8F8">
+    <tr>
+      <td bordercolor="#000000" bgcolor="#FFFFFF"><div align="center">DEPEND DU TYPE DE MESSAGE </div></td>
+    </tr>
+  </table>
+  <div align="left" class="style2">
+    <p>&nbsp;</p>
+    <p>Ainsi lors de l'envoie de nos paquets IP lors du scan, apr&egrave;s avoir sp&eacute;cifi&eacute; que nous utiliserons le protocole ICMP (code 1), le champ [ donn&eacute;e ] de ces paquets sera remplit avec les champs pr&eacute;cedents. En effet un datagramme IP a une taille de 32 octets, 24 sont r&eacute;serv&eacute;s pour les champs qui lui sont propres et les 8 derniers sont r&eacute;serv&eacute;s au champs [ <span class="style15">DONNEES</span> ] et donc en locurrence &agrave; notre message ICMP query.</p>
+    <p>Le  message ICMP que nous enverrons lors du scan sera une requ&ecirc;te Echo mais avant d'aller plus loin dans notre approche technique de nos paquets, je m'arr&ecirc;te un moment pour expliquer ce qu'est une requ&ecirc;te Echo. Notre but premier pour le scan sera de d&eacute;tecter si les adresses IP scann&eacute;es sont actives ou non i.e si elles sont attribu&eacute;e par l'ICANN &agrave; un h&ocirc;te connect&eacute; au moment du scan. Pour cela nous allons utiliser une m&eacute;thode tr&egrave;s simple qui est d'ailleurs tr&egrave;s abondamment utilis&eacute;e par les administrateurs r&eacute;seaux lorsqu'il sont confront&eacute;s &agrave; des probl&egrave;mes de toutes sortes, les &quot;Requ&ecirc;tes ECHO&quot;. Elles consistent en un envoie d'un datagramme IP avec le champs [ <span class="style15">PROTOCOLE</span> ] initialis&eacute; &agrave; [ 1 ] indiquant l'utilisation du protocole ICMP et ayant un message ICMP de type <strong>QUERY</strong>  dans le champs [ <span class="style15">DONNEES</span> ] ; dans ce message le champs [ type ] est initialis&eacute; &agrave; 8 soit [ 0000 1000 ] en binaire pour indiquer que le message est de type &quot;<em>Echo Request</em>&quot;. La machine distante (si elle existe) va recevoir ce datagramme et selon les normes impos&eacute;es par les protocole de la suite TCP/IP elle va renvoyer un datagramme presque similaire en changeant simplement 2 champs : tout d'abord le champs [ <span class="style15">TYPE</span> ] qui va &ecirc;tre pass&eacute; &agrave; 0 soit [ 0000 0000 ] en binaire, le message ICMP devient de type &quot;Echo Reply&quot;, et le champs [ <span class="style15">CHECKSUM</span> ] correspondant &agrave; la somme de contr&ocirc;le qui est utilis&eacute;e pour v&eacute;rifier l'int&eacute;grit&eacute; du message et que cette derni&egrave;re va recalculer avant de renvoyer le message. De l'autre c&ocirc;t&eacute; si, apr&egrave;s l'envoie de la &quot;requ&ecirc;te Echo&quot; et avant que le <strong>TTL</strong> (<em><strong>T</strong>ime <strong>T</strong>o <strong>L</strong>ive</em> = dur&eacute;e de vie du datagramme sur le r&eacute;seau) n'atteigne 0, une &quot;r&eacute;ponse Echo&quot; est re&ccedil;ut, cela signifie que l'h&ocirc;te distant est actif, inactif dans le cas contraire. Comme dit plus haut dans l'article il faudra veiller &agrave; programmer une option qui permettra &agrave; l'utilisateur d'ajuster ce <strong>TTL</strong> avant le debut du scan car certains hotes distants peuvent demander un passage par de nombreux routeurs avant d'&ecirc;tre atteint et sans r&eacute;glages initiaux le paquet pourrait mourir avant d'avoir atteint sa cible, aucune &quot;R&eacute;ponse ECHO&quot; n'est renvoy&eacute;e dans ce cas l&agrave; mais simplement un message <strong>ICMP</strong> de type 11 &quot;Time exceeded&quot; alors que l'h&ocirc;te existe bel et bien. N&eacute;anmoins il ne faudra pas &ecirc;tre trop gourmant avec le <strong>TTL</strong> car sinon c'est la rapidit&eacute; du scan qui pourrait en souffir gravement. La deuxi&egrave;me cause pour laquelle on pourrait ne pas recevoir une &quot;r&eacute;ponse Echo&quot; serait le filtrage des donn&eacute;es par l'h&ocirc;te distant, filtrage effectu&eacute; bien &eacute;videmment par un firewall dont certains refusent le passage aux &quot;requ&ecirc;tes Echo&quot;, on se retrouverait &agrave; nouveau avec un message d'erreur<strong> ICMP</strong> mais cette fois de type 3 et qui correspond au message &quot;Destination Unreachable&quot; signifiant que la cible ne peut-&ecirc;tre atteinte ou est invalide. Voici une liste exhaustive des messages d'erreurs <strong>ICMP</strong> :</p>
+    <table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+      <tr>
+        <td bordercolor="#000000" bgcolor="#FFFFFF"><div align="center"><strong>ICMP ERROR MESSAGES </strong></div></td>
+      </tr>
+    </table>
+    <div align="center">
+      <table width="75%"  border="1" bordercolor="#F8F8F8">
+        <tr bordercolor="#000000">
+          <td width="50%" bgcolor="#FFFFFF"><div align="center">Destination Unreachable</div></td>
+          <td width="50%" bgcolor="#FFFFFF"><div align="center">3</div></td>
+        </tr>
+        <tr bordercolor="#000000">
+          <td bgcolor="#FFFFFF"><div align="center">Source Quench</div></td>
+          <td bgcolor="#FFFFFF"><div align="center">4</div></td>
+        </tr>
+        <tr bordercolor="#000000">
+          <td bgcolor="#FFFFFF"><div align="center">Redirect</div></td>
+          <td bgcolor="#FFFFFF"><div align="center">5</div></td>
+        </tr>
+        <tr bordercolor="#000000">
+          <td bgcolor="#FFFFFF"><div align="center">Time Exceeded</div></td>
+          <td bgcolor="#FFFFFF"><div align="center">11</div></td>
+        </tr>
+        <tr bordercolor="#000000">
+          <td bgcolor="#FFFFFF"><div align="center">Parameter Problem</div></td>
+          <td bgcolor="#FFFFFF"><div align="center">12</div></td>
+        </tr>
+      </table>
+      <br>
+    </div>
+    <p align="left"> J'ai choisit de vous pr&eacute;senter diff&eacute;rents dumps (enregistrement d'une partie du traffic transitant sur un r&eacute;seau) mat&eacute;rialisant les 2 messages d'erreurs auquels on pourra &ecirc;tre confront&eacute; durant nos scans ainsi nos &quot;requetes Echo&quot; et nos &quot;R&eacute;ponses ECHO&quot;. Ils ont &eacute;t&eacute; r&eacute;alis&eacute;s par <em>Ofir Arkin</em> du <strong>Sys-Security Group</strong> dans son excellent papier sur <u>l'ICMP Usage in scanning</u> <span class="style3">[3]</span>  &agrave; l'aide du logiciel <em>snort </em><span class="style3">[4]</span> :</p>
+    <blockquote>
+      <p align="left"><u>Destination unreachable : </u></p>
+      <table width="53%"  border="1" align="center" bordercolor="#F8F8F8">
+        <tr>
+          <td bordercolor="#000000" bgcolor="#FFFFFF">05/09/01-12:29:41.399543 RoutersIP -&gt; SourceIP <br>
+            <strong>ICMP</strong> TTL:244 TOS:0x0 ID:24442 IpLen:20 DgmLen:56 <br>
+            <span class="style16">Type</span>:<span class="style3">3</span> <span class="style16">Code</span>:<span class="style3">13</span> <strong>DESTINATION UNREACHABLE: PACKET FILTERED </strong><br>
+            <span class="style17">** ORIGINAL DATAGRAM DUMP</span>: <br>
+            SourceIP:4667 -&gt; DestinationIP:53 TCP TTL:53 TOS:0x0 ID:40019 <br>IpLen:20 DgmLen:60 **U****F Seq: 0x97EABAF6 Ack: 0x1C1D1E1F<br> Win: 0x2223 TcpLen: 8 <br>UrgPtr: 0x2627 <br>
+            <span class="style17">** END OF DUMP</span> <br>
+            00 00 00 00 45 00 00 3C 9C 53 40 00 35 06 29 B0 ....E..&lt;.S@.5.).<br> 
+            xx xx xx xx yy<span class="style14">-</span> yy yy yy <span class="style14">-</span>12 3B 00 35 97 EA BA F6 .....Z...;.5.......</td>
+        </tr>
+      </table>
+      <p align="left"><BR class="style2">
+      </p>
+    </blockquote>
+  </div>
+</div>
+<blockquote>
+  <p align="left" class="style2"><u>Time exceeded : </u></p>
+  <table width="41%"  border="1" align="center" bordercolor="#F8F8F8">
+    <tr>
+      <td bordercolor="#000000" bgcolor="#FFFFFF">05/13/01-16:05:47.639747 RouterIP -&gt; 172.18.2.201 <br>
+        <strong>ICMP</strong> TTL:117 TOS:0x0 ID:61586 IpLen:20 DgmLen:56 <br>
+        <span class="style16">Type</span>:<span class="style3">11</span> <span class="style16">Code</span>:<span class="style3">0</span> <strong>TTL EXCEEDED</strong> <br>
+      00 00 00 00 45 00 00 54 00 00 40 00 01 01 FA 0F ....E..T..@.....<br> AC 12 02 C9 yy yy <span class="style14">-</span>yy yy 08 00 F1 67 4F 1B 01 00 .....Z.d...gO...</td>
+    </tr>
+  </table>
+  <p align="center" class="style2"><u></u></p>
+  <p class="style2"><u>Echo request : </u></p>
+  <table width="46%"  border="1" align="center" bordercolor="#F8F8F8">
+    <tr>
+      <td bordercolor="#000000" bgcolor="#FFFFFF">05/14/01-11:55:30.171542 172.18.2.201 -&gt; 172.18.2.200 <br>
+        <strong>ICMP</strong> TTL:64 TOS:0x0 ID:0 IpLen:20 DgmLen:84 DF <br>
+        <span class="style16">Type</span>:<span class="style3">8</span> <span class="style16">Code</span>:<span class="style3">0</span> ID:58628 Seq:768 <strong>ECHO</strong><br> 
+        82 9D FF 3A 5C 9E 02 00 08 09 0A 0B 0C 0D 0E 0F ...:\................. <br>
+        10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F ......................<br>
+         20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F !&quot;#$%&amp;'()*+,-./ <br>
+        30 31 32 33 34 35 36 37 <span class="style14">________________________</span>01234567</td>
+    </tr>
+  </table>
+  <p class="style2"><u></u></p>
+  <p class="style2"><u>Echo reply : </u></p>
+</blockquote>
+<table width="42%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF">05/14/01-11:55:30.171542  172.18.2.200 -&gt; 172.18.2.201<br> 
+      <strong>ICMP</strong> TTL:255 TOS:0x0 ID:769 IpLen:20 DgmLen:84<br>
+      <span class="style16">Type</span>:<span class="style3">0</span> <span class="style16">Code</span>:<span class="style3">0</span> ID:58628 Seq:768 <strong>ECHO REPLY</strong> <br>
+    82 9D FF 3A 5C 9E 02 00 08 09 0A 0B 0C 0D 0E 0F ...:\................. <br>
+    10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F ......................<br> 
+    20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F !&quot;#$%&amp;'()*+,-./<br>
+    30 31 32 33 34 35 36 37 <span class="style14">________________________<span class="style18">01234567</span></span></td>
+  </tr>
+</table>
+<p>&nbsp;</p>
+<p align="left" class="style2"><span class="style9">D</span>ans les dumps pr&eacute;c&eacute;dents, l'adresse source est [ 172.18.2.201 ] et l'adresse de destination est [ 172.18.2.200 ].</p>
+<p align="left" class="style2"><u>Voici un sh&eacute;ma qui vous explique le principe tr&egrave;s simple de la requ&ecirc;te-r&eacute;ponse Echo :</u></p>
+<table width="45%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><span class="style2"><img src="Images/icmp_echo_mechanism.jpg" width="442" height="134"></span></td>
+  </tr>
+</table>
+<p align="center" class="style2">&nbsp;</p>
+<p align="left" class="style2"><span class="style9">A</span>insi sera la principale fonction de notre scanner, &agrave; savoir envoyer des datagrammes IP contenant des ECHO_REQUESTS et analyser les datagrammes re&ccedil;us pour en d&eacute;gager les messages correspondant &agrave; des ECHO_REPLIES significatifs d'une activit&eacute; distante. </p>
+<p align="left">&nbsp;</p>
+<p align="left">&nbsp;</p>
+<blockquote>
+  <p align="left" class="style2"><u><em><a name="24"></a>2.4) Le Reverse DNS : &quot;Dis moi qui tu es et je ne te dirai pas qui je suis....&quot; </em></u></p>
+</blockquote>
+<p align="left" class="style2"><span class="style9">D</span>ans cette avant-derni&egrave;re &eacute;tape de notre survol de la suite de protocole TCP/IP, je vais bri&egrave;vement vous parler du <strong>reverse DNS</strong>. Revenons au d&eacute;but de l'histoire, lorsque sont apparus les premiers r&eacute;seaux TCP/IP, les utilisateurs se sont vite rendu compte qu'il n'&eacute;tait pas simple de se rappeler d'une adresse IP pour telle ou telle machine d'un r&eacute;seau. En effet, les agents d'un centre de recherche ne peuvent perdrent du temps &agrave; essayer de se rappeler que la machine A de l'immeuble 4 &agrave; pour adresse IP 192.125.40.87, il fallait trouver un moyen qui permette d'adapter ce syst&egrave;me hierarchique d'adressage &agrave; l'homme. Ainsi est n&eacute; le syst&egrave;me des noms de machines, dans ce dernier chaque machine se voit assigner un nom alphanum&eacute;rique. Un fichier, le fichier <em>hosts</em>, contient toutes les correspondances &quot;Adresses - Noms&quot; et donc si un OS rencontre un nom aplhanum&eacute;rique l&agrave; o&ugrave; il attendait une adresse IP, il consulte ce fichier afin de faire la correspondance. </p>
+<p align="left" class="style2"><u>Voici un exemple de fichier <em>hosts</em> : </u></p>
+<table width="46%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td height="26" bordercolor="#000000" bgcolor="#FFFFFF"><p class="style19">127.0.0.1 <span class="style14">_______</span>localhost <span class="style14">_______</span>#Machine de l'utilisateur<br>
+  215.147.0.214<span class="style14">____</span>BenPC <span class="style14">________ - </span>#PC de BEN<br>
+    215.147.0.215<span class="style14">____</span>BobPC <span class="style14">________ - </span>#PC de Bob<br>
+    215.147.0.216<span class="style14">____</span>Mordor<span class="style14">________ --</span>#Passerelle</p>    </td>
+  </tr>
+</table>
+<p class="style2"><span class="style9">C</span>e principe n'est &eacute;videmment pas tenable sur un r&eacute;seau de la grandeur d'internet, en effet les recherches de correspondances &quot;Adresses - Noms&quot; doivent &ecirc;tre tr&egrave;s rapide pour maintenir un l'efficacit&eacute; du r&eacute;seau, or cette rapidit&eacute; diminue avec la taille du fichier dans lequel la recherche s'effectue et qui de plus doit sans cesse &ecirc;tre mis &agrave; jour. Les d&eacute;veloppeurs de TCP/IP ont donc invent&eacute; la r&eacute;solution des noms par <strong>DNS </strong>(<em><strong>D</strong>omain <strong>N</strong>ame <strong>S</strong>erveur). </em>DNS place les donn&eacute;es de r&eacute;solution de noms sur des serveurs. Ainsi, si une machine du r&eacute;seau rencontre un nom de machine dont elle a besoin de conna&icirc;tre l'adresse IP, elle envoie une requ&ecirc;te au serveur, lui demandant qu'elle est l'adresse IP associ&eacute;e &agrave; ce nom de machine, si ce dernier connait l'adresse, il l'a lui retourne et cette derni&egrave;re substitue l'adresse IP au nom de machine et ceci de fa&ccedil;on transparente. C'est ce que l'on appelle le <strong>reverse DNS</strong>.</p>
+<p class="style2"><span class="style9">N</span>ous pourrions parler encore longtemps de tout ce qui a traits de pr&egrave;s ou de loin au syst&egrave;me DNS mais ceci nous suffit pour poursuivre notre t&acirc;che... </p>
+<p align="left" class="style2">&nbsp;</p>
+<blockquote>
+  <p align="left" class="style2"><em><u><a name="25"></a>2.5)Les classes d'adresses : indices des caract&eacute;ristiques d'un r&eacute;seau </u></em></p>
+</blockquote>
+<p align="left" class="style2"><span class="style9">C</span>omme nous l'avons vu pr&eacute;c&eacute;demment, une adresse IP est un chiffre binaire de 32 bits ( 32 0 ou 1) sous-divis&eacute; en 4 segments de 8 bits appelets <em>octets. </em>L'espace total que l'on peut couvrir avec 8 bits est le suivant : 0000 0000 -&gt; 1111 1111 soit au format d&eacute;cimal : 0 -&gt; 255. C'est pourquoi chaque segment d'une adresse IP est compris entre 0 et 255. Une partie de l'adresse est utlis&eacute;e pour l'identificateur de r&eacute;seau et une autre pour l'identificateur de machine. La partie correspondant &agrave; l'identificateur de r&eacute;seau varie en fonction de ce dernier. Ainsi les adresses IP sont regroup&eacute;es en 3 parties selon la classe du r&eacute;seau auquel elles appartiennent, les classes sont les suivantes :</p>
+<p align="left" class="style2">Adresse de classe A : Les 8 premiers bits de l'adresse sont utilis&eacute;s pour l'identificateur de r&eacute;seau. Les 24 bits restants sont utilis&eacute;s pour l'identificateur de <span class="style10">________________--</span>machine. Les r&eacute;seaux auquels appartiennent ces adresses peuvent supporter environ 16 777 216 machines. N&eacute;anmoins leur <span class="style10">________________--</span>identificateur de r&eacute;seau reste faible et les possibilit&eacute;s de cr&eacute;ations de sous-r&eacute;seaux &eacute;galement en cons&eacute;quence. </p>
+<p align="left" class="style2">Adresse de classe B : Les 16 premiers bits sont utilis&eacute;s pour l'identificateur de r&eacute;seau. Les 16 bits restants pour l'identificateur de machine. Un r&eacute;seau de <span class="style10">________________--</span>classe B peut supporter environ 65536 machines.</p>
+<p align="left" class="style2">Adresse de classe C : Les 24 premiers bits sont utilis&eacute;s pour l'identificateur de r&eacute;seau. Les 8 bits restants pour l'identificateur de machine. Un r&eacute;seau de <span class="style10">________________--</span>classe C peut supporter environ 256 machines. N&eacute;anmoins l'identificateur de r&eacute;seau reste puissant.</p>
+<p align="left" class="style2"><span class="style9">C</span>omment reconnaitre la classe d'une adresse &agrave; partir de cette derni&egrave;re ? C'est excessivement simple, les concepteurs de TCP/IP ont r&eacute;dig&eacute; des r&egrave;gles d'adressage permettant de d&eacute;duire la classe d'une adresse &agrave; partir de celle-ci et plus pr&eacute;cis&eacute;ment &agrave; partir des 8 premiers bits ou plus simplement &agrave; partir du premier segment de l'adresse :</p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr bordercolor="#000000" bgcolor="#FFFFFF">
+    <td width="50%"><div align="center"><strong>PREMIER SEGMENT DE L'ADRESSE </strong></div></td>
+    <td width="50%"><div align="center"><strong>CLASSE D'ADRESSE</strong></div></td>
+  </tr>
+  <tr bordercolor="#000000" bgcolor="#FFFFFF">
+    <td><div align="center">0 &agrave; 127 </div></td>
+    <td><div align="center">A</div></td>
+  </tr>
+  <tr bordercolor="#000000" bgcolor="#FFFFFF">
+    <td><div align="center">128 &agrave; 191 </div></td>
+    <td><div align="center">B</div></td>
+  </tr>
+  <tr bordercolor="#000000" bgcolor="#FFFFFF">
+    <td><div align="center">192 &agrave; 223 </div></td>
+    <td><div align="center">C</div></td>
+  </tr>
+</table>
+<p align="left"><span class="style2"><u><em>Note :</em></u> Cette technique ne fonctionne &eacute;videmment pas avec les adresses IP de version 6 qui sont cod&eacute;s sur 128 bits et dont chaque segment peut atteindre pour valeur maximale : 65535.</span></p>
+<p align="left" class="style2">La th&eacute;orique &eacute;tant quasiment termin&eacute;e, nous allons bient&ocirc;t passer &agrave; la pratique mais il va s'en dire que lors ce bref survol de quelques protocoles de TCP/IP, j'ai outre-passer de nombreux points qu'il vous faudra &eacute;tudier si vous d&eacute;buter en r&eacute;seaux afin de saisir le mieux possible le fonctionnement du syst&egrave;me. Je pensais notamment au principe de l'encapsulation, des diff&eacute;rentes couches du mod&egrave;le TCP/IP, du protocole ARP et RARP, du protocole TCP etc... </p>
+<p align="left">&nbsp;</p>
+<p align="left" class="style7"><u><strong><a name="3"></a>3) IP RANGE SCANNING : principe et r&ocirc;le dans la prise d'empreintes d'un r&eacute;seau </strong></u></p>
+<blockquote>
+  <p align="left" class="style2"><u><em><a name="31"></a>3.1) Introduction </em></u></p>
+</blockquote>
+<p align="left" class="style2"><span class="style9">B</span>ien que vous devez commencez &agrave; vous faire votre petite id&eacute;e sur l'utilit&eacute; des points que nous venons d'aborder en ce qui concerne notre scanner, je vais m'y attarder encore un instant pour &ecirc;tre s&ucirc;r que cela soit compris. Comme dit pr&eacute;c&eacute;demment, l'action principale de notre scanner sera d'envoyer des ECHO_REQUESTS &agrave; une plage d'adresses IP et d'en attendre les ECHO_REPLIES afin de d&eacute;terminer les machines actives ; il devra &ecirc;tre &eacute;galement capable de d&eacute;terminer la classe de chaque adresse IP et une partie des caract&eacute;ristique du r&eacute;seau que vous &ecirc;tes en train de scanner et enfin il pr&eacute;sentera une option pour r&eacute;aliser des reverse DNS. Nous allons voir tout de suite l'int&eacute;r&ecirc;t et le r&ocirc;le de ces m&eacute;thodes dans une prise d'empreintes...</p>
+<blockquote>
+  <p align="left">&nbsp;</p>
+  <p align="left" class="style2"><u><em><a name="32"></a>3.2) Principe et r&ocirc;le </em></u></p>
+</blockquote>
+<p align="left"><span class="style2"><span class="style9">L</span>'IP Range scanning consiste &agrave; scanner une plage d'adresses IP afin de d&eacute;terminer lesquelles sont actives et lesquelles ne le sont pas. Mais quel en est l'int&eacute;r&ecirc;t ? Comme dit pr&eacute;c&eacute;demment le protocole IP permet un syst&egrave;me d'adressage hierarchique d'un r&eacute;seau et une adresse IP est compos&eacute;e d'un identificateur r&eacute;seau et d'un identificateur machine ; il devient alors possible par le biais d'un scan sur un identificateur r&eacute;seau  de dresser la carte de ce r&eacute;seau ou sous-r&eacute;seau et d'en identifier toutes les machines par le biais de reverses DNS. D&eacute;terminer la classe du r&eacute;seau nous permettra d'en d&eacute;terminer son importance mais surtout ses cararct&eacute;ristiques comme le nombre de sous-r&eacute;seaux qu'il peut pr&eacute;senter, &agrave; partir de l&agrave; on peut effectuer un scan sur un hypoth&eacute;tique sous r&eacute;seau et en d&eacute;duire son existence en fonction des r&eacute;sultats. On peut alors imaginer une entreprise ayant 3 b&acirc;timents h&eacute;bergeant chacun une partie du r&eacute;seau de l'entreprise, il devient alors possible d'&eacute;lever la carte de ce reseau par le biais de multiples scans sur les identificateurs r&eacute;seaux de chaque b&acirc;timent. Les reverse DNS peuvent &ecirc;tre d'une tr&egrave;s pr&eacute;cieuse aide car il n'est pas rare de voir un administrateur r&eacute;seau donner &agrave; chaque machine d'un sous-r&eacute;seau un code qui identifie le r&eacute;seau auquel elle appartient (ex : &quot;batA.machine1&quot;, &quot;batB.machine1&quot;). Ceci ne permettra &eacute;videmment pas de donner toutes les informations n&eacute;cessaires &agrave; la pr&eacute;paration d'une attaque sur un r&eacute;seau et ce n'est pas le but mais cela constitue une bonne base pour qui souhaite &eacute;lever la carte d'un r&eacute;seau et peut se r&eacute;v&eacute;ler tr&egrave;s utile pour celui qui veut tester le fonctionnement du r&eacute;seau qu'il vient de monter. </span></p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="left" class="style7"><u><strong><a name="4"></a>4) IPnSCAN : le troisi&egrave;me oeil</strong></u></p>
+<blockquote>
+  <p align="left" class="style2"><u><em><a name="41"></a>4.1) fichier header : structures, liste cha&icirc;n&eacute;e, variables globales et macros </em></u></p>
+</blockquote>
+<p align="left" class="style2"><span class="style9">D</span>ans notre fichier en-t&ecirc;te, nous aurons tout d'abord besoin des .h habituels (stdio.h, stdlib.h, string.h) mais aussi de deux structures, chacune correspondante &agrave; une version de l'adresse IP. Les versions 4 sont compos&eacute;es de 4 segments et les versions 6 de 8 segments. Nous allons &eacute;galement d&eacute;finir des constantes pour la taille du buffer (l'espace m&eacute;moire qui sera pris en compte lors des allocations m&eacute;moires), la sortie normale et la sortie d'erreur, un macro pour la suppression des logs en fin de scan. Nous allons &eacute;galement d&eacute;finir des macros pour la vitesse du scan, plus pr&eacute;cis&eacute;ment c'est le timeout qui devra &ecirc;tre r&eacute;gler (i.e le temps d'attente entre l'envoie d'un datagramme et sa r&eacute;ception, si ce temps est &eacute;coul&eacute; sans qu'un datagramme n'est &eacute;t&eacute; re&ccedil;ut, le datagramme envoy&eacute; esr consid&eacute;r&eacute; comme perdu), en effet un scan rapide sera moins efficace qu'un scan lent (il d&eacute;tectera moins d'IP active) mais sera...plus rapide :) (sisi je vous jure !). C'est pourquoi nous d&eacute;finirons 3 modes pour notre scan :</p>
+<blockquote>
+  <p align="left" class="style2">_Le mode SHERLOCK : timeout = 1000 ms.<br>
+    <span class="style10">_______________--__<span class="style18">caract&eacute;ristiques : scan lent mais minutieux, haute pr&eacute;cision. </span></span></p>
+  <p align="left" class="style2">_Le mode NORMALE : timeout = 500 ms.<br>
+  <span class="style10">_______________-_-<span class="style18">caract&eacute;ristiques : vitesse normale, r&eacute;sultats corrects.</span></span></p>
+  <p align="left" class="style2">_Le mode BURN : timeout = 100 ms. <br>
+  <span class="style10">____________-_-<span class="style18">caract&eacute;ristiques : scan rapide mais peu de pr&eacute;cision. </span></span></p>
+</blockquote>
+<p align="left" class="style2"><u>Voici quelques chiffres provenant d'un test que j'ai r&eacute;aliser avec IPnSCAN qui relatent les performances des diff&eacute;rents modes, test r&eacute;alis&eacute; sur une plage de 100 adresses IP :</u></p>
+<table width="59%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style2"><u>Mode burn :</u> 24 ip actives d&eacute;tect&eacute;es en 43 secondes.<br>
+        <u>Mode Sherlock :</u> 32 ip actives d&eacute;tect&eacute;es en 1 min 53 sec (113 sec). <br>
+        <u>Mode Normal :</u> 29 ip actives d&eacute;tect&eacute;es en 1 min 20 sec (80 sec).</p>
+    <p class="style2"><u>Conclusion :</u><br>
+      Mode Burn en moyenne 12 % moins efficace que le mode Normal mais 46% plus rapide.<br>
+    Mode sherlock en moyenne  7 % plus efficace que le mode normal mais 44% plus lent.<br>
+    Mode Burn en moyenne 63% plus rapide que le mode sherlock mais 22% moins efficace.</p>    </td>
+  </tr>
+</table>
+<p align="left" class="style2"><span class="style9">E</span>nsuite comment allons nous r&eacute;aliser l'envoie de nos requ&ecirc;tes ECHO, on pourrait se plonger dans les sockets mais a quoi bon r&eacute;inventer la roue puisqu'il existe un outil sous Windows comme sous Unix qui fait d&eacute;j&agrave; &ccedil;a tr&egrave;s bien, je veux parler de l'utilitaire <strong>ping</strong> bien s&ucirc;r. Nous allons donc effectuer des appels &agrave; system() en lui fournissant notre requ&ecirc;te, &agrave; savoir &quot;ping -[OPTIONS] [ADRESSE]&quot;, nous pourrons avoir jusqu'&agrave; 2 options mais au minimum une &agrave; savoir l'option <strong>-n</strong> qui permet de d&eacute;terminer le nombre de paquets &agrave; envoyer. On pourra utiliser une deuxi&egrave;me option qui sera l'option <strong>-w</strong> permettant de d&eacute;finir le timeout qui sera fonction du mode choisit par l'utilisateur. Par d&eacute;faut le mode <em>BURN</em> sera s&eacute;lectionner. A noter que la syntaxe de la requ&ecirc;te sera diff&eacute;rente selon que l'on travaille sur des adresses IP version 4 ou 6. C'est pourquoi nous d&eacute;finirons plusieurs macros pour la syntaxe de ces requ&ecirc;tes, ces derniers ne contiendrons &eacute;videmment qu'une partie de la requ&ecirc;te puisque l'adresse cible n'a pas encore &eacute;t&eacute; choisie par l'utilisateur. Pour d&eacute;duire le r&eacute;sultat du ping d'un point de vue &quot;programmation&quot; il suffira de r&eacute;cup&eacute;rer le code de retour de l'appel system(), en effet ce dernier renverra <strong>0</strong> si une ECHO_REPLY est re&ccedil;ut, <strong>1</strong> dans le cas contraire. Donc si l'on re&ccedil;oit <strong>0</strong> apr&egrave;s l'execution de notre ping, l'adresse distante est active, inactive dans le cas contraire. A noter qu'en ce qui concerne les adresses IP version 6, c'est l'utilitaire <strong>ping6</strong> que nous utiliserons.</p>
+<p align="left" class="style2"><span class="style9">E</span>nfin un dernier probl&egrave;me se pose encore &agrave; nous avant de nous plonger dans le code : &quot;comment sauvegarder les adresses IP actives d&eacute;tect&eacute;es ?&quot;, 2 solutions : l'utilisation d'un fichier dans lequel on pourra &eacute;crire et lire ou l'utilisation d'une liste cha&icirc;n&eacute;e pour sauvegarder les adresses en m&eacute;moire. J'ai choisit la deuxi&egrave;me m&eacute;thode car l'&eacute;criture et la lecture dans un fichier est bien plus lente qu'une allocation m&eacute;moire pour la sauvegarde d'une adresse. Les adresses IP actives d&eacute;tect&eacute;es seront donc sauvegard&eacute;es en m&eacute;moire selon la m&eacute;thode suivante :</p>
+<table width="46%"  border="1" align="center" bordercolor="#F8F8F8" bgcolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><div align="center">[Adresse 1 | ]--&gt;[Adresse 2 | ]--&gt;[Adresse 3| ]--&gt;[Adresse 4| NULL ] </div></td>
+  </tr>
+</table>
+<p align="left" class="style2"><span class="style9">N</span>ous d&eacute;clarerons en cons&eacute;quence de fa&ccedil;on globale une liste que l'on initialisera &agrave; NULL ainsi qu'un maillon. Nous aurons besoin d'une variable pour stocker le nombre d'adresses IP actives d&eacute;tect&eacute;es et nous d&eacute;clarerons bien &eacute;videmment le prototype de chaque fonction que l'on utilisera. </p>
+<table width="69%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><span class="style19">#include &lt;stdio.h&gt; /*printf(), scanf()...*/<br>
+  #include &lt;string.h&gt; /*strlen(), strcmp()...*/<br>
+  #include &lt;stdlib.h&gt; /*malloc(), exit()...*/ </span>
+      <p class="style19">/*----- D&eacute;finitions des constantes pour le r&eacute;glage de la vitesse du scan -----*/<br>
+        #define HIGH_SPEED 100<br>
+        #define MEDIUM_SPEED 500<br>
+        #define LOW_SPEED 1000<br>
+        /*----------------------------------------------------------------------------*/</p>
+      <p class="style19">/*------ D&eacute;finitions des constantes relatives &agrave; la syntaxe des requ&ecirc;tes ------*/<br>
+        #define V4_REQUEST &quot;ping -n 1 -w&quot;<br>
+        #define V6_REQUEST &quot;ping6 -n 1 -w&quot;<br>
+        #define V4_LOOKUP &quot;ping -a&quot;<br>
+        #define V6_LOOKUP &quot;ping6 -a&quot;<br>
+        /*----------------------------------------------------------------------------*/<br>
+      </p>
+      <p class="style19">/*------------ Taille d&eacute;finit pour les allocations m&eacute;moires ------------------*/<br>
+        #define BUFFER 80<br>
+        /*----------------------------------------------------------------------------*/<br>
+      </p>
+      <p class="style19">/*--------------------- Constantes pour appel syst&egrave;me ------------------------*/<br>
+        #define SCREEN_CL &quot;cls&quot; /*effacer les r&eacute;sultats du scan pr&eacute;c&eacute;dent &agrave; l'&eacute;cran*/<br>
+        #define ERASE &quot;del log.txt&quot;/*effacer les logs du scan*/<br>
+        /*----------------------------------------------------------------------------*/</p>
+      <p class="style19">/*----------------------------- Autres ---------------------------------------*/<br>
+        #define SUCCESS 0<br>
+        #define ERROR 1<br>
+        /*----------------------------------------------------------------------------*/<br>
+      </p>
+      <p class="style19">/*------D&eacute;finitions des structures relatives &agrave; la version des adresses IP-----*/</p>
+      <p class="style19">/*------------------------*/<br>
+        /* Structure IP version 4 */<br>
+        /*------------------------*/</p>
+      <p class="style19">typedef struct<br>
+        {<br>
+  <span class="style14">_</span>unsigned int d1;<br>
+  <span class="style14">_</span>unsigned int d2;<br>
+  <span class="style14">_</span>unsigned int d3;<br>
+  <span class="style14">_</span>unsigned int d4;<br>
+  <span class="style14">_</span>unsigned int f1;<br>
+  <span class="style14">_</span>unsigned int f2;<br>
+  <span class="style14">_</span>unsigned int f3;<br>
+  <span class="style14">_</span>unsigned int f4;<br>
+  }adress_v4;<br>
+  /*------------------------*/<br>
+      </p>
+      <p class="style19">/*------------------------*/<br>
+        /* Structure IP version 6 */<br>
+        /*------------------------*/<br>
+        typedef struct<br>
+        {<br>
+        <span class="style14">_</span>unsigned int g1;<br>
+        <span class="style14">_</span>unsigned int g2;<br>
+        <span class="style14">_</span>unsigned int g3;<br>
+        <span class="style14">_</span>unsigned int g4;<br>
+        <span class="style14">_</span>unsigned int g5;<br>
+        <span class="style14">_</span>unsigned int g6;<br>
+        <span class="style14">_</span>unsigned int g7;<br>
+        <span class="style14">_</span>unsigned int g8;<br>
+        <span class="style14">_</span>unsigned int h1;<br>
+        <span class="style14">_</span>unsigned int h2;<br>
+        <span class="style14">_</span>unsigned int h3;<br>
+        <span class="style14">_</span>unsigned int h4;<br>
+        <span class="style14">_</span>unsigned int h5;<br>
+        <span class="style14">_</span>unsigned int h6;<br>
+        <span class="style14">_</span>unsigned int h7;<br>
+        <span class="style14">_</span>unsigned int h8;<br>
+  }adress_v6;<br>
+  /*------------------------*/<br>
+  /*----------------------------------------------------------------------------*/</p>
+      <p class="style19">&nbsp;</p>
+      <p class="style19">/*---------------- Structure relative &agrave; la liste chainn&eacute;e --------------------*/<br>
+        typedef struct eltstruct<br>
+        {<br>
+        <span class="style14">_</span>char *target;<br>
+        <span class="style14">_</span>struct eltstruct *next;<br>
+  }maillon, *list;<br>
+  /*----------------------------------------------------------------------------*/</p>
+      <p class="style19">&nbsp;</p>
+      <p class="style19">/*------------- Variables globales n&eacute;cessaires au programme ------------------*/<br>
+        unsigned long compteurip=0; /*comptabiliser le nombre d'IP actives d&eacute;tect&eacute;es*/<br>
+        list l=NULL; /*liste chainn&eacute;e pour stock&eacute;e le(s) IP active(s) d&eacute;tect&eacute;e(s)*/<br>
+        maillon *m; /*maillon de la liste*/<br>
+        /*----------------------------------------------------------------------------*/</p>
+      <p class="style19">&nbsp;</p>
+      <p class="style19">/*-----------------------------------------------------------------------------<br>
+  PROTOTYPES DES FONCTIONS<br>
+  ----------------------------------------------------------------------------*/</p>
+      <p class="style19">void demande(void);</p>
+      <p class="style19">void saisiev4 (void);</p>
+      <p class="style19">void saisiev6 (void);</p>
+      <p class="style19">int decouper(char adresse1[], char adresse2[]);</p>
+      <p class="style19">int ping4 (char adreschoix[], int timeout);</p>
+      <p class="style19">int ping6 (char adreschoix[], int timeout);</p>
+      <p class="style19">int verif_syntaxv4(adress_v4 adresse1, adress_v4 adresse2);</p>
+      <p class="style19">int verif_syntaxv6(adress_v6 adresse1, adress_v6 adresse2);</p>
+      <p class="style19">void calcul_adressv4(adress_v4 adresse1, adress_v4 adresse2, int timeout);</p>
+      <p class="style19">void calcul_adressv6(adress_v6 adresse1, adress_v6 adresse2, int timeout);</p>
+      <p class="style19">void incrementev4(adress_v4 adresse1, adress_v4 adresse2, int timeout);</p>
+      <p class="style19">void incrementev6(adress_v6 adresse, adress_v6 adresse2, int timeout);</p>
+      <p class="style19">list insert_tailing(char *adresse, list l);</p>
+      <p class="style19">void lookupv4(void);</p>
+      <p class="style19">void lookupv6(void);</p>
+      <p class="style19">void namehotechoix(void);</p>
+      <p class="style19">void namehotev4(char *adresse);</p>
+      <p class="style19">void namehotev6(char *adresse);</p>
+      <p class="style19">void credit(void);</p>
+      <p class="style19">void usage(void);<br>
+    /*----------------------------------------------------------------------------*/</p></td>
+  </tr>
+</table>
+<p align="left" class="style2"><u></u></p>
+<blockquote>
+  <p align="left" class="style2"><u><em><a name="42"></a>4.2) Les fonctions de notre scanner </em></u></p>
+</blockquote>
+<p align="left" class="style2"><span class="style7">B</span>ien rentrons dans le coeur de notre programme, nous allons r&eacute;aliser plusieurs fonctions qui vont assez fid&egrave;lement se ressembler du fait que les op&eacute;rations sur les adresses IP version 4 et 6 sont sensiblement identiques. Avant d'aller plus loin j'ai choisit d'augmenter l&eacute;g&egrave;rement la difficult&eacute;e en voulant r&eacute;aliser 2 modes pour notre programme : une version int&eacute;ractive o&ugrave; l'utilisateur rentrera ses donn&eacute;es au clavier &eacute;tape par &eacute;tape et une version en ligne de commande o&ugrave; les param&egrave;tres du scan seront directement rentr&eacute;s directement via le parser, autrement dit en m&ecirc;me temps que l'execution du programme et ce afin de rendre notre scanner &quot;batchable&quot; ce qui nous permettrait lancer plusieurs scans en parall&egrave;le via un fichier batch. Il a s'en dire que la version int&eacute;ractive fera intervenir quelques fonctions de plus et il faudra &eacute;galement penser &agrave; purger les fonctions qui seront utilis&eacute;es par la version en ligne de commande de toute instruction bloquante comme scanf(), getchar() etc... </p>
+<p align="left" class="style2"><span class="style2"><u>E</u></span><u>n cons&eacute;quence nous aurons besoin d'une fonction de demande pour le type de scan (IPv4 ou IPv6) :</u></p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><span class="style19">void demande(void)<br>
+      {<br>
+<span class="style14">_</span>int choix;<br>
+<span class="style14">_</span>list aux;
+    </span>
+      <p class="style19"> <span class="style14">_</span>compteurip=0; /* on initialise compteurip &agrave; 0*/<br>
+        <span class="style14">_</span>system(SCREEN_CL);/*on efface les op&eacute;rations pr&eacute;c&eacute;dente affich&eacute;es &agrave; l'&eacute;cran*/</p>
+<p class="style19"> <span class="style14">_</span>/* lib&eacute;ration de l'espace m&eacute;moire occup&eacute;e par la liste chainn&eacute;e contenant les<br>
+  <span class="style14">_</span>ip actives */<br>
+  <span class="style14">_</span>while(l != NULL)<br>
+  <span class="style14">_</span>{<br>
+  <span class="style14">_</span><span class="style14">_</span>aux=l;<br>
+  <span class="style14">_</span><span class="style14">_</span>l=l-&gt;next;<br>
+  <span class="style14">_</span><span class="style14">_</span>free(aux);<br>
+  <span class="style14">_</span>}</p>
+<p class="style19"> <span class="style14">_</span>/*---------------------------------Menu--------------------------------------*/<br>
+  <span class="style14">_</span>printf(&quot;-------------------------------[IPnSCAN v1.0]\n\n&quot;);<br>
+  <span class="style14">_</span>printf(&quot;[IPnSCAN -h pour la version en lignes de commandes]\n\n\n&quot;); <br>
+  <span class="style14">_</span>printf(&quot;----[En attente instructions...\n\n&quot;);</p>
+<p class="style19"> <span class="style14">_</span>printf(&quot;--------[1 Scanner une plage d'adresse IP version 4\n&quot;);<br>
+  <span class="style14">_</span>printf(&quot;--------[2 Scanner une plage d'adresse IP version 6\n&quot;);<br>
+  <span class="style14">_</span>printf(&quot;--------[3 Effectuer un Reverse DNS\n&quot;);<br>
+  <span class="style14">_</span>printf(&quot;--------[4 Quitter le programme\n&quot;);<br>
+  <span class="style14">_</span>printf(&quot;\nChoix : &quot;);<br>
+  <span class="style14">_</span>scanf(&quot;%d%*c&quot;,&amp;choix);<br>
+  <span class="style14">_</span>printf(&quot;\n&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;&deg;\n&quot;);<br>
+  <span class="style14">_</span>/*---------------------------------------------------------------------------*/<br>
+  <span class="style14">_</span>switch(choix)<br>
+  <span class="style14">_</span>{<br>
+  <span class="style14">_</span><span class="style14">_</span>case 1 : saisiev4(); break; /*si choix=2 on appelle saisiev4*/<br>
+  <span class="style14">_</span><span class="style14">_</span>case 2 : saisiev6(); break; /*si choix=3 on appelle saisiev6*/<br>
+  <span class="style14">_</span><span class="style14">_</span>case 3 : namehotechoix(); break; /*si choix=4 on apelle namehote*/<br>
+  <span class="style14">_</span><span class="style14">_</span>default: exit(SUCCESS); /*si choix autre que 1,2,3 ou 4 alors exit*/<br>
+  <span class="style14">_</span>}<br>
+  }</p></td>
+  </tr>
+</table>
+<p align="left" class="style2"> <span class="style9">A </span>noter que l'on lib&egrave;re au d&eacute;but de la fonction l'espace m&eacute;moire occup&eacute; par la sauvegarde des adresses IP actives d&eacute;tect&eacute;es lors d'un possible scan pr&eacute;c&eacute;dent. </p>
+<p align="left" class="style2">&nbsp;</p>
+<p align="left" class="style2">&nbsp;</p>
+<p align="left" class="style2"><span class="style9">I</span>l nous faut &eacute;galement  2 fonctions de saisie (pour chaque version de l'adresse et elle ne seront utilis&eacute;es que pour la version int&eacute;ractive). Avant de donner le code de ces fonctions, attardons nous quelques instants sur un probl&egrave;me relatif aux adresses IP version 6. En effet pour effectuer des op&eacute;rations sur des IPv6, le syst&egrave;me requiert certains pilotes qui ne sont pas install&eacute;s par d&eacute;faut donc avant d'effectuer des &quot;ping&quot; sur ce type d'adresse il nous faudra tout d'abord nous assurer que ces pilotes soient bien install&eacute;s et ce gr&acirc;ce &agrave; la commande [ <span class="style23"><span class="style11">ipv6 if</span> <span class="style24">] qui effectue justement un test de pr&eacute;sence de ces pilotes, mais nous utiliserons surtout le code de retour de cette commande : <strong>0</strong> si les pilotes sont install&eacute;s, <strong>1</strong> dans le cas contraire : </span></span></p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td height="2753" bordercolor="#000000" bgcolor="#FFFFFF"><span class="style19">void saisiev4 (void)<br>
+      {<br>
+      <span class="style14">_</span>adress_v4 adresse1, adresse2;<br>
+      <span class="style14">_</span>int choixmd;<br>
+      <span class="style14">_</span>unsigned int speed;<br>
+      <span class="style14">_</span>char choix, ip[20];<br>
+<br>
+<span class="style14">_</span>printf(&quot;\nEntrez l'adresse ip correspondant au debut de la plage a scanner :&quot; <br>
+<span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>&quot;\n\n------------------------------[&quot;); /* 1ere adresse */<br>
+<span class="style14">_</span>scanf(&quot;%d.%d.%d.%d%*c&quot;,&amp;adresse1.d1,&amp;adresse1.d2,&amp;adresse1.d3,&amp;adresse1.d4); </span>
+      <p class="style19"> <span class="style14">_</span>printf(&quot;\nEntrez l'adresse ip correspondant a la fin de la plage a scanner :&quot; <br>
+        <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>&quot;\n\n------------------------------[&quot;); /* 2eme adresse */<br>
+        <span class="style14">_</span>scanf(&quot;%d.%d.%d.%d%*c&quot;,&amp;adresse2.f1,&amp;adresse2.f2,&amp;adresse2.f3,&amp;adresse2.f4);</p>
+<p class="style19"> <span class="style14">_</span>switch(verif_syntaxv4(adresse1,adresse2))<br>
+  <span class="style14">_</span>{<br>
+  <span class="style14">_</span><span class="style14">_</span>case -1 : printf(&quot;\n\n----[L'adresse de debut a une syntaxe incorrect !&quot;<br>
+  <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>&quot;\n Chaque partie de l'adresse doit etre comprise entre 0 et 255.&quot;<br>
+  <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>&quot;\n Voulez-vous entrer une nouvelle plage d'adresse ? (O/N) : &quot;);<br>
+  <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>scanf(&quot;%c%*c&quot;, &amp;choix);<br>
+        <span class="style14">____________</span>if (choix == 'o' || choix == 'O')<br>
+        <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>saisiev4();<br>
+        <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>else<br>
+        <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>exit(SUCCESS);<br>
+        <br>
+        <span class="style14">_</span>case -2 : printf(&quot;\n\n----[L'adresse de fin a une syntaxe incorrect !&quot;<br>
+        <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>&quot;\n Chaque partie de l'adresse doit etre comprise entre 0 et 255.&quot;<br>
+        <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>&quot;\n Voulez-vous entrer une nouvelle plage d'adresse ? (O/N) : &quot;);<br>
+        <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>scanf(&quot;%c%*c&quot;, &amp;choix);<br>
+        <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>if (choix == 'o' || choix == 'O')<br>
+        <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>saisiev4();<br>
+        <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>else<br>
+        <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>exit(SUCCESS);<br>
+        <br>
+        <span class="style14">_</span>case -3 : printf(&quot;\n\n----[L'adresse de debut est superieure a l'adresse de fin !&quot;<br>
+        <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>&quot;\n Voulez-vous entrer une nouvelle plage d'adresse ? (O/N) : &quot;);<br>
+        <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>scanf(&quot;%c%*c&quot;, &amp;choix);<br>
+        <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>if (choix == 'o' || choix == 'O')<br>
+        <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>saisiev4();<br>
+        <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>else<br>
+        <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>exit(SUCCESS);<br>
+        <br>
+        <span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span><span class="style14">_</span>default : break;<br>
+      }</p><p class="style19"> /*------------------------------Modes------------------------------------*/<br>
+  printf(&quot;\n\n----[Quel mode voulez-vous utiliser pour le scan ?&quot;);<br>
+  printf(&quot;\n\n--------[1 Mode Sherlock (vitesse lente - haute precision)&quot;);<br>
+  printf(&quot;\n--------[2 Mode Normal (vitesse normale - precision normale)&quot;);<br>
+  printf(&quot;\n--------[3 Mode Burn (vitesse rapide - basse precision)\n&quot;);<br>
+  printf(&quot;\nChoix : &quot;);<br>
+  scanf(&quot;%d%*c&quot;, &amp;choixmd);<br>
+  /*-----------------------------------------------------------------------*/<br>
+  switch(choixmd)<br>
+  {<br>
+  case 1 : speed=LOW_SPEED;<br>
+  printf(&quot;\n\n----[Mode Sherlock active !\n&quot;<br>
+&quot;\nDEMARRAGE DU SCAN...\n&quot;);<br>
+  break;<br>
+  <br>
+  case 2 : speed=MEDIUM_SPEED;<br>
+  printf(&quot;\n\n----[Mode Normal active !\n&quot;<br>
+&quot;\nDEMARRAGE DU SCAN...\n&quot;);<br>
+  break;<br>
+  <br>
+  case 3 : speed=HIGH_SPEED;<br>
+  printf(&quot;\n\n----[Mode Burn active !\n&quot;<br>
+&quot;\nDEMARRAGE DU SCAN...\n&quot;);<br>
+  break;<br>
+  <br>
+  default : printf(&quot;\n\n----[Erreur, aucun mode associe a ce choix !&quot;<br>
+&quot;\n Appuyez sur ENTREE pour retourner au menu...&quot;);<br>
+  getchar();<br>
+  return;<br>
+  }</p>
+<p class="style19"> /*on transmet &agrave; calcul_adress() les 2 adresses &eacute;clat&eacute;es*/<br>
+  calcul_adressv4(adresse1, speed);</p>
+<p class="style19"> /*on incremente l'adresse pour scanner tte la plage*/<br>
+  incrementev4(adresse1, adresse2, speed);</p>
+<p class="style19"> /*si le nbre d'ip actives est nulle (une fois que toutes les ft st termin&eacute;es)*/<br>
+  if (!compteurip)<br>
+  printf(&quot;\n\nScan termine !&quot;<br>
+&quot;\nAucune IP active dans la tranche scannee !\n&quot;);<br>
+  else /*sinon*/<br>
+  printf(&quot;\n\nEffectuer un reverse DNS sur une adresse ? (O/N) : &quot;);<br>
+  scanf(&quot;%c%*c&quot;, &amp;choix);<br>
+  while (choix=='o' || choix=='O')<br>
+  {<br>
+  printf(&quot;\n\nEntrez l'adresse : &quot;);<br>
+  scanf(&quot;%s%*c&quot;,ip);<br>
+  namehotev4(ip);<br>
+  printf(&quot;\n\nEffectuer un reverse DNS sur une autre adresse ? (O/N) : &quot;);<br>
+  scanf(&quot;%c%*c&quot;, &amp;choix);<br>
+  }<br>
+  printf(&quot;\n\n----[Scan termine !&quot;);</p>
+<p class="style19"> printf(&quot;\n\nAppuyez sur ENTREE pour retourner au menu...&quot;);<br>
+  getchar();<br>
+  demande(); /*on retourne au menu*/<br>
+  }<br>
+</p>
+<p class="style19">&nbsp;</p>
+<p class="style19">void saisiev6 (void)<br>
+  {<br>
+  adress_v6 adresse1, adresse2;<br>
+  int choixmd;<br>
+  unsigned int speed;<br>
+  char *install=&quot;ipv6 install&quot;, choix, ip[45];</p>
+<p class="style19"> printf(&quot;\nEntrez l'adresse ip correspondant au debut de la plage a scanner : \n\n--------------------[&quot;);<br>
+  scanf(&quot;%x:%x:%x:%x:%x:%x:%x:%x%*c&quot;,&amp;adresse1.g1, &amp;adresse1.g2, &amp;adresse1.g3, &amp;adresse1.g4, &amp;adresse1.g5, &amp;adresse1.g6, &amp;adresse1.g7, &amp;adresse1.g8);</p>
+<p class="style19"> printf(&quot;\nEntrez l'adresse ip correspondant au debut de la plage a scanner : \n\n--------------------[&quot;);<br>
+  scanf(&quot;%x:%x:%x:%x:%x:%x:%x:%x%*c&quot;,&amp;adresse2.h1, &amp;adresse2.h2, &amp;adresse2.h3, &amp;adresse2.h4, &amp;adresse2.h5, &amp;adresse2.h6, &amp;adresse2.h7, &amp;adresse2.h8);</p>
+<p class="style19"> switch(verif_syntaxv6(adresse1,adresse2))<br>
+  {<br>
+  case -1 : printf(&quot;\n\n----[L'adresse de debut a une syntaxe incorrect !&quot;<br>
+&quot;\n Chaque partie de l'adresse doit etre comprise entre 0 et FFFF.&quot;<br>
+&quot;\n Voulez-vous entrer une nouvelle plage d'adresse ? (O/N) : &quot;);<br>
+  scanf(&quot;%c%*c&quot;, &amp;choix);<br>
+  if (choix == 'o' || choix == 'O')<br>
+  saisiev6();<br>
+  else<br>
+  exit(SUCCESS);<br>
+  <br>
+  case -2 : printf(&quot;\n\n----[L'adresse de fin a une syntaxe incorrect !&quot;<br>
+&quot;\n Chaque partie de l'adresse doit etre comprise entre 0 et FFFF.&quot;<br>
+&quot;\n Voulez-vous entrer une nouvelle plage d'adresse ? (O/N) : &quot;);<br>
+  scanf(&quot;%c%*c&quot;, &amp;choix);<br>
+  if (choix == 'o' || choix == 'O')<br>
+  saisiev6();<br>
+  else<br>
+  exit(SUCCESS);<br>
+  <br>
+  case -3 : printf(&quot;\n\n----[L'adresse de debut est superieure a l'adresse de fin !&quot;<br>
+&quot;\n Voulez-vous entrer une nouvelle plage d'adresse ? (O/N) : &quot;);<br>
+  scanf(&quot;%c%*c&quot;, &amp;choix);<br>
+  if (choix == 'o' || choix == 'O')<br>
+  saisiev6();<br>
+  else<br>
+  exit(SUCCESS);<br>
+  <br>
+  default : break;<br>
+  }</p>
+<p class="style19"> printf(&quot;\n\n----[Quel mode voulez-vous utiliser pour le scan ?&quot;);<br>
+  printf(&quot;\n\n--------[1 Mode Sherlock (vitesse lente - haute precision)&quot;);<br>
+  printf(&quot;\n--------[2 Mode Normal (vitesse normale - precision normale)&quot;);<br>
+  printf(&quot;\n--------[3 Mode Burn (vitesse rapide - basse precision)\n&quot;);<br>
+  printf(&quot;\nChoix : &quot;);<br>
+  scanf(&quot;%d%*c&quot;, &amp;choixmd);</p>
+<p class="style19"> switch(choixmd)<br>
+  {<br>
+  case 1 : speed=LOW_SPEED;<br>
+  printf(&quot;\n\n----[Mode Sherlock active !\n&quot;<br>
+&quot;\nDEMARRAGE DU SCAN...\n&quot;);<br>
+  break;<br>
+  <br>
+  case 2 : speed=MEDIUM_SPEED;<br>
+  printf(&quot;\n\n----[Mode Normal active !\n&quot;<br>
+&quot;\nDEMARRAGE DU SCAN...\n&quot;);<br>
+  break;<br>
+  <br>
+  case 3 : speed=HIGH_SPEED;<br>
+  printf(&quot;\n\n----[Mode Burn active !\n&quot;<br>
+&quot;\nDEMARRAGE DU SCAN...\n&quot;);<br>
+  break;<br>
+  <br>
+  default : printf(&quot;\n\n----[Erreur, aucun mode associe a ce choix !&quot;<br>
+&quot;\n----[Appuyez sur ENTREE pour retourner au menu...&quot;);<br>
+  getchar();<br>
+  return;<br>
+  }</p>
+<p class="style19"> /*-On fait un test pour d&eacute;terminer si le pilote IPv6 est install&eacute; sur le syst&egrave;me-*/<br>
+  if(system(&quot;ipv6 if&gt;nul&quot;)!=0)<br>
+  {<br>
+  fprintf(stderr,&quot;\n\n----[Le pilote IPv6 n'est pas installe sur votre systeme !&quot;<br>
+&quot;\n L'installation va debuter dans quelques secondes...\n&quot;);<br>
+  system(install); /*on installe les pilotes*/<br>
+  printf(&quot;\n\n----[Reprise du scan...\n&quot;);<br>
+  }<br>
+  /*-------------------------------------------------------------------------------*/</p>
+<p class="style19"> calcul_adressv6(adresse1, speed);</p>
+<p class="style19"> incrementev6(adresse1, adresse2, speed);</p>
+<p class="style19"> if (!compteurip)<br>
+  printf(&quot;\n\nScan termine !&quot;<br>
+&quot;\nAucune IP active dans la tranche scannee !\n&quot;);<br>
+  else<br>
+  printf(&quot;\n\nEffectuer un reverse DNS sur une adresse ? (O/N) : &quot;);<br>
+  scanf(&quot;%c%*c&quot;, &amp;choix);<br>
+  while (choix=='o' || choix=='O')<br>
+  {<br>
+  printf(&quot;\n\nEntrez l'adresse : &quot;);<br>
+  scanf(&quot;%s%*c&quot;,ip);<br>
+  namehotev6(ip);<br>
+  printf(&quot;\n\nEffectuer un reverse DNS sur une autre adresse ? (O/N) : &quot;);<br>
+  scanf(&quot;%c%*c&quot;, &amp;choix);<br>
+  }<br>
+  printf(&quot;\n\n----[Scan termine !&quot;);</p>
+<p class="style19"> printf(&quot;\n\nAppuyez sur ENTREE pour retourner au menu...&quot;);<br>
+  getchar();<br>
+  demande();<br>
+  }</p></td>
+  </tr>
+</table>
+<p align="left" class="style2"> <span class="style9">A</span> noter que nous appelons dans cette fonction 2 autres fonctions encore non d&eacute;finies. l'une calcul_adress() (v4 ou v6) sera charg&eacute;e de r&eacute;cup&eacute;rer le code de retour de l'appel system() avec l'utilitaire ping (Rappel : le code de retour est 0 si une ECHO_REPLY est re&ccedil;ut, 1 dans le cas contraire) et de sauvegarder l'adresse dans notre liste cha&icirc;n&eacute;e si l'adresse se r&eacute;v&egrave;le active. Elle sera &eacute;galement charg&eacute;e de d&eacute;terminer la classe du r&eacute;seau auquel appartient l'adresse, cette derni&egrave;re se d&eacute;termine en fonction du premier segment de l'adresse (revenez en arri&egrave;re dans l'article si vous avez oubliez comment cela fonctionne) : </p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><span class="style19">void calcul_adressv4(adress_v4 adresse, int timeout)<br>
+      {<br>
+char *adress, classe;<br>
+int res;
+    </span>
+      <p class="style19"> /*r&eacute;servation de l'espace m&eacute;moire pour stocker l'adresse*/<br>
+  if((adress=(char*)malloc(BUFFER*sizeof(char)))==NULL)<br>
+  {<br>
+  fprintf(stderr,&quot;\n\n----[Probl&egrave;me d'allocation memoire !&quot;<br>
+&quot;\n Abandon du scan.&quot;<br>
+&quot;\n\n Appuyez sur ENTREE pour quitter&quot;);<br>
+  getchar();<br>
+  exit(SUCCESS);<br>
+  }</p>
+<p class="style19"> /*concat&eacute;nation de l'adresse IP*/<br>
+  sprintf(adress,&quot;%d.%d.%d.%d&quot;,adresse.d1,adresse.d2,adresse.d3,adresse.d4);</p>
+<p class="style19"> /*on appelle la ft ping a laquelle on envoi l'adresse ip reconsitu&eacute;e avec les 2 fragements*/<br>
+  res=ping4(adress, timeout) ;<br>
+  if (!res) /*si res=0 i.e si l'ip est active*/<br>
+  {<br>
+  if(adresse.d1 &lt;= 127)<br>
+  classe='A';<br>
+  else if(adresse.d1 &gt;= 128 &amp;&amp; adresse.d1 &lt;= 191)<br>
+  classe='B';<br>
+  else if(adresse.d1 &gt;=192 &amp;&amp; adresse.d1&lt;= 223)<br>
+  classe='C';<br>
+  else classe='N';</p>
+<p class="style19"> if(classe != 'N')<br>
+  printf(&quot;\n\a[ %s ] est active et appartient a un reseau de classe [ %c ]&quot;, adress, classe);<br>
+  else<br>
+  printf(&quot;\n\a[ %s ] est active et appartient a un reseau de classe [ inconnue ]&quot;, adress);<br>
+  /*r&eacute;servation de l'espace m&eacute;moire pour un maillon afin de stocker l'adresse */<br>
+  if((m=(maillon *)malloc(sizeof(maillon)))==NULL)<br>
+  {<br>
+  fprintf(stderr,&quot;\n\n----[Probl&egrave;me d'allocation memoire !&quot;<br>
+&quot;\n Abandon du scan.&quot;<br>
+&quot;\n\n Appuyez sur ENTREE pour quitter&quot;);<br>
+  getchar();<br>
+  exit(SUCCESS);<br>
+  }<br>
+  m-&gt;target=adress; /*on stocke l'adresse d&eacute;t&eacute;ct&eacute;e dans le maillon pr&eacute;c&eacute;demment cr&eacute;&eacute;*/<br>
+  l=insert_tailing(adress, l); /*on ins&egrave;re le maillon dans la liste chainn&eacute;e*/<br>
+  compteurip++; /*1 IP de plus d&eacute;tect&eacute;e*/<br>
+  }<br>
+  else /*si res different de 0...*/<br>
+  printf(&quot;\n[ %s ] est inactive&quot;, adress);<br>
+  }<br>
+</p>
+<p class="style19">&nbsp;</p>
+<p class="style19">void calcul_adressv6(adress_v6 adresse, int timeout)<br>
+  {<br>
+  char *adress;<br>
+  int res;</p>
+<p class="style19"> if((adress=(char*)malloc(BUFFER*sizeof(char)))==NULL)<br>
+  {<br>
+  fprintf(stderr,&quot;\n\n----[Probl&egrave;me d'allocation memoire !&quot;<br>
+&quot;\n Abandon du scan.&quot;<br>
+&quot;\n\n Appuyez sur ENTREE pour quitter&quot;);<br>
+  getchar();<br>
+  exit(SUCCESS);<br>
+  }<br>
+  sprintf(adress,&quot;%x:%x:%x:%x:%x:%x:%x:%x&quot;,adresse.g1, adresse.g2, adresse.g3, adresse.g4, adresse.g5, adresse.g6, adresse.g7, adresse.g8);</p>
+<p class="style19"> res=ping6(adress, timeout);</p>
+<p class="style19"> if (!res)<br>
+  {<br>
+  printf(&quot;\n\a[ %s ] est active&quot;, adress);<br>
+  if((m=(maillon *)malloc(sizeof(maillon)))==NULL)<br>
+  {<br>
+  fprintf(stderr,&quot;\n\n----[Probl&egrave;me d'allocation memoire !&quot;<br>
+&quot;\n Abandon du scan.&quot;<br>
+&quot;\n\n Appuyez sur ENTREE pour quitter&quot;);<br>
+  getchar();<br>
+  exit(SUCCESS);<br>
+  }<br>
+  m-&gt;target=adress;<br>
+  l=insert_tailing(adress, l);<br>
+  compteurip++;<br>
+  }<br>
+  else<br>
+  printf(&quot;\n[ %s ] est inactive&quot;, adress);<br>
+  }</p></td>
+  </tr>
+</table>
+<p align="left" class="style2">&nbsp;</p>
+<p align="left" class="style2"><span class="style9">L</span>a deuxi&egrave;me fonction apell&eacute;e dans nos fonctions saisie() est la fonction incr&eacute;mente() (respectivement v4 pour saisiev4() et v6 pour saisiev6() ) qui va &ecirc;tre charg&eacute;e comme son som l'indique d'incr&eacute;menter l'adresse, qui vient d'&ecirc;tre trait&eacute;e, de 1 afin de pouvoir trait&eacute;e l'adresse suivante et ce jusqu'&agrave; ce que l'adresse de fin de la plage &agrave; scanner rentr&eacute;e par l'utilisateur est &eacute;t&eacute; atteinte :</p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><span class="style19">void incrementev4(adress_v4 adresse1, adress_v4 adresse2, int timeout)<br>
+      {<br>
+      /*tant que l'ip de d&eacute;but et l'ip de fin ne st pas egalles*/<br>
+while (adresse1.d1!=adresse2.f1 || adresse1.d2!=adresse2.f2 ||<br>
+adresse1.d3!=adresse2.f3 || adresse1.d4!=adresse2.f4)<br>
+{<br>
+/*ip du type 1.1.1.2 qui devient 1.1.1.3*/<br>
+if (adresse1.d4!=255)<br>
+{<br>
+adresse1.d4++;<br>
+calcul_adressv4(adresse1, timeout);<br>
+}
+    </span>
+      <p class="style19"> if (adresse2.f4 == adresse1.d4 &amp;&amp; adresse1.d1 == adresse2.f1 &amp;&amp;<br>
+  adresse1.d2 == adresse2.f2 &amp;&amp; adresse1.d3 == adresse2.f3)<br>
+  {<br>
+  lookupv4();<br>
+  return;<br>
+  }<br>
+</p>
+<p class="style19"> /*ip du type 1.1.1.255 qui devient 1.1.2.0*/<br>
+  if (adresse1.d4==255 &amp;&amp; adresse1.d3!=255)<br>
+  {<br>
+  adresse1.d3++;<br>
+  adresse1.d4=0;<br>
+  calcul_adressv4(adresse1, timeout);<br>
+  }</p>
+<p class="style19">&nbsp;</p>
+<p class="style19"> if (adresse2.f4 == adresse1.d4 &amp;&amp; adresse1.d1 == adresse2.f1 &amp;&amp;<br>
+  adresse1.d2 == adresse2.f2 &amp;&amp; adresse1.d3 == adresse2.f3)<br>
+  {<br>
+  lookupv4();<br>
+  return;<br>
+  }<br>
+</p>
+<p class="style19"> /*ip du type 1.1.255.255 qui devient 1.2.0.0*/<br>
+  if (adresse1.d3==255 &amp;&amp; adresse1.d4==255 &amp;&amp; adresse1.d2!=255)<br>
+  {<br>
+  adresse1.d2++;<br>
+  adresse1.d3=0;<br>
+  adresse1.d4=0;<br>
+  calcul_adressv4(adresse1, timeout);<br>
+  }</p>
+<p class="style19"> if (adresse2.f4 == adresse1.d4 &amp;&amp; adresse1.d1 == adresse2.f1 &amp;&amp;<br>
+  adresse1.d2 == adresse2.f2 &amp;&amp; adresse1.d3 == adresse2.f3)<br>
+  {<br>
+  lookupv4();<br>
+  return;<br>
+  }<br>
+</p>
+<p class="style19"> /*ip du type 1.255.255.255 qui devient 2.0.0.0*/<br>
+  if (adresse1.d2==255 &amp;&amp; adresse1.d3==255 &amp;&amp; adresse1.d4==255 &amp;&amp; adresse1.d1!=255)<br>
+  {<br>
+  adresse1.d1++;<br>
+  adresse1.d2=0;<br>
+  adresse1.d3=0;<br>
+  adresse1.d4=0;<br>
+  calcul_adressv4(adresse1, timeout);<br>
+  }<br>
+  }<br>
+  lookupv4(); /*on propose le reverse DNS*/<br>
+  }<br>
+</p>
+<p class="style19">&nbsp;</p>
+<p class="style19">void incrementev6( adress_v6 adresse1, adress_v6 adresse2, int timeout)<br>
+  {<br>
+  /*tant que l'ip de d&eacute;but et l'ip de fin ne st pas egalles */<br>
+  while (adresse1.g1!=adresse2.h1 || adresse1.g2!=adresse2.h2 ||<br>
+  adresse1.g3!=adresse2.h3 || adresse1.g4!=adresse2.h4 ||<br>
+  adresse1.g5!=adresse2.h5 || adresse1.g6!=adresse2.h6 ||<br>
+  adresse1.g7!=adresse2.h7 || adresse1.g8!=adresse2.h8)<br>
+  {<br>
+  /*ip du type 1:1:1:1:1:1:1:1 1:1:1:1:1:1:1:2*/<br>
+  if (adresse1.g8!=65535)<br>
+  {<br>
+  adresse1.g8++;<br>
+  calcul_adressv6(adresse1, timeout);<br>
+  }<br>
+</p>
+<p class="style19"> /*si la huitieme partie de l'adresse de fin egale FFFFF alors on appelle lookupv6*/<br>
+  if (adresse1.g8 == adresse2.h8 &amp;&amp; adresse1.g7 == adresse2.h7 &amp;&amp;<br>
+  adresse1.g6 == adresse2.h6 &amp;&amp; adresse1.g5 == adresse2.h5 &amp;&amp;<br>
+  adresse1.g4 == adresse2.h4 &amp;&amp; adresse2.h3 == adresse1.g3 &amp;&amp;<br>
+  adresse1.g2 == adresse2.h2 &amp;&amp; adresse1.g1 == adresse2.h1)<br>
+  {<br>
+  lookupv6();<br>
+  return;<br>
+  }</p>
+<p class="style19">&nbsp;</p>
+<p class="style19"> /*ip du type 1:1:1:1:1:1:1:FFFFF*/<br>
+  if (adresse1.g8==65535 &amp;&amp; adresse1.g7!=65535)<br>
+  {<br>
+  adresse1.g7++;<br>
+  adresse1.g8=0;<br>
+  calcul_adressv6(adresse1, timeout);<br>
+  }<br>
+</p>
+<p class="style19"> if (adresse1.g8 == adresse2.h8 &amp;&amp; adresse1.g7 == adresse2.h7 &amp;&amp;<br>
+  adresse1.g6 == adresse2.h6 &amp;&amp; adresse1.g5 == adresse2.h5 &amp;&amp;<br>
+  adresse1.g4 == adresse2.h4 &amp;&amp; adresse2.h3 == adresse1.g3 &amp;&amp;<br>
+  adresse1.g2 == adresse2.h2 &amp;&amp; adresse1.g1 == adresse2.h1)<br>
+  {<br>
+  lookupv6();<br>
+  return;<br>
+  }<br>
+</p>
+<p class="style19"> /*ip du type 1:1:1:1:1:1:FFFFF:FFFFF*/<br>
+  if (adresse1.g7==65535 &amp;&amp; adresse1.g8==65535 &amp;&amp; adresse1.g6!=65535)<br>
+  {<br>
+  adresse1.g2++;<br>
+  adresse1.g3=0;<br>
+  adresse1.g4=0;<br>
+  calcul_adressv6(adresse1, timeout);<br>
+  }</p>
+<p class="style19">&nbsp;</p>
+<p class="style19"> if (adresse1.g8 == adresse2.h8 &amp;&amp; adresse1.g7 == adresse2.h7 &amp;&amp;<br>
+  adresse1.g6 == adresse2.h6 &amp;&amp; adresse1.g5 == adresse2.h5 &amp;&amp;<br>
+  adresse1.g4 == adresse2.h4 &amp;&amp; adresse2.h3 == adresse1.g3 &amp;&amp;<br>
+  adresse1.g2 == adresse2.h2 &amp;&amp; adresse1.g1 == adresse2.h1)<br>
+  {<br>
+  lookupv6();<br>
+  return;<br>
+  }</p>
+<p class="style19">&nbsp;</p>
+<p class="style19"> /*ip du type 1:1:1:1:1:FFFFF:FFFFF:FFFFF*/<br>
+  if (adresse1.g6==65535 &amp;&amp; adresse1.g7==65535 &amp;&amp; adresse1.g8==65535 &amp;&amp;<br>
+  adresse1.g5!=65535)<br>
+  {<br>
+  adresse1.g1++;<br>
+  adresse1.g2=0;<br>
+  adresse1.g3=0;<br>
+  adresse1.g4=0;<br>
+  calcul_adressv6(adresse1, timeout);<br>
+  }</p>
+<p class="style19"> if (adresse1.g8 == adresse2.h8 &amp;&amp; adresse1.g7 == adresse2.h7 &amp;&amp;<br>
+  adresse1.g6 == adresse2.h6 &amp;&amp; adresse1.g5 == adresse2.h5 &amp;&amp;<br>
+  adresse1.g4 == adresse2.h4 &amp;&amp; adresse2.h3 == adresse1.g3 &amp;&amp;<br>
+  adresse1.g2 == adresse2.h2 &amp;&amp; adresse1.g1 == adresse2.h1)<br>
+  {<br>
+  lookupv6();<br>
+  return;<br>
+  }<br>
+</p>
+<p class="style19"> /*ip du type 1:1:1:1:FFFFFF:FFFFFF:FFFFF:FFFFF*/<br>
+  if (adresse1.g5==65535 &amp;&amp; adresse1.g6==65535 &amp;&amp; adresse1.g7==65535 &amp;&amp;<br>
+  adresse1.g8==65535 &amp;&amp; adresse1.g4!=65535)<br>
+  {<br>
+  adresse1.g4++;<br>
+  adresse1.g5=0;<br>
+  adresse1.g6=0;<br>
+  adresse1.g7=0;<br>
+  adresse1.g8=0;<br>
+  calcul_adressv6(adresse1, timeout);<br>
+  }</p>
+<p class="style19">&nbsp;</p>
+<p class="style19"> if (adresse1.g8 == adresse2.h8 &amp;&amp; adresse1.g7 == adresse2.h7 &amp;&amp;<br>
+  adresse1.g6 == adresse2.h6 &amp;&amp; adresse1.g5 == adresse2.h5 &amp;&amp;<br>
+  adresse1.g4 == adresse2.h4 &amp;&amp; adresse2.h3 == adresse1.g3 &amp;&amp;<br>
+  adresse1.g2 == adresse2.h2 &amp;&amp; adresse1.g1 == adresse2.h1)<br>
+  {<br>
+  lookupv6();<br>
+  return;<br>
+  }</p>
+<p class="style19"> /*ip du type 1:1:1:FFFFFF:FFFFFF:FFFFFF:FFFFF:FFFFF*/<br>
+  if (adresse1.g5==65535 &amp;&amp; adresse1.g6==65535 &amp;&amp; adresse1.g7==65535 &amp;&amp;<br>
+  adresse1.g8==65535 &amp;&amp; adresse1.g4==65535 &amp;&amp; adresse1.g3!=65535)<br>
+  {<br>
+  adresse1.g3++;<br>
+  adresse1.g4=0;<br>
+  adresse1.g5=0;<br>
+  adresse1.g6=0;<br>
+  adresse1.g7=0;<br>
+  adresse1.g8=0;<br>
+  calcul_adressv6(adresse1, timeout);<br>
+  }<br>
+</p>
+<p class="style19"> if (adresse1.g8 == adresse2.h8 &amp;&amp; adresse1.g7 == adresse2.h7 &amp;&amp;<br>
+  adresse1.g6 == adresse2.h6 &amp;&amp; adresse1.g5 == adresse2.h5 &amp;&amp;<br>
+  adresse1.g4 == adresse2.h4 &amp;&amp; adresse2.h3 == adresse1.g3 &amp;&amp;<br>
+  adresse1.g2 == adresse2.h2 &amp;&amp; adresse1.g1 == adresse2.h1)<br>
+  {<br>
+  lookupv6();<br>
+  return;<br>
+  }</p>
+<p class="style19"> /*ip du type 1:1:FFFFFF:FFFFFF:FFFFFF:FFFFFF:FFFFF:FFFFF*/<br>
+  if (adresse1.g5==65535 &amp;&amp; adresse1.g6==65535 &amp;&amp; adresse1.g7==65535 &amp;&amp;<br>
+  adresse1.g8==65535 &amp;&amp; adresse1.g4==65535 &amp;&amp; adresse1.g3==65535 &amp;&amp;<br>
+  adresse1.g2!=65535)<br>
+  {<br>
+  adresse1.g2++;<br>
+  adresse1.g3=0;<br>
+  adresse1.g4=0;<br>
+  adresse1.g5=0;<br>
+  adresse1.g6=0;<br>
+  adresse1.g7=0;<br>
+  adresse1.g8=0;<br>
+  calcul_adressv6(adresse1, timeout);<br>
+  }<br>
+</p>
+<p class="style19"> if (adresse1.g8 == adresse2.h8 &amp;&amp; adresse1.g7 == adresse2.h7 &amp;&amp;<br>
+  adresse1.g6 == adresse2.h6 &amp;&amp; adresse1.g5 == adresse2.h5 &amp;&amp;<br>
+  adresse1.g4 == adresse2.h4 &amp;&amp; adresse2.h3 == adresse1.g3 &amp;&amp;<br>
+  adresse1.g2 == adresse2.h2 &amp;&amp; adresse1.g1 == adresse2.h1)<br>
+  {<br>
+  lookupv6();<br>
+  return;<br>
+  }</p>
+<p class="style19"> /*ip du type 1:FFFFFF:FFFFFF:FFFFFF:FFFFFF:FFFFFF:FFFFF:FFFFF*/<br>
+  if (adresse1.g5==65535 &amp;&amp; adresse1.g6==65535 &amp;&amp; adresse1.g7==65535 &amp;&amp;<br>
+  adresse1.g8==65535 &amp;&amp; adresse1.g4==65535 &amp;&amp; adresse1.g3==65535 &amp;&amp;<br>
+  adresse1.g2==65535 &amp;&amp; adresse1.g1!=65535)<br>
+  {<br>
+  adresse1.g1++;<br>
+  adresse1.g2=0;<br>
+  adresse1.g3=0;<br>
+  adresse1.g4=0;<br>
+  adresse1.g5=0;<br>
+  adresse1.g6=0;<br>
+  adresse1.g7=0;<br>
+  adresse1.g8=0;<br>
+  calcul_adressv6(adresse1, timeout);<br>
+  }<br>
+  }<br>
+  lookupv6();<br>
+  }</p></td>
+  </tr>
+</table>
+<p align="left" class="style2">&nbsp; </p>
+<p align="right">&nbsp;</p>
+<p align="left" class="style2"><span class="style9">N</span>ous avons ensuite besoin de la fonction qui va r&eacute;aliser l'appel system() avec l'utilitaire ping et renvoyer le code de retour de cet appel afin de pouvoir d&eacute;terminer si l'adresse en cours de traitement est active ou non, nous utilisons cette fonction dans nos 2 fonctions calcul_adress() :</p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><span class="style19">int ping4 (char *adreschoix, int timeout)<br>
+      {<br>
+      char *req_aux, *req, *mute=&quot;&gt;nul&quot;;<br>
+int res;
+    </span>
+      <p class="style19"> req_aux=V4_REQUEST; /*req=&quot;ping -n 1 -w &quot;*/</p>
+<p class="style19"> /*r&eacute;servation de l'espace m&eacute;moire n&eacute;cessaire pour la requ&ecirc;te*/<br>
+  if((req=(char*)malloc(BUFFER*sizeof(char)))==NULL)<br>
+  {<br>
+  fprintf(stderr,&quot;\n\n----[Probl&egrave;me d'allocation memoire !&quot;<br>
+&quot;\n Abandon du scan.&quot;<br>
+&quot;\n\n Appuyez sur ENTREE pour quitter&quot;);<br>
+  exit(SUCCESS);<br>
+  }</p>
+<p class="style19"> /*concat&eacute;nation de la requ&ecirc;te*/<br>
+  sprintf(req,&quot;%s %d %s%s&quot;, req_aux, timeout, adreschoix, mute);/*req=&quot;ping -n 1 -w [TIMEOUT] [ADRESSE]&quot;*/</p>
+<p class="style19"> res=system(req); /* res recoit le code de retour de l'appel syst&egrave;me avec la requete :<br>
+  0 si l'adresse ip est active, 1 sinon */<br>
+  free(req);<br>
+  return res; /* on retourne le code de retour de l'appel syst&egrave;me*/<br>
+  }</p>
+<p class="style19">&nbsp;</p>
+<p class="style19">&nbsp;</p>
+<p class="style19">int ping6 (char *adreschoix, int timeout)/* idem &agrave; ping4() &agrave; l'exception de la requ&ecirc;te */<br>
+  {<br>
+  char *req_aux, *req, *mute=&quot;&gt;nul&quot;;<br>
+  int res;</p>
+<p class="style19"> req_aux=V6_REQUEST;</p>
+<p class="style19"> if((req=(char*)malloc(BUFFER*sizeof(char)))==NULL)<br>
+  {<br>
+  fprintf(stderr,&quot;\n\n----[Probl&egrave;me d'allocation memoire !&quot;<br>
+&quot;\n Abandon du scan.&quot;<br>
+&quot;\n\n Appuyez sur ENTREE pour quitter&quot;);<br>
+  getchar();<br>
+  exit(SUCCESS);<br>
+  }</p>
+<p class="style19"> sprintf(req,&quot;%s %d %s%s&quot;, req_aux, timeout, adreschoix, mute);</p>
+<p class="style19"> res=system(req);</p>
+<p class="style19"> free(req);<br>
+  return res;<br>
+  }</p></td>
+  </tr>
+</table>
+<p>&nbsp;</p>
+<p class="style2"><span class="style9">V</span>ous avez peut-&ecirc;tre remarqu&eacute; que lorsque le scan est termin&eacute; (donc lorsque l'adresse correspondant &agrave; la fin de la plage &agrave; scanner &agrave; &eacute;t&eacute; atteinte) une fonction lookup(v4 ou v6) est appel&eacute;e. Ces derni&egrave;res n'ont d'autre utilit&eacute; que d'afficher le contenu de la liste cha&icirc;n&eacute;e ayant sauvegard&eacute;e l'ensemble des adresses IP actives d&eacute;tect&eacute;es durant le scan :</p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><span class="style19">void lookupv4(void)<br>
+      {<br>
+      if (compteurip==0) /* si compteurip=0 i.e si aucune ip actives n'a &eacute;t&eacute; d&eacute;tect&eacute;e*/<br>
+return; /* on retourne au menu */
+    </span>
+      <p class="style19"> printf(&quot;\n\n%lu adresse(s) IP active(s) detectee(s) : \n&quot;, compteurip);<br>
+  printf(&quot;---------------------------------------\n&quot;);</p>
+<p class="style19"> while(l != NULL) /*on affiche l'ensemble du contenu de la liste*/<br>
+  {<br>
+  printf(&quot;\n%s&quot;, l-&gt;target);<br>
+  l=l-&gt;next;<br>
+  }<br>
+  }</p>
+<p class="style19">&nbsp;</p>
+<p class="style19">void lookupv6(void) /* idem &agrave; lookupv4() &agrave; l'exception de la requete*/<br>
+  {<br>
+  if (compteurip==0)<br>
+  return;</p>
+<p class="style19"> printf(&quot;\n\n%lu adresse(s) IP active(s) detectee(s) : \n&quot;, compteurip);<br>
+  printf(&quot;---------------------------------------\n&quot;);</p>
+<p class="style19"> while(l != NULL)<br>
+  {<br>
+  printf(&quot;\n%s&quot;, l-&gt;target);<br>
+  l=l-&gt;next;<br>
+  }<br>
+  }<br>
+</p></td>
+  </tr>
+</table>
+<p class="style2">&nbsp; </p>
+<p align="left" class="style2"> <span class="style9">I</span>l ne faut pas non plus oublier de v&eacute;rifier la synthaxe de chaque adresse rentr&eacute;e par l'utilisateur afin de ne pas l'induire en erreur lors du scan par des codes de retour ne correspondant pas &agrave; la r&eacute;alit&eacute;. En effet plusieurs contraintes vont se poser, par exemple pour les adresses de version 4, chaque segment devra &ecirc;tre compris entre 0 et 255, il ne faudra pas non plus que l'adresse de d&eacute;but soit sup&eacute;rieure &agrave; l'adresse de fin, le cas &eacute;ch&eacute;ant une boucle infinie se mettrait en place :</p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><span class="style19">int verif_syntaxv4(adress_v4 adresse1, adress_v4 adresse2)<br>
+      {<br>
+      /* v&eacute;rification de la syntaxe de l'adresse de debut */<br>
+      /*si l'un des membres de l'adresse ip de d&eacute;but est superieur &agrave; 255 ou<br>
+      inf&eacute;rieur &agrave; 0*/<br>
+      if (adresse1.d1&gt;255 || adresse1.d2&gt;255 || adresse1.d3&gt;255 || adresse1.d4&gt;255)<br>
+return (-1);
+    </span>
+      <p class="style19"> /* v&eacute;rification de la syntaxe de l'adresse de fin */<br>
+  if (adresse2.f1&gt;255 || adresse2.f2&gt;255 || adresse2.f3&gt;255 || adresse2.f4&gt;255)<br>
+  return (-2);</p>
+<p class="style19"> /* v&eacute;rification de la coh&eacute;rence de la plage entr&eacute;e */<br>
+  if ((adresse1.d1*256*256*256 + adresse1.d2*256*256 + adresse1.d3*256 +<br>
+  adresse1.d4) &gt;<br>
+  (adresse2.f1*256*256*256 + adresse2.f2*256*256 + adresse2.f3*256 +<br>
+  adresse2.f4))<br>
+  return (-3);</p>
+<p class="style19"> return SUCCESS;<br>
+  }<br>
+</p>
+<p class="style19">&nbsp;</p>
+<p class="style19">int verif_syntaxv6(adress_v6 adresse1, adress_v6 adresse2)<br>
+  {<br>
+  /* Adresse de d&eacute;but */<br>
+  /* si l'un des membres de l'ip est superieure a 65535 i.e FFFFF<br>
+  ou inf&eacute;rieur &agrave; 0*/<br>
+  if (adresse1.g1&gt;65535 || adresse1.g2&gt;65535 || adresse1.g3&gt;65535 ||<br>
+  adresse1.g4&gt;65535 || adresse1.g5&gt;65535 || adresse1.g6&gt;65535 ||<br>
+  adresse1.g7&gt;65535 || adresse1.g8&gt;65535)<br>
+  return (-1);</p>
+<p class="style19"> /* Adresse de fin */<br>
+  if (adresse2.h1&gt;65535 || adresse2.h2&gt;65535 || adresse2.h3&gt;65535 ||<br>
+  adresse2.h4&gt;65535 || adresse2.h5&gt;65535 || adresse2.h6&gt;65535 ||<br>
+  adresse2.h7&gt;65535 || adresse2.h8&gt;65535)<br>
+  return (-2);<br>
+  <br>
+  if ((adresse1.g1*65537*65537*65537*65537*65537*65537*65537 +<br>
+  adresse1.g2*65537*65537*65537*65537*65537*65537 +<br>
+  adresse1.g3*65537*65537*65537*65537*65537 +<br>
+  adresse1.g4*65537*65537*65537*65537 +<br>
+  adresse1.g5*65537*65537*65537 +<br>
+  adresse1.g6*65537*65537 +<br>
+  adresse1.g7*65537 +<br>
+  adresse1.g8) &gt;<br>
+  (adresse2.h1*65537*65537*65537*65537*65537*65537*65537 +<br>
+  adresse2.h2*65537*65537*65537*65537*65537*65537 +<br>
+  adresse2.h3*65537*65537*65537*65537*65537 +<br>
+  adresse2.h4*65537*65537*65537*65537 +<br>
+  adresse2.h5*65537*65537*65537 +<br>
+  adresse2.h6*65537*65537 +<br>
+  adresse2.h7*65537 +<br>
+  adresse2.h8))<br>
+  return (-3);<br>
+  <br>
+  return SUCCESS;<br>
+  }</p></td>
+  </tr>
+</table>
+<p align="left" class="style2">&nbsp;</p>
+<p align="left" class="style2"><span class="style9">V</span>oici la fonction qui permet de sauvegarder les adresses IP actives d&eacute;tect&eacute;es dans une liste cha&icirc;n&eacute;e :</p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td height="351" bordercolor="#000000" bgcolor="#FFFFFF"><span class="style19">list insert_tailing(char *adresse, list l)<br>
+      {<br>
+      /*r&eacute;servation de l'espace m&eacute;moire pour un maillon*/<br>
+if((m=(maillon *)malloc(sizeof(maillon)))==NULL)<br>
+{<br>
+fprintf(stderr,&quot;\n\n----[Probl&egrave;me d'allocation memoire !&quot;<br>
+&quot;\n Abandon du reverse DNS.&quot;<br>
+&quot;\n\n Appuyez sur ENTREE pour quitter&quot;);<br>
+getchar();<br>
+exit(SUCCESS);<br>
+}
+    </span>
+      <p class="style19"> /*si la liste est vide, le maillon devient le seul &eacute;l&eacute;ment de la liste*/<br>
+  if(l==NULL)<br>
+  {<br>
+  m-&gt;target=adresse;<br>
+  m-&gt;next=l;<br>
+  return m;<br>
+  }</p>
+<p class="style19"> /* sinon on proc&egrave;de &agrave; un appel r&eacute;cursif afin de recommencer le test avec le<br>
+  maillon suivant */<br>
+  else<br>
+  l-&gt;next = insert_tailing(adresse, l-&gt;next);</p>
+<p class="style19"> return l;<br>
+  }</p></td>
+  </tr>
+</table>
+<p align="left" class="style2">&nbsp; </p>
+<p align="left" class="style2"><span class="style9">P</span>our terminer nous allons avoir besoin de 2 fonctions qui vont permettre de r&eacute;aliser des reverse DNS sur des adresses choisies au pr&eacute;alable. Pour ceci nous utiliserons encore une fois l'utilitaire ping (ping6 pour les IPv6) avec l'option <strong>-a</strong> via un appel system() ce qui aura pour r&eacute;sultat de nous renvoyer le nom de la machine associ&eacute;e &agrave; l'adresse en cours de traitement. Si l'adresse n'est pas active, c'est l'adresse que l'on aura rentr&eacute;e qui nous sera renvoy&eacute;e, il suffira donc de le v&eacute;rifier pour pr&eacute;venir l'utilisateur au cas o&ugrave; l'adresse qu'il aurait rentr&eacute;e ne serait pas active :</p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><span class="style19">void namehotev4(char *adresse) /* idem &agrave; lookupv4 */<br>
+      {<br>
+      char *req_aux, *req, *file=&quot;&gt;log.txt&quot;, *host=&quot;Envoi&quot;, hostfind[100];<br>
+int i;<br>
+FILE *hoste; /* pour le cas ou le fichier aurait d&eacute;j&agrave; &eacute;t&eacute; ouvert<br>
+(dans la version en ligne de commande par exemple) */
+    </span>
+      <p class="style19"> req_aux=V4_LOOKUP; /*req=ping -a*/</p>
+<p class="style19"> /*r&eacute;servation de l'expace m&eacute;moire pour stocker la requ&ecirc;te*/<br>
+  if((req=(char*)malloc(BUFFER*sizeof(char)))==NULL)<br>
+  {<br>
+  fprintf(stderr,&quot;\n\n----[Probl&egrave;me d'allocation memoire !&quot;<br>
+&quot;\n Abandon du reverse DNS.&quot;<br>
+&quot;\n\n Appuyez sur ENTREE pour quitter&quot;);<br>
+  getchar();<br>
+  exit(SUCCESS);<br>
+  }</p>
+<p class="style19"> /*req=ping -a ADRESSE_IP&gt;result.txt*/<br>
+  sprintf(req,&quot;%s %s%s&quot;, req_aux, adresse, file);</p>
+<p class="style19"> printf(&quot;\nExecution du reverse DNS sur l'adresse %s en cours...&quot;, adresse);</p>
+<p class="style19"> system(req);</p>
+<p class="style19"> /*on ouvre le fichier o&ugrave; est sauvegard&eacute; resultat de la requete*/<br>
+  if((hoste = fopen(&quot;log.txt&quot;, &quot;r&quot;))==NULL)<br>
+  {<br>
+  fprintf(stderr,&quot;\n\n----[Erreur lors de la lecture du fichier \&quot;log.txt\&quot;!&quot;<br>
+&quot;\n Ce fichier contient un compte rendu du reverse DNS.&quot;<br>
+&quot;\n V&eacute;rifiez que vous avez les droits en &eacute;criture dans le r&eacute;pertoire courant.&quot;<br>
+&quot;\n Abandon du scan...&quot;<br>
+&quot;\n\n Appuyez sur ENTREE pour quitter&quot;);<br>
+  getchar();<br>
+  exit(SUCCESS);<br>
+  }<br>
+  fscanf (hoste, &quot;%s&quot;, hostfind);</p>
+<p class="style19"> /*on recherche le nom d'hote parmis les informations*/<br>
+  while (strcmp(hostfind, host)!=0)<br>
+  fscanf (hoste, &quot;%s&quot;, hostfind);</p>
+<p class="style19"> for (i=0; i &lt; 5; i++)<br>
+  fscanf(hoste, &quot;%s&quot;, hostfind);</p>
+<p class="style19"> if(!strcmp(hostfind, adresse))<br>
+  printf(&quot;\nL'hote specifie ne semble pas etre connecte...\n&quot;);</p>
+<p class="style19"> else<br>
+  { /*on affiche le nom d'hote*/<br>
+  printf(&quot;\nLe nom d'hote est [ %s ].\n&quot;, hostfind);</p>
+<p class="style19"> fclose(hoste); /*on ferme log.txt*/<br>
+  system(ERASE); /*on supprime log.txt*/<br>
+  }<br>
+  }<br>
+</p>
+<p class="style19">void namehotev6(char *adresse) /* idem &agrave; lookupv6 */<br>
+  {<br>
+  char *req_aux, *req, *file=&quot;&gt;log.txt&quot;, *host=&quot;Envoi&quot;, hostfind[100];<br>
+  int i;<br>
+  FILE *hoste;</p>
+<p class="style19"> req_aux=V6_LOOKUP;</p>
+<p class="style19"> if((req=(char*)malloc(BUFFER*sizeof(char)))==NULL)<br>
+  {<br>
+  fprintf(stderr,&quot;\n\n----[Probl&egrave;me d'allocation memoire !&quot;<br>
+&quot;\n Abandon du reverse DNS.&quot;<br>
+&quot;\n\n Appuyez sur ENTREE pour quitter&quot;);<br>
+  getchar();<br>
+  exit(SUCCESS);<br>
+  }</p>
+<p class="style19"> sprintf(req,&quot;%s %s%s&quot;, req_aux, adresse, file);</p>
+<p class="style19"> printf(&quot;\nExecution du reverse DNS sur l'adresse %s en cours...&quot;, adresse);</p>
+<p class="style19"> system(req);</p>
+<p class="style19"> if((hoste = fopen(&quot;log.txt&quot;, &quot;r&quot;))==NULL)<br>
+  {<br>
+  fprintf(stderr,&quot;\n\n----[Erreur lors de la lecture du fichier \&quot;log.txt\&quot;!&quot;<br>
+&quot;\n Ce fichier contient un compte rendu du reverse DNS.&quot;<br>
+&quot;\n V&eacute;rifiez que vous avez les droits en &eacute;criture dans le r&eacute;pertoire courant.&quot;<br>
+&quot;\n Abandon du scan...&quot;<br>
+&quot;\n\n Appuyez sur ENTREE pour quitter&quot;);<br>
+  getchar();<br>
+  exit(SUCCESS);<br>
+  }<br>
+  fscanf (hoste, &quot;%s&quot;, hostfind);</p>
+<p class="style19"> while (strcmp(hostfind, host)!=0)<br>
+  fscanf (hoste, &quot;%s&quot;, hostfind);</p>
+<p class="style19"> for (i=0; i &lt; 4; i++)<br>
+  fscanf(hoste, &quot;%s&quot;, hostfind);</p>
+<p class="style19"> if(!strcmp(hostfind, adresse))<br>
+  printf(&quot;\nL'hote specifie ne semble pas etre connecte...\n&quot;);</p>
+<p class="style19"> else<br>
+  {<br>
+  printf(&quot;\nLe nom d'hote est [ %s ].\n&quot;, hostfind);</p>
+<p class="style19"> fclose(hoste);<br>
+  system(ERASE);<br>
+  }<br>
+  }</p></td>
+  </tr>
+</table>
+<p align="left" class="style2">&nbsp; </p>
+<p align="right">&nbsp;</p>
+<blockquote>
+  <p align="left" class="style2"><u><em><a name="43"></a>4.3) Le parser</em></u></p>
+</blockquote>
+<p align="left" class="style2"><span class="style9">V</span>oici le code du parser qui permettra &agrave; l'utilisateur de choisir entre une version int&eacute;ractive du programme ou une version en ligne de commande, les fonctions utilis&eacute;es sont les m&ecirc;mes que pr&eacute;c&eacute;demment et le code reste simple donc je pense que vous comprendrez sans trop de peine son fonctionnement :</p>
+<table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p class="style19">int main(int argc, char **argv)<br>
+{<br>
+char *arg=NULL;<br>
+int i, speed=HIGH_SPEED;<br>
+adress_v4 adresse1, adresse2;<br>
+adress_v6 adresse_1, adresse_2;<br>
+FILE *log; </p>
+      <p class="style19"> if(argc&lt;=1)/* si pas d'arguments on passe &agrave; la version int&eacute;ractive */<br>
+  {<br>
+  system(&quot;title IPnSCAN v1.0 - IP Range Scanner and Reverse DNS Tool by Andras and Skyrunner&quot;);<br>
+  while(1) demande();<br>
+  }<br>
+  else<br>
+  {<br>
+  if((log=fopen(&quot;log.txt&quot;, &quot;w+&quot;))==NULL)<br>
+  {<br>
+  fprintf(stderr,&quot;\n\n----[Erreur lors de la lecture du fichier \&quot;log.txt\&quot;!&quot;<br>
+&quot;\nCe fichier est indispensable a la poursuite du scan ou du reverse DNS..\n&quot;);<br>
+  exit(SUCCESS);<br>
+  }</p>
+      <p class="style19"> for (i = 1; i &lt; argc; i++)<br>
+  {<br>
+  arg = argv[i];</p>
+      <p class="style19"> switch (arg[0])<br>
+  {<br>
+  case '-' : switch(arg[1])<br>
+  {<br>
+  case 'h':usage(); break;</p>
+      <p class="style19"> case 'q':<br>
+  credit();<br>
+  fprintf(log,&quot;%s\n&quot;, argv[++i]);<br>
+  fprintf(log,&quot;%s&quot;, argv[++i]);<br>
+  rewind(log);<br>
+  fscanf(log,&quot;%d.%d.%d.%d%*c&quot;,&amp;adresse1.d1,&amp;adresse1.d2,&amp;adresse1.d3,&amp;adresse1.d4);<br>
+  fscanf(log,&quot;%d.%d.%d.%d%*c&quot;,&amp;adresse2.f1,&amp;adresse2.f2,&amp;adresse2.f3,&amp;adresse2.f4);<br>
+  fclose(log);<br>
+  system(ERASE);<br>
+  switch(verif_syntaxv4(adresse1,adresse2))<br>
+  {<br>
+  case -1 : printf(&quot;\n\n----[L'adresse de debut a une syntaxe incorrect !&quot;<br>
+&quot;\n Chaque partie de l'adresse doit etre comprise entre 0 et 256.\n&quot;);<br>
+  exit(SUCCESS);<br>
+  <br>
+  case -2 : printf(&quot;\n\n----[L'adresse de fin a une syntaxe incorrect !&quot;<br>
+&quot;\n Chaque partie de l'adresse doit etre comprise entre 0 et 256.\n&quot;);<br>
+  exit(SUCCESS);<br>
+  <br>
+  case -3 : printf(&quot;\n\n----[L'adresse de debut est superieure a l'adresse de fin !\n&quot;);<br>
+  exit(SUCCESS);<br>
+  <br>
+  default : break;<br>
+  }<br>
+  printf(&quot;\n\n----[TimeOut = %d !\n&quot;<br>
+&quot;\nDEMARRAGE DU SCAN...\n&quot;, speed);<br>
+  calcul_adressv4(adresse1, speed);<br>
+  incrementev4(adresse1, adresse2, speed);<br>
+  if (!compteurip)<br>
+  printf(&quot;\n\nScan termine !&quot;<br>
+&quot;\nAucune IP active dans la tranche scannee\n&quot;);<br>
+  else<br>
+  printf(&quot;\n\n----[Scan termine !\n&quot;);<br>
+  break;</p>
+      <p class="style19"> case 's':<br>
+  credit();<br>
+  fprintf(log,&quot;%s\n&quot;, argv[++i]);<br>
+  fprintf(log,&quot;%s&quot;, argv[++i]);<br>
+  rewind(log);<br>
+  fscanf(log,&quot;%x:%x:%x:%x:%x:%x:%x:%x%*c&quot;,&amp;adresse_1.g1, &amp;adresse_1.g2, &amp;adresse_1.g3, &amp;adresse_1.g4, &amp;adresse_1.g5, &amp;adresse_1.g6, &amp;adresse_1.g7, &amp;adresse_1.g8);<br>
+  fscanf(log,&quot;%x:%x:%x:%x:%x:%x:%x:%x%*c&quot;,&amp;adresse_2.h1, &amp;adresse_2.h2, &amp;adresse_2.h3, &amp;adresse_2.h4, &amp;adresse_2.h5, &amp;adresse_2.h6, &amp;adresse_2.h7, &amp;adresse_2.h8);<br>
+  fclose(log);<br>
+  system(ERASE);<br>
+  switch(verif_syntaxv6(adresse_1,adresse_2))<br>
+  {<br>
+  case -1 : printf(&quot;\n\n----[L'adresse de debut a une syntaxe incorrect !&quot;<br>
+&quot;\n Chaque partie de l'adresse doit etre comprise entre 0 et FFFF.\n&quot;);<br>
+  exit(SUCCESS);<br>
+  <br>
+  case -2 : printf(&quot;\n\n----[L'adresse de fin a une syntaxe incorrect !&quot;<br>
+&quot;\n Chaque partie de l'adresse doit etre comprise entre 0 et FFFF.\n&quot;);<br>
+  exit(SUCCESS);<br>
+  <br>
+  case -3 : printf(&quot;\n\n----[L'adresse de debut est superieure a l'adresse de fin !\n&quot;);<br>
+  exit(SUCCESS);<br>
+  <br>
+  default : break;<br>
+  }<br>
+  printf(&quot;\n\n----[TimeOut = %d !\n&quot;<br>
+&quot;\nDEMARRAGE DU SCAN...\n&quot;, speed);<br>
+  calcul_adressv6(adresse_1, speed);<br>
+  incrementev6(adresse_1, adresse_2, speed);<br>
+  if (!compteurip)<br>
+  printf(&quot;\n\nScan termine !&quot;<br>
+&quot;\nAucune IP active dans la tranche scannee!\n&quot;);<br>
+  else<br>
+  printf(&quot;\n\n----[Scan termine !\n&quot;);<br>
+  break;</p>
+      <p class="style19"> case 'v':<br>
+  switch(arg[i+=2])<br>
+  {<br>
+  case '1': speed=HIGH_SPEED; break;<br>
+  case '2': speed=MEDIUM_SPEED; break;<br>
+  case '3': speed=LOW_SPEED; break;<br>
+  }<br>
+  i--;<br>
+  break;</p>
+      <p class="style19"> case 'd' :<br>
+  credit();<br>
+  fclose(log);<br>
+  if(argv[++i]==NULL)<br>
+  {<br>
+  printf(&quot;\n\n----[Vous n'avez pas specifie d'adresse !\n&quot;);<br>
+  exit(SUCCESS);<br>
+  }<br>
+  namehotev4(argv[i]);<br>
+  break;</p>
+      <p class="style19"> case 'f' :<br>
+  credit();<br>
+  fclose(log);<br>
+  if(argv[++i]==NULL)<br>
+  {<br>
+  printf(&quot;\n\n----[Vous n'avez pas specifie d'adresse !\n&quot;);<br>
+  exit(SUCCESS);<br>
+  }<br>
+  namehotev6(argv[i]);<br>
+  break;</p>
+      <p class="style19"> default :<br>
+  credit();<br>
+  printf(&quot;\n--[Erreur de saisie ! Argument [ -%c ] invalide...\n&quot;<br>
+&quot; IPnSCAN -h pour les options.\n&quot;, arg[1]);<br>
+  exit(SUCCESS);<br>
+  }<br>
+  }<br>
+  }<br>
+  }<br>
+  return 0;<br>
+  }</p></td>
+  </tr>
+</table>
+<p align="left" class="style2">&nbsp;</p>
+<blockquote>
+  <p align="left" class="style2"><u><em><a name="44"></a>4.4) Tests </em></u></p>
+</blockquote>
+<p align="left" class="style2"><span class="style9">E</span>t voil&agrave; notre programme est termin&eacute;. Faisons quelques tests : </p>
+<table width="55%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><img src="Images/test.jpg" width="666" height="735"></td>
+  </tr>
+</table>
+<p align="left" class="style2">&nbsp;</p>
+<p align="left" class="style2"><span class="style9">B</span>ien &ccedil;a &agrave; l'air de fonctionner, passons &agrave; la version en ligne de commande :</p>
+<table width="37%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><p><img src="Images/test2.jpg" width="665" height="538"></p></td>
+  </tr>
+</table>
+<p align="left" class="style2"><span class="style9">A</span>ucun probl&egrave;me non plus. Les tests sur les adresses IP version 6 ont &eacute;galement &eacute;t&eacute; concluents.</p>
+<p align="right">&nbsp;</p>
+<p align="left" class="style7"><u><strong><a name="5"></a>5) Conclusion</strong></u></p>
+<p align="left" class="style2">Ainsi s'ach&egrave;ve notre p&eacute;riple dans le petit monde des ECHO_REQUESTS &amp; ECHO REPLIES. J'esp&egrave;re que le voyage vous a pl&ucirc;t et pour ceux qui aimerait en savoir davantage je ne saurai trop vous conseiller de vous plonger dans l'article extr&egrave;mement complet et p&eacute;dagogique de <em>Ofir Arkin</em> : <u>L'ICMP USAGE IN SCANNING</u>. Je vous conseille &eacute;galement de lire  <u>Le Scanning d'IP par requ&ecirc;te ICMP Echo</u> &eacute;crit par <em>S/asH </em>dans le RTC-Mag n&deg;4 dans lequel ce dernier explique &eacute;galement comment coder un scanner d'IP mais cette fois en utilisant les sockets, cela peut donc &ecirc;tre int&eacute;ressant d'&eacute;tudier les deux m&eacute;thode s d'approche. Vous aurez compris je le pense apr&egrave;s la lecture de cet article &agrave; quel point il peut &ecirc;tre simple, en jouant avec les diff&eacute;rents champs d'un paquet, de retirer le voile mince qui souvent recouvre un r&eacute;seau afin d'en d&eacute;couvrir jusqu'&agrave; ses plus profonds secrets...</p>
+<p align="left" class="style2">Le code source complet et indent&eacute; de IPnSCAN se trouve dans la partie [ Annexe ]. </p>
+<p align="left" class="style2">&nbsp;</p>
+<p align="left" class="style2">&nbsp;</p>
+<p align="left" class="style7"><u><strong><a name="6"></a>6) R&eacute;f&eacute;rences</strong></u></p>
+<p align="left" class="style2"><span class="style3">[1]</span> Fyodor - http://www.insecure.org/ - nmap <br>
+  <span class="style3">[2]</span> RFC en fran&ccedil;ais - http://abcdrfc.free.fr/<br> 
+  <span class="style3">[3]</span> Ofir Arkin
+
+- <u>ICMP usage in scanning<br>
+</u><span class="style3">[4]</span> snort - http://www.snort.org/<br>
+<span class="style3">[]</span> Team RTC - http://www.rtc.fr.st/<br>
+<span class="style3">[]</span> Le meilleur site en ce qui concerne le hacking via les paquets r&eacute;seaux : 
+
+
+http://www. phenoelit .de/<br>
+<span class="style3">[]</span> The Not
+
+ -<u> A TCP/IP Tutorial : Behind The Internet</u> - Phrack #34-0x08 - http://www.phrack.org/show.php?p=34&amp;a=8/<br>
+ <span class="style3">[]</span> Ofir Arkin &amp; Fyodor Yarochkin - 
+
+
+ <u>ICMP based remote OS TCP/IP stack fingerprinting techniques</u> - Phrack #57-0x07 - http://www.phrack.org/show.php?p=57&amp;a=7/</p>
+<p align="left" class="style2">&nbsp; </p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right"><em><font size="3" face="Lucida Console">BY ANDRAS</font></em></p>
+<p align="right"><em><font size="3" face="Lucida Console"><br>
+  </font><font face="Lucida Console">    <span class="style2">IPnSCAN a &eacute;t&eacute; &eacute;crit par ANDRAS &amp; SKYRUNNER</span></font> </em></p>
+<p align="right">Copyright &copy; 2005 ARENHACK - DHS</p>
+<p></p>
+<p align="center"><br>
+  <strong><a href="page3.htm"><u>HAUT DE PAGE</u></a></strong><br>
+</p>
+</body>
+</html>

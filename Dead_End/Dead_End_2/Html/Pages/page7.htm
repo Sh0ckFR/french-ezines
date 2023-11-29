@@ -1,0 +1,552 @@
+<html>
+<head>
+<title>Dead-End issue II - Defeating os fingerprint</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<link href="../../../../Dead-End%20MAG/Files/Html/Pages/style.css" rel="stylesheet" type="text/css">
+<style type="text/css">
+<!--
+.style2 {font-size: 12px}
+.style7 {font-size: 13px}
+.style9 {font-size: 12px; font-style: italic; }
+.style11 {
+	font-size: 12px;
+	font-family: "Courier New", Courier, mono;
+	color: #666666;
+}
+.style12 {
+	font-size: 16px;
+	font-weight: bold;
+}
+.style13 {color: #666666}
+.style14 {
+	font-family: "Courier New", Courier, mono;
+	font-size: 12px;
+}
+.style15 {color: #F8F8F8}
+.style17 {
+	font-family: "Lucida Console";
+	font-size: 17px;
+	font-style: italic;
+}
+-->
+</style></head>
+
+<body>
+<hr>
+<p align="center"><img src="Images/defeating_os_fingerprinting.jpg" width="469" height="60"></p>
+<hr>
+<p align="LEFT"><em><a href="page7.htm" target="_blank">AFFICHER CET ARTICLE EN MODE PAGE 
+ENTIERE</a></em></p>
+<p align="center" class="style2"><strong><font size="3"><u>SOMMAIRE</u></font></strong></p>
+<p align="left" class="style2"><a href="page7.htm#1">1) C'est quoi un os fingerprint ?</a><BR>
+  <a href="page7.htm#2">2) Some Basic methods to detect the remote OS</a><BR>
+  <a href="page7.htm#3">3) Powerful method to detect the remote OS (nmap</a>)<BR>
+  <a href="page7.htm#4">4) Code Source T-Os fingerprint</a><BR>
+  <a href="page7.htm#5">5) Defeating os fingerprint</a><BR>
+  <a href="page7.htm#6">6) Test</a></p>
+<p align="left" class="style7">&nbsp;</p>
+<hr>
+<CENTER>
+  <BR>
+</CENTER>
+<CENTER class="style2">
+  <I>Le but de cet article est de vous montrer comment les os fingerprint fonctionnent et comment on peut les contrer en simulant d'autres os.</I>
+</CENTER>
+<H3 class="style7"><u><a name="1"></a>1) C'est quoi un os fingerprint ?</u></H3>
+<span class="style2"><BR>
+</span><span class="style12">O</span><span class="style2">s fingerprint c'est l'identification du systeme d'exploitation d'une machine distante. c'est un outil utilis&eacute; plus par les administrateurs que par des personnes malveillantes. la detection de l'OS d'un systeme distant est une &eacute;tape majeur pour un attaquant essayant de le compromettre , supposez par exemple que vous avez trouver un port ouvert d'une machine distante cela vous donnera une id&eacute;e sur le service lanc&eacute; et le fait de connaitre l'os va faciliter de savoir si ce service est vuln&eacute;rable donc de coder ou trouver l'exploit &eacute;quivalent . le principe d'os fingerprint consiste &agrave; envoyer des paquets specialement forg&eacute;s et d'analyser la r&eacute;ponse , ces r&eacute;ponses varient d'un os &agrave; autre .<BR>
+</span>
+<H3 class="style2">&nbsp;</H3>
+<H3 class="style2">&nbsp;</H3>
+<H3 class="style7"><u><a name="2"></a>2) Some Basic methods to detect the remote OS</u></H3>
+<blockquote class="style2">
+  <p>&nbsp;</p>
+  <p><em><u>Time to live :</u></em></p>
+</blockquote>
+<span class="style12">C</span><span class="style2">haque os mets dans le champs ttl du header IP une valeur differentes. par ex: linux : 34-64 windows:98-128 freebsd:34-64 le ttl peut vari&eacute; parce qu'il se decremente fois chaque que le paquet passe par un routeur . </span>
+<H5 class="style2">&nbsp;</H5>
+<blockquote>
+  <p class="style9"><u>FIN :</u></p>
+</blockquote>
+<span class="style12">s</span><span class="style2">i on envoie un paquet TCP avec le flag FIN activ&eacute; sur un port ouvert la machine receptrice devra ignorer le paquet . ce que Windows ne fait pas , il repond avec un ack+rst . </span>
+<H5 class="style2">&nbsp;</H5>
+<blockquote>
+  <p class="style2"><u><em>Window Size :</em></u></p>
+</blockquote>
+<p><span class="style12">O</span><span class="style2">n remarque quand on envoie un paquet TCP avec le flag Syn que chaque os r&eacute;pond avec un paquet tcp (flag syn ack) et la taille de la fenetre qu'il veut . linux : 32767 windows : 16616 freebsd : 65535 </span>
+</p>
+<H5 class="style2">&nbsp;</H5>
+<blockquote>
+  <p class="style2"><u><em>Tos (Type Of Service) :</em></u></p>
+</blockquote>
+<p><span class="style12">N</span><span class="style2">ormalement dans les paquets ICMP la valeur du TOS doit &eacute;tre &agrave; 0. on remarque qu'on envoie un paquet avec le tos different de 0 , windows le mets &agrave; 0 par contre linux le laisse . </span>
+</p>
+<H3 class="style7">&nbsp;</H3>
+<H3 class="style7">&nbsp;</H3>
+<H3 class="style7"><u><a name="3"></a>3) Powerful method to detect the remote OS (nmap)</u></H3>
+<p class="style2"><span class="style12">N</span>map est l'outil le plus utilis&eacute; et le plus puissant . nmap fait 8 tests pour detecter l'os et compare les resultats avec une base de donn&eacute;e. On peut remarquer la precision de cet outil puique il ne s'arette pas sur la detection de l'os mais il trouve la version du noyau. </p>
+<p class="style2"><u>Description des tests :</u><br><BR>
+  # <B>T1</B> est un paquet SYN avec des options &agrave; un port ouvert <BR>
+  # <B>T2</B> est un paquet NULL avec des options &agrave; un port ouvert <BR>
+  # <B>T3</B> est un paquet SYN|FIN|URG|PSH avec des options &agrave; un port ouvert<BR>
+  # <B>T4</B> est paquet ACK avec option &agrave; un port ouvert <BR>
+  # <B>T5 </B>est un paquet SYN &agrave; un port ouvert avec options<BR>
+  # <B>T6 </B>est un paquet ACK &agrave; un port ouvert avec options<BR>
+  # <B>T7 </B>est un paquet FIN|PSH|URG &agrave; port ferm&eacute; avec options<BR>
+  # <B>PU </B>est un paquet UDP &agrave; un port ferm&eacute; <BR>
+  <BR>
+</p>
+<p align="left" class="style2"><u>Prenons ce firewall :</u></p>
+<p align="center" class="style2"><em>Fingerprint Borderware 6.0.2 firewall</em></p>
+<table width="47%"  border="1" align="center" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF" class="style11">Class Borderware | embedded || firewall<br>
+TSeq(Class=RI%gcd=&lt;6%SI=&lt;1016FC&amp;&gt;291C)<br>
+T1(DF=Y%W=403D%ACK=S++%Flags=AS%Ops=MNWNNT)<br>
+T2(Resp=N)<br>
+T3(Resp=Y%DF=Y%W=403D%ACK=S++%Flags=AS%Ops=MNWNNT)<br>
+T4(DF=N%W=4000%ACK=O%Flags=R%Ops=)<br>
+T5(Resp=N)<br>
+T6(Resp=N)<br>
+T7(Resp=N)<br>
+PU(Resp=N)</td>
+  </tr>
+</table>
+<p class="style2"><BR>
+  <BR>
+  <B>T1</B> : il repond avec le champs ack = ack+1 ,la taille de la fenetre 403D ,les flags ACK SYN activ&eacute;s et les options &agrave; cet ordre MNWNNT .<BR>
+  <B>T3 </B>: champs ack = ack+1 , le bit "DONT FRAGMENT" positionn&eacute; ,la taille de la fenetre 403D ,les flags ACK SYN activ&eacute;s et les options &agrave; cet ordre MNWNNT .<BR>
+  <B>T4 </B>:ack =0 , la taille de la fenetre 4000 ,le flags RST activ&eacute; , pas d'options .<BR>
+</p>
+<p class="style2">Le firewall ne repond pas aux autres tests .<BR>
+    
+</p>
+<H3 class="style2">&nbsp;</H3>
+<H3 class="style2 style7"><u><a name="4"></a>4) Code Source T-Os fingerprint</u> </H3>
+<span class="style2"><BR>
+</span><span class="style12">P</span><span class="style2">our une bonne comprehension je vais me contenter de tester juste la methose basique TOS qui fait la difference entre linux et windows .<BR>
+le programme va envoyer un paquet icmp (echo request type:8 avec le champs TOS diff&eacute;rent de 0 dans la source 15) et on va analyser la r&eacute;ponse si le champs ne change pas de valeur la machine distante est un linux sinon ben c'est windows :) <BR>
+<BR>
+</span>
+<p align="center" class="style2"><B>&lt;send.c&gt; fonction send() qui envoie le paquet icmp ECHO_REQUEST </B></p>
+<TABLE border=1 align="center" cellPadding=10 cellSpacing=0 bordercolor="#F8F8F8">
+  <TBODY>
+    <TR>
+      <TD bordercolor="#000000" bgcolor="#FFFFFF"><PRE class="style13"><FONT color=#108010>
+</FONT><span class="style14">#include stdio.h
+#include string.h
+#include stdlib.h
+#include unistd.h
+#include stdarg.h
+#include netinet/ip.h
+#include netinet/ip_icmp.h
+#include netinet/in.h
+#include sys/time.h
+#include sys/types.h
+#include sys/socket.h
+#include netdb.h
+
+struct paquet_icmp
+{
+ struct iphdr partieIP;
+ struct icmphdr partieICMP;
+ char icmpdata[4096];
+};
+
+
+int sendpacket()
+{
+ struct paquet_icmp *icmppaquet;
+ struct sockaddr_in sock;
+ int sockraw,i,tailleDATA;
+ int calccheckICMP=0; 
+
+ icmppaquet=(struct paquet_icmp *)malloc(sizeof(struct paquet_icmp));
+ bzero(icmppaquet,sizeof(struct paquet_icmp));
+ makeheaderIP(&amp;icmppaquet-&gt;partieIP);
+ makeheaderICMP(&amp;icmppaquet-&gt;partieICMP);
+ tailleDATA=makeDATA((char *)&amp;icmppaquet-&gt;icmpdata);
+ icmppaquet-&gt;partieICMP.checksum=calcule((unsigned short *)&amp;icmppaquet-&gt;partieICMP,sizeof(struct icmphdr)+tailleDATA);
+
+ sockraw=socket(AF_INET,SOCK_RAW,IPPROTO_RAW);
+ sock.sin_family=AF_INET;
+ sock.sin_addr.s_addr=icmppaquet-&gt;partieIP.daddr;
+
+ if(sendto(sockraw,icmppaquet,sizeof(struct icmphdr)+sizeof(struct iphdr)+tailleDATA,0,(struct sockaddr *)&amp;sock,<br> sizeof(struct sockaddr))==-1)
+ {
+  printf("erreur d'envoi");
+ }
+
+ close(sockraw);
+ return(0);
+}
+
+int makeheaderICMP(struct icmphdr *icmp)
+{
+ icmp-&gt;type=8; /* echo request */
+ icmp-&gt;code=0;
+ icmp-&gt;un.echo.id=1337;
+ icmp-&gt;un.echo.sequence=1337;
+ return(0);
+}
+
+int makeheaderIP(struct iphdr *ip)
+{
+ int j=0;
+ char ipdest[50];
+ char ipsource[50];
+ struct hostent *host;
+ ip-&gt;version=4;
+ ip-&gt;ihl=5;
+ ip-&gt;tos=15; /* type of service */
+ ip-&gt;id=12345;
+ ip-&gt;frag_off=htons(16384);
+ ip-&gt;ttl=200;
+ ip-&gt;protocol=1;
+ printf("entrez ip de la machine dont vous souhaitiez connaitre OS");
+ scanf("%s",ipdest);
+ printf("entrez votre ip");
+ scanf("%s",ipsource);
+
+ host=gethostbyname(ipsource);
+ if(host==NULL)
+ {
+  printf("erreur source host");
+  exit(1);
+ }
+ memcpy(&amp;ip-&gt;saddr,host-&gt;h_addr,host-&gt;h_length);
+ host=gethostbyname(ipsource);
+ if(host==NULL)
+  {
+   printf("erreur dest host");
+   exit(1);
+  }
+ memcpy(&amp;ip-&gt;daddr,host-&gt;h_addr,host-&gt;h_length);
+ return(0);
+}
+
+int makeDATA(char *data)
+{
+ int compteur=0;
+ char caractere;
+ while((caractere=getchar()) != '\n')
+ {
+  compteur++;
+  *data=caractere;
+  data++;
+ }
+ return(compteur);
+}
+
+unsigned short calcule(u_short *addr,int len)
+{
+ register int nleft=len;
+ register int sum=0;
+ u_short answer=0;
+ while(nleft&gt;1)
+ {
+  sum +=*addr++;
+  nleft -=2;
+ }
+ if(nleft==1)
+ {
+  *(u_char *)(&amp;answer)=*(u_char *)addr;
+  sum +=answer;
+ }
+ sum=(sum &gt;&gt;16)+(sum &amp; 0xffff);
+ sum +=(sum &gt;&gt; 16);
+ answer = ~sum;
+ return(answer);
+}</span></PRE></TD>
+    </TR>
+  </TBODY>
+</TABLE>
+<p align="center">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="center" class="style2"><B>&lt;checkos.c&gt; fonction principal checkos()</B></p>
+<TABLE border=1 align="center" cellPadding=10 cellSpacing=0 bordercolor="#F8F8F8">
+  <TBODY>
+    <TR>
+      <TD bordercolor="#000000" bgcolor="#FFFFFF"><PRE class="style13"><FONT color=#108010>
+</FONT><span class="style14">#include sys/types.h 
+#include sys/socket.h
+#include netinet/in.h 
+#include netdb.h
+#include linux/if.h  
+#include stdio.h 
+#include arpa/inet.h 
+#include linux/socket.h 
+#include linux/ip.h 
+#include linux/icmp.h 
+#include linux/if_ether.h
+#include sys/ioctl.h 
+#include sys/stat.h 
+#include fcntl.h
+
+int sconnect(char *device)
+{ 
+  int fd; 
+	int s; 
+	fd=socket(AF_INET, SOCK_PACKET, htons(ETH_P_ALL)); 
+	if(fd &lt; 0) 
+	{ 
+		perror("cant get SOCK_PACKET socket"); 
+		exit(0); 
+	} 
+  return fd; 
+} 
+
+int checkos(int mytos) 
+{ 
+  int sock, octets_recus, lendata, j, i=0;
+  unsigned char *so, *dest;
+  struct recvpacquet       
+  { 
+    struct ethhdr eth; 
+    struct iphdr  ip; 
+    struct icmphdr icmp; 
+    char data[8000]; 
+  } buffer; 
+  
+  struct iphdr *ip;        
+  struct icmphdr *icmp;      
+  char *data;              
+  
+  ip=(struct iphdr *)(((unsigned long)&amp;buffer.ip)-2); 
+  icmp=(struct icmphdr *)(((unsigned long)&amp;buffer.icmp)-2); 
+  
+  sock = sconnect("eth0");
+  sendpacket(); 
+  while(1) 
+  {  
+    octets_recus = read(sock, (struct recvpacquet *)&amp;buffer, sizeof(struct recvpacquet));          
+    if(ip-&gt;protocol==1 &amp;&amp; icmp-&gt;type==0) /* paquet echo reply (icmp;)*/
+    {
+      if(ip-&gt;tos==0)
+      {
+        printf("l'os de la machine est windows \n");
+      }
+      else if(ip-&gt;tos==mytos)
+      {
+       printf("l'os de la machine est Linux \n");
+      }
+      else{ printf("unknow os\n");}
+      break;
+    }
+     
+  }
+}
+ 
+int main()
+{
+ checkos(15);
+ return(0);
+}
+     </span><FONT color=#108010>
+</FONT></PRE></TD>
+    </TR>
+  </TBODY>
+</TABLE>
+<p align="center">&nbsp;</p>
+<H3 class="style7">&nbsp;</H3>
+<H3 class="style7"><u><a name="5"></a>5) Defeating os fingerprint</u></H3>
+<p><span class="style2"><BR>
+  </span><span class="style12">D</span><span class="style2">ans cette partie on va essayer de vous montrer une methode pour simuler d'autres machines sur votre os . Comme mentionn&eacute; plus haut pour une comprehension facile on va essayer de contrer le T-os fingerprint .<BR>
+              <BR>
+              <I><B>Principe</B> :</I><BR>
+              on va essayer de faire simuler un windows sur linux .<BR>
+              Notre T-os fingerprint envoie un paquet icmp avec TOS different de 0 normalement quand notre machine (linux) le recois et elle va pas toucher au TOS , ce qu'on doit faire c'est d'essayer de r&eacute;inialiser le Tos &agrave; 0 .<BR>
+              par exemple pour les tests Taille de fenetre et TTL il suffira de modifier pour chaque : la taille de la fenetre -&gt; 16616 (voir plus haut) , le TTL -&gt; 128 .<BR>
+              le seul moyen que j'ai trouv&eacute; c'est d'utiliser iptables : <BR>
+              <BR>
+              <I><B>Iptables:</B> </I><BR>
+              IpTables est une solution compl&egrave;te de firewall (noyau 2.4) rempla&ccedil;ant ipchains (noyau 2.2) tournant sous le syst&egrave;me GNU/Linux. IpTables permet de faire du firewalling stateful (&agrave; &eacute;tats), de la translation de port et d'adresse, du filtrage au niveau 2 et beaucoup d'autres choses que nous n'allons pas aborder.<BR>
+              la table utilis&eacute; par d&eacute;faut c'est la table FILTER . elle contient tous les r&egrave;gles de filtrage, il existe 3 types de cha&icirc;nes : FORWARD pour les paquets passant par le firewall, INPUT pour les paquets entrant et OUTPUT pour les paquets sortants. Les cibles disponibles sont : ACCEPT(accept&eacute;), DENY(refus&eacute;), DROP(supprim&eacute;) ,QUEUE.<BR>
+</span></p>
+<p class="style2"><u>Les commandes de bases et dont on a besoin :</u><BR>
+              <BR>
+              -A --append Ajout de r&eacute;gle : <BR>
+              # iptables -A INPUT ...<BR>
+              <BR>
+              -D --delete : Permet de supprimer une r&eacute;gle:<BR>
+              # iptables -D INPUT ...<BR>
+              <BR>
+              -p --protocol : Sp&eacute;cifier un protocole : tcp, udp, icmp, all (tous) <BR>
+              Exemple : <BR>
+              # iptables -A INPUT -p icmp -j DENY <BR>
+              <BR>
+</p>
+<p class="style2">l<u>a r&eacute;gle qu'on a besoin c'est :</u><br>
+      <BR>
+              #iptables -A OUTPUT --proto icmp -j QUEUE<BR>
+              cette regle va rediriger les paquets icmp vers notre programme (espace user) qui va modifier les paquets .<BR>
+              <BR>
+              on va utiliser la librairie IPQ pour manipuler les paquets . <BR>
+</p>
+<p><u><span class="style2">Voici les principaux fonctions qu'on va utiliser :</span></u><span class="style2"><BR>
+              <BR>
+              - ipq_read elle sert &agrave; lire les packets mis en queue .<BR>
+              - ipq_message_type sert &agrave; connaitre le type du message (paquet,erreur,...). Ce qui nous interesses c'est IPQM_PACKET.<BR>
+              -ipq_set_verdict elle renvoie au kernel :<BR>
+              <span class="style15">__</span>NF_ACCEPT - accept&eacute; le paquet .<BR>
+              <span class="style15">__</span>NF_DROP - supprim&eacute; le paquet <BR>
+              <BR>
+</span><span class="style12">D</span><span class="style2">onc notre programme va modifier les paquets en reinialisant le champs Tos &agrave; 0 et recalculer le checksum du header IP ;).</span></p>
+<p align="center" class="style2">&nbsp;</p>
+<p align="center" class="style2"><B>&lt;antitos.c&gt; - la fonction qui recupere les paquets de la queue et les modifie</B> </p>
+<TABLE width="707" border=1 align="center" cellPadding=10 cellSpacing=0 bordercolor="#F8F8F8">
+  <TBODY>
+    <TR>
+      <TD bordercolor="#000000" bgcolor="#FFFFFF"><PRE class="style13"><FONT color=#108010>
+
+</FONT><span class="style2">#include stdio.h
+#include string.h
+#include netinet/in.h
+#include linux/netfilter.h
+#include linux/ip.h
+#include linux/icmp.h
+#include libipq/libipq.h
+
+#define BUFSIZE 65536
+unsigned char buf[BUFSIZE];
+
+u_short in_chksum(u_short *ptr, int nbytes)
+{
+  register long           sum;            
+  u_short                 oddbyte;
+  register u_short        answer;         
+  sum = 0;
+  while (nbytes &gt; 1)
+  {
+    sum += *ptr++;
+    nbytes -= 2;
+  }
+  if (nbytes == 1)
+  {
+     oddbyte = 0;            
+     *((u_char *) &amp;oddbyte) = *(u_char *)ptr;   
+     sum += oddbyte;
+  }
+  sum  = (sum &gt;&gt; 16) + (sum &amp; 0xffff);    
+  sum += (sum &gt;&gt; 16);                     
+  answer = ~sum;                                                   
+  return((u_short) answer);
+  }
+
+
+void scan_queue()
+{
+	int len,status,loop,nplen;
+	struct ipq_handle *h;
+	ipq_packet_msg_t *m;
+
+	/* Initialisation de la connexion */
+	h = ipq_create_handle(0, PF_INET);
+	if (!h)
+		return (0);
+	status = ipq_set_mode(h, IPQ_COPY_PACKET, BUFSIZE);
+	if (status &lt; 0)
+		return (0);
+
+	do {
+		len = ipq_read(h, buf, BUFSIZE, 0);
+	        
+       switch (ipq_message_type(buf)) {
+
+	        case IPQM_PACKET:
+			         m = ipq_get_packet(buf);
+			         struct iphdr *iph = ((struct iphdr *)m-&gt;payload);
+                                    
+				    
+				     iph-&gt;tos=0; 
+				     memset(&amp;iph-&gt;check,0,2);
+				     iph-&gt;check=in_chksum((u_short *)iph,iph-&gt;ihl*4);
+				     status = ipq_set_verdict(h, m-&gt;packet_id, NF_ACCEPT,  m-&gt;data_len, m-&gt;payload); 
+                    break;
+
+		    default:break
+		}
+	} while (loop);
+	ipq_destroy_handle(h);
+}
+
+
+int main(int argc, char **argv)
+{
+ scan_queue();
+ return(0);
+}
+</span></PRE></TD>
+    </TR>
+  </TBODY>
+</TABLE>
+<p align="center">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<H3 class="style7"><u><a name="6"></a>6) Test</u></H3>
+<p class="style2"><strong><em>On compile l'T-os fingerprint :</em></strong></p>
+<table width="28%"  border="1" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><span class="style11">root@ttyp1[Desktop]# make<br>
+gcc checkos.o send.o -o fingerprint</span></td>
+  </tr>
+</table>
+<p class="style2"><BR>
+                  <strong><em><BR>
+On active la r&eacute;gle iptables et on compile le packet remaker :)</em></strong></p>
+<table width="47%"  border="1" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><span class="style11">root@ttyp0[Desktop]# modprobe ip_tables<br>
+root@ttyp0[Desktop]# modprobe ip_queue<br>
+root@ttyp0[Desktop]# iptables -A OUTPUT --proto icmp -j QUEUE<br>
+root@ttyp0[anti os fingerprint]# make<br>
+make: `remaker' is up to date.</span></td>
+  </tr>
+</table>
+<p class="style2"><BR>
+                  <BR>
+                  <BR>
+                  <em><B>On lance T-os finger print</B></em></p>
+<table width="30%"  border="1" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><span class="style11">root@ttyp1[Desktop]# ./fingerprint<br>
+entrez ip machine dest 127.0.0.1<br>
+entrez ip de votre machine 127.0.0.1<br>
+l'os de la machine est Linux</span></td>
+  </tr>
+</table>
+<p class="style2"><BR>
+                  <BR>
+                  <em><B>Maintenant on lance notre packetremaker</B></em> </p>
+<table width="33%"  border="1" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><span class="style11">root@ttyp0[anti os fingerprint]# ./antitos</span></td>
+  </tr>
+</table>
+<p class="style2"><BR>
+                  <BR>
+                  <em><B>On relance le fingerprinter dans un autre terminal</B></em></p>
+<table width="27%"  border="1" bordercolor="#F8F8F8">
+  <tr>
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><span class="style11">root@ttyp1[Desktop]# ./fingerprint<br>
+entrez ip machine dest 127.0.0.1<br>
+entrez ip de votre machine 127.0.0.1<br>
+l'os de la machine est <b>windows</b></span></td>
+  </tr>
+</table>
+<p class="style2"><strong><em></em></strong><BR>
+                  <BR>
+                  <BR>
+                  <I>Ca marche :) , on a reussit a faire croire au programme <strong>T-os fingerprint</strong> que l'on est sous windows.<BR>
+                  </I><BR>
+                  <span class="style12">J</span>'espere que vous avez compris comment fonctionne les os-fingerprinter et comment on peut developper un anti one :). Je suis entrain de coder l'anti-nmap finger print,c'est presque fini, c'est vrai que c'est plus compliqu&eacute; que ce qu'on a fait mais le principe reste le meme . Je le termine je le commente dans le prochain article...<BR>
+</p>
+<p class="style2">Have fun !</p>
+<p class="style2">&nbsp;</p>
+<p align="right" class="style2 style17">BY DEEPFEAR  </p>
+<p align="right">Copyright &copy; 2005 ARENHACK - DHS</p>
+<p></p>
+<p align="center"><br>
+  <strong><a href="page7.htm"><u>HAUT DE PAGE</u></a></strong><br>
+</p>
+</body>
+</html>

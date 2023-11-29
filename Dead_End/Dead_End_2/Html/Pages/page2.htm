@@ -1,0 +1,470 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+"http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<title>Actions on files in the kernel land</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<link href="style.css" rel="stylesheet" type="text/css">
+<style type="text/css">
+<!--
+.style5 {font-size: 13px}
+.style6 {font-size: 12px}
+.style7 {color: #FFFFFF}
+.style8 {
+	font-size: 16px;
+	font-weight: bold;
+}
+.style9 {color: #FF0000}
+.style10 {
+	color: #666666;
+	font-family: "Courier New", Courier, mono;
+}
+.style12 {
+	font-size: 12px;
+	color: #666666;
+	font-family: "Courier New", Courier, mono;
+}
+.style16 {color: #000000; font-family: Verdana, Arial, Helvetica, sans-serif; }
+.style20 {color: #000000}
+.style23 {font-size: 12px; font-style: italic; }
+.style24 {color: #F8F8F8}
+.style25 {font-size: 12px; color: #000000; }
+-->
+</style>
+</head>
+
+<body>
+<hr align="left">
+<p align="center"><img src="Images/kernel_land.jpg" width="469" height="60"></p>
+<hr align="left">
+<p align="left"><em><a href="page2.htm" target="_blank">AFFICHER CET ARTICLE EN MODE PLEINE PAGE</a></em></p>
+<p align="center"><font size="4"><strong><u>Sommaire</u></strong></font></p>
+<p align="left"><font size="2"><a href="page2.htm#1">1) Introduction</a></font></p>
+<p align="left"><font size="2"><a href="page2.htm#2">2) Sys_open &amp; sys_close d&eacute;mistifi&eacute;s<br> 
+<span class="style24">__</span></a><span class="style24"><span class="style25"><a href="page2.htm#21">2.1 Ouvrir un fichier depuis le &quot;kernel-land&quot;</a><br></span></span><a href="page2.htm#22"><span class="style24">__</span></a><span class="style6"><a href="page2.htm#22">2.2 Fermer un fichier depuis le kernel land</a></span></font></p>
+<p align="left"><font size="2"><a href="#3">3) Sys_read &amp; sys_write d&eacute;mistifi&eacute;s<br></a><a href="page2.htm#22"><span class="style24">__</span></a><span class="style6"><a href="page2.htm#31">3.1. Ecriture dans un fichier depuis le kernel land<br></a></span><a href="page2.htm#22"><span class="style24">__</span></a><span class="style24"><span class="style25"><a href="page2.htm#32">3.2. La lecture de fichier depuis le kernel-land</a></span></span></font></p>
+<p align="left"><font size="2"><a href="page2.htm#4">4) La fonction kernel_read</a></font></p>
+<p align="left"><font size="2"><a href="page2.htm#5">5) Cr&eacute;ation de la fonction kernel_write</a></font></p>
+<p align="left"><font size="2"><a href="page2.htm#6">6) Exemple</a></font></p>
+<p align="left"><font size="2"><a href="page2.htm#7">7) Conclusion</a></font></p>
+<p align="left"><font size="2"><a href="page2.htm#8">8) R&eacute;f&eacute;rences</a></font></p>
+<p align="left"><font size="2"><a href="page2.htm#9">9) Annexes</a></font></p>
+<hr>
+<p align="center">&nbsp;</p>
+<p><font size="2"><strong><u><a name="1"></a>1) Int</u></strong></font><strong><u><span class="style5">roduction</span></u></strong></p>
+<p class="style6"><span class="style8">E</span>n <em>userland</em>, l'ouverture, la lecture, l'&eacute;criture et la fermeture de fichiers se fait en C (sous unix) grace aux primitives <span class="style10">open(2)</span>, <span class="style10">read(2)</span>, <span class="style10">write(2)</span>, <span class="style10">close(2)</span>. Dans le kernel land, c'est diff&eacute;rent. Lorsque l'on programme un <strong>lkm</strong>, par exemple un sniffer de mots de pass, il peut &ecirc;tre int&eacute;ressant d'avoir recourt &agrave; des fichiers pour stocker des donn&eacute;es (les mots de pass dans notre cas). <br>
+  Pour cela, nous devons &eacute;tudier le comportement des diff&eacute;rents appels syst&egrave;mes qui sont appel&eacute;s par les primitives vue ci-dessus ( ex: <span class="style10">SYS_open</span> ). Avant de me lancer dans les sources du noyau, j'ai d'abord recherch&eacute; des informations sur le net et j'ai trouv&eacute; un <strong>lkm</strong> ( le keylogger de <em>rd</em> <span class="style9">[1]</span> ) et quelques papiers ( un de <em>mammon</em> <span class="style9">[2]</span> et de <em>Owen Klan</em> <span class="style9">[3]</span> ) qui m'ont aid&eacute; &agrave; &eacute;crire cet article. </p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="style5"><u><strong><a name="2"></a>2) SYS_open &amp; SYS_close d&eacute;mistifi&eacute;s</strong></u></p>
+<blockquote>
+  <p class="style6"><em>  <u><a name="21"></a>2.1 Ouvrir un fichier depuis le &quot;kernel-land&quot;</u></em></p>
+</blockquote>
+<p class="style6"><span class="style8">P</span>our utiliser un fichier, il faut d'abord l'ouvrir. En userland, cette ouverture se fait grace &agrave; la fonction <span class="style10">open(2)</span> qui prend comme argument l'emplacement du fichier, le mode d'ouverture ( <span class="style10">O_APPEND</span>, <span class="style10">O_WRONLY</span> ... ), puis l'<em>umask</em> si le fichier doit &ecirc;tre cr&eacute;&eacute;. Cette fonction fait appel &agrave; l'appel syst&egrave;me <span class="style10">SYS_open</span> qui est d&eacute;clar&eacute; dans <em>fs/open.c</em> comme suit: </p>
+<table width="590" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p class="style6 style10">asmlinkage long sys_open(const char * filename, int flags, int mode)<br>
+        { <br>
+        <span class="style7">_</span>char * tmp; <br>
+        <span class="style7">_</span>int fd, error; </p>      
+      <p class="style12"><span class="style6 style10"><span class="style7">_</span></span>#if BITS_PER_LONG != 32 <br>
+        <span class="style6 style10"><span class="style7">_</span></span>flags |= O_LARGEFILE; <br>
+        <span class="style6 style10"><span class="style7">_</span></span>#endif <br>
+        <span class="style6 style10"><span class="style7">_</span></span>tmp = getname(filename); <br>
+        <span class="style6 style10"><span class="style7">_</span></span>fd = PTR_ERR(tmp); <br>
+        <span class="style6 style10"><span class="style7">_</span></span>if (!IS_ERR(tmp)) <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>{ <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>fd = get_unused_fd(); <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>if (fd &gt;= 0) <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>{ <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>struct file *f = filp_open(tmp, flags, mode); <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>error = PTR_ERR(f); <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>if (IS_ERR(f)) <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>goto out_error; <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>fd_install(fd, f); <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>}<br>
+        <span class="style7">___</span>out;<br>
+        <span class="style7">___</span>putname(tmp); <br>
+        <span class="style7">__</span>} <br>
+        <span class="style7">_</span>return fd; </p>
+      <p class="style12"><span class="style7">_</span>out_error;<br>
+        <span class="style7">_</span>put_unused_fd(fd); <br>
+        <span class="style7">_</span>fd = error; <br>
+        <span class="style7">_</span>goto out; <br>
+  } </p></td>
+  </tr>
+</table>
+<p class="style6"><br>
+  <span class="style8">C</span>et appel commence par appeler la fonction <span class="style10">getname()</span> pour obtenir une copie du chemin du fichier dans l'espace <em>kernel</em>. Si aucune erreur se produit, un appel a <span class="style10">get_unused_fd()</span> est r&eacute;alis&eacute; pour obtenir un descripteur de fichier (<em>fd</em>) qui n'est pas utilis&eacute;. Ce descripteur sera renvoy&eacute; au programme qui &agrave; fait appel &agrave; <span class="style10">open()</span>. Ensuite on a un appel la fonction <span class="style10">filp_open()</span>. Cette fonction ne fait pas grand chose, elle initialise quelques variables puis fait appel &agrave; une autre fonction <span class="style10">open_namei()</span> puis <span class="style10">dentry_open()</span> qui s'occupent de l'ouverture &agrave; proprement dite du fichier. Ces deux fonctions ne sont pas tr&egrave;s utiles pour l'&eacute;criture d'un<strong> lkm</strong> puisque pour ouvrir un fichier, il suffira de faire appel &agrave; <span class="style10">filp_open()</span> ( prototype dans<em> linux/fs.h</em> ) qui prend exactement les m&ecirc;mes arguments que <span class="style10">open()</span> mais qui retourne un pointeur sur une structure file ( prototype dans <em>linux/fs.h</em> ) mais il est quand m&ecirc;me interressant de regarder ce qu'elles font. </p>
+<p class="style6"><u>Regardons d'abord la structure file qui regroupe les informations qui vont servir pour les prochaines op&eacute;rations sur le fichier ( lecture, &eacute;criture ... ):</u></p>
+<table width="590" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p class="style6 style10">struct file <br>
+      { <br>
+      <span class="style7">_</span>struct list_head f_list; <br>
+      <span class="style7">_</span>struct dentry *f_dentry; <br>
+      <span class="style7">_</span>struct vfsmount *f_vfsmnt; <br>
+      <span class="style7">_</span>struct file_operations *f_op; <br>
+      <span class="style7">_</span>atomic_t f_count; <br>
+      <span class="style7">_</span>unsigned int f_flags; <br>
+      <span class="style7">_</span>mode_t f_mode; <br>
+      <span class="style7">_</span>loff_t f_pos; <br>
+      <span class="style7">_</span>struct fown_struct f_owner; <br>
+      <span class="style7">_</span>unsigned int f_uid, f_gid; <br>
+      <span class="style7">_</span>int f_error; <br>
+      <span class="style7">_</span>struct file_ra_state f_ra; </p>
+      <p class="style10"> <span class="style6"><span class="style6 style10"><span class="style7">_</span></span>unsigned long f_version; <br>
+          <span class="style6 style10"><span class="style7">_</span></span>void *f_security; </span></p>
+      <p class="style12">/* needed for tty driver, and maybe others */ <br>
+        <span class="style6 style10"><span class="style7">_</span></span>void *private_data; </p>
+      <p class="style12">/* Used by fs/eventpoll.c to link all the hooks to this file */ <br>
+        <span class="style6 style10"><span class="style7">_</span></span>struct list_head f_ep_links; <br>
+        <span class="style6 style10"><span class="style7">_</span></span>spinlock_t f_ep_lock; <br>
+  }; </p></td>
+  </tr>
+</table>
+<p class="style6">&nbsp;</p>
+<p class="style6"><span class="style8">L</span>es champs les plus importants sont <span class="style10">f_dentry</span> qui pointe sur le r&eacute;pertoire dans lequel le fichier ( ouvert ) est situ&eacute;, <span class="style10">f_pos</span> qui contient l'actuelle position dans le fichier ( utile pour la lecture et l'&eacute;criture ),<span class="style10"> f_op</span> qui pointe sur la structure <span class="style10">file_operations</span> qui contient une liste de pointeurs qui eux pointent sur des fonctions pour r&eacute;aliser des op&eacute;rations sur le fichier ouvert (ex: <span class="style10">f_op</span>-<span class="style12">&gt;write</span> pour &eacute;crire dans le fichier). </p>
+<table width="590" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p align="center" class="style6 style10">int open_namei(const char * pathname, int flag, int mode, struct nameidata *nd); </p>
+    </td>
+  </tr>
+</table>
+<p class="style6"><span class="style8">L</span>a fonction <span class="style10">open_namei</span> d&eacute;finit dans <em>fs/namei.c</em> &eacute;ffectue des routines de v&eacute;rification sur les flags, cr&eacute;e le fichier si n&eacute;cessaire, puis remplit la structure <span class="style10">nameidata</span>. </p>
+<p class="style6">&nbsp;</p>
+<table width="590" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p align="center" class="style12">struct file *dentry_open(struct dentry *dentry, struct vfsmount *mnt, int flags) </p></td>
+  </tr>
+</table>
+<p class="style6">&nbsp;</p>
+<p class="style6"><span class="style8">L</span>a fonction <span class="style10">dentry_open</span> fait le reste du travail, elle remplit les champs de la structure file ( ex:<span class="style10"> f_pos</span> est mis &agrave; 0 ) puis la retourne. Il reste alors &agrave; cr&eacute;er le <em>fd</em> qui sera retourn&eacute; &agrave; l'<em>user-land</em> avec la fonction <span class="style10">fd_install()</span> On peut maintenant lire et &eacute;crire dans le fichier. Voil&agrave; pour l'appel system <span class="style10">SYS_open</span> qu'on peut r&eacute;sumer &agrave; ce sh&eacute;ma: </p>
+<table width="124" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p align="left" class="style12"><span class="style6">-&gt; SYS_open(); <br>
+* filp_open(); <br>
+- open_namei(); <br>
+- dentry_open(); <br>
+* fd_install(); <br>
+-&gt; return fd; </span></p></td>
+  </tr>
+</table>
+<p class="style6">&nbsp;</p>
+<blockquote>
+  <p class="style6"><u><em><a name="22"></a>2.2 Fermer un fichier depuis le kernel land</em></u></p>
+</blockquote>
+<p class="style6"><span class="style8">F</span>ermer un fichier depuis l'espace kernel se fait grace &agrave; la fonction <span class="style10">filp_close()</span> d&eacute;finit dans <em>fs/open.c</em>. En faite l'appel syst&egrave;me <span class="style10">SYS_close</span> v&eacute;rifie si le fichier est ouvert et remplit la structure file puis fait appel &agrave; <span class="style10">filp_close()</span> avec comme param&egrave;tres un pointeur sur cette structure et le &quot;<em>thread ID</em>&quot; pour les fichiers attach&eacute;s a un processus, sa valeur est <em>NULL</em> lorsqu'il n'est pas attach&eacute; &agrave; un processus. </p>
+<table width="374" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p align="center" class="style12"><span class="style6">int filp_close(struct file *filp, fl_owner_t id); </span></p></td>
+  </tr>
+</table>
+<p class="style6">&nbsp;</p>
+<p class="style6"><u>On sait maintenant ouvrir et fermer un fichier avec un lkm. Voici un petit exemple avec gestion des erreurs: </u></p>
+<table width="590" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p class="style6 style10"><span class="style6">#include &lt;linux/fs.h&gt; <br>
+#include &lt;asm/errno.h&gt; <br>
+... <br>
+int init_module(void){ struct file *f; <br>
+f = filp_open(&quot;/etc/shadow&quot;, O_RDONLY, 0); <br>
+if (IS_ERR(f))</span><span class="style6"><br>
+<span class="style7">__</span>printk(&quot;Erreur lors de l'ouverture en lecture de /etc/shadow.\n&quot;); <br>
+        else <br>
+        /* Op&eacute;ration sur le fichier. */ <br>
+        <span class="style7">__</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>filp_close(f, NULL); <br>
+        <span class="style7">_</span>return 0; <br>
+        } <br>
+        ... </span></p>
+    </td>
+  </tr>
+</table>
+<p>&nbsp;</p>
+<p class="style6"><span class="style10">IS_ERR()</span> est un macro qui v&eacute;rifie ici que l'ouverture du fichier s'est bien d&eacute;roul&eacute;, il transforme (<em>cast</em>) juste en <em>unsigned long</em> et le compare &agrave; -1000 si la valeur de <span class="style10">f</span> est plus grande que -1000 alors il y a eu une erreur. </p>
+<table width="493" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p align="center" class="style12"><span class="style6">#define IS_ERR(ptr) ((unsigned long)(ptr) &gt; (unsigned long)(-1000)) </span></p></td>
+  </tr>
+</table>
+<p class="style6">&nbsp;</p>
+<p class="style6">Il nous reste maintenant &agrave; lire ou &agrave; &eacute;crire dans un fichier depuis l'espace kernel. </p>
+<p class="style6">&nbsp;</p>
+<p class="style6">&nbsp;</p>
+<p class="style5"><strong><u><a name="3"></a>3) SYS_write &amp; SYS_read d&eacute;mistifi&eacute;</u></strong></p>
+<p class="style6"><span class="style8">N</span>ous sommes maintenant capable d'ouvrir et de fermer un fichier depuis un lkm grace aux fonctions <span class="style10">filp_open</span> et <span class="style10">filp_close</span>. L'&eacute;criture et la lecture sont toutes aussi faciles. </p>
+<blockquote>
+  <p class="style6"><u><em><a name="31"></a>3.1. Ecriture dans un fichier depuis le kernel land</em></u></p>
+</blockquote>
+<p class="style6"><u>Quand un programme fait appel &agrave; la fonction <span class="style16">write(2)</span>, c'est l'appel syst&egrave;me <span class="style16">sys_write</span> qui est d&eacute;finit dans<em> fs/read_write.c</em> qui est appel&eacute;: </u></p>
+<table width="590" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p class="style6 style10">asmlinkage ssize_t sys_write(unsigned int fd, const char * buf, size_t count) <br>
+      { <br>
+      <span class="style7">_</span>ssize_t ret; <br>
+      <span class="style7">_</span>struct file * file; </p>
+      <p class="style12"><span class="style6 style10"><span class="style7">_</span></span>ret = -EBADF; <br>
+        <span class="style6 style10"><span class="style7">_</span></span>file = fget(fd); <br>
+        <span class="style6 style10"><span class="style7">_</span></span>if (file) <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>{ <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>if (file-&gt;f_mode &amp; FMODE_WRITE) <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>{ <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>struct inode *inode = file-&gt;f_dentry-&gt;d_inode; <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>ret = locks_verify_area(FLOCK_VERIFY_WRITE, inode, file, <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>file-&gt;f_pos, count); <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>if (!ret) <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>{ <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">__</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>ssize_t (*write)(struct file *, const char *, size_t, loff_t *); <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>ret = -EINVAL; <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">__</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>if (file-&gt;f_op &amp;&amp; (write = file-&gt;f_op-&gt;write) != NULL) <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">__</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>ret = write(file, buf, count, &amp;file-&gt;f_pos); <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">__</span></span><span class="style6 style10"><span class="style7">_</span></span>} <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>} <br>
+        <span class="style6 style10"><span class="style7">_</span></span>if (ret &gt; 0) <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">__</span></span>dnotify_parent(file-&gt;f_dentry, DN_MODIFY); <br>
+        <span class="style6 style10"><span class="style7">_</span></span>fput(file); <br>
+        <span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span><span class="style6 style10"><span class="style7">_</span></span>} <br>
+        <span class="style6 style10"><span class="style7">_</span></span>return ret; <br>
+        } </p></td>
+  </tr>
+</table>
+<p class="style6">&nbsp;</p>
+<p class="style6"><span class="style8">L</span>a structure file est remplit gr&acirc;ce &agrave; la fonction<span class="style12"> fget()</span> qui prend comme argument le <em>fd</em> envoy&eacute; par l'espace utilisateur. Une v&eacute;rification sur cette structure est ensuite r&eacute;alis&eacute;e pour v&eacute;rifier si l'on a les droits en &eacute;criture sur le fichier. Ensuite on fait appel &agrave; une autre fonction <span class="style10">write()</span>: </p>
+<table width="292" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p align="center" class="style12"><span class="style6">write(file, buf, count, &amp;file-&gt;f_pos); </span></p></td>
+  </tr>
+</table>
+<p class="style6">&nbsp;</p>
+<p class="style6"><span class="style8">C</span>ette fonction est tr&egrave;s importante puisque c'est elle qui va &eacute;crire r&eacute;ellement dans le fichier, elle ressemble &agrave; celle de l'espace utilisateur, elle prend 4 arguments, un sur la <em>struct file</em> (file), un pointeur sur une chaine de carat&egrave;res &agrave; &eacute;crire dans le fichier (<em>buf</em>), un <em>int</em> qui sp&eacute;cifie le nombre d'octets &agrave; &eacute;crire dans le fichier (<em>count</em>), puis la position actuel dans le fichier (<span class="style12">&amp;file-&gt;f_pos</span>) o&ugrave; seront &eacute;crit les donn&eacute;es. Pour &eacute;crire des donn&eacute;es dans un fichier, on peut se limiter &agrave; l'appel de cette fonction. On peut m&ecirc;me d&eacute;finir un macro comme la fait <em>rd</em> dans son keylogger: </p>
+<table width="475" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p align="center" class="style12"><span class="style6">#define _write(f, buf, sz) (f-&gt;f_op-&gt;write(f, buf, sz, &amp;f-&gt;f_pos)) </span></p></td>
+  </tr>
+</table>
+<p class="style6">&nbsp;</p>
+<p class="style6"><span class="style8">D</span>iff&eacute;rents probl&egrave;mes peuvent &ecirc;tre rencontr&eacute;s si on appel directement cette fonction (<span class="style12">write()</span>). Ces probl&egrave;mes peuvent &ecirc;tre r&eacute;solus en changeant la valeur de <span class="style12">current-&gt;addr_limit</span> et la mettre &agrave; <span class="style12">KERNEL_DS (0xffffffff)</span> pour pouvoir acc&egrave;der au 4Go d'espace m&eacute;moire. Ce changement (sur <em>i386</em>) peut &ecirc;tre r&eacute;alis&eacute; &agrave; l'aide des fonctions <span class="style12">set_fs</span> et <span class="style12">get_fs</span>. Ainsi on aura un code du genre: </p>
+<p align="center" class="style6">&nbsp;</p>
+<table width="590" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p class="style12">mm_segment_t saved_fs; </p>
+      <p class="style12">saved_fs = get_fs(); /* sauvegarde */ <br>
+  set_fs(KERNEL_DS); /* changement */ </p>
+      <p class="style12">write(...); </p>
+      <p class="style12">set_fs(saved_fs); /* comme avant write() */ </p>      </td>
+  </tr>
+</table>
+<p align="center" class="style6">&nbsp;</p>
+<p class="style6">Voil&agrave; on sait &eacute;crire dans un fichier depuis le &quot;<em>kernel-land</em>&quot;. Nous verons un exemple plus tard.</p>
+<blockquote>
+  <p class="style6">&nbsp;</p>
+  <p class="style6"><u><em><a name="32"></a>3.2. La lecture de fichier depuis le kernel-land</em></u></p>
+</blockquote>
+<p class="style6"><span class="style8">L</span>a lecture de fichier depuis l'espace kernel est tout &agrave; fait identique &agrave; l'&eacute;criture vue pr&eacute;c&eacute;dement. La fonction <span class="style12">read(2)</span> fait appelle au kernel par l'interm&eacute;diaire de l'appel syst&egrave;me <span class="style12">sys_read</span> d&eacute;finit dans <span class="style23">f</span><em>s/read_write.c.</em><br>
+</p>
+<table width="590" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p class="style12">asmlinkage ssize_t sys_read(unsigned int fd, char * buf, size_t count) <br>
+  { <br>
+  <span class="style7">_</span>ssize_t ret; <br>
+  <span class="style7">_</span>struct file * file; </p>
+      <p class="style12"><span class="style7">_</span>ret = -EBADF; <br>
+        <span class="style7">_</span>file = fget(fd); <br>
+        <span class="style7">_</span>if (file) <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>{ <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>if (file-&gt;f_mode &amp; FMODE_READ) <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>{ <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>ret = locks_verify_area(FLOCK_VERIFY_READ, file-&gt;f_dentry-&gt;d_inode, <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>file, file-&gt;f_pos, count); <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>if (!ret) <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">__</span><span class="style7">_</span>{ <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">__</span><span class="style7">__</span>ssize_t (*read)(struct file *, char *, size_t, loff_t *); <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">__</span><span class="style7">__</span>ret = -EINVAL; <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">__</span><span class="style7">__</span>if (file-&gt;f_op &amp;&amp; (read = file-&gt;f_op-&gt;read) != NULL) <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">__</span><span class="style7">__</span><span class="style7">_</span><span class="style7">_</span>ret = read(file, buf, count, &amp;file-&gt;f_pos); <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">__</span><span class="style7">_</span>} <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>} <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>if (ret &gt; 0) <br>
+        <span class="style7">__</span><span class="style7">_</span><span class="style7">_</span>dnotify_parent(file-&gt;f_dentry, DN_ACCESS); <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>fput(file); <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>} <br>
+        <span class="style7">_</span>return ret; <br>
+  }</p>      </td>
+  </tr>
+</table>
+<p align="center" class="style6">&nbsp;</p>
+<p class="style6"><span class="style8">T</span>out comme <span class="style12">sys_write</span>, la structure<em> file</em> est remplit puis une v&eacute;rification sur les droits ( en lecture ) sur le fichier ouvert est r&eacute;alis&eacute;e. Le fichier est ensuite bloqu&eacute; pour &eacute;viter des probl&egrave;mes. Ensuite, apr&egrave;s quelques v&eacute;rifications, <span class="style12">sys_read</span> appel la fonction <span class="style12">read()</span> ( celle de l'espace kernel ). C'est &eacute;vid&eacute;ment cette fonction qui va r&eacute;aliser la lecture: <span class="style12">read(file, buf, count, &amp;file-&gt;f_pos);<span class="style20">.</span> </span>Elle poss&egrave;de les m&ecirc;mes arguements que la fonction <span class="style12">write()</span> (3.1), c'est &agrave; dire un pointeur qui pointe sur la structure <em>file</em>, un pointeur qui pointe sur une chaine de carat&egrave;re ou seront stock&eacute; les &eacute;l&eacute;ments lus (<em>buf</em>), le nombre d'octets &agrave; lire (<em>count</em>) et enfin la position actuel dans le fichier (<span class="style12">&amp;file-&gt;f_pos</span>). <br>
+</p>
+<p class="style6"><u>Comme avec <span class="style5">write()</span>, on peut r&eacute;aliser un macro du genre: </u></p>
+<table width="475" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p align="center" class="style12"><span class="style6">#define _read(f, buf, sz) (f-&gt;f_op-&gt;read(f, buf, sz, &amp;f-&gt;f_pos)) </span></p></td>
+  </tr>
+</table>
+<p class="style6"><span class="style8">L</span>es probl&egrave;mes que l'on peut rencontrer avec <span class="style12">write()</span> sont &eacute;galement disponibles avec <span class="style12">read()</span> donc il faut &eacute;galement utiliser <span class="style12">set_fs</span> pour positionner <span class="style12">current-&gt;addr_limit</span> &agrave; <span class="style12">KERNEL_DS</span>. </p>
+<p class="style6"><span class="style8">V</span>oil&agrave; vous savez maintenant ouvrir, lire, &eacute;crire et fermer un fichier depuis l'espace kernel (pour un exemple complet rendez-vous au 'chapitre' 6) mais ce n'est pas tout, les d&eacute;veloppeurs du kernel ont cr&eacute;&eacute; une fonction<span class="style12"> kernel_read()</span> qui permet de lire directement et sans probl&egrave;mes des fichiers depuis le <em>kernel-land</em> mais ils ont oubli&eacute; la fonction <span class="style12">kernel_write(),</span> ce n'est pas grave nous allons l'a faire. </p>
+<p class="style6">&nbsp;</p>
+<p class="style6">&nbsp;</p>
+<p class="style5"><u><strong><a name="4"></a>4) La fonction kernel_read()</strong></u></p>
+<p class="style6"><span class="style8">E</span>n fouillant un peu dans les sources situ&eacute;es dans le r&eacute;pertoire <em>fs/</em>, on peut remarquer que dans <em>exec.c</em> il y a une fonction (<span class="style12">kernel_read</span>) qui pourrait peut &ecirc;tre nous &ecirc;tre utile, <br>
+</p>
+<table width="645" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p class="style12">int kernel_read(struct file *file, unsigned long offset, char * addr, unsigned long count) <br>
+  { <br>
+  <span class="style7">_</span>mm_segment_t old_fs; <br>
+  <span class="style7">_</span>loff_t pos = offset; <br>
+  <span class="style7">_</span>int result = -ENOSYS; </p>
+      <p class="style12"><span class="style7">_</span>if (!file-&gt;f_op-&gt;read) <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>goto fail; <br>
+        <span class="style7">_</span>old_fs = get_fs(); <br>
+        <span class="style7">_</span>set_fs(get_ds()); <br>
+        <span class="style7">_</span>result = file-&gt;f_op-&gt;read(file, addr, count, &amp;pos); <br>
+        <span class="style7">_</span>set_fs(old_fs); <br>
+        <span class="style7">_</span>fail:<br>
+        <span class="style7">_</span>return result; <br>
+  }</p>      </td>
+  </tr>
+</table>
+<p class="style6">&nbsp;</p>
+<p class="style6"><span class="style8">S</span>on prototype peut &ecirc;tre trouv&eacute; dans <em>linux/fs.h</em>. On retrouve dedans tout ce que l'on a besoin (cit&eacute; plus haut) pour lire un fichier depuis le <em>kernel-land</em>, en effet elle positionne le flag <span class="style12">KERNEL_DS</span> dans <span class="style12">current-&gt;addr_limit</span> grace aux fonctions <span class="style12">set_fs</span> et <span class="style12">get_fs</span> pour &eacute;viter les probl&egrave;mes, puis elle appel la fonction <span class="style12">read()</span>. Elle prend comme argument un pointeur sur une structure <em>file</em>, un <span class="style12">unsigned long int</span> sur l'<em>offset</em> dans le fichier o&ugrave; l'on doit commencer la lecture, un pointeur sur une chaine de carat&egrave;res pour stocker ce qui a &eacute;t&eacute; lu et un <span class="style12">unsigned long int</span> qui indique le nombre d'octets &agrave; lire dans le fichier. Et voil&agrave; avec une seule fonction on peut lire un fichier depuis l'espace kernel, sans se soucier des probl&egrave;mes. </p>
+<p class="style6"><u>On peut d&eacute;finir un macro comme celui-ci: </u></p>
+<table width="475" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p align="center" class="style12"><span class="style6">#define kread(f, buf, sz) (kernel_read(f, sz, buf, &amp;f-&gt;f_pos))</span></p></td>
+  </tr>
+</table>
+<p class="style6">Il reste maintenant plus qu'a trouver une fonction <span class="style12">kernel_write()</span> :). </p>
+<p class="style5">&nbsp;</p>
+<p class="style5">&nbsp;</p>
+<p class="style5"><u><strong><a name="5"></a>5) Cr&eacute;ation de la fonction kernel_write()</strong></u></p>
+<p class="style6">Comme le sous-entend le titre, il n'existe pas de fonction <span class="style12">kernel_write()</span>, du moins sur les kernels de la branche 2.4. On va donc la cr&eacute;er pour le fun en se basant sur <span class="style12">kernel_read</span>. </p>
+<p class="style6"><u>Voici la fonction comment&eacute;e: </u></p>
+<table width="692" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p class="style12">static int kernel_write(struct file *file, unsigned long offset, char *addr, unsigned long count) <br>
+  { <br>
+  <span class="style7">_</span>mm_segment_t old_fs; /* pour sauvegarder l'ancien valeur de current-&gt;addr_limit */ <br>
+  <span class="style7">_</span>loff_t pos = offset; /* position dans le fichier o&ugrave; l'on va &eacute;crire */ <br>
+  <span class="style7">_</span>int result; /* valeur de retour */ </p>
+      <p class="style12"><span class="style7">_</span>old_fs = get_fs(); /* sauvegarde de la valeur de current-&gt;addr_limit */ <br>
+        <span class="style7">_</span>set_fs(get_ds()); <span class="style7">_</span>/* changement de la valeur de current-&gt;addr_limit */ <br>
+        <span class="style7">_</span>result = file-&gt;f_op-&gt;write(file, addr, count, &amp;pos); /* appel a la fonction vfs write */ <br>
+        <span class="style7">_</span>set_fs(old_fs); /* on restaure la valeur de current-&gt;addr_limit */ <br>
+        <span class="style7">_</span>fail: <br>
+        <span class="style7">_</span>return result; <span class="style7">_</span>/* on retourne le resultat */ <br>
+  } </p>      </td>
+  </tr>
+</table>
+<p class="style6">&nbsp;</p>
+<p class="style6"><span class="style8">V</span>oil&agrave; c'&eacute;tait pas dur, elle ressemble &eacute;norm&eacute;ment &agrave; la fonction <span class="style12">kernel_read()</span>, elle prend exactement les m&ecirc;mes arguments et elle proc&egrave;de de la m&ecirc;me mani&egrave;re que celle-ci. On peut r&eacute;aliser un patch pour le kernel, il suffit de rajouter cette fonction dans <em>fs/exec.c</em> par exemple et son prototype dans <em>linux/fs.h</em>. Un exemple de patch se trouve en annexe. </p>
+<p class="style5">&nbsp;</p>
+<p class="style5">&nbsp;</p>
+<p class="style5"><strong><u><a name="6"></a>6) L'exemple</u></strong></p>
+<p class="style6"><span class="style8">C</span>omme exemple, j'ai d&eacute;cid&eacute; de faire le plus simple possible. En effet ce lkm ne fait que copier le contenue du d&eacute;but de la premi&egrave;re ligne du fichier <em>/etc/shadow</em> dans<em> /tmp/.pass</em>. Si vous avez compris ce qui a &eacute;t&eacute; dit plus haut et un minimum de connaissances sur les <strong>lkms </strong>vous n'aurez aucun probl&egrave;me pour comprendre ce code: </p>
+<table width="692" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p class="style12">#define MODULE <br>
+  #define __KERNEL__ </p>
+      <p class="style12">#define SIZE 20 /* root:pass + 1 */ <br>
+  #define _write(f, buf, sz) (f-&gt;f_op-&gt;write(f, buf, sz, &amp;f-&gt;f_pos)) </p>
+      <p class="style12">#include &lt;linux/config.h&gt; <br>
+  #include &lt;linux/module.h&gt; <br>
+  #include &lt;linux/kernel.h&gt; <br>
+  #include &lt;asm/unistd.h&gt; <br>
+  #include &lt;asm/uaccess.h&gt; <br>
+  #include &lt;linux/slab.h&gt; <br>
+  #include &lt;linux/fs.h&gt; </p>
+      <p class="style12">MODULE_LICENSE(&quot;GPL&quot;); <br>
+  MODULE_AUTHOR(&quot;viriiz&quot;); <br>
+  MODULE_DESCRIPTION(&quot;I/O example.&quot;); <br>
+      </p>
+      <p class="style12">struct file *fd; </p>
+      <p class="style12">int init_module(void) <br>
+  { <br>
+  <span class="style7">_</span>char buff[SIZE]; <br>
+  <span class="style7">_</span>mm_segment_t old_fs; </p>
+      <p class="style12"><span class="style7">_</span>fd = filp_open(&quot;/etc/shadow&quot;, O_RDONLY, 0); <br>
+        <span class="style7">_</span>if (IS_ERR(fd))<br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>{ <br>
+        <span class="style7">__</span><span class="style7">_</span><span class="style7">_</span>printk(&quot;Impossible d'ouvrir /etc/shadow.\n&quot;); <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>return 1; <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>} <br>
+        <span class="style7">_</span>memset(buff, 0, SIZE); <br>
+        <span class="style7">_</span>kernel_read(fd, 0, buff, SIZE - 1); <br>
+        <span class="style7">_</span>filp_close(fd, NULL); </p>
+      <p class="style12"><span class="style7">_</span>old_fs = get_fs(); <br>
+        <span class="style7">_</span>set_fs(get_ds()); <br>
+        <span class="style7">_</span>fd = filp_open(&quot;/tmp/.pass&quot;, O_CREATE|O_WRONLY, 0777); <br>
+        <span class="style7">_</span>if (IS_ERR(fd))<br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>{ <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>printk(&quot;Impossible d'ouvrir /tmp/.pass.\n&quot;); <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>return 2; <br>
+        <span class="style7">_</span><span class="style7">_</span><span class="style7">_</span>} <br>
+        <span class="style7">_</span>write(fd, buff, SIZE); <br>
+        <span class="style7">_</span>set_fs(old_fs); <br>
+        <span class="style7">_</span>filp_close(fd, NULL); </p>
+      <p class="style12"><span class="style7">_</span>return 0; <br>
+  } </p>
+      <p class="style12">void cleanup_module(void) <br>
+  { <br>
+  } </p>      </td>
+  </tr>
+</table>
+<p class="style6">&nbsp;</p>
+<p class="style6">&nbsp; </p>
+<p class="style5"><u><strong><a name="7"></a>7) Conclusion</strong></u></p>
+<p class="style6"><span class="style8">V</span>oil&agrave; vous savez (normalement) maintenant lire et &eacute;crire dans un fichier depuis l'espace kernel. J'ai &eacute;cris ce papier puisque je devais r&eacute;aliser un <strong>lkm</strong> qui sniffait les login/pass ftp (je l'ai pas encore finit d'ailleurs!) et je pense que &ccedil;a peut &ecirc;tre utile &agrave; d'autres personnes. </p>
+<p class="style6">&nbsp;</p>
+<p class="style5">&nbsp;</p>
+<p class="style5"><u><strong><a name="8"></a>8) R&eacute;f&eacute;rences</strong></u></p>
+<p class="style6"><span class="style9">[1]</span> rd &quot;Writing Linux Kernel Keylogger&quot; Phrack Issue 0x3b, Phile #0x0e. <br>
+  <span class="style9">[2]</span> mammon &quot;Reading Files into Linux Kernel Memory&quot; <br>
+  <span class="style9">[3]</span> Owen Klan &quot;Using files in kernel code&quot; <br>
+  <span class="style9">[*]</span> Linux kernel source. ( fs/open.c fs/exec.c fs/read_write.c ... ) <br>
+  <span class="style9">[*]</span> Man pages. ( read(2), write(2), open(2), close(2) ) </p>
+<p class="style5">&nbsp;</p>
+<p class="style5">&nbsp;</p>
+<p class="style5"><u><strong><a name="9"></a>9) Annexes</strong></u></p>
+<table width="673" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><p class="style12">/*--------------------------------kernel_write.patch----------------------------- */<br>
+        <span class="style7">_</span>--- exec.c 2004-10-08 18:35:15.000000000 +0200 <br>
+        <span class="style7">_</span>+++ nexec.c 2004-10-08 18:41:17.000000000 +0200 <br>
+        <span class="style7">_</span>@@ -404,21 +404,6 @@ <br>
+        <span class="style7">_</span>goto out; <br>
+  } </p>
+      <p class="style12">int kernel_write(struct file *file, unsigned long offset, char *addr, unsigned long count) <br>
+  { <br>
+  <span class="style7">_</span>mm_segment_t old_fs; /* pour sauvegarder l'ancien valeur de current-&gt;addr_limit */ <br>
+  <span class="style7">_</span>loff_t pos = offset; /* position dans le fichier o&ugrave; l'on va &eacute;crire */ <br>
+  <span class="style7">_</span>int result; /* valeur de retour */ <br>
+  <span class="style7">_</span>old_fs = get_fs(); /* sauvegarde de la valeur de current-&gt;addr_limit */ <br>
+  <span class="style7">_</span>set_fs(get_ds()); /* changement de la valeur de current-&gt;addr_limit */ <br>
+  <span class="style7">_</span>result = file-&gt;f_op-&gt;write(file, addr, count, &amp;pos); /* appel a la fonction vfs write */ <br>
+  <span class="style7">_</span>set_fs(old_fs); /* on restaure la valeur de current-&gt;addr_limit */ <br>
+  <span class="style7">_</span>fail: <br>
+  <span class="style7">_</span>return result; /* on retourne le resultat */ <br>
+  } <br>
+  <br>
+  int kernel_read(struct file *file, unsigned long offset, char * addr, unsigned long count) <br>
+  {<br>
+  <span class="style7">_</span>--- fs.h 2004-10-08 18:37:31.000000000 +0200 <br>
+  <span class="style7">_</span>+++ ofs.h 2004-10-08 18:42:11.000000000 +0200 <br>
+  <span class="style7">_</span>@@ -1320,7 +1320,6 @@ <br>
+  <span class="style7">_</span>extern int open_namei(const char *, int, int, struct nameidata *); </p>
+      <p class="style12"><span class="style7">_</span>extern int kernel_read(struct file *, unsigned long, char *, unsigned long); <br>
+        <span class="style7">_</span>-extern int kernel_write(struct file *, unsigned long, char *, unsigned long); <br>
+        <span class="style7">_</span>extern struct file * open_exec(const char *); <br>
+  /* fs/dcache.c -- generic fs support functions */</p>      </td>
+  </tr>
+</table>
+<p align="center" class="style5"><br>
+</p>
+<p align="left"><font size="2"></font></p>
+<p align="right"><em><font size="3" face="Lucida Console"> BY VIRIIZ </font></em></p>
+<p align="right"><font size="1" face="Verdana, Arial, Helvetica, sans-serif">Copyright &copy; 2005 ARENHACK - DHS</font></p>
+<p align="center"><font size="1" face="Verdana, Arial, Helvetica, sans-serif"><a href="page2.htm"><u>HAUT DE PAGE</u></a></font></p>
+<p align="center" class="style5">&nbsp; </p>
+</body>
+</html>

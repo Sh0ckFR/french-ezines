@@ -1,0 +1,764 @@
+<html>
+<head>
+<title>Polymorphisme sub-instruction par motifs de bits</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<link href="style.css" rel="stylesheet" type="text/css">
+</head>
+
+<body>
+<hr>
+<p align="center"><img src="Images/Polymorphisme.jpg" width="469" height="60"></p>
+<hr>
+<p align="LEFT"><em><a href="polymorphisme.htm" target="_blank">AFFICHER CET ARTICLE EN MODE PAGE 
+ENTIERE</a></em></p><p align="center"><strong><font size="3"><u>SOMMAIRE</u></font></strong></p>
+<p align="left"><font size="2"><a href="#1">1) Introduction</a></font></p>
+<p align="left"><font size="2"><a href="#2">2) Pourquoi le polymorphisme ?</a></font></p>
+<p><font size="2"><a href="#3">3) Voyage au centre du Polymorphisme </a></font></p>
+<p><font size="2"><a href="#4">4) L'assembleur, de l'instruction &agrave; l'octet</a></font></p>
+<p><font size="2"><a href="#5">5) L'assembleur, de l'octet au bit</a> </font></p>
+<p><font size="2"><a href="#6">6) Masquage de bits</a> </font></p>
+<p><font size="2"><a href="#7">7) Rafinement du polymorphisme d'instruction </a></font></p>
+<p><font size="2"><a href="#8">8) Note concernant Windows </a></font></p>
+<p><font size="2"><a href="#9">9) Conclusion </a></font></p>
+<hr>
+<p align="left">&nbsp;</p>
+<p align="left"><font size="2"><strong><u><a name="1"></a>1) Introduction </u></strong></font><br>
+</p>
+<p align="left"> <font size="4">R</font><font size="2">etour dans les ann&eacute;es 
+  95. Je lisais beaucoup de documents sur l'assembleur, m'int&eacute;ressant plus 
+  particuli&egrave;rement aux techniques de furtivit&eacute; utilis&eacute;es 
+  par les virus ms-dos. Entre autres choses, j'avais trouv&eacute; un article 
+  qui traitait de ce dont je vais parler. Depuis, je n'ai pas particuli&egrave;rement 
+  entendu reparler de cette technique. Pourtant, je l'a trouve int&eacute;ressante. 
+  Primo car elle peut s'av&eacute;rer efficace, secundo parce qu'elle entraine 
+  encore plus loin dans la compr&eacute;hension de la machine. </font></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><br>
+  <u><strong><font size="2"><a name="2"></a>2) Pourquoi le ploymorphisme <br>
+  </font></strong><font size="2"></font></u> </p>
+<p><font size="4">A</font><font size="2">h si j'&eacute;tais invisible... Serais-je 
+  un gentil ou un m&eacute;chant ? Avec les pleins-pouvoirs de l'invisibilit&eacute;, 
+  je pense que je verserais plut&ocirc;t du c&ocirc;t&eacute; obscur. Ben quoi 
+  ? Et j'aurais beau croiser des policiers ou des douaniers, je n'aurais rien 
+  &agrave; craindre. Impossible de me reconnaitre. Quelle belle vie pour un m&eacute;chant 
+  !</font></p>
+<p><font size="4">D</font><font size="2">ans l'ordinateur, c'est aussi la guerre. 
+  Antivirus et moniteurs de comportement y tiennent lieu de policiers et douaniers. 
+  Et si M. Phelps se met un bout de caoutchouc sur la figure pour leurer l'adversaire, 
+  le programme malicieux peut &eacute;galement recourir au postiche et se grimer. 
+  L&agrave; est l'art du <u>polymorphisme</u>. </font></p>
+<p><font size="4">L</font><font size="2">es antivirus se basent principalement 
+  sur des signatures. Une signature, &ccedil;a peut &ecirc;tre des s&eacute;quences 
+  d'octets connues dans le code d'un programme dangeureux. Ca peut &eacute;galement 
+  &ecirc;tre un <em><strong>CRC</strong></em> op&eacute;r&eacute; sur tel bout 
+  du code. Le principe est donc de rendre le code du programme le plus insaisissable 
+  possible afin d'emp&ecirc;cher au maximum qu'une cha&icirc;ne de signature ou 
+  un <em><strong>CRC</strong></em> puisse &ecirc;tre constitu&eacute;. </font></p>
+<p><font size="4">L</font><font size="2">e polymorphisme est un moyen utilis&eacute; 
+  pour d&eacute;guiser le contenu d'un programme. Polymorphe -&gt; plusieurs formes. 
+  </font></p>
+<p><font size="4">L</font><font size="2">'autre m&eacute;thode antivirale est 
+  l'analyse <em>heuristique</em>. Elle est moins utilis&eacute;e car plus gourmande 
+  en ressources. Raoul veut bien installer Norton sur son PC, mais il ne faut 
+  pas que Norton fasse ralentir Need For Speed. Un pc c'est fait pour jouer, bordel 
+  ! </font><font size="2">Dommage car elle est assez efficace. Ax&eacute;e &quot;micro 
+  reverse engineering&quot;, elle analyse le code d'un programme et peut y d&eacute;celer 
+  des comportements suspects, comme tenter d'&eacute;crire sur le secteur de boot 
+  du disque dur, ou m&ecirc;me d&eacute;tecter une boucle de cryptage impl&eacute;ment&eacute;e 
+  sans discr&eacute;tion. Du temps de <em>Windows 3.11</em>, je ne sais plus lequel 
+  de <em>F-Prot</em> ou <em>TBAV</em> int&eacute;grait une analyse heuristique 
+  assez efficace. A l'&eacute;poque, je praticais beaucoup l'assembleur 16 bits 
+  et cet anti-virus &eacute;tait pour moi un bon test de discr&eacute;tion. </font></p>
+<p><font size="4">C</font><font size="2">ette m&eacute;thode g&eacute;n&egrave;re 
+  aussi son lot de faux positifs, et Raoul risquerait de ne plus acheter ses mises 
+  &agrave; jour d'antivirus si son Norton lui r&eacute;p&egrave;te tous les jours 
+  que <font color="#666666" face="Courier New, Courier, mono">Format</font> et 
+  <font color="#666666" face="Courier New, Courier, mono">Fdisk</font> sont des 
+  programmes dangeureux. Raoul, je dois les effacer ou les ignorer ? Heuuuuu... 
+  N'oublions pas : <font color="#666666" face="Courier New, Courier, mono">fdisk</font>, 
+  Raoul il connait pas. </font></p>
+<p><font size="4">C</font><font size="2">'est l'universelle loi du march&eacute; 
+  : incomp&eacute;tence et paresse des milliards de clients sont les ennemis de 
+  la performance d'un pauvre petit produit. Au passage, je fais remarquer que 
+  ce principe s'applique en politique et en culture &eacute;galement. D'ailleurs 
+  qui soutiendrait que culture et politique ne sont pas des marchandises ? </font></p>
+<p><u><strong><font size="2"><br>
+  </font></strong></u></p>
+<p>&nbsp;</p>
+<p><u><strong><font size="2"><a name="3"></a>3) Voyage au centre du Polymorphisme 
+  </font></strong></u><br>
+</p>
+<p><font size="4">J</font><font size="2">e vous invite &agrave; un peu d'histoire. 
+  Rapidement, on va passer en revue les grandes familles de techniques de brouillage 
+  de code, depuis le cryptage jusqu'au polymorphisme. </font></p>
+<p><font size="4">U</font><font size="2">n programme avec une partie de son code 
+  brouill&eacute; par une fonction de cryptage n'est pas &agrave; proprement parler 
+  polymorphique : si c'est toujours ce m&ecirc;me programme avec cette m&ecirc;me 
+  boucle de cryptage qui est utilis&eacute;e, alors cryptage ou pas il n'existe 
+  bel et bien qu'une seule forme. Et &quot;un&quot; c'est pas &quot;plusieurs&quot;. 
+  Sisi j'insiste ;) . C'est un axiome fondamental pour le polymorphisme. </font></p>
+<p><font size="4">L</font><font size="2">e cryptage sert pour brouiller des informations, 
+  pour les rendre illisibles. Par exemple, crypter les chaines de caract&egrave;res 
+  d'un programme pour &eacute;viter que Raoul, arm&eacute; de <em>Hex Edit</em>, 
+  ne s'amuse &agrave; mettre son nom partout &agrave; la place du votre, le programmeur, 
+  avec le m&ecirc;me Q.I. qu'un chien qui pisse sur les lampadaires. Pour &eacute;viter 
+  aussi que Norton n'utilise comme signature pour votre programme malicieux la 
+  subtile pens&eacute;e dont vous &ecirc;tes si fier et que vous imposez &agrave; 
+  la vue de vos victimes juste avant leur mort : &quot;je t&eacute; nik&eacute; 
+  b&eacute;to chuis mailleur ke toua&quot;. Une bien humiliante post&eacute;rit&eacute; 
+  peut s'&eacute;viter avec un simple <em>XOR</em>, sinon le monde entier apprendra 
+  dans les pages du Virus Informatique que DeathBringerKingOfRulez &eacute;crit 
+  aussi mal le fran&ccedil;ais que le C++. Mais passons... </font></p>
+<table width="21%" border="1" align="center" bordercolor="#F8F8F8">
+  <tr> 
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Routine 
+        de d&eacute;cryptage</font></div></td>
+  </tr>
+  <tr> 
+    <td bordercolor="#000000" bgcolor="#FFFFFF"><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Partie 
+        crypt&eacute;e</font></div></td>
+  </tr>
+</table>
+<p><font size="2"></font></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><font color="#000000" size="4">U</font><font size="2">ne des premi&egrave;res 
+  am&eacute;liorations a &eacute;t&eacute; de transmettre, par exemple &agrave; 
+  chaque nouvelle infection d'un virus, une version du programme crypt&eacute; 
+  avec une nouvelle valeur. Les variantes sont multiples comme le compteur de 
+  millisecondes tir&eacute; de l'horloge de l'ordinateur. Le code crypt&eacute; 
+  change bien d'apparence &agrave; chaque fois. On a obtenu un <u>polymorphisme 
+  de cl&eacute; de cryptage</u>. </font></p>
+<table width="21%" border="1" align="center" bordercolor="#F8F8F8">
+  <tr> 
+    <td bordercolor="#000000" bgcolor="#FFFFFF"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Routine 
+        de d&eacute;cryptage</font></div></td>
+  </tr>
+  <tr> 
+    <td bordercolor="#000000" bgcolor="#FFFFFF"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Cl&eacute; 
+        variable <font color="#FFFFFF"></font></font></div></td>
+  </tr>
+  <tr> 
+    <td bordercolor="#000000" bgcolor="#FFFFFF"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Partie 
+        crypt&eacute;e</font></div></td>
+  </tr>
+</table>
+<p><font size="2"></font></p>
+<p>&nbsp;</p>
+<p><font color="#000000" size="4">P</font><font color="#000000" size="2">uis on 
+  s'est rendu compte que la routine de d&eacute;cryptage suffisait &agrave; &eacute;tablir 
+  une signature. Se faire trahir par ses propres armes, quel coup du sort ! On 
+  a donc fourni au programme un stock de 4 ou 5 routines de d&eacute;cryptage 
+  parfaitement compatibles entre elles. Lors d'une nouvelle infection, on change 
+  la cl&eacute; de cryptage mais on extrait du programme une nouvelle fonction 
+  de d&eacute;cryptage. Ainsi, cette fonction ne peut plus &ecirc;tre utilis&eacute;e 
+  pour &eacute;tablir une signature. On a du <u>polymorphisme de fonction</u>. 
+  </font></p>
+<table width="33%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">+-------------------------------------+ 
+      <br>
+      | Une des routines de d&eacute;cryptage <font color="#FFFFFF">_____</font>| 
+      <br>
+      +-------------------------------------+ <br>
+      | Cl&eacute; variable <font color="#FFFFFF">_______________________</font>| 
+      <br>
+      +-------------------------------------+ <br>
+      +-------------------------------------+ <br>
+      | Partie crypt&eacute;e <font color="#FFFFFF">_____________________</font>| 
+      <br>
+      | +----------------------------------+ <br>
+      | | Stock crypt&eacute; des autres routines | <br>
+      | | de d&eacute;cryptage <font color="#FFFFFF">___________________</font>| 
+      <br>
+      +--+---------------------------------+ </font></td>
+  </tr>
+</table>
+<p><font color="#000000" size="2"></font></p>
+<p>&nbsp;</p>
+<p><font size="4">C</font><font size="2">ertains antivirus ont alors d&eacute;cid&eacute;s 
+  de mettre 4 ou 5 signatures pour un m&ecirc;me programme dangeureux, une par 
+  routine de d&eacute;cryptage. La strat&eacute;gie a donc &eacute;t&eacute; de 
+  brouiller les routines. Toutes les deux ou trois instructions assembleur, le 
+  programme comporte quelques octets en plus. A chaque r&eacute;plication, le 
+  programme y &eacute;crit les valeurs d'instructions qui ne perturbent pas le 
+  cours de a routine, comme un <em><strong>NOP</strong></em>, diff&eacute;rentes 
+  &agrave; chaque fois. Le polymorphisme descend au niveau de l'instruction. La 
+  fonction elle-m&ecirc;me change d'apparence tout en restant op&eacute;rationnelle. 
+  </font></p>
+<p><font size="2"><em><u>Un exemple de routine de d&eacute;cryptage :</u></em></font></p>
+<table width="60%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">+---------------+...... 
+      <br>
+      | Zoom <font color="#FFFFFF">_________</font>|...... <br>
+      | +-------------+...... <br>
+      | | valide <font color="#FFFFFF">_____</font>|...... <br>
+      | | remplissage |......+-------------------------------------+ <br>
+      | | valide <font color="#FFFFFF">_____</font>|......| Une des routines de 
+      d&eacute;cryptage <font color="#FFFFFF">_____</font>| <br>
+      | | valide <font color="#FFFFFF">_____</font>|......+-------------------------------------+ 
+      <br>
+      | | remplissage |......| Cl&eacute; variable <font color="#FFFFFF">_______________________</font>| 
+      <br>
+      | | valide <font color="#FFFFFF">_____</font>|......+-------------------------------------+ 
+      <br>
+      | | remplissage |......+-------------------------------------+ <br>
+      | | remplissage |......| Partie crypt&eacute;e <font color="#FFFFFF">____________________</font>| 
+      <br>
+      | | <font color="#FFFFFF">________</font>... | .... | +----------------------------------+ 
+      <br>
+      | | <font color="#FFFFFF">________</font>... | .... | | Stock crypt&eacute; 
+      des autres routines | <br>
+      +--+------------+..... | | de d&eacute;cryptage <font color="#FFFFFF">___________________</font>| 
+      <br>
+      <font color="#FFFFFF">_______________________</font>+-+----------------------------------+ 
+      </font></td>
+  </tr>
+</table>
+<p><u><em><font size="2"></font></em></u></p>
+<p><font size="2">Pour finir cette fuite vers la finesse des alt&eacute;rations 
+  polymorphiques, reste le sujet de ce papier : le polymorphisme au niveau <em>sub-instruction</em>, 
+  par motif de bits. </font></p>
+<p><br>
+</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><u><strong><font size="2"><a name="4"></a>4</font><font size="2">) L'assembleur, 
+  de l'instruction &agrave; l'octet </font></strong></u><br>
+</p>
+<p><font size="4">V</font><font size="2">oici un exemple de code assembleur. Court 
+  et simple, il se contente de pousser la cha&icirc;ne <em>MessageBoxA</em> dans 
+  un <em>stack frame</em>. L'exemple en soi est stupide, mais c'est sur celui 
+  l&agrave; que j'ai commenc&eacute; &agrave; travailler donc je continue avec. 
+  A c&ocirc;t&eacute; des instructions assembleur, j'ai inscris les valeurs des 
+  octets correspondants.</font></p>
+<table width="26%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"><font color="#666666" size="2" face="Courier New, Courier, mono">mov 
+      eax,'sseM' B8 4D 65 73 73 <br>
+      mov [ebp-0x1c], eax 89 45 E4 <br>
+      mov eax,'Bega' B8 61 67 65 42 <br>
+      mov [ebp-0x18], eax 89 45 E8 <br>
+      mov ax,'xo' 66 B8 6F 78 <br>
+      mov [ebp-0x14], ax 66 89 45 EC <br>
+      xor ax,ax 66 33 C0 <br>
+      mov al,'A' B0 41 <br>
+      mov [ebp-0x12], ax 66 89 45 EE </font></td>
+  </tr>
+</table>
+<p><font size="2"></font></p>
+<p><u><em><font size="2">Les octets des mn&eacute;moniques assembleur sont lues 
+  et d&eacute;cod&eacute;es par le processeur. Basiquement, une instruction assembleur 
+  se d&eacute;compose de la mani&egrave;re suivante : </font></em></u></p>
+<table width="60%" border="1" align="center" bordercolor="#F8F8F8">
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">OPERATION</font></div></td>
+    <td><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">mode 
+        d'adressage</font></div></td>
+    <td><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">parametre 
+        1</font></div></td>
+    <td><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">parametre 
+        2</font></div></td>
+  </tr>
+</table>
+<p><u><em><font size="2"></font></em></u></p>
+<p><u><em><font size="2"></font></em></u></p>
+<p><font size="4">O</font><font size="2">n peut d&eacute;composer la premi&egrave;re 
+  ligne d'instruction de l'exemple. <font color="#666666" face="Courier New, Courier, mono">B8</font> 
+  contient, aux yeux du processeur, les informations disant qu'ici commence une 
+  instruction assembleur qui charge un registre 32 bits avec une valeur imm&eacute;diate, 
+  et que ce registre est <font color="#666666" face="Courier New, Courier, mono">EAX</font>. 
+  </font></p>
+<table width="60%" border="1" align="center" bordercolor="#F8F8F8">
+  <tr> 
+    <td bordercolor="#F8F8F8" bgcolor="#F8F8F8"> 
+      <div align="center"> 
+        <table width="100%" border="1" bordercolor="#FFFFFF">
+          <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+            <td width="25%"><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">OPERATION</font></div></td>
+            <td width="28%"><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">mode 
+                d'adressage</font></div></td>
+            <td width="23%"><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">parametre 
+                1</font></div></td>
+            <td width="24%"><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">parametre 
+                2</font></div></td>
+          </tr>
+        </table>
+      </div></td>
+  </tr>
+  <tr> 
+    <td bordercolor="#F8F8F8" bgcolor="#F8F8F8"> 
+      <div align="center"> 
+        <table width="100%" border="1" bordercolor="#FFFFFF">
+          <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+            <td width="53%"><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">MOV 
+                EAX valeur imm&eacute;diate</font></div></td>
+            <td width="23%"><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">'sseM'</font></div></td>
+            <td width="24%"><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono"><font color="#FFFFFF">__</font>rien 
+                <font color="#FFFFFF"></font></font></div></td>
+          </tr>
+        </table>
+      </div></td>
+  </tr>
+  <tr> 
+    <td bordercolor="#F8F8F8" bgcolor="#F8F8F8"> 
+      <div align="center"> 
+        <table width="100%" border="1" bordercolor="#FFFFFF">
+          <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+            <td width="25%"><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">B8</font></div></td>
+            <td width="28%"><div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">4D 
+                65 73 73</font></div></td>
+            <td width="47%">&nbsp;</td>
+          </tr>
+        </table>
+      </div></td>
+  </tr>
+</table>
+<p><font size="2"></font></p>
+<p><font size="2"></font> </p>
+<p><font size="4">M</font><font size="2">aintenant, voici la m&ecirc;me routine 
+  mais quatre fois de suite. A chaque coup, je change le registre de travail utilis&eacute; 
+  par la routine. Dans sa grande majorit&eacute;, les octets codant les op&eacute;rations 
+  sont similaires. On d&eacute;c&egrave;le juste quelques petites variations, 
+  dont on vient de voir l'explication. <br>
+  Entre un <font color="#666666" face="Courier New, Courier, mono">mov eax</font> 
+  et un <font color="#666666" face="Courier New, Courier, mono">mov ebx</font>, 
+  seul change de quoi dire au processeur quel est le registre cibl&eacute;. J'ai 
+  mis entre parenth&egrave;ses les diff&eacute;rences &agrave; observer :</font></p>
+<table width="29%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"> 
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono">//Travail avec EAX <br>
+        mov eax,'sseM' (B8) 4D 65 73 73 <br>
+        mov [ebp-0x1c], eax 89 (45) E4 <br>
+        mov eax,'Bega' (B8) 61 67 65 42 <br>
+        mov [ebp-0x18], eax 89 (45) E8 <br>
+        mov ax,'xo' 66 (B8) 6F 78 <br>
+        mov [ebp-0x14], ax 66 89 (45) EC <br>
+        xor ax,ax 66 33 (C0) <br>
+        mov al,'A' (B0) 41 <br>
+        mov [ebp-0x12], ax 66 89 (45) EE </font></p>
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono">//Travail avec EBX <br>
+        mov ebx,'sseM' (BB) 4D 65 73 73 <br>
+        mov [ebp-0x1c], ebx 89 (5D) E4 <br>
+        mov ebx,'Bega' (BB) 61 67 65 42 <br>
+        mov [ebp-0x18], ebx 89 (5D) E8 <br>
+        mov bx,'xo' 66 (BB) 6F 78 <br>
+        mov [ebp-0x14], bx 66 89 (5D) EC <br>
+        xor bx,bx 66 33 (DB) <br>
+        mov bl,'A' (B3) 41 <br>
+        mov [ebp-0x12], bx 66 89 (5D) EE </font></p>
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono">//Travail avec ECX <br>
+        mov ecx,'sseM' (B9) 4D 65 73 73 <br>
+        mov [ebp-0x1c], ecx 89 (4D) E4 <br>
+        mov ecx,'Bega' (B9) 61 67 65 42 <br>
+        mov [ebp-0x18], ecx 89 (4D) E8 <br>
+        mov cx,'xo' 66 (B9) 6F 78 <br>
+        mov [ebp-0x14],cx 66 89 (4D) EC <br>
+        xor cx,cx 66 33 (C9) <br>
+        mov cl,'A' (B1) 41 <br>
+        mov [ebp-0x12], cx 66 89 (4D) EE </font></p>
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono">//Travail avec EDX <br>
+        mov edx,'sseM' (BA) 4D 65 73 73 <br>
+        mov [ebp-0x1c], edx 89 (55) E4 <br>
+        mov edx,'Bega' (BA) 61 67 65 42 <br>
+        mov [ebp-0x18], edx 89 (55) E8 <br>
+        mov dx,'xo' 66 (BA) 6F 78 <br>
+        mov [ebp-0x14], dx 66 89 (55) EC <br>
+        xor dx,dx 66 33 (D2) <br>
+        mov dl,'A' (B2) 41 <br>
+        mov [ebp-0x12], dx 66 89 (55) EE </font></p>
+</td>
+  </tr>
+</table>
+<p><font size="2"></font></p>
+<p><font size="4">S</font><font size="2">eul un octet de chaque instruction est 
+  modifi&eacute;. L'id&eacute;e au coeur du <em>polymorphisme sub-instruction</em> 
+  est de modifier chaque octet sensible afin que toute une routine se mette &agrave; 
+  travailler avec <font color="#666666" face="Courier New, Courier, mono">EAX</font> 
+  au lieu de <font color="#666666" face="Courier New, Courier, mono">EBX</font>, 
+  puis <font color="#666666" face="Courier New, Courier, mono">EDX</font> lors de la prochaine 
+  infection. La routine reste 100% fonctionnelle, sauf que son registre de travail 
+  principal change, et donc sa repr&eacute;sentation en octet devient variable. 
+  </font></p>
+<p><font size="4">L</font><font size="2">e souci est que pour chaque instruction 
+  il faut stocker les 4 octets &agrave; utiliser : dans le cas de <font color="#666666" face="Courier New, Courier, mono">EAX, 
+  EBX, ECX et EDX</font>. Rien que dans le court exemple, 4 octets sont modifi&eacute;s 
+  lorsqu'on change de registre, multipli&eacute;s par 4 registres, c'est un jeu 
+  de 16 octets qu'il faut avoir sous le coude en guise de maquillage. Plus un 
+  bout de code pour veiller &agrave; la mutation de la routine. </font></p>
+<p><font size="2"><em><u>On arrive &agrave; cette mod&eacute;lisation du corps 
+  du programme : </u></em></font></p>
+<table width="34%" border="1" align="center" bordercolor="#000000">
+  <tr>
+    <td bordercolor="#FFFFFF" bgcolor="#FFFFFF"> 
+      <p><font color="#666666" size="2" face="Courier New, Courier, mono">+-------------------------------------+ 
+        <br>
+        | Une des routines de d&eacute;cryptage <font color="#FFFFFF">_____</font>| 
+        <br>
+        +-------------------------------------+ <br>
+        | Cl&eacute; variable <font color="#FFFFFF">_______________________</font>| 
+        <br>
+        +-------------------------------------+ <br>
+        +-------------------------------------+ <br>
+        | Partie crypt&eacute;e <font color="#FFFFFF">____________________</font>| 
+        <br>
+        | +----------------------------------+ <br>
+        | | Stock crypt&eacute; des autres routines | <br>
+        | | de d&eacute;cryptage <font color="#FFFFFF">___________________</font>| 
+        <br>
+        | +----------------------------------+ <br>
+        | | Moteur de motation polymorphique | <br>
+        | | avec octets de remplacement et <font color="#FFFFFF">__</font>| <br>
+        | | adresse des emplacements <font color="#FFFFFF">________</font>| <br>
+        | | &agrave; modifier <font color="#FFFFFF">______________________</font>| 
+        <br>
+        +--+---------------------------------+ </font></p>
+      </td>
+  </tr>
+</table>
+<p><u><em><font size="2"></font></em></u></p>
+<p>&nbsp;</p>
+<p><strong><u><font size="2"><a name="5"></a>5) L'assembleur, de l'octet au bit 
+  </font></u></strong><br>
+</p>
+<p><font size="2">Pour &eacute;viter de se trimbaler une &eacute;norme base de 
+  donn&eacute;es des octets par fonction et par registre, un coup de microscope 
+  va s'av&eacute;rer payant. Voici un d&eacute;tail des 4 octets correspondant 
+  aux 4 registres utilis&eacute;s dans la fonction d'exemple, ainsi que leurs 
+  &eacute;quivalents en binaire. </font></p>
+<table width="60%" border="1" align="center" bordercolor="#F8F8F8">
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono"> 
+        EAX</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">ECX 
+        <font color="#FFFFFF"></font></font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono"><font color="#FFFFFF">_</font>EDX 
+        <font color="#FFFFFF"></font></font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">EBX</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">VARIATIONS</font></div></td>
+  </tr>
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">B8 
+        10111000<br>
+        45 01000101<br>
+        C0 11000000<br>
+        B0 10110000<br>
+        </font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">B9 
+        10111001<br>
+        4D 01001101<br>
+        C9 11001001<br>
+        B1 10110001<br>
+        </font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">BA 
+        10111010<br>
+        55 01010101<br>
+        D2 11010010<br>
+        B2 10110010<br>
+        </font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">BB 
+        10111011<br>
+        5D 01011101<br>
+        DB 11011011<br>
+        B3 10110011<br>
+        </font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">2 
+        bits : 101110xx<br>
+        2 bits : 010xx101<br>
+        2x2 Bits : 110xx0xx<br>
+        2 Bits : 101100xx<br>
+        </font></div></td>
+  </tr>
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">bits 
+        &agrave; 00</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono"><font color="#FFFFFF"></font>bits 
+        &agrave; 01</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">bits 
+        &agrave; 10</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">bits 
+        &agrave; 11</font></div></td>
+    <td bordercolor="#000000" bgcolor="#F8F8F8"> 
+      <div align="center"></div></td>
+  </tr>
+</table>
+<p>&nbsp;</p>
+<p><font size="4">L</font><font size="2">&agrave;, r&eacute;v&eacute;lation. Les 
+  motifs binaires montrent bien que seuls deux bits sont utilis&eacute;s pour 
+  coder l'un des quatre registres qui est utilis&eacute;. </font></p>
+<p><font size="4">O</font><font size="2">n a vu comme une instruction assembleur 
+  &eacute;tait structur&eacute;e en &eacute;l&eacute;ments que le processeur reconnait 
+  et d&eacute;code. On a vu comme ces parties &eacute;taient parfois repr&eacute;sent&eacute;es 
+  par le m&ecirc;me octet. Maintenant, en entrant au coeur du motif binaire de 
+  l'instruction, on retombe sur nos pieds et on arrive &agrave; identifier un 
+  &eacute;l&eacute;ment en particulier dans un octet. Au coeur de l'octet repr&eacute;sentant 
+  l'instruction, on se retrouve tout simplement en face d'un b&ecirc;te compteur 
+  sur deux bits, un v&eacute;ritable index du registre &agrave; utiliser. </font></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p><font size="2"><u><strong><a name="6" id="6"></a>6) Masquage de bits</strong></u></font> 
+  <br>
+</p>
+<p><font size="4">A</font><font size="2"> ce stade, il est facile de rep&eacute;rer 
+  par quelles manipulations logiques on peut transformer une op&eacute;ration 
+  sur un registre en la m&ecirc;me op&eacute;ration sur un registre diff&eacute;rent. 
+  Dans le cas qui nous concerne pour chaque registre il y a deux formules distinctes 
+  et un cas o&ugrave; les deux sont &agrave; utiliser &agrave; la suite. </font></p>
+<p><font size="2"><br>
+  <u><em>Quelques rappels de logique binaire, avant tout : </em></u><br>
+  Mise &agrave; z&eacute;ro d'un bit : <font color="#666666" face="Courier New, Courier, mono">? 
+  and 0 -&gt; 0 </font><br>
+  Mise &agrave; un d'un bit : <font color="#666666" face="Courier New, Courier, mono">? or 1 -&gt; 
+  1 </font></font></p>
+<p><font size="2"><br>
+  <font size="4">A</font>rm&eacute; de ces rappels, effectuer la translation de 
+  registre d'une instruction, et par extension d'une routine, ne pose plus r&eacute;ellement 
+  de probl&egrave;me. A partir de n'importe quelle valeur initiale parmi les quatre, 
+  il est possible d'obtenir n'importe quelle autre de ces valeurs au moyen de 
+  masquages de bits. Le tableau suivant r&eacute;capitule les masquages &agrave; 
+  faire, et souligne les deux formules qu'on peut alors utiliser : </font></p>
+<table width="60%" border="1" align="center" bordercolor="#F8F8F8">
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">EAX</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">ECX</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">EDX</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">EBX</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Fonct.</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Formule</font></div></td>
+  </tr>
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">and 
+        FC</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">and 
+        FD or 1</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">and 
+        FE or 2</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">or 
+        3</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">mov 
+        reg64, &quot;xxxx&quot;</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">1</font></div></td>
+  </tr>
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">and 
+        (FC&lt;&lt;3)<br>
+        or (1&lt;&lt;3)<br>
+        </font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">and 
+        (FD&lt;&lt;3)<br>
+        or (2&lt;&lt;3)<br>
+        </font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">and 
+        (FE&lt;&lt;3)</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">or 
+        (3&lt;&lt;3)</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">mov 
+        [ebx+x], reg</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">2</font></div></td>
+  </tr>
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">and 
+        FC<br>
+        and (FC&lt;&lt;3)<br>
+        </font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">and 
+        FD or 1<br>
+        and (FD&lt;&lt;3)<br>
+        or (1&lt;&lt;3)<br>
+        </font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">and 
+        FE or 2<br>
+        and (FE&lt;&lt;3)<br>
+        or (2&lt;&lt;3)<br>
+        </font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">or 
+        3<br>
+        or (3&lt;&lt;3)<br>
+        </font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">xor 
+        reg16, reg16<br>
+        Formule 1 + 2<br>
+        </font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">1 
+        + 2</font></div></td>
+  </tr>
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">and 
+        FC</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">and 
+        FD or 1</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">and 
+        FE or 2</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">or 
+        3</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Mov 
+        reg8, &quot;x&quot;</font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">1</font></div></td>
+  </tr>
+</table>
+<p><font size="2"></font></p>
+<p><font size="2"></font></p>
+<p><font size="4">E</font><font size="2">n appliquant le bon lot de formules selon 
+  la translation de registre souhait&eacute;e, on modifie le registre utilis&eacute; 
+  par le bout de code. Il faut juste se souvenir qu'&agrave; tel <em>offset</em> 
+  du code de la routine il faut utiliser la formule 1, 2, ou bien les deux simultan&eacute;ment. 
+  Pour cela, une petite table permet de dire qu'&agrave; tel <em>offset</em> de 
+  la routine on doit appliquer telles formules. </font></p>
+<table width="25%" border="1" align="center" bordercolor="#F8F8F8">
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td width="49%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Offset</font></div></td>
+    <td width="51%"> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">Formule(s)</font></div></td>
+  </tr>
+  <tr bordercolor="#000000" bgcolor="#FFFFFF"> 
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono"><font color="#FFFFFF"></font>0d<br>
+        6d<br>
+        8d<br>
+        14d<br>
+        17d<br>
+        <font color="#FFFFFF"></font>22d<br>
+        26d<br>
+        27d<br>
+        31d<br>
+        </font></div></td>
+    <td> 
+      <div align="center"><font color="#666666" size="2" face="Courier New, Courier, mono">1<br>
+        2<br>
+        1 <br>
+        2<br>
+        1<br>
+        2<br>
+        1+2<br>
+        1<br>
+        2 </font></div></td>
+  </tr>
+</table>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p><font size="2"><strong><u><a name="7"></a>7) Rafinement du polymorphisme d'instruction 
+  <br>
+  <br>
+  </u></strong><font size="4">O</font>n a vu que des fonctions peuvent incorporer 
+  des instructions ne servant &agrave; rien, seulement &agrave; brouiller d'avantage 
+  les signatures. Avec la m&eacute;thode du <u>motif de bit</u>, on gagne encore 
+  plus de flexibilit&eacute;. </font></p>
+<p><font size="2"><em><u>Le moteur de mutation doit alors s'assurer de deux param&egrave;tres 
+  :</u> <font color="#FFFFFF">_</font></em><font color="#000000">-<font color="#FFFFFF">.</font></font><font size="2">Les 
+  instructions &quot;r&eacute;elles&quot; de la fonction doivent subir un masquage 
+  de bits afin de fonctionner avec un registre principal &quot;actif&quot; qui 
+  servira pour le bon d&eacute;roulement</font>.</font></p>
+<p><font color="#FFFFFF">_&ccedil;_________________________________________________________________________.<font color="#000000">-</font><font size="2">.</font><font color="#000000" size="2">Les 
+  instructions &quot;pipeau&quot; de la fonction doivent subir un masquage de 
+  bits afin de fonctionner avec un des trois autres registres principaux, pouvant 
+  ainsi faire n'importe quoi sans alt&eacute;rer le registre de travail &quot;actif&quot;. 
+  </font></font></p>
+<p><font size="2"> </font></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p><font size="2"><strong><u><a name="8"></a>8) Note concernant Windows </u></strong></font><br>
+</p>
+<p><font size="4">E</font><font size="2">ntre DOS et Windows, que de changements. 
+  L'un d'entre eux concerne directement ce domaine. Sous DOS, rien n'emp&ecirc;che 
+  de manipuler le code comme s'il s'agissait de donn&eacute;es, et donc de modifier 
+  directement les octets du segment de code. Cette possibilit&eacute; permettait 
+  une grande souplesse dans la mutation de code ainsi que de mettre en place des 
+  strat&eacute;gies anti-d&eacute;buggage jouant sur le <em>prefetch</em> des 
+  processeurs, assez r&eacute;pandus sur les <em>486</em>. </font></p>
+<p><font size="4">S</font><font size="2">ous Windows NT, le code est le code, 
+  et les donn&eacute;es sont les donn&eacute;es. On ne m&eacute;lange pas les 
+  torchons et les serviettes, pas vrai ? Le gestionnaire de pages de m&eacute;moire 
+  virtuelle de Windows NT permet de bloquer l'acc&egrave;s en lecture ou &eacute;criture 
+  sur certains segments. Et il est de coutume que le segment de code soit prot&eacute;g&eacute; 
+  contre l'&eacute;criture. </font></p>
+<p><font size="4">D</font><font size="2">eux solutions : soit penser &agrave; 
+  d&eacute;verrouiller la page de code au moyen des <em>API</em> adapt&eacute;es, 
+  soit travailler dans des <em>buffer</em> contenus dans le segment de donn&eacute;es, 
+  <em>stack</em> ou <em>heap</em>. </font></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p><u><strong><font size="2"><a name="9"></a>9) Conclusion </font></strong></u><br>
+</p>
+<p><font size="2">Le <em>polymorphisme sub-instruction</em> s'av&egrave;re assez 
+  ais&eacute; &agrave; mettre en place. Combin&eacute; avec les autres niveaux 
+  o&ugrave; peut intervenir le polymorphisme, les r&eacute;sultats sont tr&egrave;s 
+  satisfaisants. Mon but n'est pas de donner un outil clef en main, et dont la 
+  compr&eacute;hention est en option. Donc pas plus de code que &ccedil;a. </font></p>
+<p><font size="2">Intel a publi&eacute; un pdf nomm&eacute; &quot;<u>instruction 
+  set reference</u>&quot;. Je m'attendais &agrave; y trouver facilement les <em>motifs 
+  de bits</em> des instructions en fonction des registres mis en jeu, mais son 
+  usage n'est franchement pas tr&egrave;s ais&eacute;. La m&eacute;thode empirique 
+  reste encore plus facile. </font></p>
+<p><font size="2"><br>
+  J'esp&egrave;re que cette plong&eacute;e au coeur de l'instruction vous aura 
+  rappell&eacute; l'Aventure Int&eacute;rieure ! </font></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p align="right"><em><font size="3" face="Lucida Console">BY TOLWIN</font></em></p>
+<p align="right">Copyright &copy; 2004 ARENHACK - DHS</p>
+<p></p>
+<p align="center"><br>
+  <strong><a href="polymorphisme.htm"><u>HAUT DE PAGE</u></a></strong><br>
+</p>
+</body>
+</html>

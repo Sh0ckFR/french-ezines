@@ -1,0 +1,168 @@
+<html>
+<head>
+<title>How to code an Ip-scanner by using &quot;echo request&quot; &amp; &quot;echo reply&quot; methods</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<link href="../../../../Dead-End%20MAG/Files/Html/Pages/style.css" rel="stylesheet" type="text/css">
+<style type="text/css">
+<!--
+.style2 {font-size: 12px}
+.style4 {
+	font-size: 16px;
+	font-weight: bold;
+}
+.style5 {
+	font-family: "Courier New", Courier, mono;
+	color: #666666;
+}
+.style7 {
+	font-size: 12px;
+	font-family: "Courier New", Courier, mono;
+	color: #666666;
+}
+-->
+</style></head>
+
+<body>
+<hr>
+<p align="center"><img src="Images/arp_os_fingerprinting.jpg" width="469" height="60"></p>
+<hr>
+<p align="LEFT"><em><a href="page3.htm" target="_blank">AFFICHER CET ARTICLE EN MODE PAGE 
+ENTIERE</a></em></p><p align="center"><strong><font size="3"><u>SOMMAIRE</u></font></strong></p>
+<p align="left" class="style2"><a href="page4.htm#1">1) Introduction</a><br><br>
+  <a href="page4.htm#2">2) Pourquoi ARP ?<br></a><br>
+  <a href="page4.htm#3">3) La d&eacute;tection d'os</a><br><br>
+  <a href="page4.htm#4">4) Prise d'empreinte</a><br><br>
+  <a href="page4.htm#5">5) Ref&eacute;rences</a></p>
+<hr>
+<p align="left">&nbsp;</p>
+<p class="style2"><strong><u><a name="1"></a>1) Introduction</u></strong></p>
+<p class="style2"><span class="style4">D</span>epuis la cr&eacute;ation d'outils comme nmap, queso ou xprobe, la d&eacute;tection d'un syst&egrave;me d'exploitation est un jeu d'enfant pour les pirates. Malheureusement l'utilisation de tels outils sont facilement d&eacute;tectables par des syst&egrave;mes de d&eacute;tection d'intrusion (ids). En effet, la plupart de ces outils utilisent des bogues ou des carat&eacute;ristiques de chacune des piles tcp/ip de chaque OS. Ils emmetent alors des paquets malform&eacute;s et en fonction de la (non)r&eacute;ponse, d&eacute;terminent grace &agrave; une base d'empreintes le syst&egrave;me d'exploitation. En &eacute;tudiant ces diff&eacute;rents outils, on peut remarquer qu'ils utilisent principalement les protocoles TCP, UDP, ICMP mais pas le protocol ARP. La raison de cela est simple, ce protocol est utilis&eacute; sur des r&eacute;seaux locaux et peu (pas) sur internet. Cette article d&eacute;crit donc comment identifier le syst&egrave;me d'exploitation d'une machine sur un reseau local en utilisant le protocol ARP. </p>
+<p class="style2">&nbsp;</p>
+<p class="style2"><strong><u><a name="2"></a>2) Pourquoi ARP ? </u></strong></p>
+<p class="style2"><span class="style4">T</span>out simplement puisqu'il est &eacute;normement utilis&eacute; dans les r&eacute;seaux locaux et qu'il est diff&eacute;rent des autres protocoles tel que TCP. En effet, ARP agit au niveau de la couche 2 et 3 du mod&egrave;le d'OSI ce qui correspond &agrave; la couche Internet du mod&egrave;le TCP/IP. Son role est de permettre &agrave; une machine X de d&eacute;terminer l'addresse physique (MAC) d'une machine Y en connaissant uniquement l'addresse logique (IP). Il est d&eacute;finit dans la RFC 826. </p>
+<p class="style2">Le probl&egrave;me avec ARP dans le but d'une d&eacute;tection de syst&egrave;me d'exploitation est qu'il agit sur &quot;les couches basses&quot; du mod&egrave;le OSI, c'est &agrave; dire que les trames sont trait&eacute;es par le mat&eacute;riel qui peut tr&egrave;s bien dropper la trame (filtrage mat&eacute;riel), ce qui rend l'OS Fingerprint innop&eacute;rable. En contre partie on peut d&eacute;tecter le type de mat&eacute;riel r&eacute;seau pr&eacute;sent sur une machine (&quot;hardware-fingerprint&quot;). </p>
+<p class="style2">&nbsp;</p>
+<p class="style2"><strong><u><a name="3"></a>3) La d&eacute;tection d'OS</u></strong></p>
+<p class="style2"><span class="style4">I</span>l y a plusieurs m&eacute;thodes plus ou moins fiable pour d&eacute;tecter un syst&egrave;me d'exploitation avec arp. Je n'en d&eacute;velopperai que quelques une, les plus fiables bas&eacute;es le couple spoofing et promiscuit&eacute;. </p>
+<blockquote>
+  <p class="style2">&nbsp;</p>
+  <p class="style2"><u><em>Evil ARP</em></u></p>
+</blockquote>
+<p class="style2"><span class="style4">L</span>a premi&egrave;re technique est d'envoy&eacute;e un paquet ARP (arp-request) forg&eacute; contenant une fausse addresse IP source n'appartenant pas au r&eacute;seau vers une hote A. La trame passe sans probl&egrave;me (normalement) les couches basses du mod&egrave;le d'OSI pour arriver au kernel. C'est ici que tout se joue et que des diff&eacute;rentes possibilit&eacute;s interviennent: </p>
+<p class="style2">1. Le noyau fait une v&eacute;rification et regarde si l'ip source fait bien partit bien de son r&eacute;seau. Si ce n'est pas le cas il peut ignor&eacute; le paquet. </p>
+<p class="style2">2. Le noyau fait pas de v&eacute;rification et envoie une r&eacute;ponse vers la fausse IP qu'il peut envoyer plusieurs fois selon l'OS. </p>
+<p class="style2"><span class="style4">V</span>ous l'aurez compris, c'est la 2&egrave;me possibilit&eacute;s qui va permettre de d&eacute;tecter le syst&egrave;me d'exploitation selon le nombre de r&eacute;ponses envoy&eacute;es. Pour cela il faut envoyer le paquet avec l'ip source falsifi&eacute;es, basculer la carte r&eacute;seau en mode 'promisc' et sniffer les trames r&eacute;seaux pour d&eacute;terminer si la machine r&eacute;pond ou non et combien de fois. </p>
+<p class="style2">&nbsp;</p>
+<blockquote>
+  <p class="style2"><u><em>Evil Ping</em></u></p>
+</blockquote>
+<p class="style2"><span class="style4">C</span>ette deuxi&egrave;me m&eacute;thode ressemble &agrave; la premi&egrave;re. Il s'agit d'envoyer un paquet icmp ECHO_REQUEST (ping) forg&eacute; avec une ip source n'appartenant pas au r&eacute;seau vers une machine quelconque. Le paquet va passer sans probl&egrave;me les couches basses du mod&egrave;le d'OSI pour arriver au noyau. A ce moment l&agrave;, c'est comme tout &agrave; l'heure, soit on a une v&eacute;rification sur l'ip source soit comme dans la plupart des cas le noyau r&eacute;pond et comme il connait pas l'addresse physique correspondant &agrave; l'ip source emet un ou plusieurs paquets ARP (arp-request). C'est l&agrave; qu'on retrouve les diff&eacute;rences entre les OS. L'un va envoyer un seul paquet comme les windows par exemple, d'autre comme openbsd ou linux, vont envoyer plusieurs paquets, 3 au total a diff&eacute;rent intervale de temps. Cette m&eacute;thode est surement la plus fiable de tous, c'est celle qui est impl&eacute;ment&eacute;e dans le seul outil d'os fingerprint bas&eacute; sur arp que <br>
+  je connais, induce-arp de concept. L'inconv&eacute;gniant de cette m&eacute;thode est que la machine distante peut dropper les paquets icmp ECHO_REQUEST, il faut donc s'assurer en envoyant un ping normal que la machine r&eacute;pond &agrave; ceux-ci. </p>
+<p class="style2">&nbsp;</p>
+<blockquote>
+  <p class="style2"><u><em>Evil HW Addresse</em></u></p>
+</blockquote>
+<p class="style2"><span class="style4">C</span>ette derni&egrave;re m&eacute;thode pr&eacute;sent&eacute;e dans cette article a &eacute;t&eacute; &quot;empreint&eacute;&quot; aux outils de detection du mode promiscuous &agrave; distante tel que neped ou Promiscan. Il s'agit d'envoyer des requ&ecirc;tes arp (arp-request) avec des adresses physiques falsifi&eacute;s (broadcast, multicast) comme FF:FF:FF:FF:FF:FE, FF:FF:FF:FF:FF:FF, FF:00:00:00:00:00 qui repr&eacute;sentent des adresses de broadcast ou 01:00:00:00:00:00, 01:00:00:01:00:00 qui sont des adresses de multicast. Ainsi certaines machines vont r&eacute;pondrent et d'autres non. Avec cette m&eacute;thode on peut ainsi d&eacute;tecter sur quel mode fonctionne la carte r&eacute;seau (promisc, multicast ...). </p>
+<p class="style2">&nbsp;</p>
+<p class="style2"><strong><u><a name="4"></a>4) La prise d'empreinte</u></strong></p>
+<p class="style2"><span class="style4">N</span>ous voil&agrave; maintenant dans le moment incontournable pour r&eacute;aliser un outil de d&eacute;tection d'os, la mise en place de la base d'empreintes pour chaque OS. La prise d'empreinte est un travail qui pour &ecirc;tre complet dois se faire &agrave; plusieurs. Moi je suis tout seul donc j'ai r&eacute;alis&eacute; les tests sur seulement 3 OS, windows XP, linux Debian/Sarge avec un kernel 2.4.27 et un OpenBSD 3.5 mais le principale ici n'est pas le nombre mais comment proc&eacute;der pour r&eacute;aliser une prise d'empreinte. </p>
+<p class="style2"><span class="style4">P</span>our r&eacute;alis&eacute; les diff&eacute;rents tests cit&eacute;s plus haut, j'ai utilis&eacute; le programme scapy developp&eacute; par cartel-securit&eacute; et le sniffeur tcpdump &agrave; partir d'une machine sous linux. Sa (scapy) principale fonction est la g&eacute;n&eacute;ration de trames r&eacute;seau. Il g&egrave;re bien entendu le protocole Arp. </p>
+<p class="style2"><u>Voici comment proc&eacute;der avec scapy pour chaque m&eacute;thode:</u></p>
+<p class="style2"><em>Infos pour les exemples de dessous: </em></p>
+<p class="style2">- Adresse MAC de la machine: 41:41:41:41:41:41 <br>
+  - Adresse IP de la machine: 192.168.0.2 <br>
+  - Spoofed adresse MAC: 00:01:02:03:04:05 <br>
+  - Spoofed IP: 172.128.0.1 </p>
+<p class="style2">&nbsp;</p>
+<blockquote>
+  <p class="style2"><u><em>Evil ARP </em></u></p>
+  <table width="56%"  border="1" align="center" bordercolor="#F8F8F8">
+    <tr>
+      <td bordercolor="#000000"><p class="style2 style5"># scapy.py <br>
+  Welcome to Scapy (0.9.15.1beta) <br>
+&gt;&gt;&gt; srp(Ether(dst=&quot;41:41:41:41:41:41&quot;) / ARP(op = 'who-has', pdst = 'nope')) </p>      </td>
+    </tr>
+  </table>
+  <p class="style2"><u><em></em></u></p>
+</blockquote>
+<blockquote>
+  <p class="style2"><u><em>Evil Ping </em></u></p>
+  <table width="41%"  border="1" align="center" bordercolor="#F8F8F8">
+    <tr>
+      <td bordercolor="#000000"><span class="style7"># scapy.py <br>
+Welcome to Scapy (0.9.15.1beta) <br>
+&gt;&gt;&gt; srp(IP(src='172.128.0.1',dst='192.168.0.2')/ICMP()) </span></td>
+    </tr>
+  </table>
+  <p class="style2"><u><em></em></u></p>
+</blockquote>
+<blockquote>
+  <p class="style2"><em><u>Evil Hw Addr </u></em></p>
+  <table width="75%"  border="1" align="center" bordercolor="#F8F8F8">
+    <tr>
+      <td bordercolor="#000000"><span class="style7"># scapy.py <br>
+Welcome to Scapy (0.9.15.1beta) <br>
+&gt;&gt;&gt; srp(Ether(dst=&quot;FF:FF:FF:FF:FF:FF&quot;,src=&quot;00:01:02:03:04:05&quot;) / ARP(op = 'who-has', pdst = 'nope')) </span></td>
+    </tr>
+  </table>
+  <p class="style2"><u><em></em></u></p>
+</blockquote>
+<p class="style2"><u>J</u><u>e ne me suis pas encore tellement amus&eacute; a trouver des empreintes mais en voici quelques unes: </u></p>
+<p class="style2">- Windows XP: <br>
+  (Evil ARP) R&eacute;ponse: oui. <br>
+  Nombre(s) de paquet(s) envoy&eacute;(s): 1. <br>
+  (Evil Ping) Idem que Evil ARP. <br>
+  (Evil HW Addr) Si promisc r&eacute;ponse &agrave;: - FF:FF:FF:FF:FF:FE <br>
+  - FF:FF:00:00:00:00 </p>
+<p class="style2">- Linux (2.4.27) <br>
+  (Evil ARP) R&eacute;ponse: non. <br>
+  (Evil Ping) R&eacute;ponse: oui. <br>
+  Nombre(s) de paquet(s) envoy&eacute;(s): 3. <br>
+  Intervalle entre chaque paquet: 1 seconde. <br>
+  (Evil HW Addr) Si promisc r&eacute;ponse &agrave;: - FF:FF:FF:FF:FF:FE <br>
+  - FF:FF:00:00:00:00 <br>
+  - FF:00:00:00:00:00 <br>
+  - 01:00:E5:00:00:01 </p>
+<p class="style2">- OpenBSD (3.5) <br>
+  (Evil ARP) R&eacute;ponse: non. <br>
+  (Evil Ping) R&eacute;ponse: oui. <br>
+  Nombre(s) de paquet(s) envoy&eacute;(s): 3. <br>
+  Intervalle entre chaque paquet: 6 secondes. <br>
+  (Evil HW Addr) Si promisc r&eacute;ponse &agrave;: - FF:FF:FF:FF:FF:FE <br>
+  - FF:FF:00:00:00:00 <br>
+  - FF:00:00:00:00:00 <br>
+  - 01:00:E5:00:00:01 </p>
+<p class="style2">Voil&agrave; pour les maigres r&eacute;sultats que j'ai r&eacute;colt&eacute;. On remarquera que les 2 OS OpenBSD et Linux se ressemblent beaucoup. <br>
+</p>
+<p class="style2">&nbsp;</p>
+<p class="style2"><strong><u><a name="5"></a>5) References</u></strong></p>
+<p class="style2">[] induce-arp by concept - arp-based os detection <br>
+  [] D&eacute;tection de sniffers et IDS sur un r&eacute;seau local - Norman Girard <br>
+  [] <a href="http://www.cartel-securite.fr/pbiondi/scapy.html">http://www.cartel-securite.fr/pbiondi/scapy.html</a> <br>
+  [] <a href="http://www.tcpdump.org">tcpdump.org</a> </p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right">&nbsp;</p>
+<p align="right"><em><font size="3" face="Lucida Console">BY ANDRAS</font></em></p>
+<p align="right">Copyright &copy; 2005 ARENHACK - DHS</p>
+<p></p>
+<p align="center"><br>
+  <strong><a href="page3.htm"><u>HAUT DE PAGE</u></a></strong><br>
+</p>
+</body>
+</html>
