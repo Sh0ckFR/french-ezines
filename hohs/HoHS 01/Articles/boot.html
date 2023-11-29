@@ -1,0 +1,79 @@
+<html>
+<head>
+<title></title>
+</head>
+
+<body><font face="courier">
+[BITS 16]<br>
+jmp debut<br><br>
+%include "../index.html"<br><br>
+call init_article<br>
+cmp init_artcle, OK<br>
+jne error<br>
+jmp end<br><br>
+
+<b>===========================<br>
+Cours 1: Sequence de boot =<br>
+===========================<br><br>
+
+1: INTRODUCTION:</b><br>
+
+<p>Cette serie de cours ont pour but premier de montrer le fonctionnement d'un OS (Operating System) en etudiant les phases de sa conception dans (je l'espere) le plus de detail possible. Le but de cette serie d'article etant donc de comprendre le niveau hardware d'un ordinateur qui est souvent oublie dans les publications telles qui celle-ci.<br>
+Pour le premier numero, nous allons voir le processus de demarrage de l'ordinateur, de l'appuis sur le bouton jusqu'au chargement du bootsector (qui va ensuite charger le noyau etc.). Voyez donc ce premier article comme une introduction..</p><br>
+
+<b>2: POST:</b><br><br>
+
+<p>Appuyons sur le bouton "allumer" de l'ordinateur, que voyons nous? Du texte, etrange pour certains ou logique pour d'autre, puis un bip, et enfin notre OS prefere se charge :)<br>
+Pour etre plus precis, nous avons a faire (enfin pas nous, plutot l'ordinateur ;) ) au POST (Power On Self Test). Le POST est une serie de test et d'initialisations qui meneront au chargement du bootsector.</p>
+
+<p>Tout d'abors, on test le processeur (d'ailleur c'est logique, si le pross merde comment on pourrait encore continuer o_O). En general (si on a de la chance) le pross merde pas et on continue (voila pourquoi on doit jamais taper sur son pross, vous avez compris ;) ).</p>
+
+<p>Ensuite, on est content, le pross est fonctionnel, on va alors tester le BIOS (Basic Input Output System), pour cela on verifis que la ROM (Read Only Memory, ou memoire morte) est pas reellement morte.. si la ROM est encore vivante, c'est bon on a acces au BIOS, on recupere donc sa configuration (le petit menu avant les nom en anglais qu'on mettre a YES, NO etc) dans la memoire CMOS (celle qui est maintenu par la petite pile). Les plus malins d'autres vous qui on deja eu la bonne idee d'enlever la pile on pu remarque que leur CMOS avait ete videe (bah ouais, logique) et donc on dus tout reconfigurer a la main (a moins d'avoir garde les parametres par defaut etc., notez que l'enlevage de la pile permet de bypass les demandes de pass ;), mais bon ca, vous etes malins et vous le savez..).</p>
+
+<p>Une fois le BIOS correctement charge et avec les bons parametres, on initialise l'horloge interne (maintenue aussi par la petite pile ;) ) et on la donne au BIOS (c'est pour ca qu'on peut avoir l'heure dans le BIOS).</p>
+
+<p>C'est l'heure (maintenant qu'on a l'heure on peut le dire ;) ) d'initialiser le controleur DMA (Direct Memory Access). Le DMA c'est super, on voit partout ce mots mais personne sais jamais ce que ca veut dire.. Comme j'ecris ce tuto, vous l'aurez devinez, moi je sais ce que c'est et comme de plus je suis gentil je vais vous transmettre mon savoir :) Le DMA permet de gere l'acces direct entre un peripherique quelconque (carte son, controleur disquette etc.) et la memoire (sans passer par le processeur), c'est pratique pour certaines choses pour une question de rapiditee (notez que le DMA peut etre desactive..), neamoins l'acces direct sans passer par le processeur n'est pas toujours possible, sinon le pross servirait a rien, bien vu ;) et comme un pross c'est cher, bah il doit servir a quelquechose :). Vous allez me dire, c'est cool l'acces direct a la memoire, mais ca sert a quoi? Et je vous repondrais: a utilisez une partie de la memoire comme un buffer (memoire tampon).</p>
+
+<p>DMA c'est bien, avec de la memoire, c'est mieu ;) donc maintenant on test la memoire (si y'en a ou pas, si les barettes sont pas mortes etc), d'ailleur au demarrage on peut voir cette sequence (la memoire qui s'affiche (oui je sais, j'ai deja ecris tellement de truc et on en est a peine au debut du demarrage, mais je vous rassure, apres ca ira plus vite ;), dans la meme lancee on verifie aussi la memoire cache :)</p>
+
+<p>On a deja pas mal de choses: un BIOS, l'heure, de la memoire, un pross fonctionnel, des cannaux DMA, mais il nous manque quelquechose.. Bien vu! Des peripheriques! Donc on les initialisent maintenant (c'est quand sur l'ecran on voit la liste des disques, lecteur etc.). On peut aussi voir si les peripheriques (dans le cas de l'IDE) sont maitre, esclave, su quel port IDE etc. Bref si vous vez une erreur ici, c'est surment un periph mal branche ou une configuration maitre/esclave incorrect.</p>
+
+<p>Maintenant on a enfin tout, on repartit alors les IRQ et les canaux DMA entre les differents peripheriques (nous verrons ceci plus en detail dans un cours ulterieur en traitant des interruptions). Le POST s'acheve ici, notez que le processeur fonctionne en mode reel et ne peut qu'acceder a 1Mo de RAM..</p><br>
+
+<b>3: Le chargement du bootsector:</b><br><br>
+
+<p>Le shemas de la memoire (les 1Mo adressables) sont ainsi repartis (pour le moment):<br>
+(je rappel encore une fois que le processeur est en mode reel, l'adressage de la memoire ce fait ainsi: segment:offset , l'adresse effective dans la RAM peut etre obtenue en faisant segment*16+offset. Les adresses seront ecrites en notation hexadecimale (prefice 0x) pour plus de lisibilite.</p>
+
+<p>0x0000:0x0000 -> 0x0000:0x03FF : IVT (Interrupt Vector Table) la talble des interruptions (les int)<br>
+0x0000:0x0400 -> 0x0000:0x04FF : BDA (Bios Data Area)<br>
+0x0000:0x0500 -> 0x0000:0x7BFF : Memoire libre<br>
+0x0000:0x7C00 -> 0x0000:0x7DFF : Emplacement reserve au bootsector (quand il sera copie ici)<br>
+0x0000:0x7E00 -> 0x9999:0xFFFF : Memoire libre<br>
+0xA000:0x0000 -> 0xB000:0xFFFF : Memoire VGA (Memoire Video Texte a partir de 0xB800:0x0000)<br>
+0xC000:0x0000 -> 0xF000:0xFFFF : Bios ROM Memory Area</p>
+
+<p>La suite du demarrage est le chargement du bootsector en 0x0000:0x7C00, pour le charger, la premiere chose a faire est d'en avoir un (le prochain article fera justement l'objet du codage d'un bootsector :) nous reviendrons alors sur ce point). Pour le moment, admettons que nous avons deja un bootsetor (sur disquette, disque dur etc. ca n'alterrera pas l'explication suivante). Le comportement par defaut est de chercher un bootsector sur une disquette, puis sur un cdrom, puis sur le disque dur maitre, et enfin sur le disque dur esclave (s'il en a un). Si un bootsector n'est detecte sur aucun de ces peripheriques, un jolis message d'erreur s'affiche a l'ecran, et on peut plus rien faire.. Bien entendus l'ordre de recherche est parametrable dans le plupart des BIOS.<br>
+Pour chercher un bootsector sur un disque, il faut lire le premier secteur de ce disque (ou se trouve la table des partitions) puis chercher le bootsector au debut de chaque partitions, voila pourquoi il est possible de booter sur une partition au milieu du disque</p>
+
+<p>La question est: comment detecter ce bootsector? La reponse est dans ce paragraphe: :)<br>
+Un disque, quel qu'il soit comporte un MBR (Master Boot Record) qui se trouve tout au debut de celui-ci (tete 0, piste 0, secteur 1), il fait donc 512 octets (taille d'un secteur). Un MBR est compose comme ceci:</p>
+
+<p>0x0000 -> 0x01BD : Programme (le programme du bootsector, ce qui sera execute en 0x0000:0x7C00).<br>
+0x01BE -> 0x01EE : Tables des partitions qui contient les informations concernant les partitions<br>
+0x01FE -> 0x01FF : Signature du MBR, on utilisera 0x55AA</p>
+
+<p>Le MBR est considere comme bootsector si sa signature est 0x55AA, c'est donc cette verification qui a lieu, si cette signature est detectee, le MBR est un bootsector et il est donc charge en 0x0000:0x7C00. Le derniere etape est de faire un jump jusqu'en 0x0000:0x7C00 (ce qui se fait automatiquement), notre bootsector est alors execute :)</p>
+
+<b>4: LA FIN</b><br><br>
+
+<p>Notre bootsector est en voit d'execution et nous avons vu toutes les etapes precedentes, le prochain cours sera pratique et traitera de l'ecriture d'un bootsector avec chargement d'un noyau basique :)</p>
+
+<b>By NecroMagik</b><br><br>
+
+error:<br>
+<a href="../index.html">ret</a><br><br>
+
+end:<br>
+<a href="../index.html">ret</a>
+

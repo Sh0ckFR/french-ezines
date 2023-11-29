@@ -1,0 +1,128 @@
+Keygen de MediaPacker
+~~~~~~~~~~~~~~~~~~~~~
+Dispo: http://www.microdream.com/
+~~~~~~
+Tools: -SoftICE
+~~~~~~ -Tasm 5.0
+
+Intro:
+~~~~~~
+
+MediaPacker est un logiciel pour convertir des pages HTML en executables, c'est plutot facile à keygenner...
+Alors let's go :)
+
+Part1: Serial Fishing:
+~~~~~~~~~~~~~~~~~~~~~
+
+Pas de probléme de ce côté là, on lance Softice, bpx hmemcpy, on s'enregistre avec des infos bidons et on click sur ok. On appuie 1 fois sur F11 & une dizaine de fois sur F12 pour arriver ici:
+
+0177:0049E1C0 8B45F4                  mov eax, dword ptr [ebp-0C]  <<notre nom dans eax
+0177:0049E1C3 50                      push eax <<on sauvegarde eax ds la pile
+0177:0049E1C4 A1708A4A00              mov eax, dword ptr [004A8A70]
+0177:0049E1C9 8B4074                  mov eax, dword ptr [eax+74]
+0177:0049E1CC E84BA9F6FF              call 00408B1C <<edi=31h
+0177:0049E1D1 8BC8                    mov ecx, eax <<eax=ecx=edi=31h
+0177:0049E1D3 BA88E24900              mov edx, 0049E288 <<edx=PALOMITAS p-e une table de caracteres (pr +tard ;)
+0177:0049E1D8 58                      pop eax <<on ressort notre nom de la pile
+0177:0049E1D9 E872010000              call 0049E350 <<algo de generation du serial
+0177:0049E1DE 8B45F8                  mov eax, dword ptr [ebp-08] <<serial generé
+0177:0049E1E1 B90F000000              mov ecx, 0000000F
+0177:0049E1E6 33D2                    xor edx, edx
+0177:0049E1E8 E8BB5EF6FF              call 004040A8 << on fé en sort ke le serial soit =< 14
+0177:0049E1ED 8B45FC                  mov eax, dword ptr [ebp-04] <<notre serial dans eax
+0177:0049E1F0 50                      push eax <<ds la pile
+
+Donc pr Kahel on obtient 312CCC7991B0.
+
+Part2: Keygen:
+~~~~~~~~~~~~~
+
+Bah là aussi c'est du vite fait... l'algo est assez simple donc aprés avoir executé le call en 0049E1D9 on trace un peu pour arriver là:
+
+0177:0049E3EA 8B45FC                  mov eax, dword ptr [ebp-04] <<Nom
+0177:0049E3ED 8B55EC                  mov edx, dword ptr [ebp-14] <<1
+0177:0049E3F0 0FB64410FF              movzx eax, byte ptr [eax+edx-01] <<début de la boucle
+0177:0049E3F5 03C7                    add eax, edi << eax=eax+edi
+0177:0049E3F7 B9FF000000              mov ecx, 000000FF
+0177:0049E3FC 99                      cdq
+0177:0049E3FD F7F9                    idiv ecx <<eax=eax/ecx, edx=ancienne valeur de eax
+0177:0049E3FF 8BDA                    mov ebx, edx << ebx=edx
+0177:0049E401 3B75F4                  cmp esi, dword ptr [ebp-0C]
+0177:0049E404 7D03                    jge 0049E409
+0177:0049E406 46                      inc esi
+0177:0049E407 EB05                    jmp 0049E40E
+0177:0049E409 BE01000000              mov esi, 00000001
+0177:0049E40E 8B45F8                  mov eax, dword ptr [ebp-08] <<PALOMITAS
+0177:0049E411 0FB64430FF              movzx eax, byte ptr [eax+esi-01] <<début de la 2nde boucle
+0177:0049E416 33D8                    xor ebx, eax <<ebx=ebx(valeur de la 1ere boucle)xor eax
+0177:0049E418 8D45D8                  lea eax, dword ptr [ebp-28]
+0177:0049E41B 50                      push eax
+0177:0049E41C 895DDC                  mov dword ptr [ebp-24], ebx <<met la valeur d'ebx ds un buffer
+0177:0049E41F C645E000                mov [ebp-20], 00
+0177:0049E423 8D55DC                  lea edx, dword ptr [ebp-24]
+0177:0049E426 33C9                    xor ecx, ecx
+0177:0049E428 B874E54900              mov eax, 0049E574 <<eax=%1.2X (pour _wsprintfA) met les valeurs les une à la suite des autres
+0177:0049E42D E85AB6F6FF              call 00409A8C <<mis en place du serial
+0177:0049E432 8B55D8                  mov edx, dword ptr [ebp-28]
+0177:0049E435 8D45F0                  lea eax, dword ptr [ebp-10]
+0177:0049E438 E86F5AF6FF              call 00403EAC
+0177:0049E43D 8BFB                    mov edi, ebx << met la valeur d'ebx dans edi
+0177:0049E43F FF45EC                  inc [ebp-14] << on incremente
+0177:0049E442 FF4DE4                  dec [ebp-1C] << on decremente
+0177:0049E445 75A3                    jne 0049E3EA << c fini (ebp-1C=0)? si non on retourne au début de la boucle
+0177:0049E447 E9C3000000              jmp 0049E50F << sinon la boucle est finie on se casse
+
+Pas besoin de longues explications... En gros l'algo prend la valeur des lettre de notre nom, leur fait subir un xor avec la valeur des lettres de la table de caractères, prend ensuite cette valeur et la met à la suite des autres. On remarque que la compagny n'a aucune importance...
+Donc on peut faire un copier/coller de la routine pour faire un bo keygen en ASM :):
+
+key proc, Nom :dWord, Taille :Dword 
+uses edi, ebx
+	mov edx, 31h ;<< au début edi=edx=31h ;)
+	push edx
+	push offset conversion ;%2X
+	push offset temp2
+	call _wsprintfA ;<< donc le serial va tjrs commencer par 31
+	xor edx, edx
+	xor ebx, ebx 
+        mov esi, Taille     
+	xor edx,edx
+	mov edi, 31h
+	xor ecx, ecx
+	mov ebx, Nom
+	inc ecx
+NextCar1:
+	mov ebx, Nom
+	movzx eax, byte ptr [ebx+ecx-01]    ;<<---|
+	add eax,edi				; |
+	mov edi, 0FFh				; |
+	cdq					; | On recopie betement l'algo
+	idiv edi				; | qu'on a 'trouvé' ds le prog
+	mov ebx, edx				; |
+	movzx eax, byte ptr [blah+ecx-01]      ;  |
+	xor ebx, eax                       ; <<---|
+	mov edx, ebx			   ; on met le resultat de l'algo ds edx
+	mov edi, ecx			   ; ecx va etre modifié lors des call donc on le sauvegarde
+	push edx
+	push offset conversion ;%2X
+	push offset temp1
+	call _wsprintfA ;pr convertir afin que les valeurs soit en ASCII
+	push offset temp1
+        push offset temp2
+	call lstrcatA ;et ceci pour les mettres les unes à la suite des autres :)
+	mov ecx, edi                       ; on restaure ecx (le compteur)
+	mov edi, ebx			   ; on met le resultat de l'algo ds edi
+	inc ecx				   ; on incremente notre compteur
+	dec esi				   ; on decremente la taille de notre nom
+	jne NextCar1			   ; si esi!=0 on refait un tour
+	push offset temp2 ;On convertit les caractères du serial
+        call CharUpperA   ;En majuscule (juste pr faire + joli :)
+	cmp ecx, 7                    ;<<-----
+	jle @fin                      ;      |---la taille du serial doit être inférieur ou égale à 14 ;)
+	mov byte ptr [temp2+16-1], 00 ;<<-----
+@fin:
+ret
+key EndP
+
+Et voilà, fini! :)
+Kahel
+kahel@citeweb.net

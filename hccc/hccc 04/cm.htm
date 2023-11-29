@@ -1,0 +1,178 @@
+<html>
+<head>
+<title>Solution du crackme Hccc#2</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<font size=5 color=#ffff00>
+Une solution pour<br>
+Le CrackMe de Tipiax<br>
+Dans le Zip Hccc2#<br>
+(par Morgatte)<br>
+</center> </font> <font size=3 color=#ffffff> <br> <br>
+<pre>
+
+Je lance le crack-me et j’entre un serial quelconque. Il me renvoie le message suivant :
+‘Votre Sérial est faut, veuillez le retaper !’
+
+Je cherche un bout de cette phrase dans les string data ref : je voit rien !
+Je passe à : - Search  Find Text : Votre
+
+Et je trouve ceci :
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:00401441(C)						<--- Adresse du saut qui nous
+                                                             à amené ici
+|							
+:00401413 6A00			push 00000000		<--- Définit le type de MessageBox
+                                                        (ici ce sera une avec uniquement 1
+                                                        bouton OK car la valeur est 0,
+* Possible StringData Ref from Data Obj ->"crackme"	pas de bouton Réessayer ou de
+                                                        signe X ? ! i)
+                                  |					
+:00401415 68DD234300		push 004323DD		<--- Dit à quelle adresse est placé
+                                                        le titre qui ici est
+							‘crackme’
+* Possible StringData Ref from Data Obj ->"Votre s"	
+                                  |					
+:0040141A 68B0234300		push 004323B0		<--- Dit à quelle adresse est placé
+                                                        le contenu
+:0040141F 6A00			push 00000000		‘Votre sérial est faux, veuillez le
+                                                        retaper !’
+							
+* Reference To: USER32.MessageBoxA, Ord:0000h		
+                                  |					
+:00401421 E81C030300		Call 00431742		<--- Voilà les 4 push permettant de
+                                                        déclarer une MessageBox étant déclaré,
+                                                        on appelle l’ouverture
+							De la MessageBoxA (la mauvaise)
+
+
+
+
+Il nous faut donc revenir au saut qui nous a amené vers cette mauvaise boite de message.
+C’est donc le saut qui se trouve à l’adresse 0041441 (car c’est lui la référence en haut)
+
+
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:00401411(U)
+|
+:0040143D 837DF400		cmp dword ptr [ebp-0C], 00000000
+:00401441 74D0			je 00401413
+:00401443 837DF401		cmp dword ptr [ebp-0C], 00000001
+:00401447 74DF			je 00401428
+
+Ce saut se fait donc puisqu’on va vers la mauvaise boite de message.
+On pourait l’effacer par 2Nop mais le second saut avec une valeur contraire
+de [ebp-0C] me fait penser qu’il y a une deuxième vérification. Puisque le premier saute pour
+une valeur de 0, alors sûrement que le second ne saute pas puisque sa valeur est 1.
+La solution c’est donc de mettre 2Nop pour le premier saut et forcer le second avec un Jmp.
+
+Ou mieux !,  inverser la valeur de [ebp-0C] qui est de 0 pour la mauvaise boite de message.
+
+On avait ça :
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:00401411(U)
+|
+:0040143D 837DF400		cmp dword ptr [ebp-0C], 00000000
+:00401441 74D0			je 00401413
+:00401443 837DF401		cmp dword ptr [ebp-0C], 00000001
+:00401447 74DF			je 00401428
+
+Je remplace par ça :
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:00401411(U)
+|
+:0040143D 837DF400		cmp dword ptr [ebp-0C], 00000001
+:00401441 74D0			je 00401413
+:00401443 837DF401		cmp dword ptr [ebp-0C], 00000000
+:00401447 74DF			je 00401428
+
+Et là, on est effectivement renvoyer vers la bonne boite de message ! ! !
+
+
+
+
+
+
+Mais je pense qu’il y a encore beaucoup plus simple :
+
+Puisque la finalité de ce crack-me est l’ouverture d’une boite de message avec
+le bon message, on peut au lieu de forcer le logiciel à aller vers la bonne MessageBox, le
+laisser aller comme tout à l’heure vers la mauvaise MessageBox mais remplir cette
+MessageBox avec le bon texte.
+
+
+
+Au niveau de la mauvaise MessageBox on avait ça :(je change de page)
+
+----------------------------------------------------------------------------------------------
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:00401441(C)						<--- Adresse du saut qui nous à amené
+                                                             ici
+|							
+:00401413 6A00			push 00000000		<--- Définit le type de MessageBox
+                                                        (ici ce sera une avec uniquement
+                                                        1 bouton OK car la valeur est 0,
+* Possible StringData Ref from Data Obj ->"crackme"	pas de bouton Réessayer ou de
+                                                        signe X ? ! i)
+                                  |					
+:00401415 68DD234300		push 004323DD		<--- Dit à quelle adresse est placé le
+                                                        titre ici qui est
+							‘crackme’
+* Possible StringData Ref from Data Obj ->"Votre s"	
+                                  |					
+:0040141A 68B0234300		push 004323B0		<--- Dit à quelle adresse est placé le
+                                                        contenu
+:0040141F 6A00			push 00000000		‘Votre sérial est faux, veuillez le
+                                                        retaper !’
+							
+* Reference To: USER32.MessageBoxA, Ord:0000h		
+                                  |					
+:00401421 E81C030300		Call 00431742		<--- Voilà les 4 push permettant de
+                                                        déclarer une 
+:0040143B EB0C		jmp 00401449		        MessageBox étant déclaré, on appelle
+                                                        l’ouverture
+							De la MessageBoxA (la mauvaise)
+
+
+
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:00401447(C)
+|
+:00401428 6A00			 push 00000000		<--- Toujours une MessageBox avec
+                                                        1 seul bouton
+							‘OK’
+* Possible StringData Ref from Data Obj ->"crackme"	
+                                  |					
+:0040142A 6811244300		 push 00432411		<--- Dit à quelle adresse est placé
+                                                        le titre (ici c’est donc le titre de
+                                                        la bonne Boite)
+
+* Possible StringData Ref from Data Obj ->"***!!! Bien jou"	
+                                  |					
+:0040142F 68E5234300		push 004323E5		<--- Dit à quelle adresse est placé
+                                                        le contenu de la 
+:00401434 6A00			push 00000000		bonne boite.
+							
+* Reference To: USER32.MessageBoxA, Ord:0000h		
+                                  |					
+:00401436 E807030300		Call 00431742		<--- appelle pour l’ouverture de
+                                                        la MessageBox
+:0040143B EB0C		jmp 00401449		        (Avec les bon messages puisqu’ils
+                                                        viennent justes d’être déclarés avant
+                                                        l’appel de la MessageBox)
+
+
+Bon ben voilà, il n’y a qu’à :
+à la ligne 00401415 remplacer le Push 004323DD par Push 00432411 pour accéder au bon titre.
+Et à la ligne 0040141A replacer le Push 004323B0 Par le Push 004323E5 pour accèder au bon
+contenu. (Et en faite, les deux titres étant les mêmes, il n’y a que le deuxième Push à
+changer ! ! !)
+
+J’ai essayé. Ça marche.
+
+
+
+Ma vision de la solution du Crack-Me de Tipiax (Par Morgatte)
+</pre></font></body></html>

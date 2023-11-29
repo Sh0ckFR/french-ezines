@@ -1,0 +1,195 @@
+<html>
+<head>
+<title>EMULATEUR : le piège à lamer :)</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{{{{{{{{{{{{{  EMULATEUR NETBUS  }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center> </font> </pre> <font size=3 color=#ffffff>
+<br>
+Une petite explication avant de commencer. Qu'est ce que ce ça un émulateur,
+hein ? non, vous pourrez pas jouer à la playstation2 avec, mouhahhaha :)
+En fait le but est de faire croire qu'on est infecté par un troyan, netbus ici
+et de pouvoir faire quelque trucs sympa sur la machine du Hacker (Hacker t sur ?)
+<br>
+Bref pour résumer un émulateur de troyan c'est: "tel est pris qui croyait prendre".<br>
+Comment ça marche ? C'est très simple, ou ouvre une connection sur le port 12345 qui est
+celui de netbus par défaut. Ensuite on attend qu'un client connecte. Le lamer se connecte,
+et le client NetBus attend la signature du troyan. On lui la donne en envoyant le buffer
+"NetBus 1.70  \r\n". On peut faire croire qu'il y a un mot de passe en rajoutant un "x"
+pour savoir tout ça suffit de se mettre le vrai server et de dialoguer avec ses ports.<br>
+Bon et après ? ... rien ! Bah oui c'est quasiment fini, la seule chose qu'on peut faire
+c'est envoyer des boites de messages au gars et modifier tout ce qui se passe. Par exemple
+libre à vous d'envoyer une boite de message "TA gueule lamer" quand il essaie de vous ouvrir
+le lecteur avec la commande eject;1.<br><br>
+
+Bref, aucun intérêt mais c'est fun et on peut enculer des blaireaux :)<br><br>
+
+Aller on passe au source:<br>
+<font size=3 color=#FF0000>
+<pre>
+//----------------------------------------------------------------------
+// NetBusEmU par TiPiaX - Hccc
+//----------------------------------------------------------------------
+
+#include &lt;windows.h&gt;
+#include &lt;stdio.h&gt;
+#include "resource.h"
+#include &lt;winsock.h&gt;   //pour les sockets
+
+
+/**** PROTOTYPES ****/
+
+LRESULT CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+int troyan(void);
+
+/**** DATAS ****/
+
+HINSTANCE  hInst   = NULL;   // Variable pour contenir l'instance de notre programme
+HWND	   hwnd    = NULL;
+
+char buf[100];
+char end[]="\r\n";
+char mymsg[100];
+char msgbuffer[130];
+
+char hello[]="NetBus 1.70  \r\n";  // signature de Netbus 1.7
+
+int len = sizeof(SOCKADDR_IN);
+int nombre = 0;
+int recu = 1;
+char buffer[30];
+
+SOCKET   s;
+SOCKET   sok;
+WSADATA  wsaData;
+WORD     verreq;
+
+struct   sockaddr_in sin;
+struct   sockaddr_in info;
+
+
+/**** ENTRY POINT ****/
+
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInst,
+				   LPSTR lpCmdLine, int nCmdShow)
+{
+	troyan();
+	hInst = hInstance;
+    DialogBox(hInst, MAKEINTRESOURCE(IDD_DIALOG), NULL, ( DLGPROC ) DlgProc);
+    return (0);
+}
+
+
+/**** !§ GESTIONNAIRE DE LA DIALOGBOX §! ****/
+
+LRESULT CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)  
+{
+
+	switch(msg)
+	{
+	case WM_COMMAND: 
+		{                                                       
+			switch(LOWORD(wParam))
+			{
+				case IDC_SENDMSG:
+					{
+						GetDlgItemText(hwnd,IDC_MESSAGE,mymsg,100);
+						sprintf(msgbuffer,"Message;%s%s", mymsg, end);
+						send(sok,msgbuffer,strlen(msgbuffer),0);
+						break;
+					}
+
+					case IDC_SENDA:
+					{
+						GetDlgItemText(hwnd,IDC_ANSWER,mymsg,100);
+						sprintf(msgbuffer,"Answer;Person answered:%s%s", mymsg, end);
+						send(sok,msgbuffer,strlen(msgbuffer),0);
+						break;
+					}
+
+					case IDC_ATTENDRE:
+					{
+							recu = recv(sok,buf,sizeof(buf),0);
+							if (recu==0) {MessageBox(hwnd,"Deconnection du client","NetBusEmU",MB_OK);ExitProcess(0);}
+							if (recu>1) {SetDlgItemText(hwnd,IDC_DATAS,buf);goto theend;}
+					theend:
+					break;
+					}
+
+
+				case WM_DESTROY:
+					{
+						EndDialog(hwnd,FALSE);
+						break;
+					}
+
+			}
+			break;
+		}
+
+
+		default: 	
+		return FALSE;
+     }
+     return TRUE; 
+}
+
+
+/**** !§ TROYAN §! ****/
+
+int troyan(void)
+{
+
+	//initialisation du système de sockets:
+	verreq=MAKEWORD(2,2);
+	WSAStartup(verreq,&wsaData);
+
+	//remplissage de la structure sockaddr_in
+	sin.sin_family = PF_INET;
+	sin.sin_addr.s_addr = NULL;
+	sin.sin_port = htons(12345);
+
+	//création d'un socket:
+	s = socket(PF_INET, SOCK_STREAM, 0);
+
+	//bind le socket
+	if (bind (s,(struct sockaddr *)&sin,len)==SOCKET_ERROR)goto error;
+
+	//socket en ecoute de connection
+	if (listen(s,1)==SOCKET_ERROR)
+		goto error;
+		MessageBox(NULL,"Système en attente de connection","NetBusEmU",MB_OK);
+
+	//accepte la connection ?
+	sok=accept(s,(struct sockaddr *)&info,&len);
+	if (sok == INVALID_SOCKET)goto error;
+
+	send(sok,hello,strlen(hello),0);
+
+	goto fin;
+
+error:
+
+	nombre=WSAGetLastError();
+	sprintf(buffer,"%d",nombre);
+	MessageBox(NULL,buffer,"ERROR : WSAGetLastError :",MB_OK);
+	ExitProcess(0);
+
+fin:
+	return (0);
+}
+
+</font></pre>
+
+<font size=3 color=#ffff00><br><br>
+<center>
+<pre>TiPiaX/VDS</pre>
+<br>
+</font></body></html>
+

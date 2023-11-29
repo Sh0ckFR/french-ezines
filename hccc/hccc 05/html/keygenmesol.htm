@@ -1,0 +1,286 @@
+<html>
+<head>
+<title>Hacking - Exploits</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{{{{{{{{{{{{  Solution du KeygenMe }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center> </font> </pre> <font size=3 color=#ffffff>
+<br>
+
+On va donc se faire le KeygneMe de moi!<br>
+(eh oui je crack mes progs :)<br><br>
+
+Tout d'abord on démarre le proggy et on rentre:<br><br>
+<font size=3 color=#0000FF>
+<pre>
+nom:     TiPiaX
+serial :  1911 (vieille habitude, j'aurais pas du lire les tuts de Bama :)
+</font></pre>
+ensuite on fait CTRL+D pour faire apparaître Softice et vous tappez votre
+config comme d'hab :
+<font size=3 color=#0000FF>
+<pre>
+data
+code on
+</font></pre>
+
+puis on place un :
+<font size=3 color=#FF0000>
+<pre>
+bpx GetDlgItemTextA
+</font></pre>
+C'est un breakpoint sur l'API qui permet de loader les chaînes en mémoire.
+Puis CTRL+D pour quitter.
+Vous faites "OK" et là (on s'en doute pas du tout) SOFTice break ! sisi !
+On fait F12 pour revenir dans le prog (car là on est dans les APIs)
+et on arrive ici: (je vous commente un peu le truc).
+Je vous balance tout:
+<font size=3 color=#FF0000>
+<pre>
+légende : appel d'API en rouge.</font><font color =#00FF00>
+                 endroits où vont les jumps en vert.</font><font color =#0000FF>
+                 ce qui nous intéresse en bleu.
+</font><font color =#FFFFFF>
+------------------------------------------------------------------------------</font><font color =#FF0000>
+PUSH 32                                 //
+PUSH 004056D4                           // cet argument correspond au buffer
+PUSH 000003E8                           // qui recevra le nom lors de l'appel
+PUSH EDI                                // de l'API.</font><font color =#FFFFFF>
+MOV  DWORD PTR [00405708],00000000      // On met quelques variables à 0.
+MOV  DWORD PTR [0040570C],00000000      //
+MOV  DWORD PTR [004056D0],00000000      //</font><font color =#FF0000>
+CALL [USER32!GetDlgItemTextA]           // Appel de GetDlgItemTextA pour chopper le nom
+</font><font color =#FFFFFF>
+MOV  AL,[004056D4]                      // met la premiere lettre du nom dans al
+TEST AL,AL                              // teste si la lettre est un 0</font><font color =#00FF00>
+JNZ  004010AA                           // saute sur (1) si oui    *voir ps(1)
+</font><font color =#FF0000>
+PUSH 00                                 //
+PUSH 00405250                           // Sinon on appelle une boite de message
+PUSH 00405234                           // "entrez un nom".
+PUSH EDI                                //
+CALL [USER32!MessageBoxA]               //</font><font color =#FFFFFF>
+MOV  EAX,00000001                       //
+POP  EDI                                //
+RET  0010                               //</font><font color =#00FF00>
+
+(1):</font><font color =#FF0000>
+PUSH ESI
+PUSH 00
+PUSH 00
+PUSH 000003E9
+PUSH EDI
+CALL [USER32!GetDlgItemInt]             // Appel de GetDlgItemInt pour chopper le serial entré
+</font><font color =#0000FF>
+MOV Cl,[004056D4]
+MOV ESI,[0040570C]
+XOR EDX,EDX
+MOV [00405710],EAX                      // serial en 00405710
+TEST CL,CL
+MOV [004056D0],EDX
+JZ 004010F4
+
+//!!!la boucle interessante!!! // détaillé après:)</font><font color =#00FF00>
+(2):</font><font color =#0000FF>
+MOVSX ECX,CL
+ADD ESI,ECX
+INC EDX
+MOV [00405708],ECX
+MOV CL,[EDX+004056D4]
+TEST CL,CL</font><font color =#00FF00>
+JNZ 0040108D                //saute sur (2)
+</font><font color =#0000FF>
+MOV 004056D0,EDX
+MOV ECX,ESI
+SHL ECX,05
+ADD ECX,ESI
+POP ESI
+CMP EAX,ECX
+MOV [0040570C],ECX
+PUSH 00
+JNZ 00401122
+</font><font color =#FF0000>
+//la boite de message "bravo"
+
+PUSH 0040522C
+PUSh 0040520C
+PUSH EDI
+CALL [USER32!MessageBoxA]
+MOV EAX,00000001
+POP EDI
+RET 0010
+
+//la boite de message Mauvais serial
+
+PUSH 00405205
+PUSH 004051E8
+PUSH EDI
+CALL [USER32!MessageBoxA]
+MOV EAX,00000001
+POP EDI
+RET 0010
+</font><font color =#FFFFFF>
+------------------------------------------------------------------------------
+</font></pre>
+ps(1) : Le prog regarde si la premiere lettre est 0 car cela signifie qu'aucun nom n'a été entré. Dans ce cas
+il envoie une boite de message.
+
+La on a vu une vue d'ensemble qu'on va résumer avant de passer à la suite:
+
+tout d'abord le prog appelle GetDlgItemTextA pour chopper notre nom qu'il met en <font color =#0000FF>004056D4</font>
+Il teste ensuite si on a bien entré un nom.
+Puis il prend le numero de serie qu'il place en <font color =#0000FF>00405710</font>
+Après il génère le bon serial et le compare à celui qu'on avait entré puis il envoie les boites de messages:
+"Bravo, bon serial" ou "mauvais serial"
+
+étudions donc la procédure qui génère le serial (c'était le bleu :)
+<font color =#FF0000>rouge = important.</font>
+<pre>
+<font color =#FFFFFF>
+------------------------------------------------------------------------------
+</font><font color =#FF0000>
+MOV Cl,[004056D4]                       // premiere lettre du nom dans Cl</font><font color =#FFFFFF>
+MOV ESI,[0040570C]                      // on met 0040570C à 0 (car ESI = 0 ici)
+XOR EDX,EDX                             // met EDX à 0</font><font color =#FF0000>
+MOV [00405710],EAX                      // serial en 00405710</font><font color =#FFFFFF>
+TEST CL,CL                              // teste si la premiere lettre est un 0
+MOV [004056D0],EDX                      // on s'en fout...
+JZ 004010F4
+
+//!!!la boucle interessante!!!</font><font color =#00FF00>
+(2):</font><font color =#FFFFFF>
+MOVSX ECX,CL                            // Met CL dans ECX (ça fait rien du tout, lol :)</font><font color =#FF0000>
+ADD ESI,ECX                             // on ajoute la valeur de la lettre dans ESI
+INC EDX                                 // EDX = EDX +1</font><font color =#FFFFFF>
+MOV [00405708],ECX                      // Met la lettre dans 00405708</font><font color =#FF0000>
+MOV CL,[EDX+004056D4]                   // TRES IMPORTANT : Cl vaut maintenant la valeur
+                                        // du début du nom +1. En fait CL pointe sur
+                                        // la prochaine lettre.
+TEST CL,CL                              // si il y a plus de lettre</font><font color =#00FF00>
+JNZ 0040108D                            // on part sauter sur (2)
+</font><font color =#FFFFFF>
+------------------------------------------------------------------------------
+</font></pre>
+Pour résumer:<br>
+le prog prend donc le nom lettre par lettre et les additionne dans ESI. Donc ESI = lettre1 + lettre2 ...<br>
+Car il faut savoir que toute lettre a une valeur sous forme de nombre entier.<br>
+On pourrait penser que c'est fini, mais il reste encore ceci à ne pas oublier (c'est le plus dur :)<br>
+<pre>
+<font color =#FFFFFF>
+------------------------------------------------------------------------------
+
+MOV 004056D0,EDX                       // on s'en tape :)</font><font color =#0000FF>
+MOV ECX,ESI                            // on met la valeur de notre addition dans ECX
+SHL ECX,05                             // on décalle ECX de 5 bits vers la gauche.
+ADD ECX,ESI                            // et on ajoute L'addition (ECX) au résultat.
+POP ESI
+CMP EAX,ECX                            // compare le bon et le mauvais serial.
+MOV [0040570C],ECX
+PUSH 00
+JNZ 00401122
+</font><font color =#FFFFFF>
+------------------------------------------------------------------------------
+</font></pre>
+
+un décalage de bits à gauche revient à multiplier le nombre par une puissance de 2<br>
+ SHL 5 , 20 = décalage de 20 bits sur le nombre 5.<br>
+ce qui équivaut à 5 * 2^20 .<br><br>
+
+Donc dans notre cas on a SHL ECX,05 ce qui correspond à : ECX = ECX * 5^2<br>
+soit : ECX = ECX * 32<br>
+Si on regarde la suite du source on voit que l'on ajoute encore ESI au résultat. Or ESI = ECX<br>
+donc en réalité le prog fait : ECX = ECX * 33<br><br>
+
+Si vous avez tout compris : le serial vaut :<br>
+(somme des lettres) *33<br>
+Eh oui tout ce code juste pour ça ! :)<br><br>
+
+Vous n'êtes pas obligé de comprendre comment marche SHL c'est juste mieux. Mais rien ne vous empêche<br>
+de faire des décalages de bits dans votre Keygen pour trouver le serial.<br>
+Maintenant il faut passer au coding de notre keygen. Si vous la programmez en asm, il suffit de faire
+un copier coller du prog (enfin presque quoi). C'est pourquoi on va la faire en c pour ce qui savent pas
+comment ça ce boutique. On va en faire 2 : une avec les decalages de bits et l'autre sans:<br><br>
+
+<pre><font color=#FFFF00>
+Votre KeyGen:
+</font></pre>
+On voit la première sans les decalages de bits:
+<pre><font color=#FF0000>
+------------------------------------------------------------------------------
+//les variables nécessaires:
+
+int nombre = 0;
+int total = 0;
+int i = 0;
+int serial;
+char nom[50];
+
+
+GetDlgItemText(hwnd,IDC_NOM,nom,50);
+
+if (nom[0] == 0) //pas de nom !!
+{
+	MessageBox(hwnd,"Vous devez entrer un nom","KeyGeN",MB_OK);
+	break;
+}
+
+for (i=0; nom[i] != 0; i++)
+{
+	nombre = (char) nom[i];
+	total = total + nombre;
+}
+
+total = total * 33;
+SetDlgItemInt(hwnd,IDC_SERIAL,total,NULL);
+
+------------------------------------------------------------------------------
+</font></pre>
+Vous rajoutez une belle boite de dialogue à tout ça. Comme certains savent pas le faire je joint le source
+complet :) Voyons maintenant la même chose avec les décalages de bits. L'interêt est qu'il n'y a pas besoin de
+réfléchir, c'est du copier coller traduit en c :)
+<pre><font color=#FF0000>
+------------------------------------------------------------------------------
+//les variables nécessaires:
+
+int nombre = 0;
+int total = 0;
+int i = 0;
+int serial;
+char nom[50];
+
+
+GetDlgItemText(hwnd,IDC_NOM,nom,50);
+
+if (nom[0] == 0) //pas de nom !!
+{
+	MessageBox(hwnd,"Vous devez entrer un nom","KeyGeN",MB_OK);
+	break;
+}
+
+for (i=0; nom[i] != 0; i++)
+{
+	nombre = (char) nom[i];
+	total = total + nombre;
+}
+
+total = (total << 5) + total;
+SetDlgItemInt(hwnd,IDC_SERIAL,total,NULL);
+
+------------------------------------------------------------------------------
+</font></pre>
+Et voila ce tut s'achève ici. J'espère qu'il vous servira pour Keygener de vrai progs.<br><br>
+
+Bonne Chance - D'autres plus difficiles devraient suivre...
+
+
+<font size=3 color=#ffff00><br><br>
+<center>
+<pre>TiPiaX/VDS</pre>
+<br>
+</font></body></html>

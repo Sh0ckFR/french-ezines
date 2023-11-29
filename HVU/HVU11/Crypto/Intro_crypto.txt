@@ -1,0 +1,376 @@
+*************************************************************** 
+** Introduction à l'analyse d'un signal et à la cryptophonie **
+************************** CrIbLe/CRCF ************************
+
+Plan :
+------
+1) Intro
+2) Analogique vs numérique ; codage vs cryptage
+3) Un peu de théorie
+4) Systèmes de cryptage fréquentiel
+5) Système de cryptage temporel : le TDM
+
+
+1) Introduction :
+
+  Salut les p'tits clous... Bon parlons peu mais parlons bien, cette article
+va traiter de cryptophonie, cad que parmi les différentes méthodes qui
+existent pour éviter que les petits curieux que nous sommes n'aillent
+écouter des transmissions radios qu'ils ne devraient logiquement pas
+entendre, nous allons étudier celles qui agissent sur les infos qui
+passent effectivement dans l'air. Il en existe d'autre (comme le trunking)
+mais là, c'est plus de la crypto.
+
+on va tout d'abord commencer par un peu de terminologie...
+
+
+2) analogique vs numérique ; codage vs cryptage :
+
+Il y a plusieurs manières de transmettre de l'audio par radio. Soit on
+utilise une modulation quelconque sur le signal audio brut (comme de l'AM,
+FM, BLU), c'est donc des communications qui sont *analogiques*, soit on
+numérise le signal, i.e. on le transforme en nombres, et c'est ensuite
+seulement que ces nombres sont transmis par radio, dans ce cas on parle de
+transmissions *numériques*. Les transmissions numériques ne sont donc pas
+directement compréhensibles à l'oreille si vous les écoutez avec votre
+scanner, mais ça n'est pas du cryptage pour autant (plutôt un codage).
+L'avantage du numérique c'est que, contrairement à ce que les gens croient,
+le son n'est pas meilleur (il est souvent moins bon d'ailleurs, alors "le
+son
+digital haute résolution" c'est prendre les gens pour des cons), mais on
+peut contrôler parfaitement la dégradation du signal, celle ci en effet est
+due à l'acte de numérisation même, la transmission va apporter des
+dégradations que le récepteur saura compenser. Donc si vous numérisez avec
+une fréquence d'échantillonnage suffisante, il n'y aura pas de blèmes et
+vous
+êtes sure que le son à l'arrivée ne sera pas plus abîmé qu'au départ (disons
+que vous êtes sure qu'il sera aussi mauvais qu'au départ...).
+Le fidèle lecteur de fr.rec.radio que je suis a remarqué que certaines
+personnes ont des idées fausses, ou en tout cas pas bien claires, sur la
+différence entre codage et cryptage. Par codage, on entend toute
+modification
+volontaire d'un message, dans un but autre que celui de le rendre inaudible
+par un tiers. Le morse, par exemple, c'est un codage en ce sens qu'on
+comprend rien (à moins d'être un OM confirmé) lorsqu'on l'entend à la radio,
+et pourtant, personne ne dira qu'il s'agit d'un cryptage, i.e. qu'il y a
+volonté délibérée de rendre l'information incompréhensible (d'ailleurs, on
+parle bien du *code* morse). Le cryptage, au contraire a pour but principal
+de
+rendre inutile l'interception. Bon, la distinction étant faite, parlons
+maintenant des téléphones cellulaires numériques : les G.S.M. Leur cas est
+un
+peu particulier, c'est pourquoi j'ai décidé de leur consacrer un article à
+part que vous aurez la joie de lire un jour si je l'écris. Néanmoins soyez
+dès à présent certain d'une chose. Les gens qui disent que les transmissions
+GSM sont vachements sures et tout et tout, se foutent ouvertement de votre
+gueule. La sécurité des *communications GSM est totalement nulle*, n'importe
+qui est capable d'écouter vos conversations, et il n'est pas besoin d'avoir
+du matos de pro à 150000 balles et vendu uniquement aux services secrets.
+Pour écouter un GSM, rien de tel qu'un autre GSM (héhéhéhéhé :->).
+Moralité : Ne passez aucune info un peu délicate via votre portable chérie
+croyant que c'est vachement sure, parce que *ça l'est pas du tout* (oui, je
+sais, je viens de le dire 3 lignes plus haut, mais je me répète parce que je
+suis pas sure à 100% que vous avez intégré l'info) encore moins à mon avis
+que
+le classique téléphone filaire. Pour effectuer des écoutes radio, c'est
+encore plus simple qu'avant, même plus besoin de se déplacer pour pirater la
+ligne, y'a k'a allumer la radio ! Tiens, d'ailleurs, vous savez tous que le
+plateau d'Albion (mais oui, les missiles nucléaires) a été désarmé. Et bien
+devinez qui a récupérez‚ le site (bon, je vous aide un peu, c'est en 4
+lettres,
+ça commence par DG et ça fini par SE). Et devinez pour y installer koi :)
+Par contre, contrairement au GSM, la norme TETRA prévoit, elle, la
+possibilité
+du chiffrage des communications (pas fous les policiers).
+En tout cas, vous comprenez maintenant pourquoi l'état voit d'un si bon oeil
+le développement des téléphones portables. Tiens, histoire d'enfoncer encore
+un peu le clou, vous savez qu'aux USA, on trouve dans n'importe quelle revue
+les fréquences du FBI ou de la CIA. Tous ces gens là chiffrent leur coms et
+libre à vous d'essayer de les écouter. Et bien, là bas, les scanners sont
+modifiés pour ne pas pouvoir couvrir les bandes des téléphones cellulaires.
+Si
+c'était si sure que ça, cette mesure serait stupide. En partant sur la
+simple
+hypothèse que les ricains sont pas totalement idiots, quelle est la moralité
+de l'histoire ?           
+
+
+3) Un peu de théorie (des maths, des maths, des maths, des...) :
+
+  Avant de nous attaquer au vif du sujet, il va falloir introduire quelques
+notions aussi utiles qu'indispensables. Vous savez qu'une manière commode
+de représenter un son consiste à utiliser un graphe donnant en abscisses
+le temps et en ordonnées l'amplitude du son :
+exemple pour une sinusoïde pure (un sifflement à fréquence unique):
+
+amplitude
+|
+|           
+|     x               x               x               x
+|   x   x           x   x           x   x           x   x
+|  x     x         x     x         x     x         x     x
+| x       x       x       x       x       x       x       x
+----------x-------x-------x-------x-------x-------x-------x-------> temps
+|         x       x       x       x       x       x       x
+|          x     x         x     x         x     x         x     x
+|           x   x           x   x           x   x           x   x
+|             x               x               x               x
+|
+
+C'est bien joli, c'est intuitif mais c'est pas très utile. Il existe
+une autre manière de représenter les sons, *totalement équivalente* à la
+précédente, mais qui ne fait plus intervenir le couple (amplitude, temps)
+mais le couple (énergie, fréquence). Pour la sinusoïde du dessus
+on aurait quelque chose comme ça :
+
+énergie
+|
+|
+|                        x
+|                        x
+|                        x
+|                        x
+|                        x
+|                        x
+|                        x
+-------------------------x--------------------------------------> fréquence
+
+cad un pic à la fréquence de la sinusoïde. De manière générale, cette
+représentation nous donne le contenu fréquentiel d'un son. C'est ce
+type de diagramme animé que vous avez sur l'égaliseur de votre chaîne hi-fi
+ou dans winamp. Ce diagramme s'appelle *spectre fréquentiel* du son
+(ou spectre de Fourier du nom du physicien qui l'a inventé).
+
+Pour des sons plus complexes, le spectre ne se ramènera pas à un pic,
+mais à une courbe plus compliquée qui va évoluer dans le temps au rythme
+du son analysé.
+
+  Première chose à faire maintenant c'est de vous familiariser avec tout ça,
+le mieux étant des logiciels dédiés. Il y en a des tonnes, mon préféré
+c'est goldwave (voyez sur la page crypto du crcf pour le savoir où le
+télécharger).
+
+  Bon, chargez un son (open), vous voyez une représentation temporelle du
+son qui s'affiche à l'écran. Lisez le (bouton de lecture de la fenêtre
+Device Control). Vous entendez votre son (normal jusque là). Dans le fenêtre
+en question vous voyez la représentation temporelle instantanée de ce que
+vous entendez. Pendant la lecture cliquez dans cet afficheur 3 fois.
+Ca y est. Vous voyez ? Oui, c'est ça, le truc coloré bizarre qui défile de
+droite à gauche. Et bien il s'agit d'un sonagramme (ou sonogramme, c'est
+vous qui voyez). Késako ? Et bien à l'horizontale vous avez le temps,
+à la verticale la fréquence et la hauteur des pics (i.e. l'énergie du
+son pour chaque fréquence) est rendue par la couleur. C'est un diagramme
+de Fourier en 3D vu de dessus. C'est hyper utile, vous allez vite vous
+en rendre compte. En attendant de passer à la suite, enregistrez votre
+voix et visualisez le sonogramme correspondant. Sympa hein. La manière
+dont l'énergie se répartie entre les différentes fréquences lorsque l'on
+parle est typique d'un individu (ça sert d'ailleurs à faire des empreintes
+vocales pour les systèmes d'identifications, c'est aussi propre à un
+individu que les empreintes digitales, c'est d'ailleurs ce qui permet au
+dernier des idiots de faire la diffèrence à coup sure entre son beau frère
+et
+sa belle mère au téléphone). Pour bien comprendre comment ça
+marche, enregistrez vous en train de sifflez. Commencez par un sifflet
+grave et rendez le de plus en plus aigu. Le sonogramme correspondant vous
+montrera un max de couleur en bas qui va montez de plus en plus.
+  Vous avez compris ? Parfait, vous êtes fin prêt pour la suite.
+  Pour finir, la remarque culturelle : Vous savez, le format de son
+compressé
+qui vous permets de mettre sur un CD normal pas moins de 11 albums de zique
+?
+Oui, c'est ça, le MPEG. Et bien savez vous comment ça marche ? Non ? Je m'en
+doutez... Le principe est simple. Quand vous enregistrez un son à la
+fréquence
+de 44 kHz, et bien ça veut dire que vous pourrez entendre les fréquences qui
+vont de 0 jusqu'à 22 kHz. Sachant que nous n'entendons pas les sons de
+fréquences supérieures à 22 kHz et bien on en conclut que le son enregistré
+à 44kHz gardera à l'oreille toute ça richesse (on en conclu aussi que
+proposer
+du matos qui échantillonne à plus de 44kHz, et bien ça sert à rien ;
+à moins bien sure que vous soyez un clébard !). Le problème c'est que faire
+un enregistrement à 44kHz en 16bits ça veut dire 2 octets 44000 fois par
+secondes soit 2*44000/1024 = 86 ko par secondes. Une chanson de 3 minutes
+pèsera dans les 30 Mo (oui, 86*60*3/1024 ça fait 15 Mo, mais votre zique,
+à priori, elle est stéréo). Et 30 Mo c'est gros. Comment diminuer cette
+place ? Si on baisse le taux d'échantillonnage, on va gagner de la place
+mais le son sera moins bon (en va perdre les hautes fréquences). Le moyen
+est de garder seulement certaines fréquences. Par exemples, si on fait un
+échantillonnage à 44 kHz mais en ne gardant qu'une fréquence sur deux,
+ça prendra moitié moins de place et on aura toujours des aigus à 22 kHz.
+C'est sur ce principe là que fonctionne la compression MPEG audio.
+Voilà, vous voyez bien que parler en terme de contenu fréquentiel c'est
+utile...
+
+
+4) Systèmes de cryptage fréquentiel :
+
+ 4.1 L'inversion de fréquence :
+  Bon, maintenant qu'on a notre contenu fréquentiel, et bien on va pouvoir
+jouer avec. Tiens et si on inversez le spectre ? Oui, si à un instant
+donné on a le spectre de départ que voici :
+
+énergie
+|
+| *    
+| **  * 
+| **  * *
+| ***** *
+| ***** *
+| *******
+| *******
++--------------+-----> temps
+0             22kHz
+Inverser le spectre reviendrez à avoir quelque chose comme çà :
+
+énergie
+|
+|           *
+|       *  **
+|     * *  **
+|     * *****
+|     * *****
+|     *******
+|     *******
++--------------+-----> temps
+0             22kHz
+
+  C'est à dire que ce qui était à 22kHz est passé à zéro et ce qui était
+à zéro est passé à 22kHz. De manière générale, ce qui était à la fréquence f
+et passé à 22kHz-f et réciproquement.
+  Drôle d'idée hein, cette inversion du spectre. Mais au fait, on fait
+comment ? Souvenez vous de vos cours au lycée.
+
+cos (a) x cos (b) = 0.5 x {cos (a+b) + cos (a-b)}
+
+
+Donc, si on multiplie chaque fréquence du spectre par cos (22kHz) on
+va se retrouver avec notre spectre décalé de 22 kHz ( cos(a+b) ) et
+d'énergie
+moitié de l'originale et avec le même spectre mais inversé (cos(a-b))
+toujours
+avec la moitié de l'énergie du départ). Plus un pic à 22 kHz (cas b=0) soit
+
+energie
+|
+| *    
+| **  *                                spectre au départ
+| **  * *
+| ***** *
+| ***** *
+| *******
+| *******
++--------------+-----> temps
+0             22kHz
+
+
+energie        *
+|              *
+| *            *            *          spectre après multiplication
+| **  *        *        *  **          par une sinusoïde à 22kHz
+| **  * *      *      * *  **
+| ***** *      *      * *****
+| ***** *      *      * *****
+| *******      *      *******
+| *******      *      *******
++--------------+-------------------> temps
+0             22kHz
+
+Reste à filtrer le signal ainsi obtenu en ne gardant que les fréquences
+infèrieures à 22 kHz (filtre "passe bas") pour avoir notre bô signal
+résultant. En pratique : enregistrez vous avec goldwave en 8bits/mono/
+10kHz. Enregistrez disons 10 secondes.
+Lancez la lecture et regardez bien le sonagramme. Bon, ensuite, on va
+réalisez
+la multiplication. Comment ? Goldwave sait tout faire :)
+Cliquez sur le bouton f(x). Tapez dans la fenêtre "expression"
+wave(n) * cos (2 * 3.14 * 5000 * t)
+puis bouton "start"
+l'inversion va se faire ici autour de la fréquence 5000Hz. Quand c'est fini
+lancez la lecture et regardez le sonogramme comme tout à l'heure. K'ess-k-on
+voit ? Le spectre de tout à l'heure plus son symétrique ainsi qu'une
+horizontale à la fréquence de 5 kHz. Maintenant y'à plus k'à filtrer :
+Menu Effects, item Filter, item Low/high Pass.
+Choisissez LowPass, à initial frequency mettez 4990 et mettez stepness
+à fond. Puis validez par ok. Lancez la lecture et regarder le spectre
+obtenu. Ben oui, y reste plus que notre spectre inversé. Ecoutez bien, ça
+ne vous rappelle rien ? Mais oui ! Canal +
+Ce système de cryptage par inversion de fréquence est celui qui est employé
+par C+ pour crypter le son. La preuve ? On va s'en décrypter un peu pour
+le fun. Enregistrez le son de votre TV en mono/8bits/50kHz. Pour C+,
+la fréquence autour de laquelle il faut inverser est 12.8kHz. Allez-y
+multipliez, filtrez, écoutez ! Convaincu ?
+  Vous noterez que ce procédé est efficace (il n'est pas possible à
+l'oreille, une fois le spectre inversé, de deviner ce qui se dit) ; mais
+un peu trop simple. La preuve, il est facile de le décrypter. Vous savez
+que notre administration chérie, soucieuse du respect de la vie privé
+des français, a interdit tout système de chiffrage des communications.
+Enfin,
+presque tous. Parcequ'il existe des téléphones sans fils cryptés qui sont
+vendus librement. Ils utilisent justement l'inversion de fréquence... Si
+l'état l'a autorisé, c'est que c'est vraiment facile à déchiffrer :-)
+
+ 4.2 Le rolling speech :
+  Comment compliquer un peu ? Vous avez vu qu'on inverse autour d'une
+certaine fréquence (12.8kHz pour C+). Pour compliquer un peu, on pourrait
+changer de temps en temps cette fréquence d'inversion. Quant pensez vous ?
+Par exemple, elle pourrait dépendre du temps suivant une certaine fonction
+périodique... Cette amélioration à l'inversion de fréquence de base se
+nomme "rolling speech". Vous trouverez sur la page crypto du CRCF un
+échantillon sonore MASC.WAV qui est un enregistrement d'une conversation
+cryptée à l'aide du système MASC de Marconi (utilisé par la police
+anglaise).
+Un bon point à qui pourra me dire quelle est la fonction utilisée pour le
+choix de la fréquence centrale d'inversion (j'ai ma petite idée la dessus),
+et
+carrément une sucette glacée à qui pourra déchiffrer la communication :->
+
+ 4.3 Le Frequency Domain Multiplexing : FDM
+  Cette fois ci, le principe est différent de la simple inversion (celle
+ci apparaît en fait comme un cas particulier du FDM). A chaque instant,
+le spectre est découpé en tranches : exemple tranche A de 0 à 5 kHz,
+tranche B de 5 à 10 kHz, C de 10 à 15 et D de 15 à 20 Par exemple.
+Donc, le spectre normal apparaît sous la forme ABCD. Le FDM consiste à
+refabriquer un spectre mais en mettant les tranches dans un autre ordre.
+De ABCD on pourra par exemple fabriquer DCBA (là on fait de l'inversion
+simple), mais aussi BDCA... Qui plus est, cet agencement peux lui même
+varier au cours du temps. Là ça devient *vraiment* difficile à déchiffrer
+parce que l'on ne sait pas à priori combien de tranches ont été découpées.
+Je n'ai pas d'échantillon sonore de FDM, si une âme charitable en a...
+
+
+
+5) Systèmes de cryptage temporelle
+
+  Je ne vous en parlerai que d'un seul, terriblement efficace et employé
+en France par l'armée et les douanes : le TDM (Time Domain Multiplexing).
+Comme vous l'aurez deviné, c'est l'équivalent temporel du FDM. Les sons sont
+découpés en bandes de disons 20 ms. Chacune de ces bandes est elle même
+découpée en tranches (de 5 ms par exemple). Pour chaque bande de 20ms ça
+nous fait 4 tranches ABCD. Le son est enregistré par l'émetteur, coupé en
+tranches puis émis mais dans un ordre différent, par exemple CBDA. C'est
+simple dans le principe et efficace. Qui plus est, on n'est pas obligé de
+se limiter à 4 tranches. Donc pour l'éventuel intercepteur, il y a des tas
+d'inconnues : durée d'une bande, nombre de tranches, ordonnancement. C'est
+terrible ! Par contre, ça a quand même quelques inconvénients : entre le
+moment où on commence à parler et le moment où le son est émis, il y a un
+léger décalage. Pire, en plus du signal crypté, il est nécessaire d'émettre
+un signal de synchronisation, pour par exemple indiquer dans quel ordre doit
+se faire le réarrangement. Enfin, l'intelligibilité résiduelle est
+importante.
+Vous en trouverez un exemple sur la page web crypto (et des tas d'autres si
+vous branchez votre scanner sur les douanes).
+LE GRAND DEFI : Ici, c'est carrément une boite complète de sucettes glacées
+avec crème chantilly et petits biscuits divers en assortiment à gagner
+pour qui pourra me fournir des renseignements sur le TDM des douanes
+(durée d'une bande, renseignements techniques, etc.).
+
+
+Les outils qui vont bien :
+
+  Pour réaliser des sonagrammes, vous avez un logiciel gratos et bien foutu
+qui se prénomme gram. Voyez sur la page crytpo où le télécharger. Dans ce
+même numéro d'HVU, voyez la rubrique d'anathema, vous aurez d'autres
+références de logiciels sympas pour faire de l'analyse spectrale ou du traitement du
+signal (en particulier virtual waves qui dans sa version de démo contient
+tous les outils d'analyses dont on peu rêver). Sinon, vous avez aussi
+cooledit (ou cooledit pro).

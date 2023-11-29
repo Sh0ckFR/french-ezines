@@ -1,0 +1,124 @@
+<html>
+<head>
+<title>Hard-Patching</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{  Hard Patching  }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center> </font> </pre> <font size=3 color=#ffffff> <br> <br>
+
+Si vous etes très newbies passez votre chemin.
+Les newbies peuvent rester car meme moi, j'ai réussi a le faire.
+Mais c'est assez compliqué a expliquer.<br><br>
+
+pour illustrer ce tut on prendra le crackme Dark-Angel (c'est pas grave si vous l'avez pas).<br>
+je ne détaillerais pas le crack juste le hard patching.<br>
+Le hard patching c'est le fait qu'un prog s'autopatche en s'executant.
+Pour le crackme Dark-Ange on fait ça car son prog est crypté.
+Il n'est donc patchable qu'en mémoire.<br><br>
+
+voila comment on procède :<br>
+le code était :<br> <font color=#ff0000> <br><br>
+
+<pre>   jmp ->crypté</pre><br><br>
+
+</font>il donne :<br> <font color=#ff0000> <br><br>
+
+<pre>   jmp patch
+
+patch :
+
+   modification de la memoire
+   jmp ->crypté </pre> <br>
+<br></font>
+Apres avoir trouve comment fonctionne le crackme on voit qu'on 
+doit mettre en 00401026 un jmp a la place du jnz pour le premier
+test anti softice.<br><br>
+
+* soit ce qui donne en asm :<br>
+<pre>
+<font color=#ff0000>MOV BYTE PTR [00401026],EB</font>
+</pre><br>
+* y faut donc convertir ca en hexa :<br>
+<pre>
+<font color=#ff0000>C60526104000EB</font>
+</pre><br>
+* et on l'integre direct dans le prog a un endroit non crypté :<br><br>
+
+pour ca on cherche un espace vide non crypte. Cool a l'offset F00
+il y a des 00 et ce sera pas crypté.
+On va donc remplacer l'endroit ou le prog passe la main a la partie cryptée
+(FFE0 a l'offset 12A4 : vous le trouvez en débugguant avec wdasm le peu de code
+qu'autorise le désassemblage) par un jmp sur notre espace vide.<br><br>
+
+notre espace est a l'adresse 00404100<pre>       //voir ps</pre><br><br>
+
+donc notre jump devient :<br><br>
+
+<pre><font color=#ff0000> jmp 00404100        =       E957DEFFFF      //voie ps 2</pre><br><br>
+</font>
+donc on va a 12a4 et on marque : E957DEFFFF<br>
+On est obligé d'écraser 5A595B<br><br>
+
+puis pour la modif de la memoire a F00 et on marque :<br><br>
+
+<font color=#ff0000> <pre>5A595BC60526104000EBFFE0</pre></font>     (FFE0 est le jump qui envoie sur la parie crypté)<br><br>
+
+(on a pas oublié de réécrire ce qu'on a écrasé)<br>
+lol ca marche.<br>
+reste pu qu'a faire pareil pour les autres anti-si et ca donne en F00 :<br>
+<pre>
+<font color=#ff0000>5A595BC60526104000EBC0539104000EBC054C104000EBC60560104000EBFFE0</font>
+</pre><br>
+<br>
+soit en asm :<br>
+<pre><font color=#ff0000>
+pop edx
+pop ecx
+pop ebx
+mov byte ptr [00401026], EB
+mov byte ptr [00401039], EB
+mov byte ptr [0040104C], EB
+mov byte ptr [00401060], EB
+jmp eax
+</font></pre><br><br><br>
+
+ps :pour trouver l'adresse j'ai pas trouvé mieux que de fouiller dans la
+mémoire avec SI grace aux flèche haut et bas quand on est dans le prog désiré
+après avoir placé un truc en hexa pour le repérer.
+(sinon comptez les octets)<br><br>
+
+ps2 : pour trouver la correspondance en hexa d'un jmp a une adresse
+placez vous sous SI a l'endroit ou vous voulez mettre ce jmp.
+Puis tapez :<br>
+
+<pre><font color=#ff0000>a "adresse ou vous etes"</font></pre>
+puis :<br>
+<pre><font color=#ff0000>jmp "adresse ou vous voulez aller"</font></pre>
+puis esc<br><br>
+ensuite vous regardez l'hexa qui a été généré.<br>
+(sinon comptez les octets mais vous allez vous faire chier)<br><br>
+
+voila c'est mon premier hardpatch donc j'ai peut etre pas été très clair.
+Je reviendrais la dessus si Dark-Angel fait un autre crackme :)<br><br>
+
+
+Je remercie beaucoup christal car sans ses tuts j'étais dans la merde.<br>
+Ainsi que Dark-Angel : ton crackme m'a fait apprendre plein de trucs.(merci pour icedump)
+Sans oublier jufox, RD, MrPhilex, Dwrc, Osmose, TaMaMBolo (pour ces drapeaux noirs).<br>
+ET TOUT FCF EN GENERAL ainsi que la scene Francaise (allez on se bouge le cul)<br>
+<br>
+<font color=#ffff00><center><br>
+<pre>TiPiaX / French Cracking Force</pre><br>
+</font>
+</center>
+</body>
+</html>
+
+
+

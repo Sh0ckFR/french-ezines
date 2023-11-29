@@ -1,0 +1,175 @@
+<html>
+<head>
+<title>CRACKING NEWBIES - CONSEAL</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{{{{{{{{{{{{{{  Conseal Pc FireWall  }}}}}}}}}}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center> </font> </pre> <font size=3 color=#ffffff>
+<br>
+après les cracks que je viens de faire pour vous(ayant du avancer mon horloge
+pour faire des tests) la période d'évaluation de Conseal Pc est terminée :-(
+Il va donc falloir y remédier.
+Nous lanceons le programme. Il nous affiche une boite de message informations :
+<font size=3 color=#0000FF>
+<pre>
+"ConSeal Pc FireWall"
+"The trial Period has expired..."
+</font></pre>
+Nous avons dit que nous le faisions en partie avec SoftIce. Nous faisons donc CTRL+D puis
+nous nous préparons en tapant ceci :
+<font size=3 color=#0000FF>
+<pre>
+"code on"
+"data"
+"r" (si vous avez un vieux SoftIce)
+</font></pre>
+puis nous allons mettre un breakpoint sur cette boite de message:
+<font size=3 color=#0000FF>
+<pre>
+"bpx messageboxa"
+</font></pre>
+Nous sortons de SoftIce en faisant CTRL+D. Il ne nous reste plus qu'a relancer le programme et à attendre (2 secondes :)
+
+bingo SoftIce break. Voila ce que vous devez voir apparaître:
+<font size=3 color=#0000FF>
+<pre>
+"break due to bpx USER!32MessageBoxA"
+</font></pre>
+ mais si vous regardez la ligne verte au dessus il y a marqué :
+<font size=3 color=#0000FF>
+<pre>
+------- USER32!text+322B -------
+</font></pre>
+On est donc dans les apis de windows. Revenez dans le prog avec F12 (car l'api est appelée par un call)
+<font size=3 color=#0000FF>
+<pre>
+------- FRW!text+4F0A -------
+</font></pre>
+Voila c'est bon. Nous regardons l'adresse où nous nous trouvons : 00405F19 puis nous enlevons les breakpoints:
+"bc*"
+Nous serions tenté de le désassembler avec W32dasm, eh bien devinez quoi il, est crypté.
+C'est là que va nous servir un des meilleurs programmes au monde.... j'ai nommé...... Procdump !
+Ce programme est distribué en tant que freeware. Vous faites PE EDITOR et choisissez FRW.exe.
+Allez dans sections. Vous voyez : WWP32 à la fin. C'est le crypteur utilisé.
+Quittez tout ça et choississez "UNPACK" puis dans la liste WWPack32 puis ok.
+Le firewall va se lancer, cliquez alors sur "OK" et laissez faire Procdump. ProcDump décrypte
+le programme. Enregistrez le programme décrypté en frwd.exe.<br>
+Qu'aurions nous fait sans lui ?Je vous le demande :)<br><br>
+
+Nous reprenons SoftIce et nous placeons un "bpx messageboxa" mais cette fois ci nous lanceons frwd.exe
+et nous regardons où est l'appel à cette boite de message. Cela a pas changé depuis tout à l'heure (ce qui montre qu'en fait
+ProcDump a dumpé l'exe). Arrivé où nous sommes, nous faisons un autre F12 pour remonter car nous ne voyons pas
+beaucoup de sauts conditionnels. Nous arrivons ici :
+<font size=3 color=#FF0000>
+<pre>
+------------------------------------------------------------------------
+:0041135C   6A01                  push 00000001
+:0041135E   E846220100            call 004235A9     !? suspect ?!
+:00411363   83C404                add esp, 00000004
+:00411366   8845F0                mov byte ptr [ebp-10], al
+:00411369   8A45F0                mov al, byte ptr [ebp-10]
+:0041136C   A200EB4300            mov byte ptr [0043EB00], al
+:00411371   33C0                  xor eax, eax
+:00411373   A004EB4300            mov al, byte ptr [0043EB04]
+:00411378   85C0                  test eax, eax
+:0041137A   0F841C010000          je 0041149C
+:00411380   33C0                  xor eax, eax
+:00411382   A000EB4300            mov al, byte ptr [0043EB00]
+:00411387   85C0                  test eax, eax
+:00411389   0F842A000000          je 004113B9     ! intéressant !
+:0041138F   A1E4EA4300            mov eax, dword ptr [0043EAE4]
+:00411394   50                    push eax
+:00411395   8B45F4                mov eax, dword ptr [ebp-0C]
+:00411398   50                    push eax
+:00411399   E8354AFFFF            call 00405DD3      !!! On arrive ici !!!
+:0041139E   83C408                add esp, 00000008
+------------------------------------------------------------------------
+</font></pre>
+Regardez donc tout ça avec W32dasm. Vous verrez que le 2eme call sert seulement a afficher
+des messages comme quoi la licence n'est pas bonne. Nous voyons un JE au dessus du CALL.
+Habituellement, je n'attaque pas comme ceci mais comme il faut faire simple...
+On va forcer ce JE en le transformant en JMP.
+Il n'existe pas de JMP de la forme 0F!! mais celui qui le remplace est E9.
+Nous avons donc une instruction en trop c'est pourquoi nous mettons 90 qui correspond a NOP c'est à
+dire no operation. Nous recherchons donc avec notre éditeur hexadécimal : 
+<font size=3 color=#0000FF>
+<pre>
+0F842A000000A1E4EA4300 que nous modifions en:
+90E92A000000A1E4EA4300
+</font></pre>
+On relance le programme et cela fonctionne ! miracle. Cependant quelques secondes après le menu,
+rules se grise. Nous sortons la doc des apis Win32 (vous la trouverez sur crackstore) et nous voyons
+quelle API fait cela.On trouve l'API : EnableMenuItem. Voyez le commentaire par vous mêmes :
+The EnableMenuItem function enables, disables, or grays the given menu item.
+ça à l'air d'être cela qui s'est produit. Nous reprenons SoftIce et nous tapons :
+<font size=3 color=#0000FF>
+<pre>
+bpx enablemenuitem
+</font></pre>
+Puis nous relançons Conseal. L'api est utilisée plusieurs fois alors nous faisons F5 pour continuer jusqu'à voir
+notre menu rules grisé. A l'arrivé nous trouvons ceci :
+<font size=3 color=#FF0000>
+<pre>
+------------------------------------------------------------------------
+:004114E0   33C0                  xor eax, eax
+:004114E2   8A45F8                mov al, byte ptr [ebp-08]
+:004114E5   85C0                  test eax, eax
+:004114E7   0F858D000000          jne 0041157A     !! ahahah !!
+
+* Possible Reference to String Resource ID=00001: "Description"
+                                  |
+:004114ED   6A01                  push 00000001
+
+* Possible Ref to Menu: CONSEAL_FW, Item: "Change Ruleset File.."
+                                  |
+:004114EF   68429C0000            push 00009C42
+:004114F4   A1E0EA4300            mov eax, dword ptr [0043EAE0]
+:004114F9   50                    push eax
+
+* Reference To: USER32.EnableMenuItem, Ord:00B0h   !!! notre API !!!
+                                  |
+:004114FA   FF1540874600          Call dword ptr [00468740]
+
+* Possible Reference to String Resource ID=00001: "Description"
+                                  |
+:00411500   6A01                  push 00000001
+
+* Possible Ref to Menu: CONSEAL_FW, Item: "Rules"  ! héhéhé !
+------------------------------------------------------------------------
+</font></pre>
+Bon ici aussi il n'y a rien de plus simple. Si les informations sont fausses le programme ne saute pas
+et si elles sont bonnes, il saute et notre menu reste opérationnel.
+Nous recherchons donc avec notre éditeur hexadécimal : 
+<font size=3 color=#0000FF>
+<pre>
+0F858D0000006A01 que nous modifions en:
+90E98D0000006A01
+</font></pre>
+Décidement ils aiment bien les 0F... Bon nous relançons ! bingo ça RuLeZ. Et maintenant que nous l'avons cracké
+nous allons signer notre oeuvre avec un peu de reverse engineering. Dans la barre status, il y a marqué
+"Firewall is up". Nous allons le changer en "Hccc!". C'est pas bien difficile, nous prenons notre éditeur hexa
+et nous recherchons cette string. C'est la deuxième. "la première servant dans le log". Vous écrivez
+Hccc! à la place et vous effacer les lettres en trop avec des espaces.
+Il reste encore quelquechose. Dans la fenêtre "about" il y a marqué :" licensed to : Trial User".
+Cependant là cette string se trouve dans la base de registre:<br><br>
+<font size=3 color=#00ffff><pre>
+HKEY_LOCAL_MACHINE\\security\\Signal9\\FIREWALL\\1.3\\UserName
+</font></pre>
+Il suffit de mettre la valeur avec votre nom. Je vous expliquerai bien comment faire pour que cette
+valeur soit toujours la même quelque soit la base de registre mais cela va devenir trop difficile
+à comprendre et ce tut s'adresse aux débutants alors.... De plus cela n'a absolument aucune utilité.<br><br>
+
+C'est ici que s'achève ce tutorial sur Conseal Pc Firewall. Je suis certain que vous avez aussi envie
+de cracker des jeux, donc voici un petit extra : le crack de Half-Life 1.1.0.0 dans le prochain chapitre :)
+
+<font size=3 color=#ffff00><br><br>
+<center>
+<pre>TiPiaX/VDS</pre>
+<br>
+</font></body></html>

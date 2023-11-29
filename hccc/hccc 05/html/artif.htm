@@ -1,0 +1,440 @@
+<html>
+<head>
+<title>ArTiF's Tutors</title>
+</head>
+<body bgcolor=#000000>
+<font color=#FFFFFF>
+<pre>
+                                   ArTiF's Tutors
+                                     =========
+
+
+
+
+Salut, ce tutorial ( mon premier ) va vous expliquer comment keygenner
+le K4N Crackme n°1 disponible sur www.keygenning4newbies.cjb.net.
+Vous allez voir que l'algo est tres simple à comprendre et que ce crackme est une excellent
+introduction pour apprendre à keygenner ... Assez parler! Let's GO !!!
+
+En tracant sous Sice, vous devrez pas tarder à arriver sur la generation du serial:
+
+:0040110C 0FBE840D48FFFFFF        movsx eax, byte ptr [ebp+ecx-000000B8] // prend la valeur ascii de la chaine à la poistion ecx
+:00401114 41                      inc ecx      // Prochain caractère
+:00401115 33C1                    xor eax, ecx // xor eax avec ecx
+:00401117 03D8                    add ebx, eax // ebx = ebx + eax
+:00401119 3B4DD8                  cmp ecx, dword ptr [ebp-28] // A t'on fait tous les caracteres?
+:0040111C 75EE                    jne 0040110C // si non on boucle
+:0040111E 6BC006                  imul eax, 00000006 // eax = eax x 6
+:00401121 C1E307                  shl ebx, 07  // ebx = shl ebx , 07
+:00401124 03C3                    add eax, ebx // eax = eax + ebx
+:00401126 8945C8                  mov dword ptr [ebp-38], eax // met eax dans [ebp-38]
+:00401129 FF75C8                  push [ebp-38] // sauve [ebp-38] sur la pile
+
+Vous pouvez maintenant coder votre propre keygen ? Quoi, vous savez pas!!
+Allez, je vais faire preuve de generosité en vous filant ma source !!!
+
+
+
+      .386
+      .model flat, stdcall
+      option casemap :none   ; case sensitive
+
+;=========================================================================
+
+      include \masm32\include\windows.inc
+      include \masm32\include\user32.inc
+      include \masm32\include\kernel32.inc
+      include \masm32\include\gdi32.inc
+      include \masm32\include\masm32.inc
+
+      includelib \masm32\lib\user32.lib
+      includelib \masm32\lib\kernel32.lib
+      includelib \masm32\lib\gdi32.lib
+      includelib \masm32\lib\masm32.lib
+
+
+Reg2Ascii proto :DWORD,:DWORD,:DWORD
+
+
+
+ ;=========================================================================
+
+.const 
+
+;=========================================================================
+Prog 	equ "K4N Crackme n°1"  
+Auteur 	equ "ArTiF"
+;=========================================================================
+
+    IDC_Gen      equ 3001 
+    IDC_Exit     equ 3002 
+    IDC_About    equ 3003 
+
+.data
+
+;=========================================================================
+;                      Données dont vous aurez besoin 
+;=========================================================================
+
+    Erreur          db "Le Name doit être compose de 4 à 50 chars",0
+    ClassName       db "WinClass",0 
+    NameApp         db Prog," KeyGen by [ArTiF]",0 
+    EditClass       db "edit",0 
+    StaticClass     db "static",0 
+    ButtonClass     db "button",0 
+    DlgName         db "Dialog",0 
+    IconName        db "Icon2",0 
+    TextAbout       db "KeyGen for K4N Crackme n°1",0Dh,0Ah,0Ah,0Ah 
+                    db "Coded by ==[ArTiF]==",0 
+    Caption         db Prog,0 
+    TextNom         db "Enter your name here:",0 
+    TextKey         db "Your serial number:",0 
+    TextCoded       db "Coded by ==[ArTiF]==",0 
+    ButtonAbout     db "&About",0 
+    ButtonExit      db "&Exit",0 
+    ButtonGen       db "&Generate",0 
+    FontString      db "Arial", 0 
+    conversion      db '%d',0
+    lzUSER32        db 'USER32',0
+    lzWSPRINTFA     db 'wsprintfA',0
+    
+
+nbr_char_serial db 8
+
+.data? 
+
+;=========================================================================  
+;                   Variables dont vous aurez besoin  
+;=========================================================================	
+
+      Buff db 512 dup(?)
+      buffer2 db 512 dup (?) 
+      
+      hInstance    HINSTANCE ? 
+      CommandLine   LPSTR ? 
+      hwnd         HWND ? 
+      hwndButton   HWND ? 
+      hwndEdit1    HWND ? 
+      hwndEdit2    HWND ? 
+      hwndStatic1  HWND ? 
+      hwndStatic2  HWND ? 
+      hwndStatic3  HWND ? 
+      hwndButton1  HWND ? 
+      hwndButton2  HWND ? 
+      hwndButton3  HWND ? 
+      
+      buffer db 512h dup (?)
+      
+      Key          DWORD ?
+      Font1        DWORD ? 
+
+
+
+nbr_char dd ?
+serial dd ?
+
+
+    .code
+
+start:
+        invoke GetModuleHandle, NULL
+        mov hInstance, eax
+
+        invoke GetCommandLine
+        mov CommandLine, eax
+
+;=========================================================================
+
+WinMain proc hInst:HINSTANCE,hPrevInst:HINSTANCE,CmdLine:LPSTR,CmdShow:DWORD 
+
+LOCAL 	wc:WNDCLASSEX 
+LOCAL 	msg:MSG 
+
+;=========================================================================
+;                  Traçage de la boite de dialogue
+;=========================================================================
+
+      mov 	wc.cbSize,SIZEOF WNDCLASSEX 
+      mov 	wc.style, CS_DBLCLKS 
+      mov 	wc.lpfnWndProc, OFFSET WndProc 
+      mov 	wc.cbClsExtra,NULL 
+      mov 	wc.cbWndExtra,NULL 
+      push 	hInstance 
+      pop 	wc.hInstance 
+      mov 	wc.hbrBackground,COLOR_BTNFACE+1 
+      mov 	wc.lpszClassName,OFFSET ClassName 
+      invoke 	LoadImage,hInstance,ADDR IconName,IMAGE_ICON,32,32,LR_LOADMAP3DCOLORS 
+      mov 	wc.hIcon,eax 
+      mov 	wc.hIconSm,NULL 
+      invoke 	LoadCursor,NULL,IDC_ARROW 
+      mov 	wc.hCursor,eax 
+      invoke 	RegisterClassEx, addr wc 
+      INVOKE 	CreateWindowExA,WS_EX_WINDOWEDGE,\ 
+      ADDR 	ClassName,ADDR NameApp,\ 
+      
+      WS_SYSMENU or WS_MINIMIZEBOX or WS_DLGFRAME or WS_BORDER\ 
+      or WS_CLIPCHILDREN or WS_CLIPSIBLINGS or WS_VISIBLE,\ 
+      280,200,385,162,NULL,NULL,hInst,NULL 
+      
+      mov 	      hwnd,eax 
+      INVOKE 	ShowWindow, hwnd,SW_SHOWNORMAL 
+      INVOKE 	UpdateWindow, hwnd 
+      
+      .WHILE 	TRUE 
+      INVOKE 	GetMessage, ADDR msg,NULL,0,0 
+      
+      .BREAK 	.IF (!eax) 
+      INVOKE 	TranslateMessage, ADDR msg 
+      INVOKE 	DispatchMessage, ADDR msg 
+      .ENDW 
+      
+      mov 	eax,msg.wParam 
+      ret 
+WinMain endp 
+
+;=========================================================================
+
+WndProc proc hWnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM 
+
+      mov eax,uMsg 
+      
+      .IF eax==WM_DESTROY 
+      	invoke PostQuitMessage,NULL 
+      .ELSEIF eax==WM_CREATE 
+      
+      invoke 	CreateWindowExA,WS_EX_CLIENTEDGE, ADDR EditClass,NULL,\ 
+      WS_CHILDWINDOW or WS_MAXIMIZEBOX or WS_VISIBLE or\ 
+      ES_AUTOHSCROLL,12,30,261,23,hWnd,NULL,hInstance,NULL 
+      
+      mov 	hwndEdit1,eax 
+      
+      invoke 	CreateWindowExA,WS_EX_CLIENTEDGE, ADDR EditClass,NULL,\ 
+      WS_CHILDWINDOW or ES_READONLY or WS_VISIBLE or\ 
+      ES_AUTOHSCROLL,12,80,261,23,hWnd,NULL,hInstance,NULL 
+      mov 	hwndEdit2,eax 
+      
+      invoke 	CreateWindowExA,WS_EX_NOPARENTNOTIFY, ADDR StaticClass,ADDR TextNom,\ 
+      WS_CHILD or WS_VISIBLE or ES_LEFT ,\ 
+      12,15,180,15,hWnd,NULL,hInstance,NULL 
+      mov 	hwndStatic1,eax 
+      
+      invoke 	CreateWindowExA,WS_EX_NOPARENTNOTIFY, ADDR StaticClass,ADDR TextKey,\ 
+      WS_CHILD or WS_VISIBLE or ES_LEFT ,\ 
+      12,65,180,15,hWnd,NULL,hInstance,NULL 
+      mov 	hwndStatic2,eax 
+      
+      invoke 	CreateWindowExA,WS_EX_NOPARENTNOTIFY, ADDR StaticClass,ADDR TextCoded,\ 
+      WS_CHILD or WS_VISIBLE or ES_LEFT ,\ 
+      12,110,180,15,hWnd,NULL,hInstance,NULL 
+      mov 	hwndStatic3,eax 
+      
+      invoke 	CreateWindowExA,NULL, ADDR ButtonClass,ADDR ButtonAbout,\ 
+      WS_CHILDWINDOW or WS_MAXIMIZEBOX or WS_VISIBLE or WS_GROUP or WS_TABSTOP,\ 
+      295,100,75,23,hWnd,IDC_About,hInstance,NULL 
+      mov 	hwndButton1,eax 
+      
+      invoke 	CreateWindowExA,NULL, ADDR ButtonClass,ADDR ButtonExit,\ 
+      WS_CHILDWINDOW or WS_VISIBLE or WS_CLIPSIBLINGS,\ 
+      295,40,75,23,hWnd,IDC_Exit,hInstance,NULL 
+      mov 	hwndButton2,eax 
+      
+      invoke 	CreateWindowExA,NULL, ADDR ButtonClass,ADDR ButtonGen,\ 
+      WS_CHILDWINDOW or WS_VISIBLE or WS_CLIPSIBLINGS\ 
+      or BS_DEFPUSHBUTTON,\ 
+      295,10,75,23,hWnd,IDC_Gen,hInstance,NULL 
+      mov 	hwndButton3,eax 
+      
+      invoke 	SetFocus, hwndEdit1 
+      
+      invoke 	CreateFontA, -11, -5, 0, 0, 150, FALSE, FALSE, FALSE,\ 
+      DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,\ 
+      DEFAULT_QUALITY, DEFAULT_PITCH,ADDR FontString 
+      mov 	Font1, eax 
+      
+      invoke	PostMessageA, hwndStatic1, WM_SETFONT, Font1, TRUE 
+      invoke 	PostMessageA, hwndStatic2, WM_SETFONT, Font1, TRUE 
+      invoke 	PostMessageA, hwndButton1, WM_SETFONT, Font1, TRUE 
+      invoke 	PostMessageA, hwndButton2, WM_SETFONT, Font1, TRUE 
+      invoke	PostMessageA, hwndButton3, WM_SETFONT, Font1, TRUE 
+      invoke 	PostMessageA, hwndStatic3, WM_SETFONT, Font1, TRUE 
+      
+      .ELSEIF eax==WM_COMMAND 
+      
+      mov 	eax,wParam 
+      
+      .IF ax==IDC_About 
+      		shr eax,16 
+      	.IF ax==BN_CLICKED 
+      		invoke MessageBoxA, NULL,addr TextAbout, addr Caption,040h 
+      	.ENDIF 
+      .ENDIF 
+      
+      .IF ax==IDC_Gen 
+      		shr eax,16 
+      	.IF ax==BN_CLICKED 
+      		invoke GetWindowTextA,hwndEdit1,ADDR buffer,512 
+
+;========================================================================= 
+;                            KeyGeneraor 
+;        la bonne clé se trouve dans EDI à la fin de la routine   
+;=========================================================================  
+;art[code]> :0040110C 0FBE840D48FFFFFF        movsx eax, byte ptr [ebp+ecx-000000B8]
+;<art[code]> :00401114 41                      inc ecx
+;<art[code]> :00401115 33C1                    xor eax, ecx
+;<art[code]> :00401117 03D8                    add ebx, eax
+;<art[code]> :00401119 3B4DD8                  cmp ecx, dword ptr [ebp-28]
+;<art[code]> :0040111C 75EE                    jne 0040110C
+;<art[code]> :0040111E 6BC006                  imul eax, 00000006
+;<art[code]> :00401121 C1E307                  shl ebx, 07
+;<art[code]> :00401124 03C3                    add eax, ebx
+;<art[code]> :00401126 8945C8                  mov dword ptr [ebp-38], eax
+;<art[code]> :00401129 FF75C8                  push [ebp-38]
+
+  cmp eax, 4
+   jl not_good
+   cmp eax, 50
+   jg not_good
+mov nbr_char,eax
+
+   mov edx,offset buffer
+   xor ecx,ecx
+   xor ebx,ebx
+suite: 
+   movsx eax, byte ptr [edx+ecx]
+   inc ecx
+   xor eax, ecx
+   add ebx, eax
+   cmp ecx, [nbr_char]
+   jne suite
+
+;=========================================================================
+;                      création du sérial 
+;=========================================================================
+
+   imul eax, 6
+   shl ebx, 07
+   add eax, ebx
+
+invoke Reg2Ascii,eax,addr serial,04
+cmp byte ptr [serial],'0'
+je zero_found
+   jmp Affiche
+
+zero_found:
+xor ecx,ecx
+xor ebx,ebx
+xor eax,eax
+mov ecx,offset serial
+recur:
+inc cl
+cmp byte ptr[ecx],'0'
+je recur
+sub ecx,offset serial
+; ici cl aura le nbr de '0' du serial 
+;car avec la conversion les zeros apparaissent(il ne doivent pas apparaitre ds le serial
+
+
+sub byte ptr[nbr_char_serial],cl
+
+recur2:
+mov al,byte ptr [serial+ecx+ebx]
+mov byte ptr[serial+ebx],al
+inc bl
+cmp bl,nbr_char_serial
+jne recur2
+mov byte ptr[serial+ebx],0
+jmp Affiche
+;========================================================================= 
+;                         Affichage du résultat  
+;=========================================================================
+
+   not_good:
+          invoke SetWindowTextA,hwndEdit2,ADDR Erreur 
+jmp Fin
+
+Affiche: 
+
+    invoke SetWindowTextA,hwndEdit2,addr serial
+;***********************************************
+;***********************************************
+
+Fin: 
+;=========================================================================
+;                                 Fin  
+;=========================================================================	
+            .endif
+         .endif
+
+      .IF ax==IDC_Exit 
+      invoke ExitProcess,eax       
+      .ENDIF 
+      
+      .ELSE 
+      	invoke DefWindowProc,hWnd,uMsg,wParam,lParam 
+      	ret 
+        .endif
+      ret 
+      WndProc endp 
+
+
+Reg2Ascii	proc	Le_Dword:DWORD,Addr_Destination:DWORD,Taille:DWORD
+	pushf
+	pusha
+
+	mov	ebx,Le_Dword
+	xor	eax,eax
+	mov	edi,Addr_Destination
+	mov	ecx,Taille
+	mov	edx,010h
+	
+@Next_Char:
+	xor	eax,eax
+	rol	ebx,08h
+	mov	al,bl
+	div	dl
+
+	cmp	ah,0Ah
+	jl	@Number1
+	add	ah,'A' - '0' - 0Ah
+@Number1:
+	add	ah,'0'
+
+	cmp	al,0Ah
+	jl	@Number2
+	add	al,'A' - '0' - 0Ah
+@Number2:
+	add	al,'0'
+
+	mov	word ptr [edi],ax
+	add	edi,02
+	dec	ecx
+
+
+	jcxz	@FINIT
+	jmp	@Next_Char
+@FINIT:
+	mov	byte ptr [edi],0
+	
+	popa
+	popf
+	ret
+
+Reg2Ascii	endp
+
+
+end start
+;=========================================================================
+
+Et voilà, c'est fini! Pas trop dur :p
+
+Je tenais à remercier trois personnes pour leur aide quotidienne qui m'apporte:
+_seifer, tHE ANALYST, DXP
+
+Merci les gars, vous êtes cools.
+
+ArTiF
+
+</pre>
+</font>
+</body>
+</html>

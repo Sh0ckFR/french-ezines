@@ -1,0 +1,128 @@
+<html>
+<head>
+<title>Hacking - Exploits</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{{{{{{{{{{{{  EXPLOIT - débutant  }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center> </font> </pre> <font size=3 color=#ffffff>
+<br>
+On va tout d'abord s'initier à la notion de buffer overflow. (BO).<br>
+Un BO est pour ceux qui ne pratiquent pas l'anglais, un débordement de mémoire. 
+C'est à dire qu'un programme va faire déborder un endroit où il a le droit d'écrire
+pour écrire là où il n'a pas le droit.<br>
+Ce que vous aller voir ici n'est pas réelement un exploit mais juste une petite introduction
+pour que vous compreniez mieux. Tout ceci est bien sur pour linux.<br>
+Prenez ce code source:<br>
+<font size=3 color=#0000FF>
+<pre>
+-----------------------------------------------------------
+
+	//---------------------------------------
+	//  Hccc Exploit - Débutant
+	//---------------------------------------
+		
+	main(int argc, char *argv[]) 
+	{
+		char hello[]="\nBonjour petit hacker :!\n\n";
+		char buffer[100];
+		if (argc == 2)
+		{
+			strcpy(buffer,argv[1]);
+		}
+		printf(hello);
+	}
+
+-----------------------------------------------------------
+</pre></font>
+
+Petite explication: le programme démarre et affiche à l'aide de printf() la chaine de caractère (=buffer)
+"\nBonjour petit hacker :!\n\n". Si le programme est éxécuté avec un argument, il copie cet argument dans
+dans buffer[]. Ce buffer étant d'une taille de 100 on peut le faire déborder en lançant le programme
+avec une longue chaine de caractère.<br>
+Exemple en direct:<br>
+<font size=3 color=#0000FF>
+<pre>
+	-----------------------------------------------------------
+	[root@localhost Desktop]# ./exemple
+ 
+	Bonjour petit hacker :!
+
+	-----------------------------------------------------------
+
+</pre></font>
+Là ça marche nikel. Maintenant on met un argument
+<font size=3 color=#0000FF>
+<pre>
+	-----------------------------------------------------------
+	[root@localhost Desktop]# ./exemple `perl -e 'print "A"x200'`
+	Erreur de segmentation (core dumped)
+
+	-----------------------------------------------------------
+</pre></font>
+Explication: le petit code en perl permet d'écrire 200 A. On envoie donc une chaine de 200 caractère
+remplie de A. Le programme qui pouvait recevoir 100 caractères sature et modifie la mémoire dans
+tous les sens :) d'où l'erreur de segmentation. Mettons tout ça à notre avantage. Les variables sont
+empilés dans l'ordre inverse de leur déclaration. Donc si buffer[] déborde il va aller écrire sur hello[].
+Le but est de faire changer le message affiché à l'écran. Essayez donc ceci:<br>
+<font size=3 color=#0000FF>
+<pre>
+	-----------------------------------------------------------
+
+	[root@localhost Desktop]# ./exemple `perl -e 'print "A"x106'`
+	AAAAAA
+
+	-----------------------------------------------------------
+</pre></font>
+Regardez ça, on a écrit 6 A de trop. ces A vont se caser dans hello[] et c'est donc ça qui va etre affiché.
+C'est vraiment très simple. Voyons comment on pourrait coder un exploit qui écrirait le message que l'on
+aura choisit (je vous le code en barbare pour la compréhension):<br>
+<font size=3 color=#0000FF>
+<pre>
+	-----------------------------------------------------------
+	#include &lt;stdlib.h&gt;
+
+	main(int argc, char *argv[]) 
+	{
+		char **args;
+		args[2]=NULL;
+		args[1]= 
+		"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+		"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"  //100 A
+		"OVERFLOWWWWWWWW...";
+		if (argc != 2)
+		{	
+			printf("Usage : Exploite <ProgName>\n");
+		}
+		execve(argv[1],args,0);
+	}
+	-----------------------------------------------------------
+</pre></font>
+
+On l'éxécute:<br>
+
+<font size=3 color=#0000FF>
+<pre>
+	-----------------------------------------------------------
+
+	[root@localhost Desktop]# ./exploite exemple
+	OVERFLOWWWWWWWW...
+
+	-----------------------------------------------------------
+
+</pre></font>
+Bon beh ça marche nikel.
+
+<font size=3 color=#ffff00><br><br>
+<center>
+<pre>TiPiaX/VDS</pre>
+<br>
+</font></body></html>
+
+
+

