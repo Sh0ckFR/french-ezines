@@ -37,6 +37,12 @@ Some articles are also sensitive and may mention, for example, the creation of h
 * Alcibiade
 * TDC mag by DHS
 * Dead End mag by DHS
+* Cybz
+* Fantom
+* Deathlyby
+* Gogo
+* h=edm
+* Hack 25
 
 # How to deploy it
 

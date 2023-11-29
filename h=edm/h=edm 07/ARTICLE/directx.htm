@@ -1,0 +1,379 @@
+<html>
+<body bgcolor="#000000" text="#FFFFFF">
+
+<p align="center"><font color="#FF0000" size="4"><b>Initiation &agrave; DirectX (DirectDraw)</b></font></p>
+<hr>
+<p>Introduction :</p>
+<p>Le but de DirectX est de faire de Windows une plate-forme int&eacute;ressante
+pour la conception de jeux (oauis, bof pas terrible pour faire
+des jeux si ca plante toutes les 5 minutes, mais bon, c'est
+toujours mieux que Dos). Comme on le voit maintenant, tous les
+jeux sont sous Windows et utilisent DirectX. DirectX est un
+ensemble de bibliotheques (des DLL) qui sont utilises pour :<br>
+- des affichages rapides en utilisant un maximum les possibilites
+materielles des cartes video, realise par la partie DirectDraw<br>
+- des affichages 3D avec Direct3D (mais y'a OpenGl pour ça comme
+dirait Antoche)<br>
+- des effets sonores elabores avec DirectSound<br>
+- controler les peripheriques d'entree comme le clavier, la
+souris, les joystick en accedant directement aux peripheriques et
+en attendant pas que Windows bouge son cul pour nous envoyer les
+messages avec DirectInput<br>
+- des fonctionnalites multijoueurs sans avoir a se soucier des
+details relatifs au support utilise pour le transport des donnees
+grace a DirectPlay (l'avenir c'est les jeux en reseaux)</p>
+
+<p>Dans ce superbe article (sans commentaires) y'a que DirectDraw
+qui est traite.<br>
+Pour le reste y'a le livre &quot;Atelier DirectX&quot; de chez
+Microsoft Press (bah ouais, y'a qu'eux qui peuvent sortir un
+livre dessus puisque c'est eux qui l'on fait pour essayer de
+ratraper Windows). Mais il est pas mal mais n'est pas tres
+&quot;pedagogique&quot; (un peut genre &quot;voila les fonctions,
+demerde toi avec&quot;). Ya aussi Borland C++ Builder 3 de chez
+Eyrolles qu'en cause un chapitre.<br>
+Pour utiliser DirectX, bah faut etre sous Windows et utiliser un
+compilateur C++ genre Visual C++ ou C++ Builder.<br>
+Ca marche aussi en C mais c'est plus chiant car DirectX est bâti
+autour du concept COM (Common Objet Model), c'est a dire qu'il
+utilise plein d'objet. Faut aussi avoir installe DirectX...</p>
+
+<p>Sommaire :<br>
+I DirectDraw</p>
+
+<blockquote>
+    <p>1 L'objet DirectDraw<br>
+    2 Les surfaces<br>
+    3 La liberation<br>
+    4 Les images a afficher<br>
+    5 L'utilisation avec le GDI</p>
+</blockquote>
+
+<p><font color="#FF0000" size="4"><b>I !!! DirectDraw !!!</b></font></p>
+
+<p>DirectDraw c'est en fait un gestionnaire de memoire qui permet
+d'acceder directement a la memoire video et aux fonctions de la
+carte. DirectDraw, comme tous les composants de DirectX, se veut
+independants vis a vis du matos. Alors si on lui demande de faire
+une fonction genre etirement d'une image puis l'afficher apres eh
+bas DirectDraw il a 2 choix.<br>
+Soit la carte graphique sait le faire et le fait (niveau HAL)<br>
+Soit DirecDraw l'emule (niveau HEL).<br>
+On peut programmer alors sans penser au matos des autres.</p>
+
+<p><font color="#FF0000"><b>1 L'objet DirectDraw</b></font></p>
+
+<p>La premiere etape c'est l'initialisation de DirectDraw. Faut
+creer un objet DirecDraw. Bon d'abord faut inclure le fichier
+ddraw.h. Il est fourni par C++ Builder et il est dans le SDK de
+directX. Bon, le code doit ressembler a ça :</p>
+
+<p><font color="#80FFFF">#include &lt;ddraw.h&gt;<br>
+LPDIRECTDRAW pDD;<br>
+...<br>
+if (DirectDrawCreate(NULL, &amp;pDD, NULL) != DD_OK) <br>
+exit(1);</font></p>
+
+<p>Les methodes de DirectX retournent <b>DD_OK</b> (de
+valeur 0) quand elles se sont bien deroulees.<br>
+<b>LPDIRECTDRAW</b> est synonyme de <b>DIRECTDRAW
+*</b>.</p>
+
+<p>Le premier argument est soit l'addresse de l'identificateur
+unique du peripherique DirectDraw &agrave; utiliser ou bien l'une des 3
+valeurs suivantes :<br>
+<b>NULL</b> utilise le peripherique principal<br>
+<b>DDCREATE_EMULATIONONLY</b> utilise uniquement HEL<br>
+<b>DDCREATE_HARDWAREONLY</b> utilse HAL avec le
+peripherique par defaut<br>
+En generale on met <b>NULL</b>, les 2 autres valeurs
+sont la pour les tests et le debogage.</p>
+
+<p>Le troisieme argument n'est pas encore utilise et doit etre
+mis a <b>NULL</b>.</p>
+
+<p>Voila, on vient de creer l'objet DirectDraw. Maintenant il
+faut specifier le mode d'utilisation et la resolution.<br>
+En general dans les jeux on travaille generalement en mode pleine
+ecran, avec acces exclusif :</p>
+
+<p><font color="#80FFFF">pDD-&gt;SetCooperativeLevel(Handle,
+DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);</font></p>
+
+<p>Le premier argument est le handle de la fenetre dans laquelle
+on utiliserat DirectDraw.<br>
+Le second argument peut avoir un ou plusieurs des indicateurs
+suivants :<br>
+<b>DDSCL_EXCLUSIVE</b> : acces exclusif a l'ecran
+(utilise avec <b>DDSCL_FULLSCREEN</b>)<br>
+<b>DDSCL_FULLSCREEN</b> : mode pleine ecran<br>
+<b>DDSCL_ALLOWREBOOT</b> : autorise le redemarage avec
+ctrl+Alt+Suppr quand on utilise les 2 indicateurs au dessus<br>
+<b>DDSCL_NORMAL</b> : affichages dans une fenetre
+Windows (moins bonnes performances)</p>
+
+<p>Maintenant faut specifier la resolution :</p>
+
+<p><font color="#80FFFF">pDD-&gt;SetDisplayMode(640, 480, 16);</font></p>
+
+<p>Le troisieme argument c'est le nombre de bits de couleur.<br>
+<b>SetDisplayMode</b> retourne <b>DDERR_INVALIDMODE</b>
+s'il est impossible de placer la carte graphique dans le mode
+reclame.<br>
+Voila a quoi peut ressembler alors le code sous C++ Builder:</p>
+
+<p><font color="#80FFFF">#include &lt;ddraw.h&gt;<br>
+...<br>
+LPDIRECTDRAW pDD;<br>
+...<br>
+// initialisation de l'object Direct Draw<br>
+if (DirectDrawCreate(NULL,&amp;pDD,NULL) != DD_OK)<br>
+throw Exception (&quot;Erreur sur DD Create&quot;);<br>
+if
+(pDD-&gt;SetCooperativeLevel(HandleF,DDSCL_EXCLUSIVE|DDSCL_FULLSCREEN)
+!= DD_OK)<br>
+throw Exception (&quot;Erreur de specification du mode
+d'utilisation&quot;);<br>
+if (pDD-&gt;SetDisplayMode(640,480,16) == DDERR_INVALIDMODE)<br>
+throw Exception (&quot;Erreur lors de l'initialisation de la r&eacute;solution&quot;);</font></p>
+
+<p><font color="#FF0000"><b>2 Les surfaces</b></font></p>
+
+<p>Une surface n'est qu'un tampon memoire gere comme un
+rectangle.<br>
+Une surface n'est pas oblige de s'afficher.<br>
+En generale on cree une surface principale (primary buffer) qui
+correspond a la surface d'affichage (ce qui est visible a
+l'ecran) ainsi qu'une surface secondaire (back buffer).<br>
+Cela permet de preparer le back buffer, ce qui ne provoque aucun
+affichage a l'ecran de d'echanger ensuite les surfaces primaires
+et secondaire. Comme il<br>
+s'agit la d'un simple echange de pointeurs, cette operation est
+particulierement rapide.<br>
+On peut utiliser la technique du tripple buffering (2 surfaces
+secondaires).</p>
+
+<p>Pour creer une surface primaire ainsi qu'une surface
+secondaire, il faut d'abord initialiser une structure appelee <b>DDSURFACEDESC</b>
+(pour DirectDraw Surface<br>
+Description). On indique quelles informations doivent etre prises
+en compte par la fonction CreateSurface :</p>
+
+<p><font color="#80FFFF">DDSURFACEDESC ddsd;<br>
+LPDIRECTDRAWSURFACE pDDSPrim;<br>
+...<br>
+memset(&amp;ddsd, 0, sizeof ddsd);<br>
+ddsd.dwSize = sizeof(ddsd);<br>
+ddsd.dwFlags = DDSD_CAPS | DDSD_BACKBUFFERCOUNT;<br>
+ddsd.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE | DDSCAPS_FLIP |
+DDSCAPS_COMPLEX;<br>
+ddsd.dwBackBufferCount = 1;<br>
+pDD-&gt;CreateSurface(&amp;ddsd, &amp;pDDSPrim, NULL);</font></p>
+
+<p>Voila, on a cree une surface primaire et une surface
+secondaire. Faut maintenant obtenir un pointeur sur la surface
+secondaire pour pouvoir y effectuer les operations de dessin :</p>
+
+<p><font color="#80FFFF">LPDIRECTDRAWSURFACE pDDSSec;<br>
+DDSCAPS ddscaps;<br>
+...<br>
+ddscaps.dwcaps = DDSCAPS_BACKBUFFER;<br>
+pDDSPrim-&gt;GetAttachedSurface(&amp;ddscaps, &amp;pDDSSec);</font></p>
+
+<p>Pour travailler avec 2 backs buffers il faut donner la valeur
+2 a <b>ddsd.dwBackBufferCount</b> et appeler une
+deuxieme fois <b>pDDSPrim-&gt;GetAttachedSurface</b>,
+le troisieme argument contenant alors l'addresse d'un autre
+pointeur.<br>
+En generale on place toutes ses instructions dans la methode qui
+traite l'evenement <b>OnCreate</b> de la fenetre pour
+C++ Builder.<br>
+Pour Visual C++ on le place lors du traitement du message <b>WM_CREATE</b>.<br>
+Dans mes progs C++ Builder, ca ressemble a ceci :</p>
+
+<p><font color="#80FFFF">#include &lt;ddraw.h&gt;<br>
+...<br>
+LPDIRECTDRAW pDD;<br>
+DDSURFACEDESC ddsd;<br>
+LPDIRECTDRAWSURFACE pDDSPrim;<br>
+LPDIRECTDRAWSURFACE pDDSSec;<br>
+DDSCAPS ddscaps;<br>
+...<br>
+// a utiliser au debut<br>
+// initialisation de l'object Direct Draw<br>
+if (DirectDrawCreate(NULL,&amp;pDD,NULL) != DD_OK)<br>
+throw Exception (&quot;Erreur sur DD Create&quot;);<br>
+if
+(pDD-&gt;SetCooperativeLevel(Handle,DDSCL_EXCLUSIVE|DDSCL_FULLSCREEN)
+!= DD_OK)<br>
+throw Exception (&quot;Erreur de specification du mode
+d'utilisation&quot;);<br>
+if (pDD-&gt;SetDisplayMode(640,480,16) == DDERR_INVALIDMODE)<br>
+throw Exception (&quot;Erreur lors de l'initialisation de la r&eacute;solution&quot;);<br>
+// preparation des surfaces de travail<br>
+memset(&amp;ddsd, 0, sizeof ddsd);<br>
+ddsd.dwSize = sizeof(ddsd);<br>
+ddsd.dwFlags = DDSD_CAPS | DDSD_BACKBUFFERCOUNT;<br>
+ddsd.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE | DDSCAPS_FLIP |
+DDSCAPS_COMPLEX;<br>
+ddsd.dwBackBufferCount = 1;<br>
+pDD-&gt;CreateSurface(&amp;ddsd, &amp;pDDSPrim, NULL);<br>
+// enregistrement de la surface secondaire<br>
+ddscaps.dwCaps = DDSCAPS_BACKBUFFER;<br>
+pDDSPrim-&gt;GetAttachedSurface(&amp;ddscaps, &amp;pDDSSec);</font></p>
+
+<p>En fait vous avez qu'a recopier</p>
+
+<p><font color="#FF0000"><b>3 La liberation</b></font></p>
+
+<p>On vient de creer 3 objets, il faut donc liberer l'espace
+memoire a la fin du programme.<br>
+Pour cela on execute les fonctions :</p>
+
+<p><font color="#80FFFF">pDDSImage-&gt;Release(); // voir apres
+pour les images<br>
+pDDSPrim-&gt;Release();<br>
+pDD-&gt;Release();</font></p>
+
+<p><font color="#FF0000"><b>4 Les images a afficher (enfin)</b></font></p>
+
+<p>Bon, on passe au plus important. L'initialisation etant finie,
+on va pouvoir copier des images tres rapidement a l'ecran.<br>
+Il faut d'abord que l'image a afficher ne soit pas plus grandes
+que la surface de travail. Par exemple si on est en 800x600,
+l'image ne doit pas faire plus (c'est important).<br>
+Comme on peut copier une seule partie de l'image, les differentes
+images d'une animation sont generalement mises a la suite dans le
+meme fichier image. Pour eviter de distribuer un fichier image
+distinct de l'application, celui-ci est generalemtn place en
+ressource (c'est a dire greffe dans le programme).<br>
+Pour C++ Builder (ca doit aussi marcher pour Visual) on cree un
+fichier RC genre AppRes.rc que l'on inclut dans le projet et qui
+contient :</p>
+
+<p><font color="#80FFFF">image BITMAP image.bmp</font></p>
+
+<p>image etant le nom que l'on utilisera dans l'application, <b>BITMAP</b>
+specifiant que c'est une image et image.bmp etant le nom du
+fichier a inclure dans l'executable.<br>
+<br>
+D'abord faut charger l'image en memoire. On utilise une fonction
+define dans les fichiers ddutil.h et ddutil.cpp du DirectX SDK.<br>
+Borland C++ Builder fournit ces deux fichiers dans le
+sous-repertoire des exemples. Faut donc include ddutil.h et
+ajouter ddutil.cpp au projet.</p>
+
+<p><font color="#80FFFF">#include &quot;ddutil.h&quot;<br>
+...<br>
+LPDIRECTDRAWSURFACE pDDSImage;<br>
+...<br>
+pDDSImage = DDLoadBitmap(pDD, &quot;image&quot;, 0, 0); // dans
+le cas du fichier greffe<br>
+pDDSImage = DDLoadBitmap(pDD, &quot;image.bmp&quot;, 0, 0); //
+dans le cas d'un fichier a part</font></p>
+
+<p>Les deux derniers arguments doivent etre mis a 0. La fonction
+retourne NULL en cas d'erreur. En cas de reussite, l'image est
+chargee en memoire dans la surface pointee par <b>pDDSImage.</b></p>
+
+<p>Dans le cas d'une utilisation de DirectX en 256 couleurs
+(totalement depasse) il faut extraire la palette du fichier image
+et forcer le pilote de la carte video a utiliser cette palette
+(mais je vous conseille de vous mettre au moins en 16 bits de
+couleurs) :</p>
+
+<p><font color="#80FFFF">LPDIRECTDRAWPALETTE pDDPal;<br>
+...<br>
+pDDPal = DDloadPalette(pDD, &quot;image&quot;);<br>
+if (pDDPal) pDDSprim-&gt;SetPalette(pDDPal);</font></p>
+
+<p>DDloadPalette est une fonction egalement incluse dans le
+fichier DDutil.cpp.</p>
+
+<p>Voila, maintenant on peut copier l'image a l'ecran. Mais ca
+copie que des rectangles.<br>
+Alors faut specifier une couleur de transparence, les pixels de
+la couleur de transparence ne seront alors pas affiche. Faut
+ecrire :</p>
+
+<p><font color="#80FFFF">DDSetColorKey(pDDSImage, RGB(255,0,0));</font></p>
+
+<p>Ca specifie le rouge comme couleur de transparence. Mais on
+peut mettre n'importe laquelle.<br>
+Maintenant, pour copier une partie de l'image on utilise BltFast.<br>
+Ca copie rapidement une partie de l'image sur la backbuffer de
+preference.</p>
+
+<p><font color="#80FFFF">pDDSSec-&gt;BltFast(x, y, pDDSImage,
+&amp;rc, DDBLTFAST_SRCCOLORKEY | DDBLTFAST_WAIT);</font></p>
+
+<p>Les deux premiers arguments indiquent les coordonnees x et y
+dans la zone de destination (le backbuffer dans ce cas la).<br>
+Le troisieme argument designe la surface source.<br>
+Le quatrieme designe une structure RECT passee par adresse (les
+quatre champs de cette structure sont left,top,right et bottom).
+Cette structure RECT doit contenir les coordonnees dans la
+surface source du rectangle a copier.<br>
+Le cinquieme argument designe un type de transfert :<br>
+<b>DDBLTFAST_DESTCOLORKEY</b> : la couleur de
+tansparence est celle de la zone de destination<br>
+<b>DDBLTFAST_NOCOLORKEY</b> : pas de couleur de
+transparence<br>
+<b>DDBLTFAST_SRCCOLORKEY</b> : la couleur de
+transparence est celle de la zone source<br>
+<b>DDBLTFAST_WAIT</b> : la fonction est bloquante
+jusqu'a que ce termine le transfert</p>
+
+<p>A moins de specifier <b>DDBLTFAST_WAIT</b> le
+transfert s'effectue de mainiere asynchrone, ce qui permet
+d'effectuer d'autres operations apres que <b>DDBLTFAST_WAIT</b>
+soir lance. Pour savoir l'etat du transfert, il faut executer
+(applique a la surface de destination) :</p>
+
+<p><font color="#80FFFF">pDDSSec-&gt;GetBltStatus(flags);</font></p>
+
+<p>Avec flags qui peut valoir l'un des deux indicateurs suivants
+:<br>
+<b>DDGBS_CANBLT </b>: GetBltStatus retourne <b>DD_OK</b>
+(de valeur 0) si une operation de transfert peut etre effectuee<br>
+<b>DDGBS_ISBLTDONE</b> : GetBltStatus retourne <b>DD_OK</b>
+si l'operation de transfert est terminee</p>
+
+<p>Pour l'instant ya toujours rien a l'ecran. C'est normal, c'est
+tout sur la back-buffer. Pour l'afficher, faut faire :</p>
+
+<p><font color="#80FFFF">pDDSPrim-&gt;Flip(NULL, 0);</font></p>
+
+<p>Le second argument pourrait etre <b>DDFLIP_WAIT</b>
+pour que la fonction ne retourne qu'apres achevement de
+l'echange. Sinon faut executer <b>GetFlipStatus(flags)</b>
+où flags peut prendre l'une des deux valeurs suivantes : <b>DDGFS_CANFLIP</b>
+ou <b>DDGFS_ISFLIPDONE</b>. GetFlipStatus se comporte
+comme <b>GetBltStatus</b>.</p>
+
+<p>Voila c'est tout. Maintenant on peut afficher tous ce qu'on
+veut. Sauf du texte. Pour ca, faut faire appel au GDI, c'est a
+dire a l'API Windows.</p>
+
+<p><font color="#FF0000"><b>5 L'utilisation du GDI</b></font></p>
+
+<p>Pour utiliser le GDI, il faut faire les etapes suivantes :<br>
+1 obtention d'un contexte de peripherique (DC)<br>
+2 utilisation du GDI<br>
+3 liberation du contexte de peripherique<br>
+<br>
+Par exemple pour afficher Salut au point x,y on fait :</p>
+
+<p><font color="#80FFFF">HDC hDC;<br>
+pDDSec-&gt;GetDC(&amp;hDC);<br>
+char buf[] = &quot;Salut&quot;;<br>
+TextOut(hDC,x,y,buf,lstrlen(buf));<br>
+pDDSec-&gt;Release(hDC);</font></p>
+
+<p align="right"><font size="4"><b>i_jeune</b></font></p>
+
+<p align="center">PARMENTIER Jean-François<br>
+jf_parmentier@oreka.com<br>
+</p>
+</body>
+</html>

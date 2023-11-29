@@ -1,0 +1,246 @@
+<html>
+
+<head>
+<meta http-equiv="Content-Type"
+content="text/html; charset=iso-8859-1">
+<meta name="GENERATOR" content="Microsoft FrontPage Express 2.0">
+<title>souris</title>
+</head>
+
+<body bgcolor="#C0C0C0" text="#000000" link="#0000FF"
+vlink="#0000FF" alink="#FF0000">
+
+<p>voila c trés long mais ça vaut le coup ! la programmation
+est bien plus facile avec ça !</p>
+
+<p align="left">#include &lt;dos.h&gt;<br>
+#include &lt;stdlib.h&gt;<br>
+#include &quot;msmouse.h&quot;<br>
+<br>
+const int MsCall = 0x33;<br>
+const int Iret = 0xcf;<br>
+const int False = 0;<br>
+const int True = 1;<br>
+<br>
+MouseObject Mouse;<br>
+<br>
+MouseObject::MouseObject(void)<br>
+{<br>
+OK = False;<br>
+MouseOff = True;<br>
+}<br>
+<br>
+<br>
+int MouseObject::DriverExists(void)<br>
+{<br>
+void far *address;<br>
+address = getvect(0x33);<br>
+return (address != NULL) &amp;&amp; (*(unsigned char far *)address
+!= Iret);<br>
+}<br>
+<br>
+void MouseObject::Setup(VideoModeType VideoMode)<br>
+{<br>
+REGS regs;<br>
+OK = DriverExists();<br>
+if (OK)<br>
+{<br>
+regs.x.ax = 0;<br>
+int86(MsCall, &amp;regs, &amp;regs);<br>
+if (regs.x.ax == 0) OK = False;<br>
+}<br>
+if (!OK)<br>
+{<br>
+TurnOff();<br>
+return;<br>
+}<br>
+TurnOn();<br>
+<br>
+if (VideoMode == TextScrn) TextMode = True;<br>
+else TextMode = False;<br>
+if (VideoMode == LowResGr) LowRes = True;<br>
+else LowRes = False;<br>
+if (VideoMode == HerculesGr) *(char far *)MK_FP(0x0040,0x0049) =
+6;<br>
+<br>
+OldX = 0; OldY = 0;<br>
+X = 0; Y = 0;<br>
+Dx = 0; Dy = 0;<br>
+Move(0,0);<br>
+}<br>
+<br>
+int MouseObject::SetupOK(void)<br>
+{<br>
+return OK;<br>
+}<br>
+<br>
+void MouseObject::Hide(void)<br>
+{<br>
+REGS regs;<br>
+if (!Operating()) return;<br>
+regs.x.ax = 2;<br>
+int86(MsCall, &amp;regs, &amp;regs);<br>
+}<br>
+<br>
+void MouseObject::Show(void)<br>
+{<br>
+REGS regs;<br>
+if (!Operating()) return;<br>
+regs.x.ax = 1;<br>
+int86(MsCall, &amp;regs, &amp;regs);<br>
+}<br>
+<br>
+unsigned MouseObject::Status(int &amp;Mx, int &amp;My)<br>
+{<br>
+REGS regs;<br>
+if (!Operating()) {Mx = 0; My = 0; return 0;}<br>
+regs.x.ax = 3;<br>
+int86(MsCall, &amp;regs, &amp;regs);<br>
+Mx = regs.x.cx;<br>
+My = regs.x.dx;<br>
+if (TextMode)<br>
+{ Mx &gt;&gt;= 3;<br>
+My &gt;&gt;= 3;<br>
+}<br>
+if (LowRes) Mx &gt;&gt;=1;<br>
+return regs.x.bx;<br>
+}<br>
+<br>
+unsigned MouseObject::ButtonStatus(void)<br>
+{<br>
+int Mx, My;<br>
+if (!Operating()) return 0;<br>
+else return Status(Mx,My);<br>
+}<br>
+<br>
+int MouseObject::PressCnt(unsigned ButtonMask)<br>
+{<br>
+REGS regs;<br>
+if (!Operating()) return 0;<br>
+regs.x.ax = 5;<br>
+regs.x.bx = ButtonMask &gt;&gt; 1;<br>
+int86(MsCall, &amp;regs, &amp;regs);<br>
+return regs.x.bx;<br>
+}<br>
+<br>
+int MouseObject::ReleaseCnt(unsigned ButtonMask)<br>
+{<br>
+REGS regs;<br>
+if (!Operating()) return 0;<br>
+regs.x.ax = 6;<br>
+regs.x.bx = ButtonMask &gt;&gt; 1;<br>
+int86(MsCall, &amp;regs, &amp;regs);<br>
+return regs.x.bx;<br>
+}<br>
+<br>
+unsigned MouseObject::Event(int &amp;Mx, int &amp;My)<br>
+{<br>
+unsigned E;<br>
+if (!Operating()) { Mx = 0; My = 0; return Idle;}<br>
+E = Status(Mx, My);<br>
+if (E == 0)<br>
+{<br>
+if (PressCnt(LeftButton) &gt; 0) E = LMouseDown;<br>
+else if (PressCnt(RightButton) &gt; 0) E = RMouseDown;<br>
+else if (ReleaseCnt(LeftButton) &gt; 0) E = LMouseUp;<br>
+else if (ReleaseCnt(RightButton) &gt; 0) E = RMouseUp;<br>
+}<br>
+else<br>
+{<br>
+if (E &amp; LeftButton)<br>
+{<br>
+if (PressCnt(LeftButton) &gt; 0)<br>
+E = LMouseDown;<br>
+else E = LMouseStillDown;<br>
+}<br>
+else if(PressCnt(RightButton) &gt; 0)<br>
+E = RMouseDown;<br>
+else E = RMouseStillDown;<br>
+}<br>
+return E;<br>
+}<br>
+<br>
+unsigned MouseObject::WaitForAnyEvent(int &amp;Mx, int &amp;My)<br>
+{<br>
+unsigned E;<br>
+if (!Operating()) {Mx = 0; My = 0; return Idle; }<br>
+do<br>
+{ E = Event(Mx, My);<br>
+} while (E == Idle);<br>
+return E;<br>
+}<br>
+<br>
+void MouseObject::WaitForEvent(unsigned E, int &amp;Mx, int &amp;My)<br>
+{<br>
+unsigned Etry;<br>
+if(!Operating()) {Mx = 0; My = 0; return;}<br>
+do<br>
+{ Etry = Event(Mx, My);<br>
+} while (Etry == E);<br>
+}<br>
+<br>
+int MouseObject::Moved(void)<br>
+{<br>
+if(!Operating()) return False;<br>
+OldX = X; OldY = Y;<br>
+Status(X, Y);<br>
+Dx = X - OldX;<br>
+Dy = Y - OldY;<br>
+return (Dx != 0) || (Dy != 0);<br>
+}<br>
+<br>
+void MouseObject::Move(int Mx, int My)<br>
+{<br>
+REGS regs;<br>
+if(!Operating()) return;<br>
+regs.x.ax = 4;<br>
+regs.x.cx = Mx;<br>
+regs.x.dx = My;<br>
+if (TextMode) {<br>
+regs.x.cx &lt;&lt;= 3;<br>
+regs.x.dx &lt;&lt;= 3;<br>
+}<br>
+if (LowRes) regs.x.cx &lt;&lt;= 1;<br>
+int86(MsCall, &amp;regs, &amp;regs);<br>
+}<br>
+<br>
+void MouseObject::TurnOn(void)<br>
+{<br>
+if (OK &amp;&amp; MouseOff)<br>
+{<br>
+MouseOff = False;<br>
+Show();<br>
+}<br>
+}<br>
+<br>
+void MouseObject::TurnOff(void)<br>
+{<br>
+if(OK &amp;&amp; !MouseOff)<br>
+{<br>
+Hide();<br>
+MouseOff = True;<br>
+}<br>
+}<br>
+<br>
+int MouseObject::Operating(void)<br>
+{<br>
+return !MouseOff;<br>
+}<br>
+<br>
+void MouseObject::SetGCursor(const MouseCursor&amp;NewCursor)<br>
+{<br>
+REGS regs;<br>
+SREGS sregs;<br>
+<br>
+if (!Operating()) return;<br>
+regs.x.ax = 9;<br>
+regs.x.bx = NewCursor.HotSpot.X;<br>
+regs.x.cx = NewCursor.HotSpot.Y;<br>
+regs.x.dx = FP_OFF(NewCursor.ScreenMask);<br>
+sregs.es = FP_SEG(NewCursor.ScreenMask);<br>
+int86x(MsCall, &amp;regs, &amp;regs, &amp;sregs);<br>
+}</p>
+
+<p align="center"><a href="H=EDM²%20n°4"><font size="6"><strong>RETOUR</strong></font></a></p>
+</body>
+</html>

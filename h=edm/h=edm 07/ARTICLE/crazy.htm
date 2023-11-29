@@ -1,0 +1,350 @@
+<html>
+
+<head>
+<title>CRAZY GRAVITY</title>
+</head>
+<body bgcolor="#000000" text="#FFFFFF">
+<p align="center"><font color="#FF0000" size="5"><b>CRACK DE CRAZY GRAVITY</b></font></p>
+
+<p>&quot;Crazy gravity&quot; c'est un vieux jeux qui tourne sous windows 95 et plus, moi je l'ai eu sur le CD : &quot;PC Collector n°4&quot;.<br>
+Le jeu est en allemand mais puisque je parle englais, français, allemand, espagnol, flamand, papoun&eacute;siens, russe, japonnais et neptuniens(couramment) j'ai aucun mal &agrave; traduire ...</p>
+
+<p>Bon, bref, le jeu &eacute;tait pas mal, un petit peu simplet quand meme, alors je me suis dit que j'allait le cracker :</p>
+
+<p><font color="#FF0000" size="5"><b>Premiere solution :</b></font></p>
+
+<p>C'est tout con, les fichiers pour les niveaux on comme
+extension : &quot;cgl&quot; et les seul niveaux sur lequels on
+peut jouer sont les 3 premiers.<br>
+Il suffit donc de remplacer le nom du level que l'on veut essayer
+par le nom du premier niveau : &quot;Level01.cgl&quot;</p>
+
+<p><font color="#FF0000" size="5"><b>Deuxieme solution :</b></font></p>
+
+<p>Ouai, je sais que la premiere solution, c'est de la merde !<br>
+La deuxieme solution c'est de le cracker en modifiant un byte :</p>
+
+<p>Alors on essaye de s'enregistrer, on met un truc au hasard et,
+oh ! Comme c'est &eacute;tonnant, ça marche pas ! (si ça marche courrez
+au bureau de tabac acheter un billet de loto !)</p>
+
+<p>Il nous dit : &quot;Die eingegebene Registriernumber bla
+bla&quot;, je crois que mon doctorat en traduction de l'allemand
+ne sert &agrave; rien ici ! on voit tous ce que ça veut dire !</p>
+
+<p>Alors on d&eacute;sassemble le soft (zou !) et paf on as plein d'asm
+(hmm bon ça !).<br>
+on part &agrave; la recherche de la phrase magique, et on l'as trouve
+en : 00403473 et 0040EB2B, hmm, hmm on cherche un peu autour de
+ses adresse et on trouve </p>
+
+<p><font color="#0000FF">* Reference To: USER32.DialogBoxParamA,
+Ord:0000h<br>
+</font>Call 004166D7<br>
+<font color="#FF0000">Call 00401149 &lt;= interressant que fait
+ce call ?<br>
+mov dword ptr [004171BC], eax <br>
+cmp dword ptr [004171BC], 00000000 &lt;= et juste apr&eacute;s on as un
+test de eax ! :) BINGO<br>
+jne 0040349F<br>
+</font><br>
+<font color="#008000">* Possible StringData Ref from Data Obj
+-&gt;&quot;NICHT REGISTRIERT&quot;<br>
+</font>push 00417177<br>
+push 00419C08<br>
+<br>
+<font color="#0000FF">* Reference To: KERNEL32.lstrcpyA,
+Ord:0000h<br>
+</font>Call 004164D9<br>
+push 004171B8<br>
+push 00419C3A<br>
+<br>
+<font color="#0000FF">* Reference To: KERNEL32.lstrcpyA,
+Ord:0000h<br>
+</font>Call 004164D9<br>
+push 00000030<br>
+<br>
+<font color="#008000">* Possible StringData Ref from Data Obj
+-&gt;&quot;Crazy Gravity&quot;<br>
+</font>push 004171DB<br>
+<br>
+<font color="#008000">* Possible StringData Ref from Data Obj
+-&gt;&quot;Die eingegebene Registriernummer &quot;<br>
+-&gt;&quot;ist ung&quot;<br>
+</font>push 00417189</p>
+
+<p>Je tient a signaler que pour les 2 adresses, c'est exactement
+la meme chose !<br>
+allons donc faire un tour du cot&eacute; de l'adresse 401149, il y'as
+tout plein d'instruction qui verifie si la valeur contenu dans
+419C3A, on lance un petit debug (ctrl+L), on met un breakpoint
+(F2) sur l'adresse 401149, et on attend, paf des le depart y
+passe sur cette instruction, bon la premiere fois on as entr&eacute;
+aucune valeur, on s'en fout, on continue, apr&eacute;s on essaye de
+s'enregistrer on rentre un code bidon que l'on retient facilement
+genre : &quot;12456789&quot; et un nom debile : &quot;toto&quot;,
+on appuye sur ok ... paf y repasse sur notre instruction, l&agrave; on
+va regarder se qu'il y'as en 419C3A</p>
+
+<p>pour cela c'est simple :</p>
+
+<p><img src="win32dasm.gif" width="538" height="417"></p>
+
+<p>vous voyez le truc que j'ai selectionnez ? (User Addr 1) alors
+remplacer 00400000 par 00419C3A et vous cliquer sur le bouton UA1
+et l&agrave;, oh magie notre code donc le call 00401149 sert a tester
+le code, si il est bon eax sera egal &agrave; 1 solution ?</p>
+
+<p>un truc que j'aime bien, faire le bourrin ! il suffit de
+mettre en 401149 :<br>
+mov eax, 00000001<br>
+ret</p>
+
+<p>mov eax, 00000001 = B801000000<br>
+ret = C3</p>
+
+<p>on met en 00401149 : B801000000C3, l'adresse 00401149, se
+trouve a l'adresse : 00000749 dans le fichier, alors go sur
+l'editeur hexa et normalement vous devez remplacer : 558BEC83C4EC
+par B801000000C3</p>
+
+<p>on lance crazy gravity et ... y'as plus les nagscreen ! :) on
+va pour s'enregistrer et on rentre n'importe quoi et ça marche !</p>
+
+<p><font color="#FF0000" size="5"><b>troisieme solution :</b></font></p>
+
+<p><font color="#FFFFFF" size="3">pour la troisieme solution y
+faut connaitre un peu l'asm, car au lieu de modifier un byte, on
+va chercher un pass valide ! c'est pas mieux ?</font></p>
+
+<p><font color="#FFFFFF" size="3">on as vu que la verification se
+fesait en 00401149, on va donc regarder de plus pr&eacute;s cette
+partie :</font></p>
+
+<p><font color="#FFFFFF" size="3">j'ai simplifier le code, et
+j'ai remplacer l'adresse des variable par le nom qu'elle pourrait
+avoir et je l'ai transform&eacute; en code pour masm32<br>
+donc c'est simplifi&eacute; au max !</font></p>
+
+<p><font color="#FFFFFF" size="3">push ebp <b>&lt;= met ebp
+dans la pile</b><br>
+mov ebp, esp <b>&lt;= met esp dans ebp</b><br>
+add esp, FFFFFFEC <b>&lt;= enleve 14</b> <b>(20 en
+decimal)</b><br>
+push ebx <b>&lt;= met ebx dans la pile</b><br>
+mov ebx, </font><font color="#FFFFFF">00419C3A</font><font
+color="#FFFFFF" size="3"> <b>&lt;= met l'adresse du numero
+as test&eacute; dans ebx</b></font></p>
+
+<p><font color="#FFFFFF" size="3"><b>cette partie verifie si
+le code entr&eacute; a bien une longueur de 11 caract&eacute;re:<br>
+</b>invoke lstrlenA, ebx<b> </b><br>
+cmp eax, 0000000B<b><br>
+</b>je continue1<b><br>
+</b>xor eax, eax<br>
+jmp fin</font></p>
+
+<p><font color="#FFFFFF" size="3"><b>cette partie verifie si
+le premier caract&eacute;re du code est egal as &quot;C&quot; ou
+&quot;c&quot;<br>
+</b>continue1 :<br>
+cmp byte ptr [ebx], 43<br>
+je continue2<br>
+cmp byte ptr [ebx], 63<br>
+je continue2<br>
+xor eax, eax<br>
+jmp fin</font></p>
+
+<p><font color="#FFFFFF" size="3"><b>cette partie verifie si
+le deuxi&eacute;me caract&eacute;re du code est egal as &quot;G&quot; ou
+&quot;g&quot;<br>
+</b>continue2:<br>
+cmp byte ptr [ebx+01], 47<br>
+je continue3<br>
+cmp byte ptr [ebx+01], 67<br>
+je continue3<br>
+xor eax, eax<br>
+jmp fin</font></p>
+
+<p><font color="#FFFFFF" size="3">continue3:<br>
+mov eax, 00000002<b> &lt;= met la valeur 2 dans le registre
+eax</b></font></p>
+
+<p><font color="#FFFFFF" size="3"><b>cette partie verifie si
+les 5 caract&eacute;re apr&eacute;s les 2 premier sont des chiffres et les
+stocks en tant que DWORD (4 byte), dans (ebp+(4*eax)-1C)<br>
+</b>loop :<br>
+cmp byte ptr [ebx+eax], 30<br>
+jl codefaux2<br>
+cmp byte ptr [ebx+eax], 39<br>
+jg codefaux<br>
+movsx edx, byte ptr [ebx+eax]<br>
+add edx, FFFFFFD0<br>
+mov dword ptr [ebp+4*eax-1C], edx<br>
+jmp continue4<br>
+codefaux :<br>
+xor eax, eax<br>
+jmp fin<br>
+continue:<br>
+inc eax<br>
+cmp eax, 00000007<br>
+jl loop</font></p>
+
+<p><font color="#FFFFFF" size="3"><b>cette partie verifie si
+((le 1er chiffre + le 5&eacute;me + 7)mod(10) + 48 = le code ascii du 8
+&eacute;me caract&eacute;re)<br>
+</b>mov eax, dword ptr [ebp-04]<br>
+add eax, dword ptr [ebp-14]<br>
+add eax, 00000007<br>
+mov ecx, 0000000A<br>
+cdq<br>
+idiv ecx<br>
+add edx, 00000030<br>
+movsx eax, byte ptr [ebx+07]<br>
+cmp edx, eax<br>
+je continue5<br>
+xor eax, eax<br>
+jmp fin</font></p>
+
+<p><font color="#FFFFFF" size="3"><b>cette partie verifie si
+((le 2&eacute;me chiffre + le 4&eacute;me + 9)mod(10) + 48 = le code ascii du
+9 &eacute;me caract&eacute;re)<br>
+</b>continue5 :<br>
+mov eax, dword ptr [ebp-08]<br>
+add eax, dword ptr [ebp-10]<br>
+add eax, 00000009<br>
+mov ecx, 0000000A<br>
+cdq<br>
+idiv ecx<br>
+add edx, 00000030<br>
+movsx eax, byte ptr [ebx+08]<br>
+cmp edx, eax<br>
+je continue6<br>
+xor eax, eax<br>
+jmp fin</font></p>
+
+<p><font color="#FFFFFF" size="3"><b>cette partie verifie si
+((le 5&eacute;me chiffre + le 3&eacute;me + 4)mod(10) + 48 = le code ascii du
+10 &eacute;me caract&eacute;re)<br>
+</b>continue6 :<br>
+mov eax, dword ptr [ebp-04]<br>
+add eax, dword ptr [ebp-0C]<br>
+add eax, 00000004<br>
+mov ecx, 0000000A<br>
+cdq<br>
+idiv ecx<br>
+add edx, 00000030<br>
+movsx eax, byte ptr [ebx+09]<br>
+cmp edx, eax<br>
+je continue7<br>
+xor eax, eax<br>
+jmp fin</font></p>
+
+<p><font color="#FFFFFF" size="3"><b>cette partie verifie si
+((le 4&eacute;me chiffre + le 5&eacute;me + 2)mod(10) + 48 = le code ascii du
+11 &eacute;me caract&eacute;re)<br>
+</b>continue7 :<br>
+mov eax, dword ptr [ebp-08]<br>
+add eax, dword ptr [ebp-04]<br>
+add eax, 00000002<br>
+mov ecx, 0000000A<br>
+cdq<br>
+idiv ecx<br>
+add edx, 00000030<br>
+movsx eax, byte ptr [ebx+0A]<br>
+cmp edx, eax<br>
+je continue8<br>
+xor eax, eax<br>
+jmp 0040123B</font></p>
+
+<p><font color="#FFFFFF" size="3"><b>voici l'avant derniere
+partie, si on passe par l&agrave;, c'est que tout les test on &eacute;t&eacute;
+bon, on met 1 dans eax<br>
+</b>continue8:<br>
+mov eax, 00000001</font></p>
+
+<p><font color="#FFFFFF" size="3"><b>voici la fin, on
+rappelle les valeur de ebx et ebp que l'on avait stocker dans la
+pile au debut, et on retourne a la partie du programme qui as a
+appeler cette fonction<br>
+</b>fin :<br>
+pop ebx<br>
+mov esp, ebp<br>
+pop ebp<br>
+ret</font></p>
+
+<p>voila donc d'abord je vais expliquer ce qu'est &quot;mod&quot;</p>
+
+<p>quand on fait une division sans virgule, par exemple 15/7, on
+as le resultat : 2 et le reste : 1<br>
+et bien &quot;mod&quot; donne le reste,<br>
+15/7 = 2<br>
+15 mod 7 = 1</p>
+
+<p>maintenant voyons nos test :<br>
+pour simplifier : 1c = premier chiffre, 2c = deuxi&eacute;me chiffre,
+etc ...<br>
+et 1x = 8&eacute;me caract&eacute;re, 2x = 9&eacute;me caract&eacute;re, etc ...<br>
+le 1er test verifie que le code as bien 11 caract&eacute;res<br>
+les 2 test qui suivent verifies si le code commence par CG<br>
+le 4 &eacute;me test verifie si les 5 caract&eacute;res apr&eacute;s CG sont des
+chiffres</p>
+
+<p>notre code est donc : C G 1c 2c 3c 4c 5c 1x 2x 3x 4x</p>
+
+<p>vous suivez toujours ?</p>
+
+<p>le 5&eacute;me test verifie que :<br>
+((1c + 5c + 7) mod 10) +30 = 1L</p>
+
+<p>le 6&eacute;me test verifie que :<br>
+((2c + 4c + 9) mod 10) +30 = 2L</p>
+
+<p>le 7&eacute;me test verifie que :<br>
+((3c + 5c + 4) mod 10) +30 = 3L</p>
+
+<p>le 8&eacute;me test verifie que :<br>
+((4c + 5c + 2) mod 10) +30 = 4L</p>
+
+<p>et il n'yas pas de v&eacute;rification par rapport au nom que l'on
+as entr&eacute; !</p>
+
+<p>on peut choisir les 5 chiffre au hasard, par exemple 19375
+donc :<br>
+CG19375xxxx</p>
+
+<p>a partir d'ici, mon cerveau est incapable de calculer en base
+10, je passe donc en hexadecimal, d&eacute;sol&eacute; ...<br>
+les caract&eacute;res entre les ' sont la conversion du chiffre obtenu
+en ascii ainsi 37 = '7' mais 42 = 'M' ... mais vu que le resultat
+du &quot;mod A&quot; est toujours inferieur a A, le resultat des
+operations sera compris en 30 et 39, ce qui correspond en code
+ascii &agrave; un resultat enrte 0 et 9 (putain ce que je m'explique
+mal) bon bref le resultat sera toujours un chiffre et jamais une
+lettre !</p>
+
+<p>((1+5+7)mod A)+30 = ( D mod A ) +30 = 33 = '3'<br>
+((9+7+9)mod A)+30 = ( 17 mod A ) +30 = 35 = '5'<br>
+((3+5+4)mod A)+30 = ( C mod A ) +30 = 32 = '2'<br>
+((7+5+2)mod A)+30 = ( E mod A ) +30 = 34 = '4'</p>
+
+<p>donc si je me suis pas tromper le code est CG193753524</p>
+
+<p>voil&agrave; c'est fini !</p>
+
+<p align="center"><font color="#FF0000" size="5"><b>CONCLUSION</b></font></p>
+
+<p>ce soft etait tr&eacute;s mal proteger, mais le jeu est pas mal mais
+bien trop vieux pour que je l'achete, ils m'as amus&eacute; qu'un quart
+d'heure (le temp que je le crack) :)<br>
+certain trouve la 3&eacute;me methode mieux que les autres, c'est vrai
+que la 1&eacute;re methode est vraiment tr&eacute;s nul, mais moi je trouve
+que les 2 dernieres methode se valent<br>
+si vous aimez les casses tetes, le mieux c'est la 3&eacute;me methode</p>
+
+<p>bon maintenant que j'ai fait un bon gros articles de 300 pages
+je vais me coucher :)</p>
+
+<p align="right">CROQMORT</p>
+</body>
+</html>

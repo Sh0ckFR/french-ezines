@@ -1,0 +1,383 @@
+<html>
+
+<head>
+<title>Compression de donn&eacute;es</title>
+</head>
+
+<body bgcolor="#000000" text="#FFFFFF">
+
+<p align="center"><font color="#FF0000" size="5"><b>Compression de donn&eacute;es<br>
+Algorithme de LEMPEL-ZIV</b></font></p>
+
+<p><font color="#FF0000"><b>Introduction :</b></font></p>
+
+<p>La compression permet d'optimiser la place utils&eacute;e
+par des donn&eacute;es et permet aussi de crypter des fichiers.<br>
+Le programme r&eacute;alis&eacute; en C++ est un codeur utilisant cet
+algorithme, il a &eacute;t&eacute; r&eacute;alis&eacute; sous Borland C++ Builder 3.<br>
+La premiere partie explique le fonctionnement de l'algorithme et
+la deuxieme partie explique le programme &quot;Snarf Codeur
+2.0&quot; utlisant cet algorithme pour coder des fichiers.</p>
+
+<p><font color="#FF0000">Sommaire :</font></p>
+
+<p><font color="#FF0000">I Presentation de l'algorithme</font></p>
+<p><font color="#FF0000">II Exemple de realisation de l'algorithme en C++<br></font>
+<font color="#000000">....</font>
+<font color="#FF0000">A G&eacute;n&eacute;ralit&eacute;s<br></font>
+<font color="#000000">....</font>
+<font color="#FF0000">B Programmation de l'algorithme</font></p>
+
+<p><font color="#FF0000" size="4"><b>I Presentation de l'algorithme</b></font></p>
+
+<p>
+Le codage utilise l'algorithme de LEMPEL-ZIV qui est en fait un algorithme de compression de donn&eacute;e.<br>
+Cette technique permet d'optimiser la place utilis&eacute;e par les donn&eacute;es et accessoirement de les crypter.<br>
+C'est pour cette derni&egrave;re possibilit&eacute; que l'algorithme est utilis&eacute; en raison de sa lenteur et de son faible taux de compression par rapport aux compresseurs existants, comme par exemple WinZip.<br>
+L'id&eacute;e g&eacute;n&eacute;rale est de coder une chaîne de caract&egrave;re sur un nombre inf&eacute;rieur de bits. On cr&eacute;e un nouvel &quot;alphabet &quot; contenant les caract&egrave;res standards, cod&eacute;s sur 8 bits, et des chaînes de caract&egrave;res cod&eacute;es sur 9 bits ou plus. Par exemple, le nouvel alphabet pourra être le suivant :
+</p>
+
+<p>Code Chaîne<br>
+00 00h<br>
+01 01h<br>
+... ...<br>
+65 A<br>
+66 B<br>
+... ...<br>
+255 FFh<br>
+256 BA<br>
+257 ON<br>
+258 ONJ<br>
+... ...
+</p>
+
+<p>
+L'un des int&eacute;rêts de l'algorithme de LEMPEL-ZIV est qu'il ne n&eacute;cessite pas d'avoir une connaissance pr&eacute;alable des donn&eacute;es &agrave; compresser et que le nouvel alphabet n'a pas &agrave; être transmis dans le fichier.<br>
+Pour cela if faut que la suite des codes &eacute;crits puisse permettre de reconstituer le nouvel alphabet. Par cons&eacute;quent il faut que les codes d&eacute;j&agrave; lus permettent de cr&eacute;er les nouveaux codes et que chaque lu doit d&eacute;j&agrave; être d&eacute;cod&eacute;.<br>
+La solution adopt&eacute;e par LEMPEL-ZIV consiste &agrave; d&eacute;caler l'&eacute;criture d'un code et son ajout dans l'alphabet : au moment du codage, le code &eacute;mis est toujours un code figurant d&eacute;j&agrave; dans l'alphabet et le code qui est plac&eacute; dans la table(ou l'alphabet) peut être reconstruit &agrave; partir des codes &eacute;mis pr&eacute;c&eacute;demment.<br>
+La construction de l'alphabet est simple : on construit une chaîne, en v&eacute;rifiant &agrave; chaque ajout de caract&egrave;re si cette chaîne est dans la table.<br>
+Si elle y est d&eacute;j&agrave; on ajoute un nouveau caract&egrave;re, sinon on ajoute la nouvelle chaîne &agrave; l'alphabet, et on recommence avec une nouvelle chaîne vide. Pour d&eacute;caler l'&eacute;criture du code avec son codage, il suffit d'&eacute;crire le code correspondant &agrave; la chaîne actuelle moins son dernier caract&egrave;re. Ce code est forc&eacute;ment d&eacute;j&agrave; dans l'alphabet car chaque nouvelle chaîne est l'ajout d'une chaîne d&eacute;j&agrave; existante et d'un nouveau caract&egrave;re.<br>
+L'algorithme de compression est donc le suivant :
+</p>
+
+<p>
+<font color="#FFFF80">
+Initialiser la table avec les caract&egrave;res du code ASCII et la chaîne &agrave; vide<br>
+Tant Que des caract&egrave;res sont lus<br>
+Ajouter le nouveau caract&egrave;re &agrave; la chaîne<br>
+Si la chaîne n'est pas dans la table<br>
+Ajouter la chaîne &agrave; la table<br>
+Ecrire le code correspondant &agrave; la chaîne moins son dernier caract&egrave;re<br>
+Initialiser la chaîne au dernier caract&egrave;re de celle-ci<br>
+Ecrire le code correspondant &agrave; la chaîne
+</font>
+</p>
+
+<p>voici un exemple de codage d'un texte comportant un alphabet de deux lettres :</p>
+
+<p>Message Chaîne Chaîne ajout&eacute;e &agrave; la table Code &eacute;mis<br>
+A A<br>
+A AA-&gt;A 2=AA 0=A<br>
+B AB-&gt;B 3=AB 0=A<br>
+A BA-&gt;A 4=BA 1=B<br>
+B AB<br>
+B ABB-&gt;B 5=ABB 3=AB<br>
+A BA<br>
+B BAB-&gt;B 6=BAB 4=BA<br>
+A BA<br>
+A BAA 7=BAA 4=BA<br>
+B AB<br>
+A ABA-&gt;A 8=ABA 3=AB<br>
+B AB<br>
+B ABB 5=ABB<br>
+fin de fichier</p>
+
+<p>
+Le nombre de caract&egrave;re au d&eacute;part est de 14. Le nombre de code du fichier compress&eacute; est de 8.<br>
+L'alphabet de d&eacute;part est constitu&eacute; de 2 caract&egrave;res donc est cod&eacute; sur 1 bit.<br>
+La taille du message cod&eacute; en bit est :<br>
+Code : 0 0 1 3 4 4 3 5<br>
+Taille en bit : 1 + 1 + 1 + 2 + 3 + 3 + 2 +3 = 16 bits !</p>
+
+<p>
+La taille du fichier compress&eacute; est sup&eacute;rieure &agrave; celle du fichier original.<br>
+Cela vient du fait que le gain apport&eacute; en codant une chaîne de plusieurs caract&egrave;res sur un seul est petit du au codage de l'alphabet de d&eacute;part sur 1 bit.<br>
+Une chaîne de 2 caract&egrave;res a un code au minimum &eacute;gal &agrave; 3 donc est cod&eacute; sur 2 bits. Le gain est donc nul.<br>
+Si l'alphabet de d&eacute;part comporte 8 bits comme c'est le cas normalement, le codage de 2 caract&egrave;res, c'est &agrave; dire 16 bits, s'&eacute;crit sur 9 bits.<br>
+On a donc un gain de 7 bits.<br>
+Dans l'exemple ci-dessus, la taille du message original est de 14*8 = 112 bits et celle du fichier cod&eacute; est de 3*8 + 5*9 = 69 bits ce qui correspond &agrave; 9 caract&egrave;res &eacute;crits (on ne peut &eacute;crire que par paquets de 8 bits). On a donc gagn&eacute; 5 octets.
+</p>
+
+<p>En ce qui concerne la d&eacute;compression, l'algorithme est le suivant :</p>
+
+<p><font color="#FFFF80">
+Initialiser la table avec les caract&egrave;res du code ASCII<br>
+Lire et d&eacute;coder le premier caract&egrave;re<br>
+Tant Que des caract&egrave;res sont lus<br>
+Si le code n'est pas dans la table<br>
+Alors &eacute;crire la chaîne form&eacute;e par la chaîne pr&eacute;c&eacute;dente plus son premier caract&egrave;re<br>
+Sinon &eacute;crire la chaîne correspondante au code<br>
+Ajouter &agrave; la table le code form&eacute; par la chaîne pr&eacute;c&eacute;dente plus le premier caract&egrave;re de la chaîne actuelle</font></p>
+
+<p>Voici la d&eacute;compression de l'exemple pr&eacute;c&eacute;dent :</p>
+
+<p>Message cod&eacute; chaîne d&eacute;cod&eacute;e chaîne ajout&eacute;e &agrave; la table<br>
+0 A<br>
+0 A 2 = A + A<br>
+1 B 3 = A + B<br>
+3 AB 4 = B + A<br>
+4 BA 5 = AB + B<br>
+4 BA 6 = BA + B<br>
+3 AB 7 = BA + A<br>
+5 ABB 8 = AB + A</p>
+
+<p><font color="#FF0000" size="4"><b>II Exemple
+de realisation de l'algorithme en C++</b></font></p>
+
+<p><font color="#FF0000"><b>A G&eacute;n&eacute;ralit&eacute;s :</b></font></p>
+
+<p>
+Le programme se d&eacute;compose en 2 parties.<br>
+La premi&egrave;re est la partie graphique, c'est &agrave; dire la feuille principale avec les labels et les dialogues.<br>
+La deuxi&egrave;me partie est la traduction de l'algorithme de codage.<br>
+Ces deux parties sont contenues dans deux unit&eacute;s diff&eacute;rentes : <br>
+unit1.cpp, unit1.h et unit1.dfm (pour la fiche)<br>
+fonctions.cpp et fonctions.h
+</p>
+
+<p>
+La feuille principale appelle deux fonctions de l'unit&eacute; &quot;fonctions&quot;. Ces deux fonctions sont d&eacute;finies comme suit :
+</p>
+
+<p><font color="#80FFFF">
+void Codage(char *source, char *dest);<br>
+void DeCodage(char *source, char *dest);
+</font></p>
+
+<p>
+La premi&egrave;re fonction sert, comme son nom l'indique, &agrave; coder un fichier. Le premier param&egrave;tre est le nom du fichier original, le deuxi&egrave;me est le nom du fichier de destination, c'est &agrave; dire le fichier cod&eacute;. Ces deux fonctions sont appel&eacute;es lors du click sur les labels &quot;...Coder...&quot; et &quot;...D&eacute;coder...&quot;.
+</p>
+
+<p><font color="#FF0000">
+<b>B Programmation de l'algorithme :</b>
+</font></p>
+
+<p>L'algorithme n&eacute;cessite que l'on puisse &eacute;crire des codes sur 9 bits et plus.<br>
+Or on ne peut &eacute;crire que des octets, c'est &agrave; dire 8 bits.<br>
+La solution choisie consiste &agrave; imposer le nombre de bits des codes et &agrave; &eacute;crire les codes 8 par 8.<br>
+Le nombre de bits des codes est fix&eacute; &agrave; 11, c'est &agrave; dire que tous les codes ont une taille de 11 bits.<br>
+Par exemple, le code 16 devient 000 00010000, le code 2047 devient 111 11111111<br>
+Il y a donc une perte de place pour les codes inf&eacute;rieurs &agrave; 11 bits mais il est n&eacute;cessaire de savoir combien de code on doit
+lire de bits pour pouvoir d&eacute;coder.<br>
+En le fixant &agrave; 11, le nombre de bits &agrave; lire pour le d&eacute;codage est toujours le même. De plus cette solution permet une &eacute;criture plus facile des codes.<br>
+En effet, si on regroupe les codes par paquets de 8, on obtient un total de 88 bits.<br>
+On peut donc &eacute;crire 11 caract&egrave;res de 8 bits chacun. <br>
+Par exemple :<br>
+Les 8 codes (en binaires) : 011101011011 11100011010 11000011001... <br>
+Les 11 codes apr&egrave;s d&eacute;coupage : 01110101 10111100 01101011 00001100 1...</p>
+
+<p>Les 8 codes de 11 bits et les 11 codes de 8 bits
+sont stock&eacute;s dans deux tableaux<br>
+diff&eacute;rents d&eacute;finis comme suit :</p>
+
+<p><font color="#80FFFF">unsigned char bufByte[11];
+// 11*8 bits avant d'&eacute;crire <br>
+int bufCode[8]; // les 8 codes &agrave; &eacute;crire de 11 bits chacun</font></p>
+
+<p>Le passage d'un tableau &agrave; l'autre est r&eacute;alis&eacute;
+par les deux fonctions suivantes :</p>
+
+<p><font color="#80FFFF">void CodeToByte();<br>
+void ByteToCode();</font></p>
+
+<p>Ces conversions sont r&eacute;alis&eacute;es par d&eacute;calage
+binaire r&eacute;alis&eacute; dans les deux<br>
+fonctions :</p>
+
+<p><font color="#80FFFF">//-----------------------------------------------------------------<br>
+void CodeToByte()<br>
+{<br>
+// on a bufCode[8] de 11 bits et on veut bufByte[11] de 8 bits<br>
+for(i=0;i&lt;11;i++) bufByte[i] = 0;<br>
+bufByte[0] = (bufCode[0] &gt;&gt; 3);<br>
+bufByte[1] = (bufCode[0] &lt;&lt; 5) | (bufCode[1] &gt;&gt; 6);<br>
+bufByte[2] = (bufCode[1] &lt;&lt; 2) | (bufCode[2] &gt;&gt; 9);<br>
+bufByte[3] = (bufCode[2] &gt;&gt; 1);<br>
+bufByte[4] = (bufCode[2] &lt;&lt; 7) | (bufCode[3] &gt;&gt; 4);<br>
+bufByte[5] = (bufCode[3] &lt;&lt; 4) | (bufCode[4] &gt;&gt; 7);<br>
+bufByte[6] = (bufCode[4] &lt;&lt; 1) | (bufCode[5] &gt;&gt; 10);<br>
+bufByte[7] = (bufCode[5] &gt;&gt; 2);<br>
+bufByte[8] = (bufCode[5] &lt;&lt; 6) | (bufCode[6] &gt;&gt; 5);<br>
+bufByte[9] = (bufCode[6] &lt;&lt; 3) | (bufCode[7] &gt;&gt; 8);<br>
+bufByte[10]= (bufCode[7]); // &gt;&gt; 0)<br>
+}<br>
+//-----------------------------------------------------------------</font></p>
+
+<p><font color="#80FFFF">//-----------------------------------------------------------------<br>
+void ByteToCode()<br>
+{<br>
+static short iBTC;<br>
+for(i=0;i&lt;8;i++) bufCode[i] = 0;<br>
+bufCode[0] = (bufByte[0] &lt;&lt; 3) | (bufByte[1] &gt;&gt; 5);<br>
+bufCode[1] = (bufByte[1] &lt;&lt; 6) | (bufByte[2] &gt;&gt; 2);<br>
+bufCode[2] = (bufByte[2] &lt;&lt; 9) | (bufByte[3] &lt;&lt; 1) |
+(bufByte[4] &gt;&gt; 7);<br>
+bufCode[3] = (bufByte[4] &lt;&lt; 4) | (bufByte[5] &gt;&gt; 4);<br>
+bufCode[4] = (bufByte[5] &lt;&lt; 7) | (bufByte[6] &gt;&gt; 1);<br>
+bufCode[5] = (bufByte[6] &lt;&lt; 10) | (bufByte[7] &lt;&lt; 2) |
+(bufByte[8] &gt;&gt; 6);<br>
+bufCode[6] = (bufByte[8] &lt;&lt; 5) | (bufByte[9] &gt;&gt; 3);<br>
+bufCode[7] = (bufByte[9] &lt;&lt; 8) | (bufByte[10]);</font></p>
+
+<p><font color="#80FFFF">//met &agrave; 0 les bytes en
+trop (les 5 de gauche)<br>
+// 0000 0111 1111 1111 --&gt; le filtre = 2047<br>
+//&amp;1011 1001 0110 1010 --&gt; le code sur 16 bits<br>
+// -------------------<br>
+// 0000 0001 0110 1010 --&gt; r&eacute;sultat sur 11 bits<br>
+for(iBTC=0;iBTC&lt;8;iBTC++) bufCode[iBTC] &amp;= 2047;<br>
+}<br>
+//-----------------------------------------------------------------</font></p>
+
+<p>La d&eacute;finition de la variable &quot;int i&quot;
+est en globale car elle est utilis&eacute;e pour d'autres fonctions.<br>
+La variable &quot;iBTC&quot; est d&eacute;finie en static pour &eacute;viter
+d'avoir &agrave; la recr&eacute;er &agrave; chaque appelle de la fonction.<br>
+Lors de l'&eacute;criture du dernier paquet de 8 codes lors du codage,
+il y a risque d'&eacute;crire des codes en trop si le nombre total de
+code n'est pas un multiple de 8.<br>
+Lors du d&eacute;codage, ces codes seront lus et d&eacute;coder comme des
+codes normaux.<br>
+Le fichier restitu&eacute; sera alors diff&eacute;rent de l'original.<br>
+Il faut donc stocker la taille du fichier original pour pouvoir
+supprimer les caract&egrave;res en trop lors du d&eacute;codage. Le stockage
+s'effectue en convertissant la taille en chaîne de caract&egrave;re de
+50 octets puis en effectuant une rotation binaire de chaques
+caract&egrave;res pour &eacute;viter de pouvoir lire facilement la taille du
+fichier. Lors du codage une rotation &agrave; gauche est effectu&eacute;e et
+lors du d&eacute;codage, une &agrave; droite.<br>
+La suppression de caract&egrave;re en fin de fichier n'est pas pr&eacute;vue
+par le C++.<br>
+Il faut donc cr&eacute;er un fichier temporaire contenant le fichier d&eacute;cod&eacute;
+avec les caract&egrave;res en trop et ne copier que le bon nombre de
+caract&egrave;res dans le fichier de destination choisi par
+l'utilisateur.</p>
+
+<p>Le stockage de l'alphabet est r&eacute;alis&eacute; dans un
+tableau de chaînes de caract&egrave;res. La taille maximale d'un
+tableau &eacute;tant limit&eacute;e &agrave; un segment, c'est &agrave; dire 65536
+octets, le nombre maximum de code &eacute;tant 2048 (211) , la longueur
+des chaînes de caract&egrave;re est donc limit&eacute;e &agrave; 20 (20 * 2048 =
+40960 &lt; 65536).<br>
+Le nombre maximal de caract&egrave;re aurait pu être plus &eacute;lev&eacute; mais
+les chaînes de plus de 20 caract&egrave;res sont tr&egrave;s rares.<br>
+Il faut aussi un tableau contenant la taille des chaînes. En
+effet ici les chaînes ne sont pas des chaînes AZT.<br>
+La d&eacute;termination de leur taille est donc impossible, il faut
+donc la stocker.<br>
+Il faut aussi stocker le nombre total de chaînes que comporte
+l'alphabet :</p>
+
+<p><font color="#80FFFF">unsigned char
+Table[2048][20]; // l'alphabet<br>
+short TbTaille[2048];<br>
+short nbChaine;</font></p>
+
+<p>Au moment de l'initialisation, la variable
+nbChaine a pour valeur 256. En effet,<br>
+les chaînes de 0 &agrave; 255 sont d&eacute;j&agrave; utilis&eacute;es pour les caract&egrave;res
+standards.</p>
+
+<p>Il faut aussi une chaîne pour permettre le
+codage et le d&eacute;codage.<br>
+Pour le d&eacute;codage il faut aussi avoir en m&eacute;moire la chaîne pr&eacute;c&eacute;dente.<br>
+On utilise deux variables :</p>
+
+<p><font color="#80FFFF">unsigned char
+SousChaine[20]; short Taille ;<br>
+unsigned char PSousChaine[20]; short Ptaille ; // la chaîne pr&eacute;c&eacute;dente</font></p>
+
+<p>Il faut aussi cr&eacute;er une fonction transf&eacute;rant
+une chaîne dans une autre car la fonction strcpy est
+inutilisable (ce ne sont pas des chaînes AZT).<br>
+Elle est d&eacute;finie comme suit :</p>
+
+<p><font color="#80FFFF">void CopyChaine(unsigned
+char* dest,unsigned char* source);</font></p>
+
+<p>Lors d'un click sur le label &quot;Annuler&quot;,
+il faut pouvoir arrêter le codage ou le d&eacute;codage.<br>
+Une variable &quot;stop&quot; de type bool est mise &agrave; true lors
+de l'appelle de la fonction StopCodage.<br>
+Avant chaque lecture dans le fichier &agrave; coder (ou &agrave; d&eacute;coder),
+les fonctions Codage et Decodage v&eacute;rifient si la variable
+StopCodage<br>
+est &agrave; true. Si tel est le cas, la fonction s'arrête.</p>
+
+<p><font color="#80FFFF">bool stop;<br>
+void StopCodage(void);</font></p>
+
+<p>L'algorithme de codage est donc devenu le suivant
+:</p>
+
+<p><font color="#FFFF80">Ouvrir le fichier source<br>
+Cr&eacute;er le fichier destination<br>
+Lire la taille du fichier source et la transformer en chaîne de
+caract&egrave;re<br>
+Effectuer la rotation de la taille et l'&eacute;crire dans le fichier
+destination<br>
+Mettre &agrave; jour la barre de progression<br>
+Initialiser la table<br>
+Tant que des caract&egrave;res sont lus<br>
+Si stop=true arrêter le codage<br>
+Si la taille de la chaîne est inf&eacute;rieure &agrave; 20<br>
+Ajouter le nouveau caract&egrave;re<br>
+Si la chaîne n'est pas dans la table<br>
+Ajouter la chaîne<br>
+Mettre dans bufCode la code correspondant &agrave; la chaîne moins son
+dernier caract&egrave;re<br>
+Si le nombre de code est 8, convertir bufCode en bufByte et l'&eacute;crire
+dans le fichier<br>
+Initialiser la chaîne au dernier caract&egrave;re de celle-ci<br>
+Si la taille est &eacute;gale &agrave; 20<br>
+Mettre dans bufCode la code correspondant &agrave; la chaîne moins son
+dernier caract&egrave;re<br>
+Si le nombre de code est 8, convertir bufCode en bufByte et l'&eacute;crire
+dans le fichier<br>
+Initialiser la chaîne au dernier caract&egrave;re de celle-ci<br>
+Actualiser la barre de progression<br>
+Mettre dans bufCode la code correspondant &agrave; la chaîne<br>
+Convertir bufCode en bufByte et l'&eacute;crire dans le fichier<br>
+Fermer les 2 fichiers<br>
+Envoyer le message de fin de codage</font></p>
+
+<p>L'algorithme de d&eacute;codage est devenu :</p>
+
+<p><font color="#FFFF80">Ouvrir le fichier source<br>
+Cr&eacute;er le fichier temporaire (où seront &eacute;crites les chaînes)<br>
+Cr&eacute;er le fichier destination<br>
+Lire la taille dans le fichier source et effectuer la rotation<br>
+Mettre &agrave; jour la barre de progression<br>
+Initialiser la table<br>
+Tant que des paquets de 11 caract&egrave;res sont lus<br>
+Si stop=true arrêter le codage<br>
+Convertir les caract&egrave;res lus en code de 11 bits<br>
+Pour chaque code faire<br>
+Si le code est dans la table, &eacute;crire la chaîne correspondant au
+code<br>
+Sinon &eacute;crire la sous chaîne form&eacute;e par celle pr&eacute;c&eacute;dente plus
+son premier<br>
+caract&egrave;re<br>
+Ajouter &agrave; la table le code form&eacute; par la chaîne pr&eacute;c&eacute;dente
+plus le premier<br>
+caract&egrave;re de la chaîne actuelle<br>
+Actualiser la barre de progression<br>
+Copier dans le fichier destination le bon nombre de caract&egrave;re<br>
+Fermer les 3 fichiers<br>
+Effacer le fichier temporaire<br>
+Envoyer le message de fin de codage<br>
+</font></p>
+
+<p align="right"><font color="#FF0000" size="5"><b>i-jeune</b></font></p>
+</body>
+</html>
