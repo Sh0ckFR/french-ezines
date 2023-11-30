@@ -1,0 +1,503 @@
+-------------------------------------------------------------------------------
+             Cracking au pays des pingouins                        anonym0us
+-------------------------------------------------------------------------------
+
+
+
+
+
+[ Sommaire ]
+
+
+  I/   Disclaimer.
+
+
+  II/  Introduction.
+
+
+  III/ Récupération d'informations.
+
+
+  IV/  Action.
+          A/ La limitaion
+          B/ Nag Screen
+
+
+  V/   Un p'tit patch en asm.
+
+
+
+
+
+
+
+
+   I/ Disclaimer
+   ______________
+
+
+Cet  article est simplement une étude théorique sur la sécurité logicielle sous
+linux , vous  ne  devez  en  aucun  cas  metre  en  pratique  les  informations
+contenues dans ce texte, pour utiliser ce logiciel sans le payer.
+
+
+
+
+
+
+  II/ Introduction
+  ________________
+
+
+ Trainant sur www.telecharger.com (une vrai mine d'exercice pour crackeur ;))
+à la recherche d'un outil de retouche d'image sous linux autre que The GIMP,
+je tombe sur Photogenics. J'installe ce soft et là j'ai une magnifique fenêtre
+qui me dit que je suis à 1 jour sur 30 de ma période d'évaluation. Héhé :-)
+
+Dans cet article je vais expliquer le fonctionement de cette sécurité
+logicielle.
+Cet article est destiné aux débutants en asm ou débutants en cracking/reverse,
+qui peuvent être intérréssés par le code ou la démarche du crack.
+La technique du crack en elle meme est tout ce qu'il y a plus banal.
+
+
+
+
+
+
+
+  III/ Récupération d'informations
+  ________________________________
+
+
+Je lance le soft à la recherche de strings intéréssantes
+Je vois que la première fenêtre a un titre intérrésant:
+"You are on day 1 of your 30 day trial"
+Je clique sur "1" dans le menu pour rentrer dans le prog, là, rien de bien
+intérrésant, je quitte.
+
+
+J'avance la date d'un an et je relance le soft
+Le titre de la fenêtre a changé:
+"Your 30 day trial has expired"
+Et quand je click sur 1 pour rentrer dans le prog, je voit une fenetre avec
+comme titre:
+"registration"
+Et qui contient le message:
+"Sorry, your trial pariod has exceed 30 days!"
+
+Donc impossible de lancer le prog...
+
+
+Je regarde les méthodes d'enregistrement et je voit que L/P est envoyé sur
+un serveur. Attaquer la méthode d'enregistrement n'est donc certainement pas
+la meilleure méthode.
+
+
+
+
+
+  IV/ Action
+  __________
+
+
+          A/ La limitation
+          ________________
+
+
+  Finit les préliminaires, on sort ldasm et on passe à l'action :)
+Le désassemblage est plutot long, roulez un petit ouinj en
+attendant.
+
+Ahh ca y est, c'est fini, on clique sur le bouton qui affiche les strings ref.
+On peut voir toutes les strings notées plus haut.
+
+Je recherche la string qui me dit combien de jours il me reste, et je regarde
+ce qui ce trouve a ses alentours.
+
+
+;-----------------------------------------------------------------------------
+
+
+* Reference To: Ng__TrialDaysLeft(void)
+
+:080715aa e829f7ffff   call 08070cd8
+:080715af 89c2         mov edx, eax
+:080715b1 85d2         test edx, edx
+:080715b3 741f         je 080715d4
+:080715b5 b81f000000   mov eax, 1f
+:080715ba 29d0         sub eax, edx
+:080715bc 50           push eax
+
+
+* Possible StringData Ref from Code Obj ->"Welcome to Photogenics - You are on "
+                                        ->"day %ld of your 30 day trail."
+
+....
+....
+
+Un peu plus loin en 0X080715D3
+
+
+Referenced by a (U)nconditional or (C)onditional Jump at Address:
+| :080715B3
+
+ * Possible StringData Ref from Code Obj ->"Welcome to Photogenics - Your 30 day "
+                                         ->"trial has expired!"
+
+
+
+;-----------------------------------------------------------------------------
+
+
+Euh bon ben là c'est clair je crois, non ?!
+
+
+Petite explication pour ceux qui n'ont pas compris.
+Le call en 0x080715aa appelle une fonction au nom évocateur: TrialDaysLeft
+
+
+call    08070cd8   ;Fonction qui retourne le nombre de jours restants dans eax
+                   ;Un petit breackpoint + tracage avec gdb me l'a confirmé
+mov     edx, eax   ;Nombre de jours restants dans edx
+test    edx, edx   ;edx == 0 ? fin de la periode d'essai ?
+je      080715d4   ;Si oui alors va en 080715D4
+mov     eax, 1f    ;31 dans eax
+sub     eax, edx   ;Soustrait nombre de jours restants a 31
+                   ;Ce qui donne le nombre de jours d'utilisation
+push    eax        ;Nombre de jours d'utilisation sur la pile
+                   ;ce qui servira tres certainement pour etre affiché dans le
+                   ;titre de la fenêtre (pour remplacer le %ld que donne ldasm)
+
+
+Ce bout de code nous dit comment changer le titre de la fenêtre comme on le
+veut par ex:
+:080715b3 741f         je 080715d4
+Si je remplace le code de ce 'je' (741f) par 2 NOPs 9090, alors la fenêtre avec
+le titre "..trial has expired!" ne sera jamais affichée.
+Après je peux par exemple écraser les 3 instructions suivantes (à condition de
+garder l'équilibre) par un push LeNombreQueJeVeut pour qu'il soit affiché
+comme nombre de jours restants.
+
+
+Enfin c'est marrant de bidouiller la fenêtre mais le crack ne se situe pas ici,
+cela nous a quand meme permis de voir que la fonction TrialDaysLeft retourne
+le nombre de jours restants dans eax.
+
+Le test de la limitation se trouve en 0x08071854
+
+;-----------------------------------------------------------------------------
+
+* Reference To: Ng__TrialDaysLeft(void)
+:08071854 e87ff4ffff call 08070cd8
+:08071859 85c0 test eax, eax
+:0807185b 7534 jne 08071891
+.....
+....
+...
+
+ * Possible StringData Ref from Code Obj ->"Sorry, your trial period has exceeded 30 "
+                                         ->"days!
+
+:0807186c 685e481c08 push 81c485e
+
+
+ * Possible StringData Ref from Code Obj ->"Registration"
+
+:08071871 688d481c08 push 81c488d
+
+ * Reference To: Ng_MessageBoxA --.
+
+
+;-----------------------------------------------------------------------------
+
+
+call 08070cd8  ;fonction qui retourne le nombre de jours restant dans eax
+test eax, eax  ;eax == 0 ?
+jne 08071891   ;Si oui alors on affiche la message et on lance pas le prog
+
+
+Il y a plusieurs solutions pour faire sauter sauter la limite, je vous propose
+la mienne: je rentre dans la fonction TrialDaysLeft et dès le
+début je lui mets un:
+
+mov eax, 0x1E
+ret
+
+En n'oubliant pas d'équilibrer avec quelques NOPs si besoin est.
+J'apelle cette méthode 'méthode de cracking à la bourrin' au moins je suis
+sûr qu'a chaque appel de cette fonction elle renvera toujours 30 dans eax, il
+me restera donc tout le temps 30 jours. Quand le programme s'y prete, j'utilise
+quasiment toujours cette méthode, c'est radical.
+
+
+Pour les modifs avec un éditeur hexa le debut de la fonction se trouve à
+l'offset: 0x28CD8.
+
+Pour ceux qui veulent savoir d'où sort le 0x28CD8:
+Il s'agit du virtual offset du début du segment contenant le code - virtual
+offset du début de ma fonction.
+0x08048000 - 0x08070CD8 = 0x28CD8
+
+
+
+L'op code pour 'mov eax, XX' est: B8 suivit de la valeur sur 32 bits en
+inversant les octets.
+L'op code du ret est: C3
+
+Ce qui donne:
+offset      octet d'origine     octet de remplacement
+@28CD8      5589e581ec58010000//B81E000000C3909090
+
+On n'oublie pas de re-équilibrer tout ça avec des NOP.
+
+
+
+
+
+          B/ Nag Screen
+          _____________
+
+
+On a fait sauter la limite mais j'aime les choses bien faites.
+J'aime pas du tout le fucking nag screen qui nous dit que l'on est pas
+enregistrés et en plus on est obligés de cliquer sur le bouton 1 du menu pour
+rentrer dans le prog.
+
+
+On va le faire dégager vite fait.
+Deux techniques possibles:
+1 - On fait en sorte qu'elle ne soit pas créée.
+2 - On émule le clic sur le menu 1 dès l'ouverture de la fenêtre.
+
+
+Cette fois je vais prendre la solution la moins bourrin, je ne suis pas sûr de
+la fiabilité de boussiler le call de la fenêtre a grands coups de NOP :)
+
+Je vais donc émuler l'appui sur le bouton 1:
+Pour celà je regarde ce qui se passe juste après l'affichage de la fenêtre, je
+vois divers tests et sauts, je fais pas de copier-coller, le code est trop long
+et ça ne me parait pas très utile.
+En analysant les tests on voit très vite lequels nous menent vers quel menu.
+Il y a trois possiblités dans notre menu, on a vite fait de regarder ou
+pointent les sauts;)
+
+Un petit breakpoint avec gdb me confirmera bien que la solution la plus propre
+consiste a forcer le 'je' 08071830 en 8071822.
+@29822      74//eb
+
+
+
+
+
+
+
+  V/ Un petit patcheur en asm
+  ___________________________
+
+
+Voici la source d'un petit patcheur en asm qui est capable de faire les
+modifs tout seul.
+
+
+
+;-----------------------------------------------------------------------------
+;
+;Crack for Linux Idruna Photogenics 5.0 release 175
+;by anonym0us 4 aie ohh see magazine
+;
+;for education purpose only (hahaha :) )
+;
+;nasm -f elf crack.asm
+;cc crack.o -o crack
+;
+
+%define		sys_exit	1
+%define		stdout		1
+%define		sys_read	3
+%define		sys_write	4
+%define 	sys_open 	5
+%define		sys_close	6
+%define		sys_lseek	19
+
+
+
+section .bss
+
+lecture 	resd	1
+
+
+
+section .data
+
+file		db	"./Photogenics",0
+
+msg1		db      07,10,10,09,09,"Crack F0r: Linux Idruna Photogenics 5.0 release 175"
+		db      10,09,09,"---------------------------------------------------",10
+		db      10,"Cracked by anonym0us"
+		db      10,"Crack type: Trail reriod, run This crack in the Photogenics directory",10,10
+len1		equ     $ - msg1
+
+msg2		db      10,"--== I can't finD/0pen Photogenics ==--",10,10,10
+len2		equ     $ - msg2
+
+msg3		db      10,"--== Wrong Version 0r file alreadY patched ==--",10,10,10
+len3		equ     $ - msg3
+
+msg4		db      10,"--== crack succesfull, enjoy !! ==--",10,10,10
+len4		equ     $ - msg4
+
+limitation	db      0xB8,0x1E,0x00,0x00,0x00,0xC3,0x90,0x90,0x90
+nag		db	0xeb
+
+section .text
+
+global main
+
+main:
+
+mov ecx, msg1
+mov edx, len1
+call aff
+
+
+mov eax, sys_open
+mov ebx, file
+mov ecx, 02
+xor edx, edx
+int 0x80
+
+cmp ah, 0xFF		;ouverture reussi ?
+jne suite
+
+mov ecx, msg2
+mov edx, len2
+call aff
+jmp fin
+
+
+suite:
+push eax
+pop ebx
+
+mov eax, sys_lseek
+mov ecx, 0x28CD8	;offset de la fonction TrialDaysLeft
+xor edx, edx
+int 0x80
+
+
+mov eax, sys_read
+mov ecx, lecture
+mov edx, 4
+int 0x80
+
+mov eax, 0x81E58955
+cmp eax, [lecture]
+je ecriture
+
+mov ecx, msg3
+mov edx, len3
+push ebx
+call aff
+pop ebx
+call close
+jmp fin
+
+
+ecriture:
+mov eax, sys_lseek
+mov ecx, 0x28CD8	;offset de la fonction TrialDaysLeft
+xor edx, edx
+int 0x80
+
+mov eax, sys_write
+mov ecx, limitation
+mov edx, 9
+int 0x80
+
+
+mov eax, sys_lseek
+mov ecx, 0x29822	;offset du saut a forcer
+xor edx, edx
+int 0x80
+
+mov eax, sys_write
+mov ecx, nag
+mov edx, 1
+int 0x80
+
+
+
+mov ecx, msg4
+mov edx, len4
+push ebx
+call aff
+pop ebx
+call close
+jmp fin
+
+
+close:
+mov eax, sys_close
+xor ecx, ecx
+xor edx, edx
+int 0x80
+ret
+
+aff:			;ecx message, edx len
+mov eax, sys_write
+mov ebx, stdout
+int 0x80
+ret
+
+
+fin:
+mov eax, sys_exit
+mov ebx, 0
+int 0x80
+
+
+;-----------------------------------------------------------------------------
+
+A noter que l'écriture de ce code aurait pu etre très fortement simplifiée
+et réduite grâce à la macro burjeria.mac (www.s0h.cc/~emper0r)
+
+
+
+
+Je teste ce bout de code:
+
+
+$ ./crack
+
+
+
+
+                Crack F0r: Linux Idruna Photogenics 5.0 release 175
+                ---------------------------------------------------
+
+Cracked by anonym0us
+Crack type: Trail reriod, run This crack in the Photogenics directory
+
+
+
+--== crack succesfull, enjoy !! ==--
+
+
+
+
+Je lance Photogenics, si je regarde attentivement je peux voir le nag s'ouvrir
+et se refermer immédiatement. Le programme ce lance et fonctionne correctement.
+J'augmente la date de mon systeme d'un an, je relance Phtogenics ça fonctionne
+toujours.
+
+Voila c'était vraiment pas marrant il n'y avait pas la moindre protection, je
+dirais meme qu'il y avait de l'aide pour le cracker (nom des fonctions).
+
+
+
+
+<xxxx> je suis une mère pour toi...
+<xxxx> tu le sais?
+<zzz> ué maman
+<zzz> sort ton seins pour ke je puiss faire un tar -xzvf milk.tgz

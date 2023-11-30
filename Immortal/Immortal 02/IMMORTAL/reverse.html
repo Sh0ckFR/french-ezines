@@ -1,0 +1,318 @@
+<html>
+<head>
+<title>Le Reverse Engineering</title>
+</head>
+
+<body background="stars.jpg" bgcolor="black" text="green" link=#006699 alink=#006699 vlink=#006699>
+<center>
+<img src="logo.jpg" >
+
+<br><br>
+<a href="tasm.html"><img alt="Cours de win32asm"  src="prev.gif" ></a>&nbsp;
+<a href="sommaire.html"><img alt="Sommaire"  src="toc.gif" ></a>&nbsp;
+<a href="greetz.html"><img alt="Les Greetz"  src="next.gif"></a> 
+
+
+<br><br></center>
+<center>
+<table border> 
+<td width=700>
+
+<FONT FACE="tahoma,verdana" size=2><br>
+<h1 align=center><font face=tahoma,verdana color="gray" size=5>Le Reverse Engineering</font></h1>
+<br><b>
+Il y a quelques temps le defi de la French Cracking Force etait de reverser le notepad de windows . A cette date je n'avais pas de temps a moi et je n'ai donc pas pu faire grand chose. Cependant quelques semaines apres je me suis dit qu'un petit tut de reverse pourrait etre sympa. Ce zine etant fait pour les newbies et moi meme en etant un, je vais vous proposer de changer les menus et de rajouter simplement une boite de message lorsqu'on quitte Notepad . Comme un petit nagscreen, koi, mais quand on quitte pour changer . <br><br>
+
+En plus j'ai jamais fait de tuts sur le reverse donc je commence tout simple, hehe.<br><br>
+
+<font color=#FF0000>
+Les Tools :<br>
+********<br><br>
+</font>
+Borland Resource Workshop 4.x<br>
+procdump 1.6.2<br>
+Softice  4.x<br>
+Hex Workshop 3.00 (Bientot le TiPiaX editor,lol)<br><br>
+
+comme d'hab koi...<br><br>
+<font color=#FF0000>
+Go For It :<br>
+********<br><br>
+</font>
+
+Tout d'abord il faut savoir afficher une boite de message.<br>
+Pour faire ca, rien de plus simple :<br><br>
+
+on declare 2 chaines de caracteres de cette maniere :<br>
+<font size=3 color=#006699>
+<pre>
+
+message db "Da TiPiaX NotePad\nCopyright French Cracking Force\n2000-2001",0
+titre db "Go Get Fucked",0
+
+
+push 0               ;type de messageboxa
+push offset titre    ;le titre
+push offset message  ;le message
+push 0               ;le handle
+call MessageBoxA     ;API qui affiche la boite de message
+
+
+</pre>
+</font>
+Le seul probleme c'est qu'on va pas le compiler (quand meme on est pas des anes) on
+va l'integrer directement en hexa dans le code du Notepad. Donc ca sera plutot de la
+forme :<br>
+<font size=3 color=#006699>
+<pre>
+push 0
+push 0040155       ;chiffre pris au pif a titre d'exemple
+push 0040198       ;idem
+push 0
+CALL USER32!MessageBoxA
+</pre>
+</font>
+Pourquoi "CALL USER32!MessageBoxA", tout simplement car pour pas se prendre la tete
+on fera les changements en memoire grace a softice et seulement ensuite, si c'est bon
+on prendra l'editeur hexadecimal. (sous softice c'est "a" qui fait ca)<br><br>
+<font color=#FF0000>
+Allez on passe a l'attaque :<br>
+*********************<br><br>
+</font>
+On commence par la partie cool et hyper facile, on prend Borland Resource Workshop 4.x
+et on change tous les textes du notepad a notre guise. hehe, c'est fun.<br>
+En fait ce soft change les datas en les deplacant en fonction de la longueur des textes
+ce qui est suiscidaire a faire avec un editeur hexa simple.<br><br>
+
+on l'ouvre donc et on va dans menu->1<br>
+Voila ce qu'on a l'ecran : (double clic sur le "1" pour editer)<br><br>
+
+<font size=3 color=#FF0000>
+<pre>
+
+1 MENU 
+{
+ POPUP "&Fichier"
+ {
+  MENUITEM "&Nouveau", 9
+  MENUITEM "&Ouvrir...", 10
+  MENUITEM "&Enregistrer", 1
+  MENUITEM "En&registrer sous...", 2
+  MENUITEM SEPARATOR
+  MENUITEM "Mise en &page...", 32
+  MENUITEM "&Imprimer", 14
+  MENUITEM SEPARATOR
+  MENUITEM "&Quitter", 28
+ }
+
+ POPUP "&Edition"
+ {
+  MENUITEM "&Annuler\tCtrl+Z", 25
+  MENUITEM SEPARATOR
+  MENUITEM "&Couper\tCtrl+X", 768, GRAYED
+  MENUITEM "Co&pier\tCtrl+C", 769, GRAYED
+  MENUITEM "C&oller\tCtrl+V", 770, GRAYED
+  MENUITEM "S&upprimer\tSuppr", 771, GRAYED
+  MENUITEM SEPARATOR
+  MENUITEM "Selectionner &tout", 7
+  MENUITEM "Heure/&Date\tF5", 12
+  MENUITEM SEPARATOR
+  MENUITEM "&Retour a la ligne automatique", 27
+  MENUITEM "C&hoisir la police...", 37
+ }
+
+ POPUP "&Recherche"
+ {
+  MENUITEM "&Rechercher...", 3
+  MENUITEM "Rechercher le &suivant\tF3", 8
+ }
+
+<font size=3 color=#FFFF00><pre>
+
+Ici on rajoute un petit menu supplementaire :
+
+ POPUP"&Hccc RuLeZ"
+ {
+  MENUITEM "&Reverse By PoSeiDon", 20,GRAYED
+ }
+
+</font></pre>
+
+ POPUP "&?"
+ {
+  MENUITEM "&Rubriques d'aide", 5
+  MENUITEM SEPARATOR
+  MENUITEM "A &propos du Bloc-notes", 11
+ }
+
+}
+
+</pre>
+</font>
+
+les & indiquent juste des raccourcis clavier accessibles pour alt+lettresoulignee.<br><br>
+
+Arf c'etait marrant hein, hehe.<br><br>
+
+<font color=#FF0000>
+Ajout de la MessageBoxA:<br>
+*********************<br><br>
+</font>
+Tout d'abord il va falloir qu'on trouve de la place pour inscrire notre code.
+On se prend pas la tete, on va creer une nouvelle section dans le programme.
+On fait donc peter un outil encore formidable : j'ai nomme procdump (personne
+s'y attendait nonnnnn...)<br><br>
+
+On lance donc procdump, on va sur PE Editor et on ouvre notre notepad.
+On clique sur sections, on ce place sur la derniere (.rsrc) puis on clique sur le
+bouton droit et on fait : "add section".<br><br>
+
+Il nous demande le nom de notre section, on met ".TiPiaX" puis Ok.<br>
+Ensuite on change les caracteristiques grace a "edit section" (toujours grace au
+bouton droit) pour obtenir cela :<br><br><br>
+<font color=#006699 size=3><pre>
+
+Name             .TiPiaX
+VirtualSize      00001000
+VirtualOffset    0000E000
+RawSize          00001000
+RawOffset        0000E000
+Characteristics  E0000020     //ça correspond a un code executable,lisible et ecrivable
+
+</font></pre>
+
+on change la Size Of Image de 0000E000 a 0000F000 (car on a ajoute 1000 bytes)
+(sous Procdump encore).<br>
+Une section de 1000 bytes est maintenant cree, il faut donc desormais ajouter les 1000
+bytes au fichier. Pour ca on utilise HexWorkshop.<br>
+On va a la fin du fichier, puis bouton droit et on choisit "insert".
+Ensuite on ecrit 1000 bytes, on clique "hex" puis ok.<br><br>
+
+Genial, on est pret a attaquer.<br><br>
+
+Maintenant on passe aux choses serieuses. On va faire en sorte que notre boite de message
+s'affiche lorsqu'on quitte le programme. Il faut donc trouver ou est l'appel a l'API
+ExitProcess. Alors ca c'est hyper simple, on va dans Wdasm, on desassemble et on va
+dans fonctions->imports<br>
+puis on choisit ExitProcess<br><br>
+
+voila ce qu'on trouve :<br><br>
+
+<font size=3 color=#FF0000>
+<pre>
+* Possible Ref to Menu: MenuID_0001, Item: "Ouvrir..."
+                                  |
+
+* Possible Reference to String Resource ID=00010: "Le texte dans le fichier %% a change.
+
+Voulez-vous enregistr"
+                                  |
+:00401123 B80A000000              mov eax, 0000000A
+:00401128 7404                    je 0040112E
+:0040112A 0FB745EC                movzx eax, word ptr [ebp-14]
+
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:00401128(C)
+|
+:0040112E 50                      push eax
+:0040112F 56                      push esi
+:00401130 6A00                    push 00000000
+:00401132 6A00                    push 00000000
+
+* Reference To: KERNEL32.GetModuleHandleA, Ord:0114h
+                                  |
+:00401134 FF1594634000            Call dword ptr [00406394]
+:0040113A 50                      push eax
+:0040113B E8730F0000              call 004020B3
+:00401140 50                      push eax            //ces lignes nous interressent
+:00401141 8BF0                    mov esi, eax        //
+                                                      //
+* Reference To: KERNEL32.ExitProcess, Ord:007Fh       //
+                                  |
+:00401143 FF1598634000            Call dword ptr [00406398]
+:00401149 8BC6                    mov eax, esi
+
+</pre>
+</font>
+
+Quand Notepad va quitter il fait :<br>
+<pre><font size=2 color=#FFFF00>
+push eax         // eax=0
+mov esi, eax
+CALL ExitProcess
+</pre></font>
+On va pas se faire chier, on va foutre un jump en 00401140 vers notre section .
+On a vu avec procdump que les VirtualOffset etaient equivalents au RawOffset donc comme
+notre section commence a l'offset E000 son adresse est 0040E000.<br>
+On prend donc softice et on met un bpx en 00401140.<br>
+Puis on fait :<br><br>
+<pre><font size=2 color=#FFFF00>
+a 00401140
+jmp 0040E000
+//echap
+</pre></font>
+et vous regardez l'hexa genere. ca me donne :<br>
+
+<pre>E9BBCE0000</pre><br>
+
+vous prenez donc votre editeur hexa et vous foutez ca a l'offset 1140.<br><br>
+
+Maintenant qu'on a derive le prog il faut afficher la MessageBoxA. En premier il
+faut caser nos chaines de caracteres.<br>
+On a prevu tellement de place que je vais prendre enormement d'espace, d'abord je fais
+ce que je veux, c'est moi qui fait le tut !<br><br>
+
+Bon, on place la premiere en E060 et la deuxieme en E0C4 :<br>
+il suffit de mettre le bit 00 pour arreter la chaine. Pour allez a la ligne c'est 0A.
+Comme sur la photo :<br><br>
+
+<center>
+<img src="hexa1.gif">
+<br><br>
+</center>
+
+L'affichage de la boite de message se fera comme ceci :<br>
+(l'hexa est obtenu par la fonction "a" de softice)<br>
+<pre>
+<font size=2 color=#FFFF00>
+6A00         push 00
+68C4E04000   push 0040E0C4
+6860E04000   push 0040E060
+6A00         push 00
+E81B61B4BF   Call USER32!MessageBoxA
+
+;puis on quitte le prog :
+
+50           push eax
+8BF0         mov esi,eax
+FF1598634000 Call USER32!ExitProcess
+</font>
+</pre>
+On tape tout cet hexa sous HexWorkshop en E000 comme ceci :<br>
+
+<center>
+<img src="hexa2.gif">
+<br><br>
+</center>
+
+Et voila, on a une boite de message quand on quitte le NotePad. Hehe<br>
+<a href="TiPiaX-PaD.exe">Le programme au final</a><br>
+Voyez c'est franchement pas dur.<br>
+TarGeT DeStroYeD<br>
+
+
+ <br><br></b>
+
+<font color=red size=+1></font>
+
+
+<h3 align=right><font color=#006699>TiPiaX</font></h3><br>
+
+</font></table></center><br>
+<center><a href="tasm.html"><img alt="Cours de win32asm"  src="prev.gif" ></a>&nbsp;
+<a href="sommaire.html"><img alt="Sommaire"  src="toc.gif" ></a>&nbsp;
+<a href="greetz.html"><img alt="Les Greetz"  src="next.gif"></a> 
+
+</center>
+</body>
+</html>

