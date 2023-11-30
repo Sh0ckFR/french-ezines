@@ -52,6 +52,13 @@ Some articles are also sensitive and may mention, for example, the creation of h
 * hccc
 * hohs
 * HVU
+* Kult Dead Bill
+* Immortal
+* Lightning Jokers
+* Illegal Granted Access
+* Kaotix
+* Just Crack It
+* Input Output Corporation
 
 # How to deploy it
 

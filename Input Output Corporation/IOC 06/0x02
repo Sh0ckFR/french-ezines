@@ -1,0 +1,964 @@
+-------------------------------------------------------------------------------
+                             Burneye 1.0 analysis                   anonymous
+-------------------------------------------------------------------------------
+
+
+
+N.B. : Avant  la  parution  de ce texte est apparu le programme UNFburninhell à
+http://u-n-f.com/UNFburninhell.html.
+Ce  programme  fait  en  gros ce qui est décrit dans ce texte sans l'expliquer.
+Pour eviter tout malentendu, il faut savoir que j'ai commencé à travailler sur
+le programme unburn en Avril 2002, que je l'ai laissé tomber pendant un moment
+et que le programme a été fini le 21 juillet  (à quelque corrections près).
+
+Depuis que j'ai écrit ce texte, la version complète des sources de burneye
+ont été releasées en [9].
+
+
+
+
+
+[ Sommaire ]
+
+
+  I/   Introduction
+
+
+  II/  Workarounds
+          A/ Explication de ptrace() & pt_sh
+          B/ Fonctionnement de burneye
+
+
+  III/ Première couche de burneye
+
+
+  IV/  Deuxième couche
+          A/ Explication du cryptosystème employé
+          B/ A la recherche du "some magic"
+
+
+  V/   Autres considérations
+
+          i.   Code : pt_sh.tar.gz
+          ii.  Code : unburn.tar.gz
+          iii. Reversing : fonction 0x53728a0
+          iv.  Reversing : 0x5371892-0x53718df
+          v.   Références
+
+
+
+
+
+
+
+
+
+  I/ Introduction
+  _______________
+
+
+   BurnEye [3], pour ceux qui ne connaissent pas, est un programme servant à
+crypter des binaires tout en les laissant executables de la même façon que
+d'autres programmes compressent les binaires.
+   Par le deboggage via le syscall ptrace [1], il est possible de cracker la
+première couche de cryptage (celle utilisée sur tous les binaires).
+
+   Ensuite, un peu de brute force peut nous permettre de casser la deuxième
+couche décrite dans le README. Il nous faudra cependant reverser une partie du
+méchanisme de décryptage.
+
+
+
+
+
+
+
+
+  II/ Workarounds
+  _______________
+
+         A/ ptrace() et pt_sh
+         ____________________
+
+
+  ptrace() est une fonction du kernel Linux permettant le déboggage des
+programmes aux niveaux des interactions kernelland/userland. On peut ainsi
+tracer les syscalls d'un process (voir la commande 'strace').
+
+  Le man de ptrace() [1] nous informe de la forme d'un appel à ptrace() :
+long  int ptrace(enum __ptrace_request request, pid_t, void*, void*);
+où request est une commande que l'on souhaite réaliser, je vous conseille
+vivement de bien lire la manpage à ce sujet si ce n'est déjà fait.
+
+  Je vais à présent me contenter de détailler un peu les commandes implémentées
+dans pt_sh (pour voir comment sont implémentées les fonctions concernées, je
+vous conseille de jeter un coups d'oeil à pt_lib.c) :
+  'cont'           continue l'exécution jusqu'au prochain signal
+  'x'              récupère un mot en mémoire
+  'set'            change la valeur d'un registre ou d'un mot de la mémoire
+  'reg'            récupère certains ou la totalité des registres
+  'dump[c|file]'   dump s octets à partir de l'adresse donnée
+  'next'           va au prochain syscall
+  'step'           va à la prochaine instruction
+  'signal'         envoie un signal au processus
+  'kill'           envoie un signal et détache le process
+  'map'            affiche le fichier maps (/proc/pid/maps)
+  'restart'        relance le process
+  'end'            termine le process
+
+
+  Un exemple d'utilisation est le cas des exécutables en lecture seule en
+utilisant le core_reconstruct de Silvio Cesare [5]. L'avantage de cette
+technique c'est que la reconstruction aura toujours lieu à l'initialisation
+et ne provoquera plus de mauvaise reconstruction de binaire :
+
+
+$ ls /tmp/hehe
+-rwx--x--x    1 root     root            0 Aug 13 05:32 /tmp/hehe*
+
+$ cat /tmp/hehe.c
+#include <stdio.h>
+static int i = 0;
+int main()
+{
+  if (i++) exit(0);
+  printf("Hehe :-)\n");
+}
+
+$ ulimit -c 100000000
+
+$ id
+uid=500(user) gid=100(users) groups=(100)users
+
+$ ./pt_sh /tmp/hehe
+
+$ ./pt_sh /bin/ls
+pt_sh : another stupid tool using ptrace()
+
+Running /bin/hehe...
+SIGTRAP catched...
+pt_sh% kill SIGSEGV
+Child has been killed by SIGSEGV...
+Do you want to restart the program ? (Y/n) n
+$ ./core_reconstruct core
+0x0 - 0x0 (0)
+0x8048000 - 0x8049000 (4096)
+0x8049000 - 0x804a000 (4096)
+0x40000000 - 0x40014000 (81920)
+0x40014000 - 0x40015000 (4096)
+0x40015000 - 0x40016000 (4096)
+0xbffff000 - 0xc0000000 (4096)
+$ ./a.out
+Hehe :-)
+$
+
+
+  En gros, ce n'est qu'un petit debugger ptrace() qui me servira dans la
+suite. En effet, gdb n'aime pas trop le format d'un binaire burneye car la
+libbfd ne supporte pas les binaires sans section header table.
+
+
+
+
+
+
+
+
+          B/ Fonctionnement de burneye
+          ____________________________
+
+
+  Burneye est décrit dans [2] en ce qui concerne la gestion de la mémoire. En
+regardant [2] et [4], on se rend compte que les sources ne réalisent qu'une
+encapsulation du binaire :
+  Un binaire transformé par la version source fait donc :
+    * mappage du segment  0x5370000
+    * exécution du segment 0x5370000
+  Quand on ptrace un tel binaire, on obtient deux SIGTRAPs :
+    * Le premier à l'exécution du binaire en lui-même
+    * Le deuxième à l'exécution du segment 0x5370000
+
+
+  Dans le cas d'un binaire passé dans burneye 1.0, le segment 0x5370000 est
+encrypté. Il est assez facile, comme on le verra par la suite, de casser ce
+cryptage.
+  De plus, un détournement de SIGTRAP est envoyé pour eviter le ptracage.
+  D'autre propriétés de burneye seront vues plus tard.
+
+
+
+
+
+
+
+
+  III/ Première couche de burneye
+  _______________________________
+
+
+  Voyons donc ce qui se passe avec un binaire encrypté avec burneye 1.0
+(ici /bin/ls) :
+
+$ ./pt_sh ./ls
+pt_sh : another stupid tool using ptrace()
+
+Running ./ls...
+SIGTRAP catched...
+pt_sh% c
+Received SIGTRAP at 0x53714c7...
+pt_sh% map
+map file :
+05370000-05381000 rwxp 00000000 03:07 29593      /tmp/ls
+
+bffff000-c0000000 rwxp 00000000 00:00 0
+
+bffff000-c0000000 rwxp 00000000 00:00 0
+
+pt_sh% dumpfile 0x05370000 0x11000 test
+Dumping 05370000-05381000 to test... done !
+pt_sh% quit
+Child has been detached !
+$ strings test | grep Free
+Copyright (C) 2001 Free Software Foundation, Inc.
+$ strings ls | grep Free
+
+
+
+Donc on voit bien que le binaire décrypté se trouve dans le segment 0x5370000
+dumpé.
+
+
+
+  Observons maintenant le fichier test d'un peu plus près. Tout d'abord, tous
+les binaires ELF ont l'avantage de commencer par "\x7fELF", et le header ELF est
+chargé avec le binaire lors d'une exécution. On va donc chercher 'ELF' dans le
+dump 'test' :
+
+$ hexdump -C test | grep -A 2 ELF
+00000000  7f 45 4c 46 01 01 01 00  00 00 00 00 00 00 00 00  |.ELF............|
+00000010  02 00 03 00 01 00 00 00  35 10 37 05 34 00 00 00  |........5.7.4...|
+00000020  00 00 00 00 00 00 00 00  34 00 20 00 02 00 00 00  |........4. .....|
+--
+00001020  45 4c 46 20 45 6e 63 72  79 70 74 69 6f 6e 20 45  |ELF Encryption E|
+00001030  6e 67 69 6e 65 ff 35 08  10 37 05 9c 60 8b 0d 00  |ngine.5..7..`...|
+00001040  10 37 05 e9 3a 00 00 00  5e 89 f7 8b 1d 04 10 37  |.7..:...^......7|
+--
+00005760  7f 45 4c 46 01 01 01 00  00 00 00 00 00 00 00 00  |.ELF............|
+00005770  02 00 03 00 01 00 00 00  54 80 04 08 34 00 00 00  |........T...4...|
+00005780  00 00 00 00 00 00 00 00  34 00 20 00 01 00 00 00  |........4. .....|
+--
+00005a00  0c 00 00 00 9c ab 00 00  00 00 00 00 7f 45 4c 46  |.............ELF|
+00005a10  01 01 01 00 00 00 00 00  00 00 00 00 02 00 03 00  |................|
+00005a20  01 00 00 00 20 94 04 08  34 00 00 00 b4 a7 00 00  |.... ...4.......|
+$
+
+
+  On voit qu'apparait 3 fois "\x7fELF", or dans le binaire original :
+
+
+$ hexdump -C /bin/ls | grep -A 2 ELF
+00000000  7f 45 4c 46 01 01 01 00  00 00 00 00 00 00 00 00  |.ELF............|
+00000010  02 00 03 00 01 00 00 00  20 94 04 08 34 00 00 00  |........ ...4...|
+00000020  b4 a7 00 00 00 00 00 00  34 00 20 00 06 00 28 00  |........4. ...(.|
+$
+
+
+"\x7fELF" n'apparait qu'une fois, mais mieux, on constate que le début du
+troisième header ELF du binaire encrypté est le même que celui du binaire
+original.
+
+
+  Le troisième header ELF se trouve à l'offset 0x5a0c. On tente donc de dumper
+à partir de cette offset (0x5a0c = 23052) :
+
+$ split -b23052 test /tmp/test
+
+$ hexdump -C /tmp/testab | grep ELF
+00000000  7f 45 4c 46 01 01 01 00  00 00 00 00 00 00 00 00  |.ELF............|
+
+$ rm -f /tmp/testaa
+
+$ cat /tmp/testa* >test2
+$
+
+
+  Déjà, on a bien coupé ou il fallait et donc maintenant test2 contient les
+octets de test à partir de 0x5a0c, il ne nous reste plus qu'à tester :
+
+$ chmod +x test2
+
+$ ./test2
+README  burneye  fingerprint  ls  ls2  pt_sh  test  test2
+
+$
+
+
+  Donc on a réussi à récupérer le binaire original. Avec quelques tests, on se
+rend vite compte que l'offset ne change pas tant que l'on mets pas de bannière.
+Dans le cas d'une bannière, la fameuse banière se trouvera à l'emplacement de
+l'header habituel, il suffira de recherché l'indentifiant ELF ("\x7fELF") (nous
+verrons plus tard comment récupérer l'offset).
+
+  J'ai automatisé tout ca dans le programme unburn :
+
+
+$ ../unburn ./ls
+unburn - August 2002
+Coded at the Digital Mutants Party
+
+Unburneying './ls'...
+ * pass 1... OK
+ * reconstructing binary file... OK
+./ls unburneyed in a.out !
+$ ./a.out
+README  a.out burneye  fingerprint  ls  ls2  pt_sh  test  test2
+$
+
+
+
+
+
+
+
+  IV/ Deuxième couche
+  ___________________
+
+          A/ Explication du cryptosystème employé
+          _______________________________________
+
+
+  Comme expliqué dans le fichier README de burneye [3] :
+
+"The second layer is the password layer, which you can use to protect your
+executeable with a custom password. The password is read in from the current
+pty, so it should work even from within scripts. The password is hashed through
+SHA1, some magic is applied and the layers below are decrypted with RC4. By
+default a check is done to ensure the decryption succeeded."
+
+  Il s'agit donc d'un cryptage RC4 (arg !!), pour laquelle la clef est un hash
+SHA1 du mot de passe avec quelque modifications.
+  Pour attaquer la deuxième couche, on va d'abord regarder de plus près le
+RC4. Le RC4 est un algorithme de chiffrement en continue (les sources sont
+disponibles en [6]) qui repose sur la génération d'un flux d'octet à partir de
+la clef, ce flux permettant de chiffré le message par l'opération XOR.
+  Le SHA1 est un hashage sur 160 bits. Donc il est légitime de penser que la
+clef fait 160 bits soit 20 octets. (Pour plus d'information sur le SHA voir
+[9]).
+
+
+
+
+
+----[  Description du hashage SHA : ]
+
+
+  SHA est un algorithme de hashage sûr dans le sens ou il est mathématiquement
+difficile de retrouver un message ayant le hashage SHA correspondant.
+
+  Tout d'abord, on prends la fonction non linéaire du SHA décrite par :
+
+f(t;X,Y,Z) = (X AND Y) OR ((NOT X) AND Z)        si 0  <= t < 20
+           = X XOR Y XOR Z                       si 20 <= t < 40
+           = (X AND Y) OR (X AND Z) OR (Y AND Z) si 40 <= t < 60
+           = X XOR Y XOR Z                       si 60 <= t < 80
+
+  Et la constante K(t) :
+
+K(t) = 0x5A827999 si 0  <= t < 20
+     = 0x6ED9EBA1 si 20 <= t < 40
+     = 0x8F1BBCDC si 40 <= t < 60
+     = 0xCA62C1D6 si 60 <= t < 80
+
+
+  Ensuite, on découpe le message en bloc de 512 bits en complétant le message
+à un multiple de 512 bits par un bits à 1, tout les bits suivant à 0 et les 64
+derniers contenant la représentation 64 bits de la taille originelle du message.
+
+  Soit 5 mots (32 bits) AA, BB, CC, DD et EE initialisée à, respectivement,
+0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476 et 0xC3D2E1F0.
+|  Pour chaque blocs 512 bits du message étendu (noté M(i)) on fait :
+|    A <- AA; B <- BB; C <- CC; D <- DD; E <- EE
+|    Boucle_principale
+|    AA <- A + AA; BB <- B + BB; CC <- C + CC; DD <- D + DD; EE <- E + EE
+  ou Boucle_principale est :
+|    Construire_Ws
+|    Pour t de 0 à 79
+|      TEMP <- (A << 5) + f(t; B,C,D) + E + W(t) + K(t)
+|      E    <- D
+|      D    <- C
+|      C    <- (B << 30)
+|      B    <- A
+|      A    <- TEMP
+  ou (x << s) est la rotation de s bits vers la gauche de x (et pas, comme en C,le décalage).
+  Enfin Construire_Ws est, si l'on note M(i, k) le k-ième mot 32 bits du i-ème
+bloc du message étendu :
+|  Pour k de 0 à 15
+|    W(k) <- M(i, k)
+|  Pour k de 16 à 79
+|    W(k) <- M(i, k-3) XOR M(i, k-8) XOR M(i, k-14) XOR M(i, k-16)
+
+
+
+
+
+
+----[  Description du cryptosystème RC4 : ]
+
+
+  On prend un buffer S de 2048 bits (256 octets). Et on nomme K la clef et T
+sa taille en octet.
+
+* Initialisation :
+|  s <- 0
+|  t <- 0
+|  pour i de 0 à 256 faire
+|    S[i] <- i
+|  pour i de 0 à 256 faire
+|    t    <-  (K[s] + S[i] + t) mod 256
+|    S[i] <-> S[t]
+|    s    <-  (s+1) mod T
+
+* Cryptage du message M de taille L :
+|  X <- 0
+|  Y <- 0
+|  pour i de 0 à L
+|    X    <-  (X+1) mod 256
+|    Y    <-  (S[X] + Y) mod 256
+|    S[X] <-> S[Y]
+|    I    <-  (S[X] + S[Y]) mod 256
+|    M[i] <-  M[i] xor S[I]
+----[ ----------------------------------- ]
+
+
+   Le problème qui se présente à nous est qu'aucune attaque cryptographique
+n'est connue contre le RC4 (selon [7]). Ce qui signifie que même si l'on dispose
+d'une partie du message final, on ne peut reconstituer la clef ni le flux de
+codons.
+
+
+   Il nous faudra donc retrouver le mots de passe (brute force ?), le passer
+sous SHA-1, appliquer le fameux "some magic" décrit par scut et enfin décrypter
+via le RC4 le binaire. Il est facile avec quelque test de voir que seul le
+binaire final est encrypté et que donc le démarrage se fera bien à l'header ELF.
+
+
+
+
+
+
+
+          B/ A la recherche du "some magic"
+          _________________________________
+
+
+  Il nous faut donc partir dans un peu de reversing pour comprendre comment
+fonctionne la deuxième passe. Pour cela, on va se faire un petit binaire
+encrypté avec un mots de passe bidon et un deuxieme programme qui se contentera
+de lancer le premier (execl).
+
+  Ensuite on lance le deuxième binaire et on attend qu'il nous demande le mots
+de passe, à ce moment là il nous reste plus qu'à demander à gdb d'attacher le
+process ce qui nous evitera d'avoir les SIGTRAP dans la gueule. Cela donne :
+
+1ere console                               2eme console
+
+$ cat tmp.c
+
+#include <unistd.h>
+
+int main()
+{
+  execl("./ls2", "ls2", NULL);
+  return -1;
+}
+$ ./tmp2
+password:                <------->         $ ps ax | grep ls2
+                                             578 tty1 R 0:06 ./ls2
+                                              ...
+                                           $ gdb ./tmp 578
+                                              ...
+
+
+  Et là on peut commencer à reverser la deuxième couche de burneye.
+En allant un peu plus loin dans le code on arrive sur :
+
+(gdb) x/5i 0x05371892
+0x5371892:      call   0x53741c4
+0x5371897:      xor    %eax,%eax
+0x5371899:      add    $0x10,%esp
+0x537189c:      lea    0x0(%esi,1),%esi
+0x53718a0:      mov    0x4(%eax,%edi,1),%dl
+(gdb)
+
+
+  En regardant la sortie de 0x53741c4 on tombe sur :
+
+
+(gdb) info reg edx ebx
+edx            0xbffff73c       -1073744068
+ebx            0xbffff8ec       -1073743636
+(gdb) x/6x 0xbffff73c
+0xbffff73c:     0x9e1547ed      0x57ec91c2      0x30fa8bc8      0xc7785a54
+0xbffff74c:     0xa7efa5e3      0x00000000
+(gdb) x/s 0xbffff8ec
+0xbffff8ec:      "test"
+(gdb)
+
+
+  Donc on obtient 160bits de données, il pourrait s'agir de la clef de cryptage.
+(ici le mots de passe est 'test' et le hash SHA-1 est : a9 4a 8f e5 cc b1 9b a6
+1c 4c 08 73 d3 91 e9 87 98 2f bb d3).
+  En allant plus loin, on tombe à l'adresse 0x53718df sur un call de la fonction
+0x5372990. En observant l'adresse 0x5375a34, on remarque que la fonction
+0x5372990 est la fonction de décryptage :
+
+
+(gdb) b *0x53718df
+Breakpoint 1 at 0x53718df
+(gdb) c
+Continuing.
+
+
+Breakpoint 1, 0x53718df in ?? ()
+(gdb) x/2i 0x53718df
+0x53718df:      call   0x5372990
+0x53718e4:      add    $0x10,%esp
+(gdb) x/20bx 0xbffff73c
+0xbffff73c:     0xed    0x47    0x15    0x9e    0xc2    0x91    0xec    0x57
+0xbffff744:     0xc8    0x8b    0xfa    0x30    0x54    0x5a    0x78    0xc7
+0xbffff74c:     0xe3    0xa5    0xef    0xa7
+(gdb) x/s 0x5375a34
+0x5375a34:       "\037I\034Â¶\226\001Y&I"\205Ã\213ÃGÃ¤xLmÂª\223`<K$\003,RÃ¼\234rsYiÂ«2\205U\036,NE\nÃ¶?"
+(gdb) b *0x53718e4
+Breakpoint 2 at 0x53718e4
+(gdb) c
+Continuing.
+
+Breakpoint 2, 0x53718e4 in ?? ()
+(gdb) x/s 0x5375a34
+0x5375a34:       "\177ELF\001\001\001"
+(gdb)
+
+
+  On voit bien l'ei_ident de l'header ELF. On va donc essayer de décrypter avec
+la clef situé en 0xbffff73c le dump réalisé comme pour la première couche, à
+partir de l'offset 0x5a34, grâce à l'algorithme du rc4 (source disponible en
+[6]) : on constate facilement que c'est bien l'algorithme rc4 classique qui est
+utilisé (comme dit dans le README).
+
+
+  On va donc chercher à trouver comment est générée cette clef (générée entre
+l'adresse 0x05371892 et 0x53718df) :
+
+
+(gdb) x/27i 0x05371892
+0x5371892:      call   0x53741c4
+0x5371897:      xor    %eax,%eax
+0x5371899:      add    $0x10,%esp
+0x537189c:      lea    0x0(%esi,1),%esi
+0x53718a0:      mov    0x4(%eax,%edi,1),%dl
+0x53718a4:      xor    %dl,(%eax,%esi,1)
+0x53718a7:      inc    %eax
+0x53718a8:      cmp    $0x13,%eax
+0x53718ab:      jbe    0x53718a0
+0x53718ad:      add    $0xfffffffc,%esp
+0x53718b0:      push   %esi
+0x53718b1:      push   $0x14
+0x53718b3:      push   %esi
+0x53718b4:      call   0x53741c4
+0x53718b9:      add    $0xfffffffc,%esp
+0x53718bc:      lea    0xfffffd40(%ebp),%ebx
+0x53718c2:      push   %ebx
+0x53718c3:      push   $0x14
+0x53718c5:      push   %esi
+0x53718c6:      call   0x53728a0
+0x53718cb:      add    $0x20,%esp
+0x53718ce:      add    $0xfffffffc,%esp
+0x53718d1:      push   %ebx
+0x53718d2:      pushl  0x5375a04
+0x53718d8:      mov    0xfffffd24(%ebp),%ecx
+0x53718de:      push   %ecx
+0x53718df:      call   0x5372990
+(gdb)
+
+
+  Là la solution évidente qui s'offre à nous est de reverser completement les
+différentes fonction utilisée ici.
+
+  Pour ma part, je vais plutot essayer autre chose : je vais charger en mémoire
+la partie non utilisée par l'ELF originale (avant l'offset 0x5a0c) et appeler
+directement les fonctions utiles.
+
+
+  On va donc reverser la petite partie dumpé juste avant pour savoir ce qui
+nous sera utile :
+
+Breakpoint 1, 0x5371892 in ?? ()
+
+(gdb) info reg esp
+esp            0xbffff770       -1073744016
+(gdb) x/3x 0xbffff770
+0xbffff770:     0xbffff8bc      0x00000004      0xbffff8fc
+(gdb) x/s 0xbffff8bc
+0xbffff8bc:      "test"
+(gdb) x/5x 0xbffff8fc
+0xbffff8fc:     0x00000000      0x00000000      0x00000000      0x00000000
+0xbffff90c:     0x00000000
+(gdb) b *0x5371897
+Breakpoint 4 at 0x5371897
+(gdb) c
+Continuing.
+
+Breakpoint 4, 0x5371897 in ?? ()
+(gdb) x/s 0xbffff8bc
+0xbffff8bc:      "test"
+(gdb)  x/5x 0xbffff8fc
+0xbffff8fc:     0x38642694      0xe5026ce0      0x646b2522      0x3a838ced
+0xbffff90c:     0xd07002ef
+
+  Donc 0x53741c4 réalise un hash quelconque de arg1 (de longueur arg2) dans
+arg3. En gros le prototype de 0x53741c4 sera :
+void hash(char *msg, int msglen, char *output);
+
+  En reversant la fonction 0x53728a0 (cf iii.), on voit qu'il s'agit du
+prepare_key du rc4.
+
+  Comme dit plus haut, la fonction 0x5372990 est celle du rc4. (rc4 = 0x5372990,
+hash = 0x53741c4, prepare_key = 0x53728a0). Par le reversing en iv. on récupère
+plusieurs informations intéressantes.
+
+  L'offset de début est donc (0x5a00 + DWORD PTR [0x5375a00]) et celui du buffer
+magic que l'on utilise juste après est (0x59dc + DWORD PTR [0x5375a00]).
+
+  Le hash est donc un hash SHA1 modifié du mots de passe, ce hash est ensuite
+xorisée à une clef et c le hash du hash xorisé qui  sert comme clef rc4.
+En gros : key = hash(xor(hash(password), magic)).
+
+  On va donc charger en mémoire le hash SHA modifié et l'appeler selon
+l'algorithme expliqué juste avant. Pour charger la fonction on va demander à
+mmap un segment en rwx commençant à 0x5370000 et faisant 0x5a00 octets, il
+nous restera plus qu'à faire un pointeur sur 0x53741c4 pour appeler la fonction
+hash.
+
+
+  Y'a plus qu'à tester tout ca dans unburn :
+
+$ ./unburn -p test ../burneye-1.0/ls2
+unburn - August 2002
+Coded at the Digital Mutants Party
+
+Unburneying '../burneye-1.0/ls2'...
+ * pass 1... OK
+ * pass 2 with password 'test'... OK
+ * reconstructing binary file... OK
+../burneye-1.0/ls2 unburneyed in a.out !
+
+$ ./a.out
+Makefile  engine.c  engine.o  pt.h  rc4.c  rc4.o   unburn.c  unburn.o
+a.out     engine.h  pt.c      pt.o  rc4.h  unburn  unburn.h
+
+$ echo Yepee !
+Yepee !
+
+$
+
+
+
+
+
+
+
+
+  V/ Autres considérations
+  ________________________
+
+
+  Tout d'abord il existe une troisième couche dans burneye sur laquelle je n'ai
+pas travaillé. Elle est basée sur des caractéristiques propres à la machine sur
+laquelle le programme est sensé tourné.
+  Ensuite, il est fort probable qu'une backdoor existe dans burneye permettant
+de récupéré les clefs de cryptage. Seulement, une telle backdoor serait bien
+évidemment crypté et sans doute avec un système de clef asymétrique.
+  Enfin, au niveau cryptanalyse, RC4 est encore jeune et n'est donc pas
+nécessairement imune à des attaques mathématiques non encore connues bien que
+RSA Data Security Inc. (le propriétaire de la licence RC4) prétend que RC4 est
+imune aux cryptanalyses différentielles et linaires (domage) ce qui rend
+quasiment impossible de retrouver la clef de cryptage à partir d'une partie du
+flots de codons que l'on pourrait obtenir (via l'header ELF par exemple). La
+seule solution est le brute force. Cependant un brute force du hash SHA1
+modifié serait en O(2^160) (brute forcer du 160bits), infaisable à l'heure
+actuelle, il est plus facile de brute forcer le mot de passe...
+
+
+
+
+
+     ----[ i.  Code : pt_sh.tar.gz ]
+
+
+voir l'archive pt_sh.tar.gz
+
+
+
+
+
+
+     ----[ ii.  Code : unburn.tar.gz ]
+
+
+voir l'archive unburn.tar.gz
+
+
+
+
+
+
+
+     ----[ iii. Reversing : fonction 0x53728a0 ]
+
+
+(gdb) x/50i 0x53728a0
+0x53728a0:      push   %ebp                      ;
+0x53728a1:      mov    %ebp,%esp                 ; prélude
+0x53728a3:      sub    %esp,12                   ; buf[12]
+0x53728a6:      push   %edi                      ;
+0x53728a7:      push   %esi                      ; sauvegardes
+0x53728a8:      push   %ebx                      ;
+0x53728a9:      mov    %esi,DWORD PTR [%ebp+16]  ; esi = arg3
+0x53728ac:      xor    %ebx,%ebx                 ; ebx = 0;
+0x53728ae:      mov    %esi,%esi                 ; esi = esi ?
+0x53728b0:      movsx  %eax,%bx                  ; lbl0: eax = bx
+0x53728b3:      mov    BYTE PTR [%eax+%esi],%bl  ;       esi[eax] = bl
+0x53728b6:      inc    %bx                       ;       bx++
+0x53728b8:      cmp    %bx,0xff                  ;       si bx<=255
+0x53728bd:      jle    0x53728b0                 ;         jmp lbl0
+0x53728bf:      mov    BYTE PTR [%esi+257],0x0   ; esi[257] = 0
+0x53728c6:      mov    BYTE PTR [%esi+256],0x0   ; esi[256] = 0
+0x53728cd:      mov    BYTE PTR [%ebp-1],0x0     ; ebp[-1]  = 0
+0x53728d1:      mov    %al,0x0                   ; al       = 0
+0x53728d3:      xor    %ebx,%ebx                 ; ebx      = 0
+0x53728d5:      movzx  %edi,%al                  ; lbl1: edi      = al
+0x53728d8:      mov    %edx,DWORD PTR [%ebp+8]   ;       edx      = arg1
+0x53728db:      movzx  %eax,BYTE PTR [%edi+%edx] ;       eax      = edx[edi]
+0x53728df:      movsx  %ecx,%bx                  ;       ecx      = bx
+0x53728e2:      movzx  %edx,BYTE PTR [%ecx+%esi] ;       edx      = esi[ecx]
+0x53728e6:      add    %eax,%edx                 ;       eax     += edx
+0x53728e8:      movzx  %edx,BYTE PTR [%ebp-1]    ;       edx      = ebp[-1]
+0x53728ec:      add    %eax,%edx                 ;       eax     += edx
+0x53728ee:      mov    %edx,%eax                 ;       edx      = eax
+0x53728f0:      mov    BYTE PTR [%ebp-1],%al     ;       ebp[-1]  = al
+0x53728f3:      add    %esp,-8                   ;       buf2[8]
+0x53728f6:      movzx  %eax,%al                  ;       eax      = al (?)
+0x53728f9:      add    %eax,%esi                 ;       eax     += esi
+0x53728fb:      push   %eax                      ;       push eax
+0x53728fc:      lea    %eax,[%ecx+%esi*1]        ;       eax      = &(esi[ecx])
+0x53728ff:      push   %eax                      ;       push eax
+0x5372900:      call   0x5372a30                 ;       call 0x5372a30
+0x5372905:      lea    %eax,[%edi+1]             ;       eax      = &(edi[1])
+0x5372908:      cdq                              ; ?
+0x5372909:      idiv   %eax,DWORD PTR [%ebp+12]  ; (signé) eax   /= arg2
+0x537290c:      mov    %al,%dl                   ;       al       = dl
+0x537290e:      add    %esp,16                   ; -
+0x5372911:      inc    %bx                       ;       bx++
+0x5372913:      cmp    %bx,0xff                  ;       si bx<=255
+0x5372918:      jle    0x53728d5                 ;         goto lbl1
+0x537291a:      lea    %esp,[%ebp-24]            ; restauration de esp
+0x537291d:      pop    %ebx                      ; restauration des registres
+0x537291e:      pop    %esi
+0x537291f:      pop    %edi
+0x5372920:      leave
+0x5372921:      ret
+(gdb) x/12i 0x5372a30
+0x5372a30:      push   %ebp                      ; prélude
+0x5372a31:      mov    %ebp,%esp
+0x5372a33:      push   %ebx
+0x5372a34:      mov    %edx,DWORD PTR [%ebp+8]   ; edx = arg1
+0x5372a37:      mov    %ecx,DWORD PTR [%ebp+12]  ; ecx = arg2
+0x5372a3a:      mov    %bl,BYTE PTR [%edx]       ; bl = edx[0]
+0x5372a3c:      mov    %al,BYTE PTR [%ecx]       ; al = ecx[0]
+0x5372a3e:      mov    BYTE PTR [%edx],%al       ; edx[0] = al
+0x5372a40:      mov    BYTE PTR [%ecx],%bl       ; ecx[0] = bl
+0x5372a42:      pop    %ebx
+0x5372a43:      leave
+0x5372a44:      ret
+-- reversed : --
+0x5372a30 : swap_byte
+
+void swap_byte(char *a, char *b)
+{
+  char t = *a;
+  *a = *b;
+  *b = t;
+}
+
+0x53728a0 :
+
+
+void prepare_key(char *key, int keysize, rc4_key *buf)
+{
+  int i1, i2, c;
+
+  for(c=0; c<256; c++) buf->state[c] = c;
+  buf->x = 0;
+  buf->y = 0;
+
+  i1 = 0; i2 = 0;
+  for(c=0; c<256; c++)
+  {
+    i2 = (i2 + key[i1] + buf->state[c]) % 256;
+    swap_byte(&(buf->state[i2]), &(buf->state[i1]));
+    i1 = (i1 + 1) % keysize;
+  }
+}
+
+
+
+
+
+     ----[ iv.  Reversing : 0x5371892-0x53718df ]
+
+
+0x5371892:      call   0x53741c4                    ; hash(pass, passlen, buf)
+0x5371897:      xor    %eax,%eax                    ; eax = 0
+0x5371899:      add    %esp,16
+0x537189c:      lea    %esi,[%esi*1]                ; ?   (ici edi = 0x5375a0c)
+0x53718a0:      mov    %dl,BYTE PTR [%eax+%edi+4]   ; pr eax de 0 à 19 faire
+0x53718a4:      xor    BYTE PTR [%eax+%esi],%dl     ;   buf[eax] ^= edi[eax+4]
+0x53718a7:      inc    %eax
+0x53718a8:      cmp    %eax,19
+0x53718ab:      jbe    0x53718a0
+0x53718ad:      add    %esp,-4                  ; hash(buf, 20, buf);
+0x53718b0:      push   %esi
+0x53718b1:      push   20
+0x53718b3:      push   %esi
+0x53718b4:      call   0x53741c4
+0x53718b9:      add    %esp,-4
+0x53718bc:      lea    %ebx,[%ebp-704]          ; ebx = ebp-704 (rc4_key)
+0x53718c2:      push   %ebx
+0x53718c3:      push   20
+0x53718c5:      push   %esi
+0x53718c6:      call   0x53728a0                ; prepare_key(buf, 20, &rc4_key)
+0x53718cb:      add    %esp,32
+0x53718ce:      add    %esp,-4
+0x53718d1:      push   %ebx
+0x53718d2:      push   %ds:0x5375a04
+0x53718d8:      mov    %ecx,DWORD PTR [%ebp-732]
+0x53718de:      push   %ecx
+0x53718df:      call   0x5372990               ; rc4(elf, 0x5375a04, &rc4_key)
+
+
+
+
+donc en gros ce qui est fait est :
+
+
+hash(pass, passlen, buf);
+for(i=0; i<20; i++)
+  buf[i] ^= magic[i];
+hash(buf, 20, buf);
+prepare_key(buf, 20, &rc4_key);
+rc4(elf, 0x5375a04, &rc4_key);
+
+
+  On remarque en fait que DWORD PTR [%ebp-732] contient toujours l'addresse du
+buffer a décrypter et en faisant d'autre dump que ce qui suit est toujours
+correct :
+
+0x537189c:      lea    %esi,[%esi*1]                ; ?
+0x53718a0:      mov    %dl,BYTE PTR [%eax+%edi+4]   ; pr eax de 0 à 19 faire
+0x53718a4:      xor    BYTE PTR [%eax+%esi],%dl     ;   buf[eax] ^= edi[eax+4]
+
+
+
+  Il nous faut donc trouver ou est chargé edi.  En testant des adresses on tombe
+sur le début de la fonction en 0x5371470. On regarde le code de 0x5371470 à
+0x53717bd:      mov    %edi,DWORD PTR [%ebp-736]
+
+
+
+  Il nous reste plus qu'à trouver d'ou sort ebp-732 et ebp-736.
+En regardant le prélude on tombe un peu plus loin sur :
+(gdb) x/9i 0x537149e
+0x537149e:      mov    %esi,%ds:0x5375a00
+0x53714a4:      add    %esp,16
+0x53714a7:      mov    %ebx,0x5
+0x53714ac:      mov    %ecx,0x5371a0c
+0x53714b1:      mov    %edx,0x30
+0x53714b6:      mov    %eax,%edx
+0x53714b8:      int    0x80
+0x53714ba:      add    %esi,0x5375a00
+0x53714c0:      mov    DWORD PTR [%ebp-732],%esi
+(gdb)  x/x 0x5375a00
+0x5375a00:      0x00000042
+(gdb)
+
+
+  Donc a priori l'offset par rapport à 0x5375a00 est à 0x5375a00 une fois la
+première passe effectuée.
+  En ce qui concerne l'offset de magic, on l'obtient en ajoutant à 0x59dc
+l'offset récupéré avant.
+  Il ne reste plus qu'à tester :
+
+$ ./pt_sh ./ls3
+pt_sh : another stupid tool using ptrace()
+
+Running ./ls3...
+SIGTRAP catched...
+pt_sh% c
+Received SIGTRAP at 0x53714c7...
+pt_sh% x 0x5375a00
+addr 0x5375a00 is 66 (0x42)
+pt_sh% quit
+Child has been detached !
+$
+
+  Donc on récupère bien l'offset en 0x5375a00, on teste la meme chose avec un
+binaire sans mots de passe :
+$ ./pt_sh ./ls
+pt_sh : another stupid tool using ptrace()
+
+Running ./ls...
+SIGTRAP catched...
+pt_sh% c
+Received SIGTRAP at 0x53714c7...
+pt_sh% x 0x5375a00
+addr 0x5375a00 is 12 (0xc)
+pt_sh% quit
+Child has been detached !
+$
+
+  On a donc récupéré le bon offset...
+
+
+
+
+     ----[ v.   Références ]
+
+
+ [1] Linux ptrace man page
+     http://www.die.net/doc/linux/man/man2/ptrace.2.html
+
+ [2] Runtime binary encryption                                      grugq & scut
+      http://www.phrack.org/show.php?p=58&a=5
+
+ [3] BurnEye 1.0                                                       Team TESO
+      http://www.team-teso.org/releases/burneye-1.0-linux-static.tar.gz
+
+ [4] BurnEye Stripped Source                                           Team TESO
+      http://www.team-teso.org/releases/burneye-stripped.tar.gz
+
+ [5] ELF EXECUTABLE RECONSTRUCTION FROM A CORE IMAGE               Silvio Cesare
+      http://www.big.net.au/~silvio/core-reconstruction.txt
+
+ [6] Cypherpunks mailing list archive
+      ftp://ftp.csua.berkeley.edu/pub/cypherpunks
+
+ [7] Applied Cryptography                                         Bruce Schneier
+     Version Française : "Cryptographie Appliquée" traduit par Laurent Viennot
+      Editions Vuibert
+
+ [8] Tool Interface Standard - Executable and Linking Format - Version 1.2
+      http://segfault.net/~scut/cpu/generic/TIS-ELF_v1.2.pdf
+
+ [9] Burneye 1.0 Source                                                Team TESO
+      http://www.team-teso.org/releases/burneye-1.0.1-src.tar.bz2

@@ -1,0 +1,632 @@
+--------------------------------------------------------------------------------
+Introduction à la programmation modulaire sous FreeBSD               Anonymous
+--------------------------------------------------------------------------------
+
+
+
+
+
+ Linux a ses LKM (Loadable Kernel Module), FreeBSD (depuis 3.X) utilise les
+KLD (Dynamic Kernel Linker). Je vais tenter de vous expliquer de quoi il s'agit,
+pour ceux qui débarquent, à travers deux trois exemples avant d'aborder
+la partie réseau.
+
+
+
+Exemple basique (helloworld) :
+
+
+------------8<------------------------------------------------------------------
+
+/* helloworld.c
+ */
+
+#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/proc.h>
+#include <sys/module.h>
+#include <sys/sysent.h>
+#include <sys/kernel.h>
+#include <sys/systm.h>
+
+static int
+hello (struct proc *p, void *arg)
+{
+	printf ("hello world\n");
+	return 0;
+}
+
+static struct sysent hello_sysent = {
+	0,
+	hello
+};
+
+static int offset = NO_SYSCALL;
+
+static int load (struct module *module, int cmd, void *arg)
+{
+	int error = 0;
+
+	switch (cmd) {
+	case MOD_LOAD :
+		printf ("helloworld loaded at %d\n", offset);
+		break;
+	case MOD_UNLOAD :
+		printf ("helloworld unloaded from %d\n", offset);
+		break;
+	default :
+		error = EINVAL;
+		break;
+	}
+	return error;
+}
+
+SYSCALL_MODULE(helloworld, &offset, &hello_sysent, load, NULL);
+
+------------8<------------------------------------------------------------------
+
+
+
+
+
+On utilise un Makefile générique pour les kld :
+
+
+KMOD=   helloworld
+SRCS=   helloworld.c
+
+.include <bsd.kmod.mk>
+
+On compile :
+%make
+Warning: Object directory not changed from original /usr/home/tito/kld
+@ -> /usr/src/sys
+machine -> /usr/src/sys/i386/include
+cc -O -pipe   -D_KERNEL -Wall -Wredundant-decls -Wnested-externs
+-Wstrict-prototypes  -Wmissing-prototypes -Wpointer-arith -Winline -Wcast-qual
+-fformat-extensions -ansi -DKLD_MODULE -nostdinc -I-  -I. -I@ -I@/../include
+-I/usr/include  -mpreferred-stack-boundary=2 -Wall -Wredundant-decls
+-Wnested-externs -Wstrict-prototypes  -Wmissing-prototypes -Wpointer-arith
+-Winline -Wcast-qual  -fformat-extensions -ansi -c helloworld.c
+ld  -r -o helloworld.kld helloworld.o
+gensetdefs helloworld.kld
+cc -O -pipe   -D_KERNEL -Wall -Wredundant-decls -Wnested-externs
+-Wstrict-prototypes  -Wmissing-prototypes -Wpointer-arith -Winline -Wcast-qual
+-fformat-extensions -ansi -DKLD_MODULE -nostdinc -I-  -I. -I@ -I@/../include
+-I/usr/include  -mpreferred-stack-boundary=2 -Wall -Wredundant-decls
+-Wnested-externs -Wstrict-prototypes  -Wmissing-prototypes -Wpointer-arith
+-Winline -Wcast-qual  -fformat-extensions -ansi -c setdef0.c
+cc -O -pipe   -D_KERNEL -Wall -Wredundant-decls -Wnested-externs
+-Wstrict-prototypes  -Wmissing-prototypes -Wpointer-arith -Winline -Wcast-qual
+-fformat-extensions -ansi -DKLD_MODULE -nostdinc -I-  -I. -I@ -I@/../include
+-I/usr/include  -mpreferred-stack-boundary=2 -Wall -Wredundant-decls
+-Wnested-externs -Wstrict-prototypes  -Wmissing-prototypes -Wpointer-arith
+-Winline -Wcast-qual  -fformat-extensions -ansi -c setdef1.c
+ld -Bshareable  -o helloworld.ko setdef0.o helloworld.kld setdef1.o
+
+
+On charge le module (en root) :
+fbsd# kldload -v ./helloworld.ko
+Loaded ./helloworld.ko, id=3
+
+
+On liste les modules chargés :
+fbsd# kldstat
+Id Refs Address    Size     Name
+ 1    3 0xc0100000 41bddc   kernel
+ 2    1 0xc16fd000 1dd000   oss_mod.ko
+ 3    1 0xc1a2a000 2000     helloworld.ko
+
+
+fbsd# tail /var/log/messages
+May 20 14:06:37 fbsd /kernel: helloworld loaded at 210
+
+
+Mais, comment fait-on afficher ce fameux "hello world" ?
+
+
+Notez la dernière ligne du code helloworld.c :
+SYSCALL_MODULE(helloworld, &offset, &hello_sysent, load, NULL);
+
+
+La macro SYSCALL_MODULE est définie dans /usr/include/sys/sysent.h
+#define SYSCALL_MODULE(name, offset, new_sysent, evh, arg)
+
+
+
+Avec :
+
+- name : le nom du module.
+- offset : permet d'assigner une valeur au nouveau syscall (appel système). La
+           valeur NO_SYSCALL est souvent utilisée : elle permet d'assigner au
+           syscall la prochaine valeur disponible.
+- new_sysent : la structure sysent définie pour le nouveau syscall.
+- evh : la fonction load
+- arg : utilisé dans la structure syscall_module_data. Ici fixé à NULL.
+
+
+On a défini un nouvel appel système. Le fichier /usr/include/sys/syscall.h
+contient la liste des syscall.
+
+
+A présent, nous allons appeler le nouvel appel système "helloworld" :
+
+
+
+------------8<------------------------------------------------------------------
+
+/* call.c
+ */
+#include <stdio.h>
+#include <sys/syscall.h>
+#include <sys/types.h>
+#include <sys/module.h>
+
+int main(void)
+{
+	char *endptr;
+	int syscall_num;
+	struct module_stat stat;
+
+	stat.version = sizeof(stat);
+	modstat(modfind("helloworld"), &stat);
+	syscall_num = stat.data.intval;
+	return syscall (syscall_num);
+}
+
+------------8<------------------------------------------------------------------
+
+Donc on recherche le numéro du syscall dont le nom est "helloworld" et on
+l'appelle à l'aide de la fonction syscall.
+
+
+%gcc -o call call.c
+%./call
+%tail /var/log/messages
+May 20 14:40:47 fbsd /kernel: hello world
+
+
+Tout çà, pour vous dire "bonjour". La prochaine fois, je tâcherais de faire plus
+court... (blague de geek qui ne fait rire que moi :))
+
+
+Bon, maintenant, abordons un autre aspect des kld, le détournement de syscall.
+(Comme d'hab, je paste le code et ensuite je l'expliquerai comme un goret)
+
+
+------------8<------------------------------------------------------------------
+
+/* hackwrite.c
+ */
+#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/proc.h>
+#include <sys/module.h>
+#include <sys/sysent.h>
+#include <sys/kernel.h>
+#include <sys/linker.h>
+#include <sys/systm.h>
+#include <sys/sysproto.h>
+#include <sys/syscall.h>
+
+char BUFFER[1];
+
+static int hacked_write (struct proc *p, struct write_args *uap)
+{
+	if(uap->nbyte == 1){
+		strncpy(BUFFER, uap->buf, uap->nbyte);
+		if(!strcmp(BUFFER, "o")){
+			strcpy(uap->buf, "0");
+		}
+	}
+	return write(p, uap);
+}
+
+static struct sysent hacked_write_sysent = {
+	3,
+	hacked_write
+};
+
+static int offset = NO_SYSCALL;
+
+static int load (struct module *module, int cmd, void *arg)
+{
+	int error = 0;
+
+	switch (cmd) {
+	case MOD_LOAD :
+		printf ("hackwrite loaded at %d\n", offset);
+		sysent[SYS_write] = hacked_write_sysent;
+		break;
+	case MOD_UNLOAD :
+		printf ("hackwrite unloaded from %d\n", offset);
+		sysent[SYS_write].sy_call = (sy_call_t*)write;
+		break;
+	default :
+		error = EINVAL;
+		break;
+	}
+	return error;
+}
+
+static moduledata_t syscall_mod = {
+  "hackwrite",
+  load,
+  NULL
+};
+
+DECLARE_MODULE(syscall, syscall_mod, SI_SUB_DRIVERS, SI_ORDER_MIDDLE);
+
+------------8<------------------------------------------------------------------
+
+
+
+On compile, on charge :
+
+fbsd# kldload -v ./hackwrite.ko
+Loaded ./hackwrite.ko, id=4
+fbsd# kldunl0ad hackwrite
+kldunl0ad: Command not found.
+
+
+Bon... ce module remplace les "o" par des "0"... leet...lkm sux... kld rulez...
+J'espère que vous avez comme moi eu la présence d'esprit de préparer un
+kldunload d'avance dans une autre console, sinon vous venez de vous payer votre
+premier reboot de cet article ;p
+
+
+Bon, que fait-on ici ? Lorsque l'on charge le module (case MOD_LOAD), on
+détourne le syscall write et on exécute la fonction hacked_write. Cette dernière
+appelle d'ailleurs à la fin de son execution la véritable fonction write après
+avoir effectué la substitution le cas écheant. Les prototypes des
+syscall sont définis dans /usr/include/sys/sysproto.h (obligatoire de s'y
+reporter pour savoir quels arguments utilisés).
+
+
+Bon, j'ai pris l'exemple le plus pourri qui m'est venu. Vous pouvez évidemment
+détourner n'importe quel syscall. Une "bonne" méthode consiste à ripper le code
+source du syscall et d'en modifier le comportement afin d'en tirer avantage. De
+nombreux rootkits fonctionnent selon ce modèle.
+
+
+Exemple : Imaginons qu'on veuille modifier le comportement du syscall "kldload".
+La première étape consiste à trouver où est définie ce syscall dans les sources:
+
+
+fbsd# cd /usr/src/sys && grep kldload */**
+conf/kmod.mk:# KMODLOAD Command to load a kernel module [/sbin/kldload]
+conf/kmod.mk:KMODLOAD?= /sbin/kldload
+kern/init_sysent.c:     { AS(kldload_args), (sy_call_t *)kldload },
+kern/kern_linker.c:kldload(struct proc* p, struct kldload_args* uap)
+kern/link_elf.c:    printf("kldload: %s\n", s);
+kern/syscalls.c:        "kldload",                      /* 304 = kldload */
+kern/syscalls.master:304        STD     BSD   { int kldload(const char *file); }
+sys/linker.h:    int                    userrefs;       /* kldload(2) count */
+sys/linker.h:int        kldload(const char* _file);
+sys/syscall-hide.h:HIDE_BSD(kldload)
+sys/syscall.h:#define   SYS_kldload     304
+sys/syscall.mk: kldload.o \
+sys/sysproto.h:struct   kldload_args {
+sys/sysproto.h:int      kldload __P((struct proc *, struct kldload_args *))
+
+
+On voit que c'est dans /usr/src/sys/kern/kern_linker.c
+
+
+kldload(struct proc* p, struct kldload_args* uap)
+{
+    char* filename = NULL, *modulename;
+    linker_file_t lf;
+    int error = 0;
+
+    p->p_retval[0] = -1;
+
+    if (securelevel > 0)        /* redundant, but that's OK */
+        return EPERM;
+
+    if ((error = suser(p)) != 0)
+        return error;
+
+    filename = malloc(MAXPATHLEN, M_TEMP, M_WAITOK);
+    if ((error = copyinstr(SCARG(uap, file), filename, MAXPATHLEN, NULL)) != 0)
+        goto out;
+
+    /* Can't load more than one module with the same name */
+    modulename = rindex(filename, '/');
+    if (modulename == NULL)
+        modulename = filename;
+    else
+        modulename++;
+    if (linker_find_file_by_name(modulename)) {
+        error = EEXIST;
+        goto out;
+    }
+
+    if ((error = linker_load_file(filename, &lf)) != 0)
+        goto out;
+
+    lf->userrefs++;
+    p->p_retval[0] = lf->id;
+
+out:
+    if (filename)
+        free(filename, M_TEMP);
+    return error;
+}
+
+
+Disons que l'on souhaite que tous les utilisateurs puissent charger leurs modules.
+On "hijack" la structure sysent et on appelle notre fonction réplique de kldload
+dans laquelle on a fait sauter les lignes suivantes :
+
+
+if (securelevel > 0)        /* redundant, but that's OK */
+    return EPERM;
+
+
+if ((error = suser(p)) != 0)
+	return error;
+
+
+Je crois qu'on en a terminé avec le détournement bête et méchant des
+syscall. Pour info, l'outil kstat ne se laisse pas abuser par ces détournements.
+
+
+Il est possible de dissumuler ces kld pour qu'ils n'apparaissent pas lors d'un
+kldstat, mais cette partie a déja été traitée dans d'autres articles, donc je
+n'en parlerai pas. On peut également s'amuser avec le syscall kldnext pour se
+genre de truc vu qu'il est appelé par kldstat, enfin bon...
+
+
+Attaquons nous maintenant à la partie réseau.
+
+
+La structure intesw regroupe toutes les informations concernant les protocoles
+supportés. En gros, pour chaque protocole, inetsw sait quelle fonction appeler
+lorsqu'un paquet arrive ou part. Fidèle à mes habitudes, je vais coller un gros
+bout de code bien dégueulasse et vous l'expliquer ensuite :
+
+
+
+------------8<------------------------------------------------------------------
+
+/* fw.c
+ */
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/malloc.h>
+#include <sys/mbuf.h>
+#include <sys/kernel.h>
+#include <sys/proc.h>
+#include <sys/socket.h>
+#include <sys/socketvar.h>
+#include <sys/sysctl.h>
+#include <sys/syslog.h>
+#include <sys/protosw.h>
+#include <net/if.h>
+#include <net/route.h>
+#include <netinet/in.h>
+#include <netinet/in_systm.h>
+#include <netinet/ip.h>
+#include <netinet/in_pcb.h>
+#include <netinet/in_var.h>
+#include <netinet/ip_icmp.h>
+#include <netinet/ip_var.h>
+#include <netinet/tcp.h>
+#include <netinet/tcp_fsm.h>
+#include <netinet/tcp_seq.h>
+#include <netinet/tcp_timer.h>
+#include <netinet/tcp_var.h>
+#include <netinet/tcpip.h>
+
+#define TCPFL(FLAGS) (tcph->th_flags & (FLAGS))
+int open[]={22,25,80};
+
+extern struct protosw inetsw[];
+extern char *inet_ntoa __P((struct in_addr));
+static int s_load __P((struct module *, int, void *));
+static void tcp_input __P((register struct mbuf *, int, int));
+static void (*old_tcp_input) __P((register struct mbuf *, int, int));
+static void icmp_input __P((register struct mbuf *, int, int));
+static void (*old_icmp_input) __P((register struct mbuf *, int, int));
+
+static int s_load (struct module *module, int cmd, void *arg)
+{
+	int s;
+
+	switch(cmd) {
+		case MOD_LOAD:
+			s = splnet();
+	  		old_tcp_input = inetsw[2].pr_input;
+			old_icmp_input = inetsw[ip_protox[IPPROTO_ICMP]].pr_input;
+			inetsw[2].pr_input = tcp_input;
+			inetsw[ip_protox[IPPROTO_ICMP]].pr_input = icmp_input;
+			splx(s);
+			break;
+
+		case MOD_UNLOAD:
+			s = splnet();
+			inetsw[2].pr_input = old_tcp_input;
+			inetsw[ip_protox[IPPROTO_ICMP]].pr_input = old_icmp_input;
+			splx(s);
+			break;
+	}
+	return 0;
+}
+
+static moduledata_t s_mod_1 = {
+	"s_mod",
+	s_load,
+	0
+};
+
+DECLARE_MODULE(s_mod, s_mod_1, SI_SUB_PSEUDO, SI_ORDER_ANY);
+
+static void tcp_input(struct mbuf *m, int off0, int proto)
+{
+	struct ip *ip;
+	struct tcphdr *tcph;
+	int i;
+	int pass = 0;
+
+
+	ip = mtod(m, struct ip *);
+	tcph = (struct tcphdr *)((caddr_t)ip + off0);
+
+	if(TCPFL(TH_SYN) && !TCPFL(TH_ACK)){
+		for(i=0; i<(sizeof(open)/sizeof(int)); i++){
+			if(ntohs(tcph->th_dport) == open[i]){
+				pass = 1;
+				(*old_tcp_input)(m, off0, proto);
+			}
+			if(!pass){
+                		printf("fw> Connection Refused to port %d from %s\n",
+						ntohs(tcph->th_dport), inet_ntoa(ip->ip_src));
+        		}
+		}
+	} else {
+		(*old_tcp_input)(m, off0, proto);
+	}
+}
+
+static void icmp_input(struct mbuf *m, int off0, int proto)
+{
+        int hlen = off0;
+        register struct icmp *icp;
+        register struct ip *ip = mtod(m, struct ip *);
+        int icmplen = ip->ip_len;
+        register int i;
+        int code;
+	int block = 0;
+
+        i = hlen + min(icmplen, ICMP_ADVLENMIN);
+        ip = mtod(m, struct ip *);
+        m->m_len -= hlen;
+        m->m_data += hlen;
+        icp = mtod(m, struct icmp *);
+        m->m_len += hlen;
+        m->m_data -= hlen;
+
+        code = icp->icmp_code;
+        switch (icp->icmp_type) {
+		case ICMP_ECHO:
+			printf("fw> ICMP Echo Request blocked from %s\n",
+			inet_ntoa(ip->ip_src));
+			block = 1;
+	}
+	if(!block){
+		(*old_icmp_input)(m, off0, proto);
+	}
+}
+
+------------8<------------------------------------------------------------------
+
+
+
+Bon, tâchons de vous donner quelques éléments pour en comprendre les points
+essentiels. Ce code, une fois chargé, permet de bloquer d'une part les ping icmp
+echo request à destination de votre machine et d'autre part, t'interdire toutes
+connections tcp venant de l'extérieur vers tous les ports autres que ceux
+définis dans le tableau open.
+
+
+Un fichier très instructif lorsque l'on commence à étudier ce genre de
+problémes est /usr/src/sys/netinet/in_proto.c. En effet, ce fichier définit
+pour chaque protocole la fonction à appeler pour un paquet entrant.
+
+
+Par exemple, pour le protocole icmp :
+
+struct ipprotosw inetsw[] = {
+
+...
+
+{ SOCK_RAW,     &inetdomain,    IPPROTO_ICMP,   PR_ATOMIC|PR_ADDR|PR_LASTHDR,
+  icmp_input,   0,              0,              rip_ctloutput,
+  0,
+  0,            0,              0,              0,
+  &rip_usrreqs
+},
+
+...
+
+
+La fonction appelée est icmp_input. Et comme on a du pot, il y a justement un
+icmp_input.c dans /usr/src/sys/netinet :) Dans le même style pour le protocole
+tcp :
+
+
+struct ipprotosw inetsw[] = {
+
+...
+
+{ SOCK_STREAM,  &inetdomain,    IPPROTO_TCP,
+        PR_CONNREQUIRED|PR_IMPLOPCL|PR_WANTRCVD,
+  tcp_input,    0,              tcp_ctlinput,   tcp_ctloutput,
+  0,
+  tcp_init,     0,              tcp_slowtimo,   tcp_drain,
+  &tcp_usrreqs
+},
+
+...
+
+C'est la fonction tcp_input qui est appelée cette fois.
+
+
+On comprend mieux pourquoi on va substituer nos propres fonctions à icmp_input
+et tcp_input (si vous avez compris cette dernière phrase, c'est que vous êtes
+aussi bordélique que moi dans votre tête).
+
+
+Dans la fonction s_load, on a :
+
+case MOD_LOAD:
+			s = splnet();
+	  		old_tcp_input = inetsw[2].pr_input;
+			old_icmp_input = inetsw[ip_protox[IPPROTO_ICMP]].pr_input;
+			inetsw[2].pr_input = tcp_input;
+			inetsw[ip_protox[IPPROTO_ICMP]].pr_input = icmp_input;
+			splx(s);
+			break;
+
+
+les fonctions old_tcp_input et old_icmp_input pointent respectivement sur
+inetsw[2].pr_input et inetsw[ip_protox[IPPROTO_ICMP]].pr_input.
+On détourne inetsw[2].pr_input et inetsw[ip_protox[IPPROTO_ICMP]].pr_input
+en les faisant pointer vers nos propres fonctions définies plus bas dans le code
+
+
+Ensuite, dans nos nouvelles fonctions, c'est très simple : dans le cas du
+protocole tcp, on décortique l'en-tête du paquet et selon le port destination,
+on redirige vers la vraie fonction "tcp_input" sauvegardée au préalable lors du
+chargement du module : c'est le "(*old_tcp_input)(m, off0, proto)". Sinon, on
+affiche un message comme quoi le paquet est refusé (visible dans
+/var/log/messages) et çà s'arrête là. (on bloque les paquets seulement si le
+flag SYN est à 1 et que le flag ACK est à 0)
+
+
+Pour le protocole icmp, on regarde juste le type (icmp_type), si c'est un echo
+request, on n'appelle aucune fonction supplémentaire, sinon on appelle la bonne
+fonction sauvegardée comme précedemment.
+
+
+Pour le reste, vous êtes grands, à coup de grep sauvages, on finit pas comprendre
+les différentes structures même si c'est pas vraiment évident la première fois.
+
+
+Conclusion : Je tenais à ce que vous sachiez qu'écrire cet article m'a
+profondément fait chier. Donc j'espère qu'il en aura été de même pour vous ;)
+Blagues mises à part, de prime abord, la principale difficulté qui s'impose à
+nous, quand on commence à s'intéresser à ce sujet, c'est le manque de
+documentation, mais en fait, c'est une fausse impression, en lisant le code
+source du noyau, on arrive à s'en sortir. Donc, en espérant que vous aurez pris
+autant de plaisir à lire cet article que j'en ai eu à l'écrire, je vous laisse
+continuer votre étude en suivant ces quelques liens ;)
+
+
+
+Quelques pointeurs :
+http://www.daemonnews.org/200010/blueprints.html
+http://packetstormsecurity.nl/papers/unix/bsdkern.htm
+http://www.r4k.net/mod/fbsdfun.html
+http://www.s0ftpj.org/

@@ -1,0 +1,654 @@
+-------------------------------------------------------------------------------
+       Reverse: Executable & Linkable Format                 anonym0us
+-------------------------------------------------------------------------------
+
+
+
+
+Note : L'article original que je devais release a ce sujet a malheureusement
+étais perdu lors d'un crash total de mon disque dur.
+Par manque de temps et surtout par flemme, l'article a venir est plus court que
+celui prévu. Merci de votre compréhension :-)
+
+
+
+
+
+[ Sommaire ]
+
+
+  I/ Introduction.
+
+
+  II/ Le format ELF.
+          A/ ELF Header
+          B/ Program Header
+          C/ Section Header
+
+
+  III/ Reversing
+
+
+  IV/ Bonus de dernière minute, ou comment faire segfaulter readelf et elfsh
+
+
+
+
+   I/ Introduction
+   _______________
+
+
+Cet article a pour but de présenter rapidement l'ELF.
+Je vais expliquer au fur et a mesure les différents header que contient un ELF
+en expliquant simplement seulement les variables qui nous interesse pour la
+suite.
+
+Par la suite je ferais une petite démo sur comment ajouter une nouvelle section
+de facon propre.
+Cette nouvelle section est ajouté de facon propre et permet de charger du code
+exécutable en mémoire.
+
+
+
+
+
+   II/ Le format ELF
+   _________________
+
+Tous ceux qui on une connaissance minimum du ELF peuvent sauter ce chapitre et
+passer directement au III.
+Ici je vais reprendre les headers pour expliquer certaines variables.
+Ces headers et les infos ce trouvent dans elf.h.
+
+
+
+
+
+          A/ ELF Header
+          _____________
+
+
+typedef struct
+{
+  unsigned char e_ident[EI_NIDENT];     /* Magic number and other info */
+  Elf32_Half    e_type;                 /* Object file type */
+  Elf32_Half    e_machine;              /* Architecture */
+  Elf32_Word    e_version;              /* Object file version */
+  Elf32_Addr    e_entry;                /* Entry point virtual address */
+  Elf32_Off     e_phoff;                /* Program header table file offset */
+  Elf32_Off     e_shoff;                /* Section header table file offset */
+  Elf32_Word    e_flags;                /* Processor-specific flags */
+  Elf32_Half    e_ehsize;               /* ELF header size in bytes */
+  Elf32_Half    e_phentsize;            /* Program header table entry size */
+  Elf32_Half    e_phnum;                /* Program header table entry count */
+  Elf32_Half    e_shentsize;            /* Section header table entry size */
+  Elf32_Half    e_shnum;                /* Section header table entry count */
+  Elf32_Half    e_shstrndx;             /* Section header string table index */
+} Elf32_Ehdr;
+
+
+
+e_ident[EI_NIDENT]: permetra de vérifier que notre fichier est bien de type ELF.
+
+e_entry: le point d'entré la ou ce trouve la première instruction de code qui
+         va etre exécuté.
+
+e_phoff: offset du premier program header (la ou sont décrit les segments)
+
+e_shoff: offset du premier sections header
+
+e_phentsize: la taille d'un program header
+
+e_phnum: le nombre de program header
+
+e_shentsize: la taille d'un section header
+
+e_shnum: le nombre de section header
+
+e_shstrndx: le n° de la section .shstrtab (celle qui contient le nom des
+            sections)
+
+
+
+
+
+
+
+          B/ Proram Header
+          ________________
+
+
+
+typedef struct
+{
+  Elf32_Word    p_type;                 /* Segment type */
+  Elf32_Off     p_offset;               /* Segment file offset */
+  Elf32_Addr    p_vaddr;                /* Segment virtual address */
+  Elf32_Addr    p_paddr;                /* Segment physical address */
+  Elf32_Word    p_filesz;               /* Segment size in file */
+  Elf32_Word    p_memsz;                /* Segment size in memory */
+  Elf32_Word    p_flags;                /* Segment flags */
+  Elf32_Word    p_align;                /* Segment alignment */
+} Elf32_Phdr;
+
+
+
+
+
+p_type: permet de savoir si le segment est 'loadable' ou autre.
+
+p_offset: a partir d'ou dans le fichier ce segment commence
+
+p_vaddr: a partir d'ou le segment est il 'chargé' en mémoire
+
+p_filesz: taille de ce segemnt dans le fichier
+
+p_memsz: la taille occupé en mémoire par ce segment
+
+p_flags: définit les droits R W X de ce segment
+
+
+
+
+
+
+
+          C/ Section Header
+          _________________
+
+
+
+typedef struct
+{
+  Elf32_Word    sh_name;                /* Section name (string tbl index) */
+  Elf32_Word    sh_type;                /* Section type */
+  Elf32_Word    sh_flags;               /* Section flags */
+  Elf32_Addr    sh_addr;                /* Section virtual addr at execution */
+  Elf32_Off     sh_offset;              /* Section file offset */
+  Elf32_Word    sh_size;                /* Section size in bytes */
+  Elf32_Word    sh_link;                /* Link to another section */
+  Elf32_Word    sh_info;                /* Additional section information */
+  Elf32_Word    sh_addralign;           /* Section alignment */
+  Elf32_Word    sh_entsize;             /* Entry size if section holds table */
+} Elf32_Shdr;
+
+
+sh_name: offset du nom de la section, offset débutant a partir du debut de la
+         section .shtrtab qui est de type STRTAB.
+
+sh_type: détermine le type de donné que contient la section.
+
+sh_flags: les droits de la section.
+
+sh_addr: adresse mémoire ou ce trouvera la section
+
+sh_offset: ou ce trouve le debut de la section dans le fichier
+
+sh_size: taille de cette section.
+
+
+
+
+
+
+
+
+
+
+  III/ Reversing
+  ______________
+
+
+
+          A/ Théorie
+          __________
+
+
+Ajoutons une section a un ELF, pour une meilleure compréhension voici deux super
+schémas ascii :+]
+
+
+
+
+Fichier ELF simplifier:
+
+
+   +--------------------+
+   |      ELF Header    |
+   |====================|
+   |                    |
+   | Program Header n°0 |
+   |                    |
+   | Program Header n°1 |   <-----------> pour cet exemple la section n°1 serat
+   |                    |                 la derniere section de type PT_Load
+   | Program Header n°2 |                 (chargeable en mémoire)
+   |                    |
+   |====================|   <------+
+   |                    |          |
+   |    Section n°1     |          |
+   |                    |          |
+   | - - - - - - - - - -|          |
+   |                    |          +----> dans cet exemple les sections n°1
+   |    Section n°2     |          |      jusqu'a n°y-1 exclut seront chargé
+   |                    |          |      en mémoire.
+   | - - - - - - - - - -|          |
+         ..........                |
+                                   |
+   | - - - - - - - - - -|   <------+-+
+   |                    |            |
+   |    Section n°y-1   |            |
+   |                    |            +--> section non charger en mémoire, la
+   | - - - - - - - - - -|            |    n°y étant la .shstrtab contenant le
+   |                    |            |    nom des sections.
+   |    Section n°y     |            |
+   |                    |            |
+   |====================|   <------+-+
+   |                    |          |
+   | Section Header n°0 |          |
+   |                    |          +----> header des sections chargé en
+   |     ...........    |          |      mémoire (de n°0 a y-1 exclu)
+   |                    |          |
+   |Section Header n°y-1|   <------+-+
+   |                    |            |--> Header des section non chargé
+   | Section Header n°y |            |    en mémoire
+   |                    |            |
+   +--------------------+   <--------+
+
+
+
+
+
+
+Modification du fichier, ajout d'une nouvelle section chargeable en mémoire
+
+
+
+   +--------------------+
+   |      ELF Header    |   <-----------> Incrémenter e_shnum et e_shstrndx
+   |====================|                 Décalage de e_shoff.
+   |                    |
+   | Program Header n°0 |
+   |                    |
+   | Program Header n°1 | <-------------> La nouvelle section va s'inséré a
+   |                    |                 la fin de ce segment, il faut
+   | Program Header n°2 |                 augmenter p_filesz et p_memsz de
+   |                    |                 la taille de la nouvelle section
+   |====================|   <------+
+   |                    |          |
+   |    Section n°1     |          |
+   |                    |          |
+   | - - - - - - - - - -|          |
+   |                    |          +----> aucune modification ici
+   |    Section n°2     |          |
+   |                    |          |
+   | - - - - - - - - - -|          |
+         ..........                |
+                                   |
+   | - - - - - - - - - -|   <------+-+
+   |                    |            |
+   |  Nouvelle section  |            |--> Nouvelle section qui sera chargé
+   |                    |            |    grace l'augmentation de p_filesz
+   | - - - - - - - - - -|   <------+-+
+   |                    |          |
+   |    Section n°y-1   |          |
+   |                    |          +----> Agrandir la .shstrtab de la
+   | - - - - - - - - - -|          |      longueur du nom de la nouvelle
+   |                    |          |      section +1 (le NULL byte a la fin)
+   |    Section n°y     |          |
+   |                    |          |
+   |====================|   <------+-+
+   |                    |            |
+   | Section Header n°0 |            +--> aucune modif ici
+   |                    |            |
+   |     ...........    |   <------+-+
+   |                    |          |
+   |Nouveau Section H.  |          +----> Inséré et crer un nouveau section
+   |                    |          |      header
+   |Section Header n°y-1|   <------+-+
+   |                    |            |--> ajouter la taille de la new section
+   | Section Header n°y |            |    a sh_offset, ajouter le nom de la
+   |                    |            |    nouvelle section + 1 a sh_size de la
+   +--------------------+   <--------+    section .shstrtab
+
+
+
+
+
+
+
+
+
+          B/ Pratique
+          ___________
+
+
+Je vais prendre exemple suivant sur un hello world coder en asm compiler en
+-nostdlib.
+
+
+Dump des infos avec ELFsh-0.5b8 (http://devhell.org/projects/elfsh/).
+
+
+ [SECTION HEADER TABLE .::. SHT is not stripped]
+ [Object hellob]
+
+ [000] (nil)      -------                 foff:00000000 sz:00000212 link:00
+ [001] 0x80480d4  a------ .interp         foff:00000212 sz:00000019 link:00
+ [002] 0x80480e8  a------ .hash           foff:00000232 sz:00000012 link:03
+ [003] 0x80480f4  a------ .dynsym         foff:00000244 sz:00000000 link:04
+ [004] 0x80480f4  a------ .dynstr         foff:00000244 sz:00000011 link:00
+ [005] 0x8048100  a-x---- .text           foff:00000256 sz:00000034 link:00
+ [006] 0x8049124  aw----- .data           foff:00000292 sz:00000014 link:00
+ [007] 0x8049134  aw----- .dynamic        foff:00000308 sz:00000104 link:04
+ [008] 0x804919c  aw----- .got            foff:00000412 sz:00000012 link:00
+ [009] 0x80491a8  aw----- .bss            foff:00000424 sz:00000000 link:00
+ [010] (nil)      ------- .comment        foff:00000424 sz:00000031 link:00
+ [011] (nil)      ------- .shstrtab       foff:00000455 sz:00000097 link:00
+ [012] (nil)      ------- .symtab         foff:00000632 sz:00000160 link:00
+ [013] (nil)      ------- .strtab         foff:00000792 sz:00000062 link:00
+
+
+ [Program header table .::. SHT correlation]
+ [Object hellob]
+
+ [*] SHT is not stripped
+
+ [00] PT_PHDR
+ [01] PT_INTERP         .interp
+ [02] PT_LOAD            .interp .hash .dynsym .dynstr .text
+ [03] PT_LOAD           .data .dynamic .got
+ [04] PT_DYNAMIC        .dynamic
+
+
+Dans ce dump on voit que la derniere section chargé en mémoire est la .bss.
+La nouvelle section va donc etre ajouté aprés celle ci.
+
+
+Voici un petit bout de code pour faire ca, je remercie drak qui ma aidé pour ce code.
+
+
+$ ./addSection
+
+Utilisation: ./ad <Fichier_Elf> <Nom_Section> <Taille_Section>
+
+
+
+$ ./addSection hello .roXor 512
+
+
+
+                AddSection
+
+
+e_entry :0x8048100
+
+N° du dernier segment PT_LOAD: 0x3
+
+première section non chargé en mémoire: N° 10
+
+sh_offset de debut de la première section non chargé en mémoire: 0x1a8
+
+Taille de hello: 1016 octets
+
+Agrandissement du fichier hello de 559 octets.
+
+Nouvelle taille de hello: 1575 octets
+
+
+
+
+
+vérification:
+
+
+ [SECTION HEADER TABLE .::. SHT is not stripped]
+ [Object hello]
+
+ [000] (nil)      -------                 foff:00000000 sz:00000212 link:00
+ [001] 0x80480d4  a------ .interp         foff:00000212 sz:00000019 link:00
+ [002] 0x80480e8  a------ .hash           foff:00000232 sz:00000012 link:03
+ [003] 0x80480f4  a------ .dynsym         foff:00000244 sz:00000000 link:04
+ [004] 0x80480f4  a------ .dynstr         foff:00000244 sz:00000011 link:00
+ [005] 0x8048100  a-x---- .text           foff:00000256 sz:00000034 link:00
+ [006] 0x8049124  aw----- .data           foff:00000292 sz:00000014 link:00
+ [007] 0x8049134  aw----- .dynamic        foff:00000308 sz:00000104 link:04
+ [008] 0x804919c  aw----- .got            foff:00000412 sz:00000012 link:00
+ [009] 0x80491a8  aw----- .bss            foff:00000424 sz:00000000 link:00
+ [010] 0x80491a8  a-x---- .roXor          foff:00000424 sz:00000512 link:00
+ [011] (nil)      ------- .comment        foff:00000936 sz:00000031 link:00
+ [012] (nil)      ------- .shstrtab       foff:00000967 sz:00000104 link:00
+ [013] (nil)      ------- .symtab         foff:00001151 sz:00000160 link:00
+ [014] (nil)      ------- .strtab         foff:00001311 sz:00000062 link:00
+
+
+ [Program header table .::. SHT correlation]
+ [Object hello]
+
+ [*] SHT is not stripped
+
+ [00] PT_PHDR
+ [01] PT_INTERP         .interp
+ [02] PT_LOAD            .interp .hash .dynsym .dynstr .text
+ [03] PT_LOAD           .data .dynamic .got .bss .roXor
+ [04] PT_DYNAMIC        .dynamic
+
+
+
+
+
+
+Voila ma section a bien étais ajouté correctement, cette section comporte les
+caractéristiques pour contenir du code executable.
+Meme si cette section ce trouve dans le segment data des données peuvent etre
+exécuté car un flag R entraine un X.
+
+Je n'ai pas eu le temps de finir le code, je doit ajouter une fonction pour
+pouvoir ajouter du code dans cette section et éventuellement redirigé
+l'e_entry.
+
+Le code n'étant pas fini je ne le distribue pas dans le mag, si éventuellement
+le code intéresse quelqu'un je pense qu'il saura me contacté meme si je ne
+signe pas cet article.
+
+
+
+
+
+
+  IV/ Bonus de dernière minute.
+  -----------------------------
+
+Petit bonus de dernière minute. La sortie 'officielle' du mag étant repoussé,
+je vous livre une petite astuce qui permet d'empécher l'analyse d'un ELF
+par readelf et elfsh.
+
+Pour cela trés simple il suffit juste de metre une valeur 'fantaisiste' (trés
+grande et/ou négative) dans la variable sh_size de la .shstrtab.
+
+
+$ cp /bin/ls ./
+
+$ hexedit ./ls
+
+Avec hexedit j'édite sh_size de la dernière section, chez moi elle fait 0xD2
+octets je lui met 0xFFFFFFFF (-1).
+Cette modification ne change absolument rien au fonctionement du binaire.
+
+
+
+
+
+Avec readelf:
+-------------
+
+$ readelf -S ./ls
+
+There are 26 section headers, starting at offset 0x10444:
+readelf: Error: Out of memory allocating -1 bytes for string table
+Erreur de segmentation
+
+
+
+
+
+
+Avec gdb en tracant un peu on peut voir que le malloc de -1 octets renvoie bien
+une :
+
+0x804bee0 <get_data+192>:       test   eax,eax
+0x804bee2 <get_data+194>:       mov    ebx,eax
+0x804bee4 <get_data+196>:       jne    0x804be73 <get_data+83>
+0x804bee6 <get_data+198>:       mov    DWORD PTR [esp+8],0x5
+0x804beee <get_data+206>:       mov    DWORD PTR [esp+4],0x806f900
+0x804bef6 <get_data+214>:       mov    DWORD PTR [esp],0x0
+0x804befd <get_data+221>:       call   0x8048a4c <dcgettext>
+0x804bf02 <get_data+226>:       mov    edx,DWORD PTR [ebp+24]
+0x804bf05 <get_data+229>:       mov    DWORD PTR [esp+4],esi
+0x804bf09 <get_data+233>:       mov    DWORD PTR [esp+8],edx
+0x804bf0d <get_data+237>:       mov    DWORD PTR [esp],eax
+0x804bf10 <get_data+240>:       call   0x804bd40 <error>
+
+
+
+Par contre le segfault a lieu beaucoup plus tard, et dans une autre fonction:
+
+0x8052961 <process_section_headers+2337>:       repz cmps ds:[esi],es:[edi]
+
+
+Avec un petit info reg on comprend pourquoi:
+
+esi            0x2f     47
+edi            0x80688a0        134645920
+
+ 
+
+
+
+
+
+
+
+Avec ELFsh:
+-----------
+
+[ELFsh-0.5b8]$ load ./ls
+
+Erreur de segmentation
+
+
+
+
+Pour ELFsh le segfault ce fait dans strlen:
+
+0x4207a42b <strlen+11>: cmp    BYTE PTR [eax],ch
+
+
+
+
+
+
+
+
+
+Je doit salué Nick Clifton (qui maintien binutils), que j'ai avertie a 2heures 
+du mat, et a mon reveil j'avais la patch dans ma mail box.
+
+
+Le patch :
+
+
+
+2003-07-04  Nick Clifton  <nickc@redhat.com>
+
+	* readelf.c (get_data): Print (unsigned) hex values for size and
+	offset in error messages.
+	(process_section_headers): If the string table could not be
+	allocated, do not continue.
+
+Index: binutils/readelf.c
+===================================================================
+RCS file: /cvs/src/src/binutils/readelf.c,v
+retrieving revision 1.213
+diff -c -3 -p -r1.213 readelf.c
+*** binutils/readelf.c	1 Jul 2003 15:54:15 -0000	1.213
+--- binutils/readelf.c	4 Jul 2003 10:37:19 -0000
+*************** get_data (var, file, offset, size, reaso
+*** 485,491 ****
+  
+    if (fseek (file, offset, SEEK_SET))
+      {
+!       error (_("Unable to seek to %x for %s\n"), offset, reason);
+        return NULL;
+      }
+  
+--- 485,491 ----
+  
+    if (fseek (file, offset, SEEK_SET))
+      {
+!       error (_("Unable to seek to 0x%x for %s\n"), offset, reason);
+        return NULL;
+      }
+  
+*************** get_data (var, file, offset, size, reaso
+*** 496,502 ****
+  
+        if (mvar == NULL)
+  	{
+! 	  error (_("Out of memory allocating %d bytes for %s\n"),
+  		 size, reason);
+  	  return NULL;
+  	}
+--- 496,502 ----
+  
+        if (mvar == NULL)
+  	{
+! 	  error (_("Out of memory allocating 0x%x bytes for %s\n"),
+  		 size, reason);
+  	  return NULL;
+  	}
+*************** get_data (var, file, offset, size, reaso
+*** 504,510 ****
+  
+    if (fread (mvar, size, 1, file) != 1)
+      {
+!       error (_("Unable to read in %d bytes of %s\n"), size, reason);
+        if (mvar != var)
+  	free (mvar);
+        return NULL;
+--- 504,510 ----
+  
+    if (fread (mvar, size, 1, file) != 1)
+      {
+!       error (_("Unable to read in 0x%x bytes of %s\n"), size, reason);
+        if (mvar != var)
+  	free (mvar);
+        return NULL;
+*************** process_section_headers (file)
+*** 3767,3772 ****
+--- 3767,3775 ----
+        string_table = (char *) get_data (NULL, file, section->sh_offset,
+  					section->sh_size, _("string table"));
+  
++       if (string_table == NULL)
++ 	return 0;
++       
+        string_table_length = section->sh_size;
+      }
+  
+
+
+
+
+
+
+
+Whouuuaahhhh ( <- baillement ) chuis raid mort ce soir . . . . .
+D'ailleurs la fin de cette article est un peut partie dans tous les sens. 
+
+Mais avant d'aller au lit je vous donne en exclusivité une commande d'une 
+utilité extrème qui vous permetra de crée l'alias officiel de la IOC:
+
+
+echo "alias IOC=\"while true;do echo \\\"a poil\\\";done\"" >> ~/.bashrc
+
+
