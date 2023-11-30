@@ -59,6 +59,16 @@ Some articles are also sensitive and may mention, for example, the creation of h
 * Kaotix
 * Just Crack It
 * Input Output Corporation
+* Lamah
+* Liberté
+* Lutin
+* MacMilliam
+* MagAttack
+* Malicia
+* Multi-system and Internet Base
+* Mindkind
+* MJ13
+* Mobilisation Virtuelle Minoritaire
 
 # How to deploy it
 
