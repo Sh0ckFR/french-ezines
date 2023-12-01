@@ -1,0 +1,142 @@
+Le systeme d authentification Kerberos.
+
+Kerberos est un protocole réseau supplémentaire qui permet aux utilisateurs de s'authentifier en
+passant par l'intermédiaire d'un serveur sécurisé. Des services comme l'ouverture de session 
+et la copie à distance, la copie sécurisée de fichiers entre systèmes et autres fonctionnalités à 
+haut risque deviennent ainsi considérablement plus sûrs et contrôlables. ( FreeBSD FAQ)
+
+Le systeme Kerberos est entierement base sur la connaisance des password par un seul et meme serveur
+A la différence des passwords Unix, qui sont chiffrés avec un algorithme à sens unique qui ne peut
+pas être renversé , les passwords  Kerberos sont enregistrés sur le serveur chiffrés avec un algorithme
+conventionnel dans ce cas-ci on utilise DES de sorte qu'ils puissent être déchiffrés par le serveur.
+Le fait que le serveur  Kerberos a accès au mot de passe déchiffré de l'utilisateur est un résultat du
+fait que Kerberos n'utilise pas de cles publique de crypthologie. Il faut alors que le serveur soit
+enormement protege phisyquement, et également être immunisé contre des attaques de procédure 
+de connexion si un attaquant peut se loger  sur le serveur et devenir root, cet attaquant 
+pourrait, voler tous les mots de passe.
+le serveur de Kerberos répond simplement au request des utilisateur avec des tickets. 
+cette conception le rend relativement simple pour créer les serveurs repliés et secondaires qui
+peuvent manipuler des demandes d'authentification quand le serveur primaire est  indisponible.
+Malheureusement, ces serveurs secondaires ont besoin des copies complètes de la base de données 
+entière de Kerberos, qui signifie qu'elles doivent également être physiquement et de informatiquement
+bloqué .
+
+Se Loger sur une station UNIX utilisant Kerberos revient au meme pour un simple utilisateur. Il appercoit le
+tradittionelle login: et password:. Vous tapez votre login puis votre pass et si tout cela est correct vous 
+pouvez vous logez et acceder au service habituelle (ftp , mail etc....)
+
+Mais derriere tout cela que se passe t il ? c est ce que nous allons voir.
+
+Kerberos 4 :
+
+Avec Kerberos 4 des que vous tapez votre login , votre station envoi un message au serveur Kerberos 
+ce message contient votre login et avertit le serveur que vous voulez vous logez.Kerberos regarde si 
+vous etes bien dans la base de donnée si oui il envoie un packet crypte a la station de travail avec votre
+login et votre password. Des que la station de travail a recu ce packet elle vous demande comme d 
+habitude votre password et elle essaie maintenant de decrypte le packet encrypte en utilisant votre 
+password comme *clef*.Si le password est bon , la station l oublie et ne garde exclusivement le packet
+encrypte.Si ca ne marche elle vous redonne une chance ;)
+
+Kerberos 5:
+
+Avec Kerberos 5  , la station de travail attend que vous ayez tapee votre login et password avant de 
+contacter le serveur.Des que ceci est fait il envoie un message constitue de votre login et  a cote un
+message contenant l heure crypte , elle est crypte avec votre password comme *clef*.Le serveur
+Kerberos regarde si votre login existe si oui il regarde votre password et a l aide de celui ci il essaie
+de decrypter le message contenant l heure. Si il y arrive , il envoie a votre station de travail un packet
+*gagnant*  encrypté avec votre  password.
+
+
+Figure  1 :
+
+--------------                                                                  ---------------
+ Station de Travail  ==================================>      Serveur Kerberos
+--------------                        login                                   ---------------
+--------------                                                                  ---------------
+  Station de Trvail   <==================================     Serveur Kerberos
+--------------            [ticket]K(passwd)                               ---------------
+
+C est quoi exactement le ticket gagnant ? c est une bloc de donnes contenant 2  informations :
+
+- les clef de la session : Kses
+-  Un ticket pour Kerberos , il st encrypte et contient les clef de la session et 
+clefs du ticket *gagant*: EKtgsEKses{Ttgs}
+
+L utilisateure de la station de travail peux maintenant contacter Kerberos et obtenir
+des tickets pour X et Y raison.
+
+Note :
+
+  * Les passwords ne sont pas stockes sur les stations de travail mais seulement sur
+les serveur Kerberos
+  * le mot de passe de l'utilisateur n'est jamais transmis sur le réseau encrypte
+ ou autrement 
+  * Si un pirate intercepte le packet encrypte il ne lui sert a rien que la clef de
+ce message est le password est celui ci n est jamais transmis sur le reseaux
+
+Kerberos 4 Vs Kerberos 5
+
+Kerberos 5 est la version de Kerberos la plus recente.j ai mentionne deux
+difference importantes entre ces deux versions.
+Kerberos 4 est plus efficace que Kerberos 5  , mais plus limite.
+Par exemple Kerberos 4 ne peut etre mis en place que sur des reseaux TCP/IP
+Kerberos 5 corrige quelque probleme dans le protocole Kerberos et il plus
+resistant aux attaques sur le reseau .Il est aussi plus flexible : il peut
+travailler sur different types de reseaux. Kerberos 5 peut aussi utilise
+d autres techniques de cryptage que DES ( voir article de coder).
+
+Kerberos vs Secure RPC
+
+Kerberos est un systeme d authtentification , non un systeme RPC*.
+Kerberos peut etre utilise avec des systemes RPC. Des versions de Kerberos
+sont disponible pour Sun RPC  et pour different Systeme Xwindows.Mais 
+Kerberos peut simplement utilise pour des echanges de clefs(keys).
+le MIT a aussi modifie le systeme NFS pour travailler avec Kerberos.
+
+Il ya aussi plusieur difference en matiere de securite :
+
+- les mots de passe Secure RPC utilise une clef de cryptage publique et non prive 
+
+- Secure RPC garde les clef prive et publique des utilisateurs sur le 
+serveur NIS.
+
+Kerberos peut etre utilise avec des tas d autre protcole reseaux.
+Le projet Athena utilise Kerberos avec NFS  , telnet  et le courier 
+electronique. Sun  a ajouter la compactibilite  entre Kerberos et son 
+systeme RPC. IBM entre autres utilise Kerberos pour ses systemes.
+
+Installe Kerberos
+
+Pour une description complete de l installation de Kerberos alle voir sur:
+www.openbsd.org (Voir FAQ) ou www.freebsd.org (FAQ) vous noterez aussi
+que ces deux FAQS ont etes traduit en francais . Vous pouvez les trouver
+sur : www.bsdfr.org(la partie concernant Kerberos n a pas ete encore 
+traduite a ce jour ) et www.freebsd-fr.org.
+
+Les autres systemes d authentifications 
+
+DCE : Distributed Computing Environement est devloppe par L Open Software
+Foundation : www.osf.org/dce
+
+SESAME : Secure European Syteme for Application in Multi-vendor European.
+Ce systeme ressemble beaucoup a Kerberos.
+
+Il y a encore beaucoup de chose a dire sur Kerberos , je le ferai
+peut etre dans un prochain article si celui la vous a plus
+mais pour l instant regardons un peu les differents adisories :
+
+L0phtkrb.txt est une advisorie pour Kerberos 4
+
+c est tout ce que j ai trouve de complet .
+
+Il faut aussi notez qu il existe une implentation de kerberos 
+pour sshd.
+
+Documentation : FreeBSD FAQ, OpenBSD FAQ , Practicial Unix and Internet 
+Security(surtout ca :)) et PacketStorm.
+
+Greetz : Lionel , prfalken , Seb-sb , Spoty , Ankou et tout le
+reste
+
+mail : shado@ifrance.com
+

@@ -1,0 +1,457 @@
+*******************************DISCLAIMER******************************
+* Cet article et son contenu ne sont donnes qu'a but educatif         *
+* L'auteur degage toute responsabilite quant a son usage frauduleux   *
+*********************************************************************** 
+
+-----------------------------------------------------------------------
+| Noroute #3 | LordFrog | Introduction aux firewalls                  |
+-----------------------------------------------------------------------
+
+Preintroduction
+---------------
+
+	Attention! je considere que vous connaissez tcp/ip un
+minimum.... si pour vous reseau == minitel, pas la peine de continuer :)
+
+
+Introduction
+------------
+
+	Qu'est ce que c'est qu'un firewall? c'est un dispositif mis en
+place par les administrateurs systemes (si je dis rewts je vais en perdre
+en route =) ) pour proteger le reseau interne des attaques de l'exterieur
+. Plusieurs methodes sont utilisees mais les composants physiques les plus
+courants sont des routeurs (filtrants... ca sert :)) et une ou plusieurs
+machines.
+
+
+Les principes de base: 
+---------------------
+
+	Les machines directement connectees sur Internet sont *toutes*
+potentiellement vulnerables, elles ne le sont peut etre pas maintenant,
+mais elles le seront quand on aura decouvert "le bug de sendmail 8.42.666",
+et meme si vous croyez avoir parfaitement realise la securite d'une
+machine, vous etes rarement a l'abri d'une attaque a base de paquets forges
+(on dit aussi spoofes), c'est a dire pretendant venir de votre reseau
+interne ou de tout autre machine que vous trustez, etc... enfin bon
+bref.. virtuellement une telle machine *est* hackable (miam :) ).
+ 
+	"Firewall" pourrait se traduire en francais par "porte coupe feu",
+et c'est exactement le principe... confiner la vulnerabilite d'une
+connexion a Internet a une machine ou un perimetre donne.
+
+	En pratique vous avez beaucoup de facons de faire un firewall, mais
+la configuration la plus "safe" est celle dite du "perimeter
+network". Bon... decrochez pas, j'explique :)
+
+	Vous prenez 2 routeurs, et une becane (voire 2 pour le fin du
+fin). Vous placez le premier routeur entre vous et la connection
+exterieure, c'est  le routeur "externe". Le deuxieme routeur sera lui au point
+d'entree du reseau interne, le routeur "interne". Au milieu de tout ca vous
+mettez une becane genre blindee, le "bastion host". Et puis le fin du fin,
+c'est de rattacher un moyen d'ecrire les logs non effacable a ce bastion
+host, un lecteur de bandes, une ecriture sur papier (sisi ca existe :) ),
+ou une machine rattachee par une liaison serie (la fameuse deuxieme box
+dont je vous parlait).
+
+
+
+***********
+*   Net   *
+***********
+   / \
+    |                     EXTERNAL NETWORK
+    |
+   \ /
+-----------
+I Routeur I
+I         I++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+I Externe I
+-----------
+   / \
+    |
+    |
+   \ /                    PERIMETER NETWORK
+-----------
+I Bastion I
+I         I
+I  Host   I
+-----------
+   / \
+    |
+    |
+   \ /
+-----------
+I Routeur I
+I         I++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+I Interne I
+-----------
+   / \
+    |
+    |
+   \ /                   INTERNAL NETWORK
+***********
+* Reseau  *
+*         *
+* Interne *
+***********
+
+
+
+	Ce qui est vital dans un firewall, c'est le controle du traffic
+entrant, le controle du traffic sortant, la securisation des services que
+vous offrez et le log de tout ca (fiou.. on comprend pourquoi il y a des
+mecs qui ne s'occupent QUE de ca :) ).
+
+	Bon deja... la premiere chose que rencontre votre joli paquet
+venant du net quand il arrive face au perimeter network c'est le routeur 
+externe. Il ne faut pas oublier que ce routeur est un routeur
+filtrant... donc le rewt (bin si finalement je dis comme ca :)) va avoir
+mis un certain nombre de filtres en place. Quand il passe ce routeur il est
+confronte au bastion host, qui lui peut avoir des mecanismes de securite et
+de confinage tres evolues (proxies, socks, regles de filtrage, etc...), et
+puis au final si il passe tout ca il arrive face au routeur interne qui lui
+AUSSI a des filtres... enfin a mon avis si vous tombez sur un *vrai*
+firewall, il y a peu de chances que le paquet ait survecu jusque la :)
+
+Le routeur externe
+------------------
+
+	Ce routeur est cense proteger le perimeter network (et par
+extension tout le reseau meme si, on le verra plus tard, les trusts entre
+le perimeter network et le reseau interne sont faibles) de l'exterieur. Et
+qu'est ce qu'il fait pour ca? je vous le donne en mille emile, il FILTRE
+:).
+
+	Bon... detaillons ce que fait exactement ce routeur quand un paquet
+lui arrive dans la tronche (ouch, fait mal :p). Il regarde 6 choses: le
+protocole, l'adresse source, l'adresse destination, le port source, le port
+destination et dans le cas d'un paquet TCP si le bit ACK est positionne. Ce
+routeur a des filtres que lui a sympathiquement fait ingurgiter le rewt
+lorsqu'il a mis en place son firewall.
+
+exemple de filtres (ou rules) d'un routeur cisco:
+(le reseau interne est 192.168.10.0, et l'host truste est 172.16.51.50)
+
+access-list 101 permit ip 172.16.51.50 0.0.0.0 192.168.10.0 0.0.0.255
+access-list 101 deny ip 0.0.0.0 255.255.255.255 0.0.0.0 255.255.255.255
+interface serial 0
+access-group 101 in
+
+access-list 102 permit ip 192.168.10.0 0.0.0.255 172.16.51.50 0.0.0.0
+access-list 102 deny ip 0.0.0.0 255.255.255.255 0.0.0.0 255.255.255.255
+interface serial 0
+access-group 102 out
+
+bon c imbitable... je suis bien d'accord, on va se representer ca sous
+forme de tableaux (d'ailleurs je ferais comme ca jusqu'a la fin de
+l'article)
+
+D.   = Direction (Inbound, Outbound)
+D.A. = Destination Address
+S.A. = Source Address
+P.   = Protocol
+D.P. = Destination Port
+S.P. = Source Port
+*    = Any
+
+Rule D.      D.A.          S.A.       P.   D.P.  S.P. ACK  Action
+ A   I   192.168.10.0  172.16.51.50   *     *     *    *   Permit
+ B   O   172.168.51.50 192.168.10.0   *     *     *    *   Permit
+ C   *        *             *         *     *     *    *   Deny
+
+	Bon... deja il faut savoir que les regles A, B, C sont examinees dans
+l'ordre. Que se passe-t-il si un paquet provenant disons de 42.42.42.42 (la
+reponse est ailleurs :) ) essayait de contacter le reseau interne? Le
+routeur examine le filtra A... nope c pas ca (la direction est mauvaise),
+puis le filtre B... toujours pas ca (adresse source <> de celle defini dans
+le filtre), puis enfin le filtre C... qui match tout le reste! donc le
+paquet est rejete.
+
+	Ces regles la sont simples... ni les ports ni le ack ne sont
+verifies, regardont des regles un peu plus evoluees:
+
+Rule D.      D.A.          S.A.       P.   D.P.  S.P.  ACK  Action
+ A   I     Internal      External    TCP   25   >1023   *   Permit
+ B   O     External      Internal    TCP  >1023   25   Yes  Permit
+ C   O     External      Internal    TCP   25   >1023   *   Permit
+ D   I     Internal      External    TCP  >1023   25   Yes  Permit
+ E   *        *             *         *     *     *     *   Deny
+
+	Avant que vous ne vous pulverisiez le neurone a vous demander ce
+que font ces filtres :) ils permettent l'envoi et la reception du courrier
+a partir du reseau interne vers le reseau externe et empechent TOUT autre
+traffic. 
+
+	Quelques petits rappels avant de vous detailler le fonctionnement
+		* sous unix, les ports entre 1 et 1023 ne sont utilisables
+que par le rewt, et souvent utilises pour des services connus (ex:
+sendmail, port 25)
+		* les paquets tcp, une fois la connection negociee, portent
+tous le bit ACK positionne (cf l'excellent papier de kewl sur le tcp/ip
+dans NoRoute #1)
+	   
+	Imaginons que qqun du net veuille envoyer un mail a une personne du
+reseau interne, son sendmail negocie la connexion (filtra A), la connexion
+est etable (le bit ACK est donc positionne) et le demon SMTP interne repond
+au sendmail externe (filtre B), la meme chose pour une connexion dans
+l'autre sens (interne envoyant du mail a extern) avec les filtres C et D.
+
+	Maintenant imaginons qu'un hacker (roooooo :) ) essaye de faire un
+finger sur une machine interne (port 79 le finger), le routeur check les
+filtres A, B, C ,D et comme rien ne correspond niveau port passe au filtre
+E qui est un deny... donc pas de finger.
+
+	L'interet du check du bit ACK est que certains demons installes par
+des users ou par des em*****eurs (genre xfree au hasard :) ) tournent sur
+des ports > a 1023. imaginons que le bit ACK ne soit pas mis, je suis un
+hacker astucieux (heu c po vrai, je suis pas astucieux du tout, mais on va
+faire comme ci hein :) ), je place sur ma machine un client sur le port 25
+(je suis root j'ai le droit, m'emmerdez pas :p) qui va aller faire une
+demande de connection sur le port 6000 de la machine interne... ca rentre
+dans les rules A et B.. donc ca passe. Avec le bit ACK de positionne ca ne
+passe pas :)
+
+	Generalement sur ce routeur externe sont places des filtres qui
+n'autorisent la connection qu'aux services internets places sur le bastion
+host (on va y arriver, vous inquietez pas :) ), genre ftp, nnt, smtp,
+etc... sont deny tout le reste, et tous les paquets venant d'adresses
+internes (dommage pour le spoof).
+
+
+Le bastion host
+---------------
+
+	C'est le deuxieme niveau de securite du firewall... deja si on est
+parano (et un mec qui met un firewall EST parano) on commence par repliquer
+les filtres qu'on a mis sur le routeur interne. Un bastion host est une
+machine avec le moins de choses possibles... juste de quoi provider les
+services internet et de quoi logguer. Pas de comptes utilisateurs (a part
+le compte root), et le moins de choses possibles dessus (il y en a meme ou
+il n'y a pas de compilo :) ) pour ne pas faciliter le travail de gens mal
+intentionnes qui pourraient essayer de l'owner ;)
+
+	Generalement, on concentre les services internet sur cette machine,
+et elle sert egalement de relai entre le reseau interne et internet par des
+mecanismes de proxy. 
+
+	Un proxy est un mecanisme permettant de faire passer toutes les
+connections via le bastion host, en creeant un "circuit virtuel". C'est a
+dire que le client aura l'impression qu'il parle directement au serveur et
+vice versa. Un proxy est utile pour logger et controler tout ce qui passe
+entre l'exterieur et le reseau interne.
+
+	Un certain nombre de services utilise deja un mecanisme de proxy,
+ces services sont dits "store and forward" car ils stockent toutes les
+requetes sur le serveur local pour ensuite les delayer aux serveurs
+concernes. C'est le cas de SMTP (le mail), NNTP (les niouzes) et NTP
+(ajustement de la clock).
+
+	Pour les autres services soit un proxy SOCKS (ou qquechose de
+ressemblant) est utilise, soit des proxy service par service sont
+utilises. Le proxy socks demande une recompilation des clients en
+remplacant les fonctions de sockets (connect(), getsockname(), ...) par
+leurs equivalents pour SOCKS (Rconnect(), Rgetsockname(), ...), tandis que
+le proxy par clients ne demande qu'une modification des procedures de
+connections. 
+
+	Bon... c bien joli tout ca mais ca nous dit pas ce qu'on peut faire
+avec un bastion host. Je serais tente de dire, si l'admin est bon.. RIEN
+:-/. Les services proposes seront securises a priori, et le routeur externe
+empechera les paquets spoofes de passer... enfin a la fin je proposerais
+quelques types d'attaques.. a vous de creuser et de voir si c'est
+realisable :)
+
+	Il faut savoir qu'a priori dans un bastion host les logs sont AUSSI
+securises (arrrrrgh), soit par supports "one way" (bandes, imprimante),
+soit au moyen d'une machine attachee en serial (et pas sur le reseau bien
+sur, ce serait trop facile sans ca :) ) qui garde une copie de tous les logs.
+
+
+Le routeur interne
+------------------
+
+	Basiquement il contient les meme regles de filtrage que le routeur
+externe, en y ajoutant des regles pour les service passant par proxy (y
+compris SMTP and co), faisant un deny de tout ce qui essaye de bypasser le
+proxy, et une autre faisant un deny sur tout ce qui a a la fois une adresse
+source et une adresse destination interne... donc pour sniffer a partir du
+bastion host on est BAISES :-/
+
+	Le principe est qu'aucun paquet du reseau interne ne doit passer
+sur le perimeter network, qui est cense etre insecure (malgres tout ce que
+doit traverser le pauvre paquet qui passe par la :) ), de meme tout le
+traffic qui passe par le routeur interne est etroitement controle.
+
+
+Conclusion et methodes pour essayer de passer au travers d'un fw
+----------------------------------------------------------------
+
+	Deja, premiere constatation, un fw est (malheureusement :-/) une
+*excellente* mesure de securite. Il empeche toute attaque a base de spoof,
+et le bastion host est (si il est correctement configure) virtuellement
+imprenable. 
+
+	Maintenant... comme un hacker ne manque jamais de ressources, et
+qu'un dispositif de securite sur a 100% ca n'existe pas ;) il y a
+effectivement des choses a essayer face a un fw:
+
+	Deja essayer les methodes classiques sur les services internet
+proposes par le bastion host (NNTP, SMTP, HTTP, etc...), les trous connus
+et autres... maintenant normalement tout ca sera patche, a moins que vous
+n'ayez ZE bug que personne n'a.
+
+	Plus interessant deja est de s'amuser avec les protocoles, notamment
+le routage peut s'averer un jouet tres drole... je n'ai jamais teste mais
+je suis sur qu'avec le message ICMP "redirect", l'option IP "loose source
+route" ou le RIP on peut faire plein de choses interessantes.
+
+	Maintenant tout ca ne vous donnera au mieux que le bastion host (a
+moins que cetrains services ne passent pas par un proxy, auquel cas la ca
+devient marrant), ce qui n'est pas tout a fait top...
+
+	C'est la ou intervient bibi, j'ai de temps en temps remarque que
+certains sites bien proteges offraient un acces en ppp a leur users... qui
+dit ppp, dit introduction d'une machine weak, en plus souvent ces clients
+ppp ont une connection directe avec le net, et egalement une connection non
+restreinte avec le reseau local... je vous fais un dessin? ;)
+
+	A propos, e jetais un coup d'oeil sur les archives de bugtraq quand
+un certain type d'attaques que je ne connaissais qu'en service denial m'a
+attrire l'oeil... nos amis les ping de 65536 octets. Il semblerait que
+certains routeurs et le produit commercial Firewall-1 reagissent d'une
+maniere amusante lorsqu'ils recoivent ce fameux paquet ICMP... genre
+flushage des filtres ;)
+
+
+Le bonus: construisez vous meme votre firewall
+----------------------------------------------
+
+	Bon.. ca ne sera pas un vrai firewall, mais nous allons jouer avec
+la possibilite qu'offre le kernel de linux pour filtrer les paquets: Deja
+votre kernel doit etre recompile en activant les options de firewalling (ca
+sert :) ). Ensuite pour posez vos regles vous avez un utilitaire bien
+pratique qui est ipfwadm (man ipfwadm hein). Je vous evite de lire le
+man... voila la sytaxe:  
+
+ipfwadm -I command parameters [options]
+ipfwadm -O command parameters [options]
+
+(il y a d'autres options, -F etc.. mais seules -O et -I vont nous
+interesser)
+
+-I == Incoming, filtrage des paquets entrants
+-O == Outgoing, filtrage des paquets sortants
+
+command est de la forme suivante:
+
+<action> <policy>
+
+ou action est -a (append, met a la fin de la liste rapelleez vous que
+l'odre est important) -u (insert, place au debut) -d (delete)
+
+a la place de action vous pouvez aussi mettre -l (list) ou -f (flush,
+delete TOUT) sans arguments.
+
+comme policy vous avez: accept, deny ou reject. La difference entre deny et
+reject est que reject envoie un paquet ICMP de type 3 (host unreachable)
+alors que deny drop le paquet purement et simplement.
+
+les parametres sont -S, -D, -P -W
+
+-S et -D representent les adresses source et destination du paquet, avec le
+masque reseau sous forme numerique ou decimale (on ne bouge pas j'explique)
+
+exemple: -S 0.0.0.0/0 (numerique) est equivalent a -S 0.0.0.0/0.0.0.0 ce
+qui match TOUS les hosts ayant une adresse IP
+
+-D 10.1.1.1/32 est equivalent a 10.1.1.1/255.255.255.255 ce qui match
+specifiquement le host 10.1.1.1
+
+-P represente le protocole (tcp, udp, icmp ou all) et -W l'interface (ppp0,
+eth0 and so on..)
+
+in fine les options: celles qui nous interessent sont -k, -y et -o
+
+-y n'applique le filtre que si le bit SYN est positionne sur le paquet (tcp
+uniquement)
+
+-k meme chose avec le bit ACK (toujours tcp)
+
+-o envoie un message kernel (dans le /var/adm/messages) des qu'un paquet
+rentrant dans le cadre du filtre en question est detecte.
+
+
+Bon... vous devez etre paumes :) donc voila un exemple concret de firewall,
+le mien :)
+
+(j'ai mis ca dans le /etc/ppp/ip-up, $4 represente l'adresse IP attribuee
+par le provider au moment de la connexion, man pppd pour plus de
+renseignements)
+
+Attention... pour pouvoir spoofer avec ces filtres, il faut modifier le
+spoofeur pour qu'il bind les ports uniquement > 1024, pour le reste evitez
+de lancer des commandes en tant que root, root n'ayant plus l'obligation de
+binder < 1024 vous allez vous retrouver avec un deny sur le dos
+
+(heu.. cette mise en garde n'est pas tres claire JE SAIS.. RTFM sur tpc/ip
+et les sockets su quand je parle de bind vous coulez :) )
+
+enfin tout ca pour dire... toutes les commandes reseaux lancees en tant que
+root vont donc avoir un probleme.
+
+--------------snip snip (/etc/ppp/ip-up)-------------------------------------
+
+/sbin/ipfwadm -I -f
+/sbin/ipfwadm -O -f
+#flush du fw (ip dynamique oblige)
+
+/sbin/ipfwadm -O -a accept -S $4 1024:5999 -D 0.0.0.0/0 -P tcp -W ppp0
+/sbin/ipfwadm -I -a accept -S 0.0.0.0/0 -D $4 1024:5099 -P tcp -W ppp0
+/sbin/ipfwadm -O -a accept -S $4 6010:65535 -D 0.0.0.0/0 -P tcp -W ppp0
+/sbin/ipfwadm -I -a accept -S 0.0.0.0/0 -D $4 6010:65535 -P tcp -W ppp0  
+/sbin/ipfwadm -O -a accept -S $4 1024:5999 -D 0.0.0.0/0 -P udp -W ppp0
+/sbin/ipfwadm -I -a accept -S 0.0.0.0/0 -D $4 1024:5099 -P udp -W ppp0
+/sbin/ipfwadm -O -a accept -S $4 6010:65535 -D 0.0.0.0/0 -P udp -W ppp0
+/sbin/ipfwadm -I -a accept -S 0.0.0.0/0 -D $4 6010:65535 -P udp -W ppp0  
+#traffic sortant en filtrant X (port 6000 +n)
+
+/sbin/ipfwadm -I -a accept -S 0.0.0.0/0 520 -D $4 520 -P udp -W ppp0
+#routage (il m'a deja fait chier avec ca)
+
+/sbin/ipfwadm -I -a accept -S 0.0.0.0/0 -D $4 21 -P tcp -W ppp0
+/sbin/ipfwadm -O -k -a accept -S $4 21 -D 0.0.0/0 -P tcp -W ppp0
+/sbin/ipfwadm -I -k -a accept -S 0.0.0.0/0 -D $4 20 -P tcp -W ppp0
+/sbin/ipfwadm -O -a accept -S $4 20 -D 0.0.0/0 -P tcp -W ppp0
+/sbin/ipfwadm -I -a accept -S 0.0.0.0/0 -D $4 113 -P tcp -W ppp0
+/sbin/ipfwadm -O -k -a accept -S $4 113 -D 0.0.0.0/0 -P tcp -W ppp0 
+#traffic entrant: ftp et identd 
+
+/sbin/ipfwadm -O -a accept -S $4 -D 0.0.0.0/0 -P icmp -W ppp0
+/sbin/ipfwadm -I -a accept -S 0.0.0.0/0 0 -D $4 -P icmp -W ppp0
+/sbin/ipfwadm -I -a accept -S 0.0.0.0/0 11 -D $4 -P icmp -W ppp0
+#icmp: sortant tout, entrant juste reponse d'echo et ttl (time too long,
+#efficace pour faire un traceroute)
+
+/sbin/ipfwadm -I -o -a deny -S 0.0.0.0/0 -D 0.0.0.0/0 -P all -W ppp0
+/sbin/ipfwadm -O -o -a deny -S 0.0.0.0/0 -D 0.0.0.0/0 -P all -W ppp0
+#on deny tout le reste :)
+
+--------------snip snip (/etc/ppp/ip-up)-------------------------------------
+
+
+SYNnowledgments :)
+------------------
+
+quelques lectures interessantes:
+
+"Building internet firewalls", collection O'Reilly
+"Firewalls and internet security", collection Addison-Wesley
+
+merci aux gens de #banane, et de #phe(DalNet)... enfin aux copains quoi :)
+
+
+LordFrog
+
+

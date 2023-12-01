@@ -1,0 +1,1015 @@
+
+                La programmation multitâche (ou parallèle)
+                            en C sous Unix
+             par Professor Falken <prfalken@freeshell.org>
+
+
+chtit Disclaimer:
+*****************
+
+Ce T-phile n'est pas sensé être une référence complète sur tous les moyens
+de programmer en multi-tache sous Unix, ou un manuel de référence sur
+l'utilisation de ces moyens.
+Je l'ai plutot écrit pour donner un aperçu des techniques les plus
+courantes dans ce domaine, et des pointeurs vers les documentations
+(man pages, info, LDP, bouquins...) adéquates à une référence détaillée.
+J'ai aussi tenté d'attirer l'attention sur des exemples d'utilisation
+pouvant entrainer des bugs et/ou des trous de sécurité dans les programmes
+lors de l'utilisation du multi-tache.
+
+Je ne serais en aucun cas responsable d'une utilisation des informations
+ci-dessous à des fins illégales ou mal-intentionnées
+(à ne surtout pas confondre :)), et je ne serais pas non-plus responsable
+des préjudices (intrusions, trous de sécurité...) causés par l'
+(la mauvaise) utilisation de ces informations.
+En fait, j'aurais pu ripper ce disclaimer dans n'importe quel bouquin sur
+la programmation =))))
+
+Une relativement bonne connaissance du language C et du système Unix sont
+préférables pour la bonne compréhension de ce T-phile.
+Il faut au moins être capable de faire la différence entre une fonction
+de librairie et un appel système, savoir ce qu'est un fichier, savoir
+lire et comprendre un programme en C, un algorigramme en ASCII :))),
+avoir une notion des processus sous Unix (PID, PPID, child, parent...),
+ne pas confondre un programme et un processus (un programme peut parfois etre
+un ensemble de processus),
+savoir ce qu'est un signal, avoir une idée aproximative de la gestion
+d'un système multitache sur un seul CPU, et être capable de visualiser
+clairement des évenements simultanés, sans repère temporel...
+En gros, faut pas en être à coder un "Hello World" avec stdio et se
+demander comment on va le compiler =)))
+
+
+Intro:
+*****
+
+    Unix, et tous les autres systèmes qui en dérivent,
+(SysV, *BSD, SunOs, AIX, Linux, minix,...) ont comme principale
+caractéristique d'être multitâches.
+Ca veut dire que, sur un même système (pour ne pas dire un même processeur),
+on peut exécuter plusieurs processus (tâches, applications, programmes...)
+simultanément.
+Cela se révèle extrement puissant lorsque on veut partager le même
+systeme entre plusieurs utilisateurs, ou alors qu'un seul utilisateur veut
+se servir de plusieurs applications en même temps
+(ie: compilateur + editeur + reader de docs).
+Cette utilisation du multitâche ne nécessite pas obligatoirement de programmes
+conçus pour le multitâche, car celui-ci est géré par le système, et les
+processus croient en général qu'ils sont seuls à fonctionner dans leur espace 
+mémoire.
+
+Mais il existe en standard, sous Unix, la possibilité de gérer plusieurs
+parties d'un même programme en parallèle.
+Ceci s'avère avantageux dans le cas d'un programme serveur (FTP, HTTP...),
+d'un cluster de machines formant une machine virtuelle (PVM), ou encore d'un
+système multi-processeurs (SMP), d'un système temps réel
+(automate industriel, pilote automatique...), ou plus simplement d'un
+logiciel nécessitant une programmation évenementielle (ie. GTK+).
+
+Il existe principalement deux façons de gérer le multi-tasking dans un
+programme sous Unix: le multi-threading, et la communication inter-processus
+(IPC), les deux pouvant bien sur être mixés pour donner des algorythmes
+d'exécution plus ou moins complexes.
+
+
+
+Le Multi-threading:
+******************
+
+L'API de multi-threading la plus répandue est le standard POSIX 1003.1c, plus
+connu sous le nom de POSIX-threads (ou pthreads). Elle est implémentée sous
+Linux, avec la librairie LinuxThreads, livrée en standard avec la GNU libc 2.
+On la trouve aussi sous Solaris 2.5, Digital Unix 4.0, SGI Irix 6, et sur les
+dernières versions de AIX et HP-UX.
+
+Le principe du multi-threading est que le programme utilisant ces fonctions
+se divise en plusieurs branches (threads) d'exécution, partageant le meme
+espace d'adressage mémoire, les memes descripteurs de fichiers, les memes
+gestionnaires de signaux (signal handlers), et, theoriquement, le meme PID
+(quoique cela est faux sous Linux).
+
+Ainsi, on peut facilement creer un programme adapté aux architectures
+paralleles (MPP, SMP...) avec des branches d'executions pouvant accéder aux
+memes variables et aux memes fichiers.
+
+exemple simple d'algorythme multi-threadé:
+
+                           /--------\
+                           | Parent |       Processus parent
+                           \--------/
+                               |  division en 2 branches (threads)
+                              / \
+               thread 1 ---> /   \ <---- thread 2
+                            /     \
+                           /       \
+                  +--->---v         v------<-----+
+                  |       |         |            |
+                  |   --------       \           ^
+                  ^  (  a++   )  +--------+  N   |
+                  |   --------  / a == k ? \--->-+
+                  |       |     ++--------++
+                  +----<--|           | Y
+                                      v
+                                      |
+                                   /------\
+                                   | FIN  |
+                                   \------/
+
+Avec POSIX threads, on ecrira le programme en C comme ça:
+
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+
+#include <pthread.h>
+
+int a;              /* variable a */
+int k;              /* constante */
+
+void * thread_1(void *arg)      /* thread # 1 */
+{
+    while (1)
+        a++;                    /* operation sur la variable a */
+}
+
+void * thread_2(void *arg)      /* thread # 2 */
+{
+    while (1)
+        if (a == k)             /* test sur la variable a */
+            pthread_exit(NULL); /* si a est egale a k, on kill le thread */
+}
+
+int main(int argc, char *argv)
+{
+    pthread_t thread1;      /* identificateurs des */
+    pthread_t thread2;      /* threads 1 et 2      */
+
+    a = 0;
+    k = 10;
+
+    pthread_create(&thread1, NULL, thread_1, "thread 1"); /* on lance thread1 */
+    pthread_create(&thread2, NULL, thread_2, "thread 2"); /* on lance thread2 */
+
+    /* on note que pthread_create lance le thread concerné en 'background',
+       et retourne tout de suite après, thread_1 et thread_2 s'exécutent donc
+       en parallèle
+    */
+
+    pthread_join(thread2, NULL);    /* on suspend l'execution jusqu'a ce que */
+                                    /* thread2 soit killé */
+
+    return 0;   /* le retour de la fonction principale cause la fin de tous */
+                /* les threads encore en exécution */
+}
+
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+
+Les mutexes :
+-----------
+Mais il se pose alors un probleme... en effet, thread1 et thread2,
+s'exécutant en meme temps, accèdent à la meme variable...
+Que se passerait-il si thread2 testait la variable a au meme moment ou
+thread1 incremente cette meme variable ??
+Il serait en fait impossible de prévoir si le test aurait lieu avant ou
+après l'incrémentation de a, et, de plus, un accès simultané à la meme
+variable entraine la plupart du temps une erreur de segmentation (segfault).
+
+Pour éviter ce genre de situations, il existe des objets appelés les mutex,
+ou MUTual EXclusion device, dont le role est de "verrouiller" une partie du
+code, par exemple pour protéger une variable lors d'un accès.
+
+Il existe principalement deux fonctions pour utiliser les mutexes:
+
+    * pthread_mutex_lock(pthread_mutex_t *mutex) :
+        Cette fonction verrouille le mutex pointé par *mutex.
+        Si un autre thread tente de verrouiller ce mutex, il est suspendu
+        jusqu'à ce que le mutex soit déverrouillé par le thread qui l'a
+        verrouillé en premier.
+
+    * pthread_mutex_unlock(pthread_mutex_t *mutex) :
+        Cette fonction déverrouille le mutex pointé par *mutex, libérant
+        ansi les éventuels threads qui ont tenté de le verrouiller avant.
+
+Plus, pour l'initialisation et la destruction :
+
+    * pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutex_attr_t *mutexattr) :
+        Cette fonction initialise le mutex pointé par *mutex.
+        Un pointeur NULL sur *mutexattr initialise *mutex avec les attributs
+        par defaut.
+
+    * pthread_mutex_destroy(pthread_mutex_t *mutex) :
+        Détruit le mutex pointé par *mutex.
+
+Le prog d'exemple deviendra alors :
+(les ... sont les parties identiques a ci-dessus)
+
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+
+#include <pthread.h>
+
+...
+
+pthread_mutex_t a_mutex;        /* declaration du mutex */
+
+void * thread_1(void *arg)      /* thread # 1 */
+{
+    while (1) {
+        pthread_mutex_lock(&a_mutex);   /* on verrouille a_mutex */
+
+        a++;                        /* operation sur la variable a */
+
+        pthread_mutex_unlock(&a_mutex); /* on deverrouille a_mutex, car on */
+                                        /* n'accede plus a la variable a */
+    }
+}
+
+void * thread_2(void *arg)      /* thread # 2 */
+{
+    while (1) {
+        pthread_mutex_lock(&a_mutex);   /* on verrouille a_mutex */
+
+        if (a == k)             /* test sur la variable a */
+            pthread_exit(NULL); /* si a est egale a k, on kill le thread */
+
+        pthread_mutex_unlock(&a_mutex); /* on deverrouille a_mutex, car on */
+                                        /* n'accede plus a la variable a */
+    }
+}
+
+int main(int argc, char *argv)
+{
+    pthread_t thread1;      /* identificateurs des */
+    pthread_t thread2;      /* threads 1 et 2      */
+
+    ...
+
+    pthread_mutex_init(&a_mutex, NULL);     /* on initialise a_mutex */
+
+    ...
+
+
+    pthread_mutex_destroy(&a_mutex);        /* on détruit a_mutex */
+
+    return 0;   /* le retour de la fonction principale cause la fin de tous */
+                /* les threads encore en exécution */
+}
+
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+
+Ainsi, le verrouillage du mutex fait en sorte que les deux threads ne
+puissent pas toucher a la variable a en meme temps, car ils essayent de
+verrouiller a_mutex avant chaque accès a cette variable.
+Donc, si thread 1 tente d'incrémenter a pendant que thread 2 est en train de
+la comparer avec k, il se suspend jusqu'à la fin du test, car a_mutex était
+déja verrouillé par thread 2.
+
+
+Les semaphores :
+--------------
+Une autre fonctionnalité de Pthreads est l'usage des semaphores.
+A ne pas confondre avec les semaphores du SysV IPC, quoique leur
+fonctionnement est analogue.
+Les semaphores sont des compteurs, partagés entre plusieurs threads.
+Les principales opérations effectuables sur une semaphore sont,
+incrémenter la semaphore 'atomiquement' (ie un seul thread peut l'incrementer
+à la fois), et attendre que la valeur soit supérieure a 0, puis la decrementer
+atomiquement.
+
+Cette fonctionnalité peut etre utile pour limiter la consommation en CPU
+d'un programme multi-threadé.
+On va reprendre l'exemple ci-dessus; tel qu'il est codé, ce programme devrait
+consommer environ 90% des ressources CPU à lui seul, car il utilise deux
+threads en boucle, qui n'exécutent que des opérations simples et rapides, donc
+les boucles s'exécutent trop rapidement pour laisser aux autres processus du
+système le temps de prendre leur part de ressources.
+De plus, thread 2 execute le test arbitrairement, meme si a n'a pas changé
+d'une itération à l'autre.
+
+L'utilisation des sémaphores permet de limiter ce comportement, en suspendant
+thread 2 si a n'a pas changé.
+
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+
+#include <pthread.h>
+#include <semaphore.h>
+...
+
+sem_t a_sem;        /* declaration de la semaphore */
+
+void * thread_1(void *arg)      /* thread # 1 */
+{
+    while (1) {
+        pthread_mutex_lock(&a_mutex);   /* on verrouille a_mutex */
+
+        a++;                        /* operation sur la variable a */
+
+        pthread_mutex_unlock(&a_mutex); /* on deverrouille a_mutex, car on */
+                                    /* n'accede plus a la variable a */
+
+        sem_post(&a_sem);       /* on incremente a_sem */
+    }
+}
+
+void * thread_2(void *arg)      /* thread # 2 */
+{
+    while (1) {
+
+        sem_wait(&a_sem);   /* suspend thread 2 jusqu'à ce que a_sem != 0 */
+                            /* puis decremente a_sem */
+
+        pthread_mutex_lock(&a_mutex);   /* on verrouille a_mutex */
+
+        if (a == k)             /* test sur la variable a */
+            pthread_exit(NULL); /* si a est egale a k, on kill le thread */
+
+        pthread_mutex_unlock(&a_mutex); /* on deverrouille a_mutex, car on */
+                                        /* n'accede plus a la variable a */
+    }
+}
+
+int main(int argc, char *argv)
+{
+    pthread_t thread1;      /* identificateurs des */
+    pthread_t thread2;      /* threads 1 et 2      */
+
+    ...
+
+    sem_init(&a_sem, 0, 0);     /* on initialise a_sem */
+
+    ...
+
+
+    sem_destroy(&a_sem);        /* on détruit a_mutex */
+
+    return 0;   /* le retour de la fonction principale cause la fin de tous */
+                /* les threads encore en exécution */
+}
+
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+
+On aura donc un algo equivalent à ça :
+
+             thread 1             thread 2
+                |                    |
+        +---->--+                    +-----------+
+        |       |                    |           |
+        |   /-------\          /-------------\   |
+        |   |  a++  |          | a_sem > 0 ? |   |
+        |   \-------/          \-------------/   |
+        |       |                    |           |
+        |  /-----------\         /--------\      |
+        |  | a_sem = 1 |         | test a |      |
+        ^  \-----------/         \--------/      |
+        |       |                    |           |
+        +--<----+               /-----------\    |
+                                | a_sem = 0 |    |
+                                \-----------/    |
+                                     |           |
+                                     |           |
+                                     +---->------+
+
+
+
+Les conditions :
+--------------
+Un autre moyen d'économiser des ressources CPU est d'utiliser le mécanisme
+des conditions.
+C'est assez simple. Cela consiste a suspendre un thread, jusqu'à ce qu'elle
+recoive un signal, la condition, venant d'un autre thread.
+
+Pour utiliser cette structure, plusieurs fonctions:
+    * pthread_cond_init(pthread_cond_t *cond, pthread_cond_attr_t *cond_attr);
+      Comme son nom l'indique, initialise la variable condition pointée par
+      *cond. Si *cond_attr est NULL, la condition prend les attributs par
+      defaut.
+
+    * pthread_cond_signal(pthread_cond_t *cond);
+      Libère un et un seul thread en attente de la condition pointée par
+      *cond. Si aucun thread n'est en attente, aucune opération n'est
+      effectuée. Si plusieurs threads sont en attente, un seul thread est
+      libéré, mais il est impossible de prédire lequel. Pour cette dernière
+      situation, il vaut mieux utiliser pthread_cond_broadcast();
+
+    * pthread_cond_broadcast(pthread_cond_t *cond);
+      Libère tous les threads en attente de la condition pointée par *cond.
+      Si aucun thread n'est en attente, aucune opération n'est effectuée.
+
+    * pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex);
+      Suspend le thread jusqu'à la réception d'un signal sur cond.
+      La fonction déverrouille mutex, pour que le thread envoyant le signal
+      puisse le verrouiller, puis le déverrouiller après envoi du signal.
+      Ceci a pour but d'éviter les race conditions, dans le cas ou un thread
+      se prépare à attendre un signal sur une condition, et où cette
+      condition est signalée juste avant que le premier thread ait commencé
+      à attendre.
+
+    * pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex,
+      const struct timespec *abstime);
+      Meme chose que pthread_cond_wait, avec un timer qui libère le thread
+      si un signal n'a pas été reçu après la durée spécifiée avec abstime.
+      Si aucun signal n'a été reçu après le timeout, la fonction retourne
+      la valeur entière ETIMEDOUT.
+      La valeur abstime est en fait la date à laquelle le timeout doit
+      survenir, au format time(2). Par exemple abstime = 0 correspond à
+      la date 00:00:00 GMT, 1 Janvier 1970, date d'origine sur les systemes
+      Unix.
+      Pour definir un timeout relatif, on récupère la date actuelle avec
+      gettimeofday(2), et on rajoute la valeur du timeout à cette date,
+      avant de la passer à pthread_cond_timedwait();
+
+    * pthread_cond_destroy(pthread_cond_t *cond);
+      Détruit la condition cond, en vérifiant qu'aucun thread n'est encore
+      suspendu.
+
+Voila, c'est à peu près tout pour les fonctions de l'API POSIX threads.
+Il reste encore les fonctions d'opération sur les attributs et les paramètres
+de scheduling (priorités), mais elles sont moins souvent utilisées et ne
+nécessitent pas d'apréhension d'un concept particulier.
+
+
+Il faut aussi noter qu'il est TRES FACILE d'obtenir des RACE CONDITIONS
+dans un programme multi-threadé, pouvant entrainer des TROUS DE SECURITE,
+ou meme un CRASH DU SYSTEME, par épuisement des ressources CPU et mémoire.
+Il faut donc parfaitement maitriser les mutexes, conditions et sémaphores
+pour réaliser un programme stable utilisant des threads.
+
+Une autre note sur l'utilisation des threads dans les gestionnaires de
+signaux (sighandler) : la stabilité de l'API avec des signaux asynchrones
+varie selon les implémentations. Se réferer à la doc de l'implémentation
+en question.
+
+Références:
+    * Toutes les man pages (3th), qui traitent des fonctions de l'API
+      POSIX 1003.1c
+    * Sur les systèmes Linux basé sur GNU libc 2.x (RedHat 5.x/6.x)
+      /usr/doc/glibc-2.x.x/FAQ-threads.html, /usr/doc/glibc-2.x.x/README.threads
+      /usr/doc/glibc-2.x.x/examples.threads/*.c ...
+    * Le standard POSIX 1003.1c (j'ai pas l'url, mais ça devrait pas être trop
+      dur a trouver), quoique les descriptions des standards POSIX ne sont pas
+      trop adaptés comme tutorials pour une API, ils sont plutot destinés aux
+      concepteurs des implémentations.
+
+
+
+La Communication Inter-Processus (IPC):
+**************************************
+
+Cette méthode de programmation multi-tâche utilise la capacité d'Unix à
+"cloner" un processus, pour en faire un autre processus indépendant, et de
+faire communiquer plusieurs processus par des moyens tels que les signaux,
+tubes (pipes), FIFOS, sockets, mémoire partagée, semaphores, les queues
+de messages...
+Sa particularité par rapport aux threads, c'est qu'elle utilise plusieurs
+processus indépendants, qui ne partagent pas leur espace d'addressage.
+
+Elle consiste en fait à utiliser les librairies standard d'Unix pour
+effectuer des tâches en parallèle, sans avoir recours à une API spécialisée.
+
+On utilise ces techniques lorsqu'on programme sur un système n'implémentant
+pas les threads, ou pour créer des applications portables sur quasi tous
+les Unix, ou lorsque le multi-threading n'est pas adapté à l'application
+concernée (notamment problèmes avec les signaux).
+
+
+L'appel système fork(2) :
+------------------------
+    Cet appel système est l'un des plus importants, si c'est pas LE plus
+importants des appels systèmes d'UNIX. En effet, sans lui, le noyau n'aurait
+pas le moyen de lancer d'autres processus, et serait donc monotache.
+En fait, après le du démarrage du noyau, celui-ci fork le programme init(8), qui
+à son tour va fork'er les autres programmes, les daemons, les shells...
+
+fork(2) est donc une des pierres angulaires de la prog multi-tache sous Unix.
+
+Son principe est simple: quand on l'appele, le noyau va faire une copie
+conforme du processus qui l'appele, et dont la seule différence sera le
+PID (process ID) et le PPID (parent process ID). Tous les descripteurs de
+fichiers ouverts, les gestionnaires de signaux (sig handlers), sockets...
+sont hérités. Seuls les signaux en attente ne sont pas hérités.
+
+Les deux processus ainsi séparés continuent leur exécution à l'instruction
+suivant l'appel à fork(2).
+Typiquement, un appel à fork est utilisé ainsi:
+
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+
+#include <unistd.h>
+
+int main(int argc, char *argv[])
+{
+    pid_t child;
+
+    child = fork();     /* la variable child prend une valeur différente */
+                        /* dans le processus parent et le processus forké */
+
+
+    if (child == -1) {
+        fprintf(stderr, "Erreur dans l'exécution de fork(2)");
+        exit(child);
+    }
+
+
+    if (child == 0) {   /* si child est égal à 0, on se trouve dans le */
+                        /* processus forké */
+
+        /*  code à exécuter dans le nouveau processus, on appele généralement
+            une fonction sans retour, pour faciliter la lecture du code */
+
+    } else {            /* child est égal au PID du nouveau processus */
+
+        /*  code à exécuter dans le processus parent. */
+
+    }
+
+    exit(0);
+}
+
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+
+Ainsi, même si les deux processus sont totalement séparés, à la différence
+d'un programme multi-threadé, ils peuvent toujours communiquer, car ils
+possèdent tous les deux le PID de l'autre: le processus parent connait le
+PID du nouveau processus par la valeur retournée par fork(2), et le nouveau
+processus peut connaitre le PID de son parent avec la fonction getppid(2).
+
+Il est alors possible de les faire communiquer avec des pipes ou des signaux,
+ou des mécanismes plus complexes que sont les SysV IPC.
+
+
+Les pipes (tubes) et FIFOS (First In First Out) :
+------------------------------------------------
+Un truc assez intéressant avec fork(2) est la duplication des descripteurs de
+fichier.
+Grace à cette caractéristique, il est relativement aisé de créer un pipe
+entre les deux processus, sans avoir recours à un FIFO
+(beaucoup moins de possibilités de race conditions).
+
+On peut procéder de deux façons différentes:
+    * on créé un pipe bidirectionnel, grâce à l'appel système pipe(2),
+avant le fork(2); apès le fork, les deux processus communiquent par ce pipe.
+
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+#include <unistd.h>
+
+int main(int argc, char *argv[])
+{
+    pid_t child;
+    int pipe_descri[2];     /* paire de descripteurs de fichier du pipe */
+    char buf[256];
+
+    pipe(pipe_descri);      /* on créé le pipe bidirectionnel */
+
+    child = fork();         /* on créé le nouveau processus */
+
+    if (child == 0)
+        read(pipe_descri[0], &buf, 256);
+    else
+        write(pipe_descri[1], &buf, 256);
+
+    exit(0);
+}
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+Dans ce cas, on peut échanger des données dans le tableau buf, qui sera
+similaire dans les deux processus. On simule donc une mémoire partagée
+unidirectionnelle, de la taille de buf, c'est à dire 256 octets, qu'il faudra
+rafraichir régulierement si on veut l'utiliser comme telle.
+A vous d'imaginer comment on peut faire des combinaisons de pipes pour créer
+une quasi illusion de mémoire partagée bidirectionnelle entre deux ou plusieurs
+processus.
+
+    * il existe également un moyen, plus complexe, de créer un équivalent
+de la ligne de commande shell suivante:
+    $ parent | child
+
+on créé tout d'abord un pipe bidirectionnel, comme au dessus, et on remplace
+l'entrée standard du nouveau processus par le descripteur de lecture du pipe,
+on fait de même dans le processus parent avec la sortie standard et le
+descripteur d'écriture du pipe. On utilise pour cela l'appel système dup2(2),
+qui duplique un descripteur de fichier sur un nouveau, fermant celui-ci si
+il est déja ouvert.
+Pour la deuxième méthode on codera:
+(j'ai stripé l'error checking pour ne pas alourdir)
+
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+#include <unistd.h>
+
+int main(int argc, char *argv[])
+{
+    pid_t child;
+    int pipe_descri[2];     /* paire de descripteurs de fichier du pipe */
+
+    pipe(pipe_descri);      /* on créé le pipe bidirectionnel */
+
+    child = fork();         /* on créé le nouveau processus */
+
+    if (child == 0) {
+        dup2(pipe_descri[0], 0);    /* dans le nouveau processus, on copie */
+                                    /* pipe_descri[0], descripteur de lecture */
+                                    /* du pipe, sur stdin */
+                                    /* (descripteur de fichier # 0) */
+        lire_dans_stdin();  /* ou execv("child", NULL); */
+    } else {
+        dup2(pipe_descri[1], 1);    /* on fait la meme chose dans le processus */
+                                    /* parent, avec le descripteur d'écriture */
+                                    /* et stdout */
+        ecrire_dans_stdout();   /* ou execv("parent", NULL);
+    }
+
+    exit(0);
+}
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+
+
+Mais ATTENTION... la fermeture accidentelle (SIGPIPE) du pipe causera la mort
+des deux processus ! Il convient donc, soit d'ignorer le signal SIGPIPE,
+en insérant au début du code:
+
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+#include <signal.h>
+
+    signal(SIGPIPE, SIG_IGN);
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+
+soit de faire en sorte que les deux processus ne perdent pas leurs bouts
+respectifs du pipe.
+Il faut également remarquer que, une fois fermé, il n'ya aucun moyen de
+rétablir une communication entre les deux processus par le même pipe.
+Si on veut rétablir une communication par pipe, on a alors recours à un
+FIFO, ou named pipe.
+C'est tout simplement un fichier qui se comporte comme un pipe.
+Pour l'utiliser, il suffit d'ouvrir ce fichier, de lire ou d'écrire des
+données dedans, avec un autre processus qui envoie ou reçoit les données
+transitant par le FIFO.
+On créé un fichier FIFO avec la fonction mkfifo(3):
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+#include <sys/types.h>
+#include <sys/stat.h>
+
+int mkfifo(const char *filename, mode_t mode);
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+ATTENTION: l'utilisation des FIFOS peut entrainer des race conditions
+assez dangereuses si elle est mal gérée, particulièrement au niveau des
+permissions sur le fichier FIFO.
+
+Je ne parlerai pas de l'utilisation des sockets, qui sont en fait des pipes
+utilisables sur un rézo, car leur utilisation ne relève pas de la
+programmation multi-taches, mais plutot de la prog rézo, quoique les
+Unix Domain Sockets ne sont utilisables qu'en local (principaux équivalents
+d'IPC sous BSD).
+
+
+Les signaux :
+------------
+    Les signaux sont également très utiles pour la communication
+inter-processus.
+Ils sont utilisés par le système, notament pour communiquer à un processus
+qu'il est l'objet d'une erreur (ie: SIGSEGV => segmentation fault;
+SIGPIPE => pipe rompu; SIGFPE => erreur de floating point; ...), ou qu'il
+doit être interrompu suite à une requette externe (utilisateur, reboot,
+changement de runlevel... ie. SIGKILL; SIGSTOP => ctrl-z; SIGINT => ctrl-c;
+SIGQUIT ...). Toute la liste est dans la man page signal(7).
+
+Le codeur a aussi la possibilité de produire tous ces signaux
+"artificiellement", soit avec la fonction raise(3), pour envoyer un signal
+au programme qui l'appele, ou avec l'appel système kill(2), pour envoyer
+un signal à autre un processus dont on connait le PID.
+
+Dans toute la panoplie des signaux, on trouve deux signaux 'spéciaux':
+SIGUSR1 et SIGUSR2. Contrairement à la plupart des signaux --qui produisent
+généralement une interruption du processus-- ces signaux n'ont aucune
+fonction précise, si ce n'est qu'ils sont utilisables par le codeur sans
+entrainer d'effets secondaires sur le déroulement du programme.
+Ils sont parfaits comme moyen d'informer un processus du déroulement d'un
+autre processus... exemple :
+
+                /-----------\                   /-----------\
+                | process 1 |                   | process 2 |
+                \-----------/                   \-----------/
+                      |                               |
+            --------------------                 ------------------
+            | si evenement X,  |                 | on place un    |
+            | envoi de SIGUSR1 |                 | sighandler sur |
+            | sur process 2    |                 | SIGUSR1        |
+            --------------------                 ------------------
+                      :                               :
+                      :                               :
+                      :                               :
+                      : déroulement normal,           : déroulement normal
+                      : jusqu'à l'apparition          : jusqu'à réception
+                      : de l'evenement X              : de SIGUSR1
+                      :                       ----------------
+                      |                       | SIGUSR1 reçu | => lancement
+                      |                       ----------------    du sighandler
+                      |
+               --------------
+               | evenement X | => kill(pid_de_process_2, SIGUSR1);
+               ---------------
+
+                  et process 2 reprend son exécution normale, car il a reçu
+le signal SIGUSR1, signal qu'il attendait, en mode S (suspend).
+
+Si on fait deux progs en C, ça donne ceci:
+
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+
+/* process 1 */
+#include <unistd.h>
+#include <signal.h>
+
+void main(void)
+{
+    /* ici, l'evenement X sera l'accession de la variable i à la valeur 10 */
+    /* on assume aussi qu'on connait le PID de process 2, par un moyen */
+    /* mystérieux ou magique, ou plus simplement parce qu'on a généré */
+    /* process 2 avec un fork(2) :)) */
+
+    int i;
+    pid_t proc_2;   /* le pid de process 2 */
+
+    while (i != 10)
+        i++;
+
+    kill(proc_2, SIGUSR1);
+
+    ....
+}
+
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+
+/* process 2 */
+#include <unistd.h>
+#include <signal.h>
+
+void sig_handler(int sig)
+{
+    /* code du sighandler */
+    /* nota : un sighandler est une routine qui est lancée lors */
+    /* de la réception d'un signal donné */
+    /* son but le plus fréquent est de 'nettoyer' et de terminer le */
+    /* programme quand celui reçoit un signal d'interruption */
+    /* par exemple, quand l'utilisateur appuye sur ctrl-c */
+}
+
+void main(void)
+{
+    (void)signal(SIGUSR1, sig_handler);     /* on associe la routine */
+                                            /* sig_handler() au signal */
+                                            /* SIGUSR1 */
+
+    /* déroulement normal du prog */
+}
+
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+
+Un point qu'il faut pas négliger quand on utilise des signaux, c'est que
+la réception d'un signal pendant l'exécution d'un appel système
+entraine la fin du programme, sans avertissement... le seul message
+reçu est la valeur dans errno, dont l'interprétation renvoie:
+"Interrupted system call".
+Il faut donc, pendant l'exécution des appels systèmes dans un programme,
+bloquer l'arrivée des signaux susceptibles d'arriver pendant le fonctionnement
+normal, les mettre en attente, et les traiter quand l'appel système est fini.
+Pour ça, on a recours à l'appel système sigprocmask(2).
+
+Donc, si on reprend le code de process 2:
+
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+
+/* process 2 */
+#include <unistd.h>
+#include <signal.h>
+
+void sig_handler(int sig)
+{
+    /* ... */
+}
+
+void main(void)
+{
+    sigset_t block;     /* le type sigset_t désigne un groupe (set) */
+                        /* de signaux */
+
+    (void)signal(SIGUSR1, sig_handler);
+
+    sigemptyset(&block);    /* on vide le groupe block, au cas ou le */
+                            /* segment de mémoire ou il se trouve ne */
+                            /* serait pas mis à zéro */
+
+    sigaddset(&block, SIGUSR1); /* on ajoute SIGUSR1 à ce groupe */
+
+
+    sigprocmask(SIG_BLOCK, &block, NULL);   /* on bloque l'arrivée de SIGUSR1 */
+                                            /* avant l'appel système */
+    system_call_quelconque();
+
+    sigprocmask(SIG_UNBLOCK, &block, NULL); /* on débloque SIGUSR1 après */
+                                            /* l'exécution de l'appel système */
+                                            /* si SIGUSR1 a été reçu pendant */
+                                            /* l'appel système, il est mis en */
+                                            /* attente et traité quand on débloque */
+                                            /* l'accès au signal */
+}
+
+C'est à peu près tout ce que j'ai trouvé d'utile sur les signaux, concernant
+le multitache. Il existe aussi l'appel système sigaction(2), mais je n'ai
+pas encore eu le temps de me pencher dessus.
+
+A noter aussi que l'utilisation de SIGUSR1 et SIGUSR2 n'est pas possible
+si on utilise en même temps l'API de multi-threading LinuxThreads.
+Ceci est du à l'implémentation de LinuxThreads qui se sert de ces deux
+signaux pour bloquer et débloquer les threads en attente.
+Ce comportement n'est pas du tout compatible POSIX, et il faut espérer que
+ça change dans les prochaines implémentations...
+
+
+Les System V Inter-Process Communication mechanisms :
+----------------------------------------------------
+
+Alors là, on arrive au gros morceau...
+Les SysV IPC sont réputés pour être compliqués... et c'est vrai !!!
+
+Un peu d'histoire:
+Les SysV IPC ont été introduits pour la première fois par AT&T dans
+Unix System V (d'ou le nom SysV), et leur forme a été finalisée dans
+System V release 4 (SysV r4), je sais plus exactement quand
+(à la rigueur on s'en fout =)...
+Un truc notable est que, avant la naissance de la norme POSIX, on ne trouvait
+pas les SysV IPC sur les systèmes BSD (mais ça vous vous en foutez aussi =),
+car on y utilise a la place les sockets (Unix Domain).
+
+Un peu de sérieux : 8)))
+Il existe trois formes de SysV IPC:
+    * Les "files d'attente de messages"
+      (le terme anglais 'message queues' est moins chiant à écrire :)
+    * Les sémaphores
+    * Les segments de mémoire partagée (Shared Memory Segment)
+
+Quelques caractéristiques communes aux trois IPC:
+    * Leur subsistance ne dépend pas de l'exécution d'un programme;
+      c'est à dire qu'un objet IPC existe toujours s'il n'a pas été
+      effacé par le programme qui l'a créé ou par un programme externe,
+      et ce même après que le programme créateur soit terminé.
+      Les IPC sont en fait gérés directement par le noyau.
+
+    * L'accès à un objet IPC est soumis aux mêmes types de permissions
+      qu'un fichier Unix (sauf exécution et bits spéciaux genre suid, sgid,
+      sticky bit...), ainsi qu'aux mêmes règles de propriété (user, group),
+      à la différence près que le créateur et le propriétaire de l'objet
+      peuvent être deux uid/gid différents.
+
+    * Un objet IPC est identifié par trois composantes: le type d'objet
+      (message queue, semaphore ou mémoire partagée), l'identificateur
+      (identifier) qui permet au noyau d'identifier l'objet en question,
+      et la clé (key) qui a pour but de s'assurer que deux processus
+      accèdent bien au même objet pour communiquer entre eux, en effet, on
+      ne peut pas prévoir à l'avance quel identificateur prendra un objet
+      quand on le créé, mais on doit lui assigner une clé, qui doit être
+      unique (aucun autre objet ne doit la posséder avant la création).
+      Si la clé est déja utilisée, la routine de création renvoie une erreur
+      et ne créé pas l'objet.
+
+    * Il existe une différence entre créer un objet et pouvoir utiliser un
+      objet. En effet, un processus qui a créé un objet ne peut pas
+      forcément y accéder; dans le cas des segments de mémoire partagée,
+      il doit d'abord attacher ce segment à un pointeur dont il connait
+      l'addresse. Par contre, dans le cas des semaphores et des message
+      queues, la meme fonction est utilisée pour créer un objet et pour
+      connaitre son identificateur, que l'on récupère en fonction de la clé
+      demandée. Si cette clé existe, l'identificateur de l'objet existant
+      est renvoyé, si elle n'existe pas, l'objet est d'abord créé et son
+      identificateur est renvoyé.
+
+    * On peut lister tous les objets IPC présents sur le système avec la
+      commande ipcs(8), on obtient ainsi toutes les clés, identificateurs,
+      propriétaires, permissions et paramètres de tous les objets présents.
+
+    * On peut supprimer un objet IPC grâce à la commande ipcrm(8), en
+      fonction de son type et de son identificateur.
+
+
+* La Mémoire partagée:
+    La mémoire partagée permet, comme son nom l'indique, de partager un
+segment de mémoire entre 2 ou plusieurs processus.
+Du coté du programme en C, on accède au segment par l'intermédiaire d'un
+pointeur, assigné par la fonction shmat(2), qui attache le segment de
+mémoire partagée au segment de données du process.
+Pour utiliser shmat(2), on doit d'abord récupérer l'id du segment ou en
+créer un avec shmget(2).
+Une fois le segment attaché, le process peut y accéder comme de la mémoire
+normale, via le pointeur.
+Un chtit example:
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+
+void main(void)
+{
+    int shmid;      /* l'identificateur du segment */
+    char *shm_seg;
+
+    shmid = shmget(0x666, 256, IPC_CREAT | 0600);
+/*      la clé -----^      ^    ^            ^--- permission 'rw------'
+  la taille du segment ----|    |-- on crée le segment si la clé est inutilisée
+*/
+
+    shm_seg = shmat(shmid, 0, 0);
+/*                         ^
+                           |
+ on donne 0 pour addresse pour que celle-ci soit déterminée automatiquement
+ par le noyau
+*/
+
+    shmdt(shm_seg);     /* on détache le segment du process avec shmdt(2) */
+                        /* le segment est détaché mais PAS DETRUIT. */
+                        /* ici, c'est inutile car le segment est */
+                        /* automatiquement détaché quand le process se */
+                        /* termine */
+}
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+
+On dispose alors de 256 octets utilisables comme de la mémoire normale,
+à l'exception que celle-ci peut être partagée avec d'autres programmes.
+Utile pour envoyer des struct ou toute autre donnée qui serait chiante à
+passer dans un pipe.
+
+On peut changer les paramètres, obtenir des infos sur, et détruire un
+segment de mémoire partagée avec l'appel système shmctl(2). (voir la man page)
+
+Il faut TOUJOURS détruire un segment de mémoire partagée quand on ne s'en
+sert plus, car celui-ci reste en mémoire indéfiniment, et garde les données
+qui y étaient stockées lors de sa dernière utilisation.
+Un segment étant world ou group readable peut donc être exploité pour
+récuperer des données utilisées par un programme utilisé antérieurement
+si il n'est pas effacé à temps.
+Il faut aussi faire attention à la gestion des clés pour éviter les races
+conditions ou les exploits qui consistent à créer un segment avant
+le programme qui doit le créer avec une clé donnée, permettant de gagner
+des accès sur la mémoire d'un programme exécuté par un user privilégié.
+Il y a un moyen d'éviter ça en OR-ant le flag IPC_EXCL aux flags dans
+shmget(2): ainsi, on s'assure que shmget retourne une erreur si un segment
+existe déja avec la clé donnée.
+Un autre moyen est de donner IPC_PRIVATE comme clé pour s'assurer de la
+création d'un segment avec une clé originale, auquel cas il faudra
+communiquer cette clé aux autres processus devant accéder au segment.
+
+L'effet d'une écriture simultanée d'un même octet de mémoire partagée
+par deux ou plusieurs process est imprévisible, mais donne la plupart du
+temps une erreur de segmentation; il faut donc aussi en protéger l'accès, le
+plus souvent avec des sémaphores.
+
+Un autre problème est qu'il est impossible d'empêcher les autres processus
+appartenant à un même utilisateur d'utiliser un segment créé par celui-ci, car
+ils ont tous la permission d'y accéder, quelles que soient ses permissions.
+
+En résumé, la mémoire partagée est de loin le moyen le plus rapide de faire
+communiquer plusieurs processus, mais elle peut être très dangereuse pour
+l'intégrité du système si elle est mal utilisée (risques d'exploits, voir
+de crashs ou de kernel panic, épuisement de la mémoire virtuelle...)
+
+* Les sémaphores et les message queues:
+    Ces deux types d'objets me sont beaucopu moins familiers, et j'ai pas
+encore eu l'occasion de les utiliser... de plus, comme je manque de temps
+pour finir cet article, j'en parlerai dans un prochain article.
+
+En attendant, allez regarder les quelques références sur le sujet:
+    * Bien sur les man pages, commencez par ipc(5), fork(2), pipe(2)...
+    * Les pages info de la glibc 2.1 contiennent une référence sur les
+      SysV IPC
+    * The Linux Programmer's Guide, ou lpg, faisant partie du Linux
+      Documentation Project, traite (en anglais) des pipes et des SysV IPC,
+      d'une manière vachement plus claire que dans les man pages.
+
+
+
+The end:
+*******
+Voila, c'est a peu près tout, à part en ce qui concerne les deux derniers
+mécanismes d'IPC, que j'ai pas traité par manque de temps.
+
+Pour le coté sécu, il est évident que le traitement parallèle de données
+par plusieurs processus différents peut entrainer beaucoup plus de race
+conditions et de trous de sécurité qu'un programme traditionnel, il faut
+donc faire tres attention au verrouillage des données.
+
+Greetz:
+    The CHX Hacking Crew: David Lightman (yopyoooop =))), neo, 
+     CyberFranck (schlum box rulz :), Dark_Willy (free tibet... & dogs =), oRèl,
+     moi (Professor Falken), BigNose...,
+    The OrganiKs Crew: Lionel, Tbh, RoBloChOn, cd13h, coder, [fred]...,
+    Cryptel,
+    rockme =), jacko (phreaking rulz), shado, Xgh0st (grosse lamouze :),
+    #cryptel, #linuxfr, #organiks, et tous ceux que j'oublie...
+
+Special greetz a:
+    mon frangin qui me manque vraiment trop :(((((((( death sucks
+    s***, qui m'a vraiment beaucoup aidé cette année, d'abord a tenir le choc,
+     et ensuite à me motiver pour le bacho... T la meilleure
+    la chienne de mon voisin, qui bouffe tellement qu'on a du la mettre au
+     régime :)
+    Red Hot Chili Peppers, Jimi Hendrix, Led Zep, Pink Floyd,
+     Rage Against The Machine, Ben Harper, Prodigy... pour leur excellente zique
+    yopyop & tobozo, pour les délires qu'on s'est tapé dessus avec
+     David Lightman [ yopyoooop ! uh-uh uhuh ! =))))) ]
+
+
+----[  EOF

@@ -1,0 +1,159 @@
+
+
+                 [ WinNuke ou L'explication du bug NET BiOS ]
+                 [       par hOtCode <phe@mygale.org>       ]
+
+
+
+
+  Salut d'abord...
+  Bon, vous avez tous entendu parler du WinNuke, dernier bug (ou plutot
+probleme de securite) en date dans un produit MicroBillou (ceux d'Internet
+Exploder etaient sympas aussi)... Mais, savez-vous vraiment a quoi il est du
+et comment il fonctionne ? Hein ?!? :)
+
+  Ok, je vois, je vais etre oblige de tout expliquer, et je vais essayer d'
+etre le plus clair possible... Nous allons suivre le plan suivant dans ce
+document:
+
+  1. Synopsis
+  2. Le probleme dans l'implementation Microsoft
+  3. Exploitation
+  4. Correction
+ (5. Greetingz)
+
+
+
+--[ 1| Synopsis ]--
+
+  Le fait d'envoyer un message OOB (Out-Of-Band, voir partie [2]) sur une
+machine ayant le support de NetBios (port 139/tcp ouvert) provoque une
+'panique' du systeme et un plantage de la machine, car l'implementation de
+NetBios est mal concue sous des systemes tels que Windows 3.x (Win32s et
+TCP/IP 32 installe), 95/NT
+
+
+
+--[ 2| Le probleme dans l'implementation Microsoft ]--
+
+  Nous allons prendre l'implementation NetBios de Microsoft dans Windows
+95/NT, bien que le probleme semble etre le meme sur d'autre plateformes... Ce
+n'est qu'un exemple pour bien comprendre ou est le probleme.
+
+  Voyons tout d'abord qu'est-ce qu'un OOB (Out-Of-Band)...
+  Comme son nom l'indique, l'OOB est un message qui 'saute' par dessus les
+autres paquets d'un message qui ont ete envoyes et non encore recus. On voit
+son utilite lorsque l'on tente d'interrompre une session telnet par ^]. Le
+packet envoye a donc le flag OOB de mis. Disons que c'est un message qui est
+prioritaire, pour simplifier la situation... Schema (il est lame, hein :))...
+
+
+                          ___*hop!*_____________________________
+                         /                                      |
+   ########     +---------+     +---------+     +---------+     V ########
+   # env. # --> | MSG OOB | --> | Pack. 1 | --> | Pack. 2 | --> . # rec. #
+   ########     +---------+     +---------+     +---------+       ########
+
+
+  Voila, ca devrait vous suffire pour qu'on puisse continuer.
+
+  On disait donc que, si on envoie un de ces fameux messages, le kernel de
+95 ou encore de NT panique (General Protection Fault, GPF pour les intimes).
+Pourquoi exactement ? Tout simplement car il ne sait pas comment le gerer !
+
+
+
+--[ 3| Exploitation ]--
+
+  A quoi servirait ce bug si on ne pouvait l'exploiter ?
+
+  = 3.1 Telnet =
+
+  Une des methodes les plus simple est tout de meme de faire appel a telnet.
+Si vous etes comme moi sous unix, tapez "telnet <host> [<port>]". Lancez
+telnet.exe si vous etes sous Windoz, ou demerdez-vous si vous etes sous Mac :)
+Connectez-vous sur votre 'victime' au port 139 (il faut bien entendu que
+celui-ci soit ouvert)...
+
+  Tapez ensuite "bye" suivi de Entree pour appliquer la methode. Voila ce
+que ca donne chez moi:
+
+   hotcode:hOtMaChInE% telnet 194.56.147.45 139
+   bye
+   Connection closed by foreign host
+
+  Hehe...
+
+  Histoire de ne pas trop prendre de place, je ne vais pas mettre directement
+les sources de winnuke en C (Unix et Windows NT) et en Perl... Elles sont
+dans le package de ce NoRoute dans le zip WinNuke... Lisez le fichier filez.id
+pour savoir a quoi correspond chaque fichier.
+
+
+--[ 4| Correction ]--
+
+  Plusieurs possibilites, que je n'ai pas verifie...
+
+  = 4.1 Approche 'Kegs' (#windows) =
+
+  o Allez dans le panneau de configuration, 'Network' et 'Bindings Tab'
+  o Choisissez la liste 'Show bindings for:' et choisissez 'All adapters'
+  o Cherchez le Wrapper WAN qui dit: 'Remote Access WAN Wrapper'
+  o Clickez dessus, et allez sur 'WINS Client (TCP/IP'
+  o Choisissez 'desactiver'
+  o Rebootez
+
+  = 4.2 Modification de la table des registres =
+   - 4.2.1 Windows 95 *seulement* -
+
+  Une autre solution consiste a editer directement la table des registres
+(l'editeur est regedit.exe). Allez dans la rubrique qui a le nom barbare de
+Hkey_Local_Machine\System\CurrentControlSet\Services\VxD\MSTCP et
+mettez la valeur de BSDUrgent a 0 (sa valeur par defaut est 1).
+
+   - 4.2.2 Windows pour Workgroups avec TCP/IP Stack 32 -
+
+  On ne peut pas parler ici de table de registres, mais plutot d'un fichier
+de configuration. Il s'agit du classique SYSTEM.INI... Dans la rubrique
+[MSTCP], remplacez ou ajoutez, le cas echeant, la ligne BSDUrgent = 0.
+
+  = 4.3 Renommage de fichiers =
+   - 4.3.1 vnetbios.vxd (95/NT) -
+
+  Cherchez le fichier vnetbios.vxd (a priori dans C:\Windows ou
+C:\Windows\System) et renommez-le en quelque chose comme vnetbios.vx_. De
+meme, afin de ne pas avoir de warning a chaque demarrage (fichier manquant),
+editez la cle qui correspond a VNetBios dans la table des registres, dans
+le Folder indique en 4.2.1...
+
+   - 4.3.2 vnbt.386 (Windows 3.x et MS TCP/IP Stack) -
+
+  Allez dans le repertoire SYSTEM\ de Windows... Renommez le fichier vnbt.386
+en quelque chose comme vnbt.38_. Rebootez... A chaque demarrage, un warning
+(fichier manquant) viendra, mais c'est mineur. Si vous avez besoin du partage
+des fichiers, renommez le fichier vnbt.38_ en vnbt.386 provisoirement...
+
+  = 4.4 Fixes de Microsoft =
+
+  Je ne vous recommande pas ces fixes directement sortis de chez Billou en
+catastrophe (comme tout ce qui sort de la-bas d'ailleurs...), car ils
+semblent ne pas marcher. Si vous insistez lourdement, ils sont quand meme
+sur le site de Microsoft (http://www.microsoft.com).
+
+  = 4.5 Le meilleur fix =
+
+  Le meilleur fix est encore, a mon humble avis, d'effacer Windows et d'
+installer un bon OS comme Linux... :)
+
+
+
+--[ 5| Greetings ]--
+
+  Je tiens a remercier tout particulierement les personnes sur BugTraq
+ayant traite de ce sujet sur la mailing list, d'ou je tire la plupart des
+informations dans ce document... Thanx!
+
+  Je salue aussi l'Underground francais et toutes les personnes qui sont
+dedans... La liste des noms est la meme que celles qui doivent deja etre dans
+ce NoRoute #3... Je tiens cependant a rajouter ]Obi_Wan[, meme s'il n'a rien
+d'un hackingueur, mais il est cool :)

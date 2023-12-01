@@ -1,0 +1,351 @@
+[[------------------------------------------------------------]]
+		<<<Complement aux buffer overflow>>>
+                             by Seb
+[[------------------------------------------------------------]]
+
+Cet article est un complement a l'article paru dans phrack 49
+ainsi que celui paru dans OrganiKs.
+
+Il precise certains details,explicite un peu plus certains exemples
+afin qu'il ne reste plus d'ombres .
+
+Pour les personnes peu a l'aise avec gdb,consultez l'article sur gdb et/ou
+l'aide (C'est fait pour ca aussi peut etre ;) )
+
+Deroulement pas a pas de l'overflow.
+====================================
+
+On va reprendre l'exemple 2 de l'article de phrack :
+
+	#include
+	void func(char *str)
+		{
+		char buffer[16];
+		strcpy(buffer,str);
+		}
+	void main(void)
+		{
+		char large[256];
+		int i;
+		for(i=0;i<255;i++) large[i]='A';
+		func(large);
+		}
+
+On le compile de maniere a pouvoir le deboguer.
+Et on debogue ...
+
+[bof@nol0gik src]$ gdb -q example2
+(gdb) break main
+Breakpoint 1 at 0x8048145: file exampl2.c, line 10.
+(gdb) r
+Starting program: /home/bof/bin/example2
+
+Breakpoint 1, main () at exampl2.c:10
+10      for(i=0;i<255;i++) large[i]='A';
+(gdb) bt
+#0  main () at exampl2.c:10
+(gdb) n
+11      func(large);
+(gdb) s
+func (str=0xbffffca8 'A' <repeats 200 times>...) at exampl2.c:4
+4       strcpy(buffer,str);
+(gdb) bt
+#0  func (str=0xbffffca8 'A' <repeats 200 times>...) at exampl2.c:4
+#1  0x8048188 in main () at exampl2.c:11
+(gdb) 
+	La,ca devient interessant : #1 correspond a la fonction appelante
+	de func(),a savoir main(). Son adresse de retour est 0x8048188
+(gdb) n
+5       }
+(gdb) n
+Cannot insert breakpoint 0:
+Temporarily disabling shared library breakpoints:
+0
+
+Program received signal SIGSEGV, Segmentation fault.
+0x41414141 in ?? ()
+(gdb) bt
+#0  0x41414141 in ?? ()
+(gdb)
+	Notre adresse de retour a clairement ete modifiee.A quoi correspond
+	0x41414141 ? La valeur ASCII de A est 65 soit 41 en hexadecimal ...
+	Ce dont etait rempli le buffer source .
+
+Nous allons voir quelques autres petits exemples :
+Detection d'un buffer overflow :
+
+	#include
+	void func(void)
+	{
+		int i=1234;
+		char buffer[10];
+		strcpy(buffer,"aaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+		if(i!=1234)
+			{ 
+			printf("Old eip lost. Buffer probably overflowed.\n");
+			exit(0);
+			}
+	}
+	void main(void)
+	{
+	func();
+	}
+
+On compile,on execute :
+[bof@nol0gik src]$ antiover
+Old eip lost. Buffer probably overflowed.
+[bof@nol0gik src]$
+
+Notre entier i a donc ete modifie ...
+On peut donc en deduire l'ordre d'empilage des variables locales :
+la premiere declaree est la premiere empilee.
+
+[bof@nol0gik src]$ gdb -q antiover
+(gdb) disassemble func
+Dump of assembler code for function func:
+0x8048430 <func>:       pushl  %ebp
+0x8048431 <func+1>:     movl   %esp,%ebp
+0x8048433 <func+3>:     subl   $0x10,%esp      Reservation de l'espace pour notre chaine et notre entier soit 16 octets pour aligner .
+0x8048436 <func+6>:     movl   $0x4d2,0xfffffffc(%ebp)		 i=1234;
+0x804843d <func+13>:    pushl  $0x8048500		
+0x8048442 <func+18>:    leal   0xfffffff0(%ebp),%eax	met dans eax l'addresse
+0x8048445 <func+21>:    pushl  %eax			de la chaine "aa ... aa"
+0x8048446 <func+22>:    call   0x8048370 <strcpy>
+0x804844b <func+27>:    addl   $0x8,%esp
+0x804844e <func+30>:    cmpl   $0x4d2,0xfffffffc(%ebp)		if(i==1234)
+0x8048455 <func+37>:    je     0x8048470 <func+64>		goto func+64
+0x8048457 <func+39>:    pushl  $0x8048520
+0x804845c <func+44>:    call   0x8048350 <printf>
+0x8048461 <func+49>:    addl   $0x4,%esp
+0x8048464 <func+52>:    pushl  $0x0
+0x8048466 <func+54>:    call   0x8048360 <exit>
+0x804846b <func+59>:    addl   $0x4,%esp
+0x804846e <func+62>:    movl   %esi,%esi
+0x8048470 <func+64>:    leave
+0x8048471 <func+65>:    ret
+End of assembler dump.
+(gdb) x/s 0x8048500
+0x8048500 <_IO_stdin_used+28>:   'a' <repeats 28 times>
+(gdb) break func
+Breakpoint 1 at 0x8048436: file antiover.c, line 7.
+7                       int i=1234;
+(gdb) n
+9                       strcpy(buffer,"aaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+(gdb) info lo
+i = 1234		<-- Valeur correcte
+buffer = "dýÿ¿\001\000\000\000\030ý"
+(gdb) n	
+10                      if(i!=1234)
+(gdb) info lo
+i = 1633771873			voire trop rempli,i a ete modifie .
+buffer = "aaaaaaaaaa"		<-- notre buffer est bien rempli ^
+(gdb) 
+
+Un dernier programme amusant qui montre bien qu'on peut modifier le eip
+de retour sauvegarde sur la pile : Ce programme peut boucler indefiniment.
+
+#include
+void main(void)
+{
+char buffer[5];
+gets(buffer);
+}
+
+Voici ce que ca donne a l'execution : 
+[seb@nol0gik bin]$ ./overed
+aaaaaaaaaaaa
+aaaaaaaaaaaa
+aaaaaaaaaaaa
+aaaa
+Segmentation fault
+[seb@nol0gik bin]$
+
+Il s'avere que le programme "boucle" sur la fonction gets() tant que la saisie
+fait 12 caracteres .
+Calculons : On reserve notre buffer . Comme il fait 5 caracteres,il est 
+automatiquement etendu a 8 par le compilateur . 
+Supposons que notre buffer commence a l'adresse 0 .
+La pile commence donc a l'adresse 8 avec l'ancien ebp sauvegarde, puis a 
+l'adresse 12,on trouve l'ancien eip de sauvegarde dumoins en theorie.
+Le fait d'entrer 12 caracteres ecrit donc exactement le caractere de fin de 
+chaine sur l'eip sauvegarde (en theorie puisqu'ici nous sommes dans main)
+Deboguons donc le programme :
+
+[seb@nol0gik bin]$ gdb -q boucleinf
+(gdb) break main
+Breakpoint 1 at 0x8048476: file overed.c, line 5.
+(gdb) r
+Starting program: /home/seb/Seb/bin/overed
+
+Breakpoint 1, main () at overed.c:5
+Source file is more recent than executable.
+5       gets(buffer);
+(gdb) bt			Nous sommes bien dans main()
+#0  main () at overed.c:5
+(gdb) n
+aaaaaaaaaaaa                 <--- la,on entre 12 caracteres
+6       }
+(gdb) bt			Tiens main() "aurait" ete appele par _start()
+#0  main () at overed.c:6
+#1  0x8048400 in _start ()	donc,en quittant main,notre prog retourne
+(gdb) n					dans _start();		
+0x8048400 in _start ()
+(gdb) n
+Single stepping until exit from function _start,
+which has no line number information.
+
+Breakpoint 1, main () at overed.c:5
+5       gets(buffer);
+(gdb)
+
+Explication : _start() est une fonction presente dans tout programme et 
+precedant main, elle sert generalement a l'initialisation de certaines variables
+globales,au chargement des fonctions dynamiques ... 
+Le fait que notre programme reboucle dans _start() le fait tout simplement
+recommencer .
+Mais a quoi correspond l'adresse 0x8048400 ?
+En fait,notre gets n'a ecrit qu'un octet sur l'"ancien" eip:le caractere de fin
+de chaine,c'est a dire le caractere nul.Seul l'octet de poid faible de eip
+a donc ete ecrasé : 0x080484 est la partie non ecrasée de eip, le 00 final
+correspond a ce caractere nul .
+
+NOTE : Ce programme a ete compile sous une red hat 5.2 / 2.0.38 avec le gdb
+fourni dans cette meme distribution.
+Je le precise car je n'ai pas obtenu les memes resulats sur une Red Hat 6.
+J'ai donc mis avec cet article boucleinf. Desole pour ceux qui ont un systeme
+ne permettant pas d'executer ce prog.
+
+Bon ... modification de l'adresse de retour : cf phrack ... 
+on reprends l'exemple de base :
+
+	#include 
+	void func(int a,int b,int c)
+	{
+	char buffer1[5];
+	char buffer2[10];
+	char *ret;
+	ret=buffer1+12;
+	(*ret)+=8;
+	}
+	void main()
+	{
+	int x;
+	x=0;
+	func(1,2,3);
+	x=1;
+	printf("%d\n",x);
+	}
+
+Il est bien explique . Je precise juste ceci : 
+La pile est un espace memoire gere par bloc de 4 pour aligner les donnees donc
+modifier buffer1[5] par buffer1[8], c'est exactement identique :
+(Dumoins,jue pense qu'elle est geree ainsi,c'est surtout vrai pour les chaines;
+pour les autres types de variable,cela semble differer.)
+PILE :
+....[buffer2 : 12 octets][buffer1 : 8o][ancien ebp : 4o][ancien eip : 4o]...
+
+Adresse de buffer1         : debut de buffer1
+Adresse de buffer1 + 8     : ancien ebp
+Adresse de buffer1 + 8 + 4 : ancien eip
+Donc : 
+Adresse de buffer1 + Taille memoire de buffer1 + 4 = Adresse de ancien eip
+
+Supposons que l'on remplace notre buffer1[5] par buffer1[49] .
+49 n'est pas divisible par 4. Donc on l'etend a 52 . 
+L'adresse de eip est donc buffer1 + 52 + 4. Voivi l'exemple :
+
+	#include
+	void fun(void)
+	{
+	char buffer[49];
+	int *ret;
+	ret=buffer+52+4;
+	(*ret)+=7;   /* Verifiez bien votre distance de "saut" necessaire */
+	}		/* Cela peut varier selon differents parametres ... */
+	void main(void)
+	{
+	int x;
+	x=0;
+	fun();
+	x=1;
+	printf("%d\n",x);
+	}
+
+Le shellcode
+============
+
+Certains se sont peut etre demande pourquoi on utilisait execve() et pas 
+system() pour lancer le shell . En fait,ce qui differencie system() et execve()
+est que execve prend le meme PID que le processus dont il a ete lance et arrete
+le processus qui l'a lance alors que system() cree un nouveau processus puis
+celui-ci fini revient juste apres son appel.
+En quoi est-ce important de quitter notre programme apres l'execution du
+shellcode ? Notre pile a ete modifiee,donc le programme ne pourra donc plus 
+continuer normalement.La ou system() provoquerait un crash du programme 
+exploite,execve() le quitte proprement.(Bien que notre execve() soit souvent
+suivi d'un appel a exit() ...)
+
+(Toutes les fonctions de la famille exec utilisent ce principe de remplacement
+de PID.)
+
+On peut par ailleurs verifier cette difference par deux programmes simples :
+
+execl.c :
+#include
+int main(void)
+{
+execl("/bin/sh","sh",0);
+printf("Hello World\n");
+return 0;
+}
+
+   -----------
+
+system.c :
+#include
+int main(void)
+{
+system("sleep 150");
+return 0;
+}
+  ------------
+
+[root@nol0gik /root]# ./system &
+[1] 548
+[root@nol0gik /root]# ps
+  PID TTY          TIME CMD
+  481 tty2     00:00:00 login
+  506 tty2     00:00:00 bash
+  548 tty2     00:00:00 system    <-- Notre programme appelant system()
+  549 tty2     00:00:00 sleep	  <-- Notre appel via system();
+  550 tty2     00:00:00 ps
+[root@nol0gik /root]# ./execl
+[root@nol0gik /root]# ps
+  PID TTY          TIME CMD
+  481 tty2     00:00:00 login
+  506 tty2     00:00:00 bash    <-- Notre shell de depart
+  560 tty2     00:00:00 sh	<-- Celui appele par execl();execl a ete arrete
+  551 tty2     00:00:00 ps
+[root@nol0gik /root]# exit
+[root@nol0gik /root]# 	     <-- apres avoir quitte,le printf ne s'effectue pas
+
+[[------------------------------------------------------------]]
+
+Voila,je ne m'etendrais pas plus aux risques 
+ - d'etre repetitif avec les autres articles
+ - de commencer a dire des betises ;)
+
+En esperant que cela aura ete interessant et instructif .
+
+                                                        Seb
+                                              
+                                           Savoir ce que tout le monde sait,
+                                               c'est ne rien savoir ...	
+                                                         <Gecepluki>
+Greetz : 
+ - OrganiKs CreW
+ - Phrack staff
+ - #linuxfr,#securiweb,#hacktech
+
+[[------------------------------------------------------------]]
+EOF

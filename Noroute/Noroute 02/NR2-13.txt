@@ -1,0 +1,387 @@
+
+
+
+
+Dans ce document un certain nombre de references sont faites a des
+sites outre atlantique sous forme d'URL, pour des documents ou des
+produits.
+
+SVP, verifier s'ils ne sont pas deja soit ici, soit sur ftp.urec.fr.
+
+Pour cela allez voir soit
+
+
+
+Ici (pour outils Unix) 
+soit Ici (pour outils reseaux) 
+Ici (pour outils de trace reseaux 
+
+
+
+Jean-Paul Le Guigner (leguigne@univ-rennes1.fr)
+
+==========================================================================
+
+
+   Traduit du document  info.cert.org/pub/tech_tips/security_info par
+
+
+
+
+
+(aussi Ici 
+
+
+
+
+   Paul Rezvoy (paul@sunlyon3.univ-lyon3.fr)
+   --------------------------------------------------------------------
+
+
+En complement de l'information contenue dans ce document, il serait interessant
+pour vous de prendre connaissance de la liste des avis CERTs, et d'un
+petit descriptif pour chacun.
+
+Ce document a jour peut etre obtenu sur le serveur cert.org :
+
+
+
+
+Via FTP 
+
+
+
+Une version assez recente se trouve :
+
+
+
+Ici (Rennes) 
+
+
+
+
+
+A.  Comment déterminer si votre système à été "compromis" (attaqué avec succès ! ).
+
+    1.  Examinez les fichiers log tels que 'last'-log, comptabilité des activités,
+        syslog et security log, afin de détecter des accès de provenance inhabituelle, 
+        ou des activités non usuelles. 
+        Notez que ceci n'est pas fiable à 100 pour 100, beaucoup d'intrus éditent les 
+        fichiers d'"accounting" afin de cacher leur activité.
+
+    2.  Cherchez partout dans votre système des fichiers inhabituels ou cachés 
+        (fichiers dont le nom commence par un point et ne sont normalement pas affiches par 
+        la commande ls) car ils peuvent servir à cacher des informations telles que des 
+        programmes de "craquage" des mots de passe ou des fichiers password en provenance 
+        d'ailleurs. 
+        Un truc favori sur les systèmes UNIX est de placer un répertoire caché dans un 
+        compte utilisateur ( son répertoire ), avec un nom tel que "..." ou "..  ", 
+        ou "..^G", (3points, 2points 2espaces, 2points controle-G). 
+        Des fichiers '.xx' et '.mail' ont été également utilisés.
+
+    3.  Rechercher partout dans votre système des fichiers ayant un setuid ( suid root surtout ).
+        Les pirates laissent souvent des copies de /bin/sh avec setuid afin d'avoir un accès 
+        root ultérieurement. 
+        La commande UNIX find peut être utilisée pour "chasser" ces fichiers
+
+                  find / -user root -perm -4000 -print
+
+        Cette commande recherche sur tout le système de fichier, sur toute l'arborescence, 
+        y compris les systèmes de fichiers NFS/AFS montés.
+        Certaines commandes find supportent l'option -xdev pour éviter de rechercher sur ces 
+        répertoires.
+
+        Une autre façon de chercher les fichiers setuid est d'utiliser la commande ncheck sur 
+        chaque partition. 
+        Par exemple, utilisez la commande  suivante pour rechercher les fichiers setuid et 
+        spéciaux sur la partition /dev/rsd0g :
+
+		ncheck -s /dev/rsd0g
+
+    4.  Testez les binaires de votre système afin être sûr qu'il n'ont pas été modifiés. 
+        Des fichiers tels que login, su, telnet, netstat, ifconfig, ls, find, du, df, libc, 
+        sync, et autres binaires visés par inetd.conf  ou tout autre programme 'critique' 
+        réseau et système ont été par le passé modifiés par les pirates. 
+        Sur les systèmes VMS, voir les programmes loginout.exe et show.exe. 
+        Comparez les versions sur votre système avec de 'bonnes copies' telles que celles 
+        fournies sur les bandes d'initialisation (CD-ROM). 
+        Soyez circonspects vis à vis de vos 'backups' (sauvegardes), ils peuvent eux aussi 
+        contenir des chevaux de Troie.
+
+        Les programmes des chevaux de Troie peuvent produire les mêmes 'checksumm' standard 
+        et date que la version légitime; c'est pourquoi la commande UNIX sum et les dates 
+        associées aux programmes ne sont pas suffisants pour déterminer si les programmes 
+        ont été remplacés.
+
+        L'utilisation des outils de 'checksum' cryptographique tels que cmp, MD5, ou autre 
+        est adaptée pour détecter ces programmes de cheval de Troie, la 'checksum' 
+        fournie par ces outils n'étant pas modifiable par les intrus.
+
+    5.  Examinez tous les fichiers lancés par cron et at : les pirates peuvent laisser des 
+        entrées de service dans les fichiers lancés par cron ou soumis à at. 
+        Ces techniques peuvent permettre le retour des intrus même après que vous les ayez 
+        'chassés' de votre système. 
+        Vérifiez bien aussi que tous les fichiers référencés, directement ou indirectement, 
+        par les 'jobs' cron et at ainsi que les fichiers 'jobs' (scripts) eux-mêmes ne sont 
+        pas accessibles en écriture par tout le monde.
+
+    6.  Examinez les additions ou modifications éventuellement non autorisées dans le fichier 
+        /etc/inetd.conf., en particulier les entrées qui exécutent un programme 'shell' 
+        (par exemple /bin/sh, /bin/csh), et testez tous les programmes qui sont spécifiés dans 
+        /etc/inetd.conf pour vérifier qu'ils sont corrects et n'ont pas été remplacés par des 
+        chevaux de Troie.
+
+    7.  Vérifiez vos fichiers de configuration système et réseau, pour ce qui concerne les 
+        entrées non autorisées; en particulier le signe '+', ou des noms de machines 
+        extérieures dans /etc/hosts.equiv, /etc/hosts.lpd et dans tous les fichiers .rhosts 
+        (spécialement root, uucp, ftp et autre compte système). 
+        Ces fichiers doivent être protégés en écriture. 
+        De plus, assurez vous que ces fichiers existaient avant toute intrusion et n'ont pas 
+        été créés par un intrus.
+
+    8.  Examinez toutes les machines sur le réseau local lorsque vous recherchez des signes 
+        d'une intrusion. La plupart du temps, si une machine à été piratée, les autres sur le 
+        réseau l'ont été aussi. C'est surtout vrai sur les réseau où tourne NIS et où les 
+        serveurs s'autorisent les un les autres à travers l'usage des fichiers .rhosts ou 
+        /etc/hosts.equiv. Vérifiez donc tous les serveurs avec lesquels vos "users" partagent 
+        des accès.
+
+    9.  Examinez le fichier /etc/passwd et vérifiez tout compte supplémentaire ou modifié. 
+        En particulier, recherchez les créations de nouveaux comptes non autorisées, les 
+        comptes sans mot de passe, ou les changements d'UID (spécialement l'UID 0) sur les 
+        comptes existants.
+
+
+B.  Les problèmes de configuration des systèmes UNIX qui ont été exploités.
+
+
+    1.  Les mots de passe défectueux.
+
+        Les intrus utilisent souvent finger ou ruser pour découvrir les noms des comptes et 
+        essayent des mots de passe simples. Persuadez vos utilisateurs de choisir des mots 
+        de passe difficiles à deviner (par exemple, mots qui ne sont dans aucun dictionnaire 
+        quelle que soit la langue; pas de nom propre, y compris les noms de personnages 
+        célèbres réels ou imaginaires, pas d'acronymes qui sont communs aux professionnels 
+        de l'informatique, pas de variations simples du nom ou du prénom). 
+        De plus recommandez à  vos utilisateurs de ne laisser des informations 
+        en clair sur les nom d'utilisateur/mot de passe sur quelque machine que ce soit.
+
+        Un bon choix de mot de passe est de choisir une phrase facilement mémorisée, 
+        par exemple "By The Dawn's Early Light" et de prendre les lettres initiales 
+        des mots pour former le mot de passe. 
+        Ajoutez quelques signes de ponctuation, mélangez majuscules et minuscules ... 
+        Pour la phrase précédente, un exemple de mot de passe peut être bt{DeL}.
+                 ( N'UTILISEZ PAS cet exemple pour votre propre mot de passe).
+ 
+        Si des intrus peuvent obtenir un fichier passwd, ils le copient sur une autre 
+        machine, et font tourner un programme de recherche des mots de passe qui 
+        incluent des recherches dans de gros dictionnaires et travaillent rapidement 
+        même sur des machines lentes. La plupart des systèmes où on n'a mis aucun 
+        contrôle sur les mots de passe en ont au moins un qui peut être facilement trouvé.
+
+        Si vous pensez que le fichier passwd peut avoir été copié, changez tous 
+        les mots de passe. à tout le moins, les mots de passe système, un intrus peut 
+        se concentrer sur eux et peut être capable de deviner même un 'bon' mot passe.
+
+        La section D contient une liste d'outils qui peuvent vous permettre de vous 
+        assurer que vos utilisateurs ont effectivement  choisi de 'bons' mots de passe 
+        et que les mots de passe encryptés ne sont pas visibles pour les utilisateurs 
+        du  système.
+
+
+    2.  Comptes sans mot de passe ou avec mot de passe par défaut.
+
+        Les intrus utilisent les mots de passe par défaut qui n'ont pas été changés 
+        depuis l'installation, y compris le comptes avec des mots de passe fournis par
+        le distributeur. Assurez vous de changer tous les mots de passe par défaut lorsque 
+        le logiciel est installé. 
+        Soyez attentifs au fait que les mises à jour peuvent changer les mots de passe 
+        de comptes par de nouveaux mots de passe par défaut. 
+        Mieux vaut changer les mots de passe des comptes par défaut après mise à jour.
+        Scrutez votre fichier passwd et repérez les comptes avec UID 0 supplémentaires, 
+        les comptes sans mot de passe, tous les nouveaux comptes. 
+        N'autorisez pas les comptes sans mot de passe. 
+        Supprimez les comptes inutilisés. 
+        Pour interdire un compte, changez le champ mot de passe du fichier /etc/passwd
+        avec une astérisque '*' et changez le login shell par /bin/false afin être sûr 
+        qu'un intrus ne peut se 'loger' depuis une machine du réseau.
+
+
+    3.  Mots de passe réutilisables.
+
+        Même quand d'excellents mots de passe sont choisis, ils sont envoyés en clair 
+        à travers les réseaux (locaux ou publics), ils sont susceptibles d'être captés
+        par des programmes 'sniffeurs/renifleurs'. 
+        Nous recommandons de changer pour des mots de passe à usage unique, 
+        spécialement pour les accès authentifiés en provenance de réseaux extérieurs, 
+        ou pour des accès à des ressources sensibles telles les serveurs de nom ou 
+        les routeurs. Pour plus d'information voir : 
+
+               info.cert.org:/pub/tech_tidbits/one-time-passwords. 
+                     (n'existe pas , j'ai poste un mail au CERT)
+
+    4.  Utilisation de TFTP (Trivial File Transfert Protocol) pour voler les fichiers passwd.
+
+        Pour tester la vulnérabilité de votre système, connectez-vous à votre système 
+        en utilisant tftp et essayez
+
+		get /etc/motd 
+
+        Si vous pouvez le faire, n'importe qui peut, à travers le réseau obtenir votre 
+        fichier des mots de passe. Pour éviter ce problème, soit supprimez le service 
+        tftp s'il n'est pas nécessaire, soit assurez vous de le configurer avec des 
+        accès restreints.
+        Si vous pensez que votre fichier passwd à pu être pris, la première chose à 
+        faire est de changer tous les mots de passe sur ce système.
+
+
+    5.  Vulnérabilités du sendmail.
+
+        Il y à eu, à propos de sendmail, un certain nombre de vulnérabilités 
+        identifiées au cours des années. 
+        Le meilleur, à notre connaissance, est BSD 8.6.9 qui semble répondre à ces 
+        vulnérabilités. 
+        Pour statuer sur la version de sendmail que vous utilisez, utilisez telnet 
+        pour vous connecter sur le port SMTP (25)
+
+		telnet machine.domaine.pays 25
+
+        Nous vous recommandons de vous mettre à jour avec la dernière version de 
+        sendmail de votre vendeur, et qu'elle soit à jour des patches de sécurité 
+        et autres détaillés dans les avis des CERT et autre bulletins.
+
+
+    6.  Vieilles versions de FTP et FTP anonymes mal configurés.
+
+        Assurez vous que vous utilisez la dernière version de ftpd. 
+        Voyez avec votre vendeur pour les informations sur les mises à jour de 
+        votre configuration. 
+        Voyez aussi la configuration de votre FTP anonyme. 
+        Il est important de suivre les instructions fournies avec le système pour 
+        configurer correctement l'accessibilité via FTP anonyme à certains fichiers 
+        et répertoires (par exemple les droits sur les fichiers et répertoires ainsi 
+        que leur appartenance : (propriétaire et groupe). 
+        À noter que vous ne devriez pas utiliser les fichiers standards 
+        passwd group pour FTP. Le répertoire racine de FTP anonyme et ses 2 
+        sous-répertoires, etc et bin, devraient appartenir à ftp. 
+        Pour des informations supplémentaires, voir :
+
+              info.cert.org:/pub/tech_tips/anonymous_ftp.
+
+
+    7.  Configuration réseau inadéquates.
+
+        Plusieurs constructeurs fournissent de fichiers /etc/hosts.equiv avec une 
+        ligne comportant le signe '+'. Celle-ci doit être supprimée car elle 
+        signifie que le système reconnaît/fait confiance à tous les autres systèmes. 
+        Les autres fichiers susceptibles de contenir un '+' sont /etc/hosts.lpd et 
+        tous les fichiers .rhosts. 
+        Ces fichiers doivent être protégés en écriture.
+        Si votre fichier /usr/lib/X11/xdm/Xseesion contient la ligne 
+                        /usr/bin/X11/xhost +
+        supprimez cette ligne. Si cette ligne reste ainsi, quiconque sur le réseau 
+        peut dialoguer avec le serveur X et potentiellement passer des commandes, 
+        ou lire les frappes à la console.
+
+
+    8.  Mauvaises configurations d'UUCP
+
+        Si votre machine supporte uucp, vérifiez le fichier L.cmds (Permissions) 
+        et assurez vous que seules les commandes nécessaires y soient incluses. 
+        Ce fichier doit appartenir à root (et pas à uucp) et doit être protégé 
+        en écriture. 
+        Le fichier L.sys doit appartenir à uucp et être protégé (mode 600) afin 
+        que seuls les programmes tournant avec setuid uucp puissent y accéder.
+
+
+    9.  Paramètre 'secure' inapproprié dans le fichiers /etc/ttys et /etc/ttytab
+
+        Testez les fichiers /etc/ttys et /etc/ttytab selon la version de UNIX utilisée. 
+        Le paramètrage par défaut est qu'aucun terminal, peudo-terminal ou terminal 
+        réseau n'est 'secure'  hormis la console.
+
+
+    10. Contenu du fichier /usr/lib/aliases.
+
+        Le fichier /usr/lib/aliases peut contenir un alias nomme 'uudecode' ou 'decode'. 
+        Si cet alias existe sur votre système et que vous n'en avez pas réellement 
+        besoin, il doit être supprimé.
+
+
+    11. Protection des fichiers et répertoires inadaptée.
+
+        Voyez dans votre documentation système comment fixer correctement les 
+        protections et appartenances des fichiers et répertoires système. 
+        Vérifiez en particulier le répertoires '/' (root) et '/etc' et tous 
+        les fichiers de configuration système et réseau. 
+        Vérifiez les protections de fichiers et répertoires avant et après 
+        une installation logiciel ou l'utilisation d'un utilitaire de vérification, 
+        ces procédures pouvant modifier ces protections.
+
+
+    12. Les vieilles versions d'O.S.
+
+        Les vieilles versions de systèmes ont souvent des trous de sécurité, 
+        biens connus des pirates. Afin de minimiser votre vulnérabilité 
+        aux attaques, mettez à jour votre version d'O.S. et appliquez les patchs 
+        de sécurité appropriés à votre système dès qu'ils sont disponibles.
+
+
+    13. Usage des procédures shell de setuid.
+
+        Les procédures shell setuid (surtout setuid root), peuvent occasionner 
+        des problèmes de sécurité, ceci à été bien documenté dans de nombreux 
+        textes sur l'administration système UNIX. 
+        Ne créez pas et n'autorisez pas les scripts shell setuid et surtout pas 
+        setuid root.
+
+
+    14. Paramètrage export inapproprié.
+
+        Lorsque c'est possible, les systèmes de fichiers  doivent être exportés 
+        protégés en écriture. 
+        Testez la configuration du fichier /etc/exports sur vos serveurs. 
+        Ne permettez pas un serveur NFS de se référencer dans son propre 
+        fichier export.  
+        Ne permettez pas que les fichiers export contiennent une ligne 
+        'localhost'. 
+        N'exportez les systèmes de fichiers que vers les machines qui en 
+        ont besoin. N'exportez que vers des machines dont le nom est totalement 
+        indiqué (intégralement précisé). Assurez vous que les listes d'export 
+        ne dépassent pas 256 caractères, après que l'alias ait été étendu, ou que 
+        tous les patches de sécurité relatifs à ce problème aient été appliqués. 
+        Utilisez l'utilitaire showmount pour tester si les exports sont corrects.
+
+
+
+C. Vulnérabilités du système VMS.
+
+
+    1.  Comptes avec des mots de passe par défaut.
+
+        Les intrus utilisent souvent les mots de passe par défaut qui n'ont pas 
+        été changés depuis l'installation. Assurez vous de changer tous les mots 
+        de passe par défaut lorsque le système est installé. 
+        Soyez attentifs au fait que des mise à jour de logiciels peuvent, 
+        sans prévenir, remettre des mots de passe par défaut. Il est préférable de 
+        changer les mots de passe par défaut après mise à jour. 
+        Les comptes inutilisés doivent être supprimés du fichier des autorisations 
+        et de la base de données des droits. Les comptes 'dormant' doivent être 
+        mis à DISUSER. Les pirates essayent de deviner les mots de passe simples; 
+        voir Section à le paragraphe sur les mauvais mots de passe  pour les 
+        suggestion pour le choix d'un bon mot de passe.
+
+
+    2.  Versions de fichiers système non autorisés.
+
+        Les pirates lorsqu'ils pénètrent dans un système modifient souvent les 
+        programmes patch.exe, loginout.exe et show.exe. 
+        Comparez ces fichiers avec les originaux du kit de distribution logiciel.
+
+-------------------------------------------------------------------------------------
+La section D a été supprimée de ce document.
+
+
+
+
+Cliquez ici pour avoir l'équivalent de cette section. 

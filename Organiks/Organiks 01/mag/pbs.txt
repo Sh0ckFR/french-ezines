@@ -1,0 +1,166 @@
+        PROBLEMES STANDARDS SOUS UNIX
+                by Coder
+-----------------------------------------------------------------------------
+
+INTRO
+
+Je vais vous presenter en detail deux problemes courants sous Unix.
+Ces problemes peuvent concerner en theorie n'importe quel programme
+(mais bon ces problemes sont quand meme connus maintenant alors ils 
+se font rares).
+
+*****************************************************************************
+
+I PROBLEME DU execve(), system()...
+
+Bon le probleme apparait lorsque le programme contenant un tel appel
+(execve(), system()...) est lance avec le bit SUID active.
+
+Rappel pour les newbies -> Le Bit Suid lorsqu'il est active, permet au
+programme de changer son UID et GID (par exemple se mettre en 0/0
+comme le ReWT, a l'aide des fontions setuid(int uid) et setgid(int suid)).
+Biensur pour mettre le Bit Suid (visualisable par un ls -l), il faut
+etre root...
+
+Explication :
+
+Le programme lance avec le Bit Suid tourne par exemple en root.
+Admettons que le programme demande un system("ls");
+He, malins que nous sommes, nous voyons que le programmeur a oublie de
+donner le chemin d'acces de la commande "ls". Il aurait en effet du
+mettre system("/bin/ls");
+Voila alors ce que nous pouvons faire : 
+      Remplacer le "ls" demande par un shell ou par ce que l'on
+      veut...
+
+Cela se revele fort simple du fait que chaque utilisateur peut changer
+ses chemins de recherches de fichier.
+Par defaut, le systeme lors d'un "ls" va chercher dans le programme ls 
+dans les repertoires indiques dans la variable $PATH.
+Vous l'aurez compris, tout revient a jouer avec cette variable...
+Ce que nous faisons, c'est mettre la recherche des programmes sur le
+repertoire courant.
+
+Bon, pour faire la methode sale, faisons :
+
+[coder@localhost coder]$ PATH=./
+
+Pour plus de proprete sauvegardez avant la valeur de $PATH :
+
+[coder@localhost coder]$ ZOOM=$PATH
+[coder@localhost coder]$ PATH=./
+
+Et lorsque le programme sera termine faites :
+
+[coder@localhost coder]$ PATH=$ZOOM
+
+Bon maintenant, il faut remplacer le "ls" par notre programme, par
+exemple script qui nous donnera un shell root :
+
+-----------------------------------------------------------------------------
+#!/bin/sh
+/bin/sh
+----------------------------------------------------------------------------
+Faites un ptit chmod +x sur le fichier que vous venez de creer (que
+vous aurez sauvegarde sous "ls").
+
+HEHE :) 
+
+Bon maintenant le programme SUID va vous lancer un ptit shell root
+tout joli :)
+
+On dit merci qui ? 
+"Merci les programmeurs a deux bales :))"
+
+Voila, avec ca vous aurez de quoi chercher dans votre systeme des
+programmes mals faits... Bon rassure-vous, sous Unix y'en a plus
+beaucoup dans les programmes standards, mais dans les programmes
+nouveaux, vous pourrez surement trouver votre bonheur :) 
+
+****************************************************************************
+
+II BUFFER OVERFLOW
+
+Voila ceci n'est qu'un complement de l'article de Lionel sur les
+buffers overflow (qui concerne l'aspect pratique) et cet article
+l'aspect theorique...
+
+Tout d'abord, qu'est-ce qu'un buffer overflow ?
+Un buffer overflow signifie debordement de tampon.
+Et concretement c'est quoi ?
+Et bien pour comprendre ce phenomene merveilleux, penchons-nous un peu sur le fonctionnement d'un programme.
+
+Un programme, lorsqu'il lance une fonction, met sur la pile les arguments a passer et en dernier l'adresse de retour de la fonction (ce qui permet de revenir a la fonction appelante).
+
+Concretement c quoi ?
+
+Imaginons la fonction suivante (dans un langage de haut niveau tel qu'en C...):
+
+fonction_debile (argument)
+
+lorsqu'elle est appelee, le programme place tout d'abord sur la pile l'argument a appeller puis elle ajoute l'adresse de retour sur la pile et finalement lance la fonction.
+
+Voila alors l'etat de la pile par exemple avant le lancement de la fonction :
+
+[(AX);(BX)]
+
+Maintenant le programme ajoute dans la pile l'argument a passer a la fonction ( par exemple 3):
+
+[(AX);(BX);(3)]
+
+Jusqu'a la rien de complique.
+
+Maintenant le programme ajoute l'adresse de retour de la fonction (que nous symbolisons ici par RETOUR), a laquelle se retrouvera le programme une fois la fonction terminee :
+
+[(AX);(BX);(3);(RETOUR)]
+
+Finalement le programme appelle la fonction avec un petit 
+
+CALL fonction_debile
+
+fonction_debile est maintenant lancee et peut recuperer les arguments (avec des MOV et pas de POP sinon ca serait catastrophique !) et faire son travail.
+Finalement la fonction revient a la fonction appelante en lisantl'adresse de retour sur le premier element de la pile (ici (RETOUR)).
+
+Imaginons maintenant que la fonction accepte normalement un argument d'une certaine taille. Lors de l'initialisation de la fonction, une certaine place va etre allouee pour cet argument (ARG)
+
+[(AX);(BX);(3);(RETOUR)                   (ARG)]
+
+Imaginon que l'on copie un element de taille superieure a celle de (ARG). Que va t'il se passer ? Et bien notre petit element va se mettre sur la zone memoire de (ARG) et utiliser un peu celle de (RETOUR) ! (et oui, me probleme qui se passe est donc que l'adresse de retour se trouve modifiee !)
+
+Concretement, pout realiser ce miracle, il faut realier plusieurs operations sur l'element copier.
+Il faut tout d'abord changer l'adresse de retour de le fonction. Pour faire cela, on va mettre en fin de buffer, plein de fois l'adresse du debut de buffer.
+Ensuite, on va remplir le debut de buffer par une multitude de NOP (instructions qui ne font rien - cette instruction est utiliser pour refroidir le processeur, dans le but d'eviter une activite trop intense), et finalement mettre notre petit bout d'assembleur qui executera notre commande (par exemple un shell).
+
+Pourquoi mettre l'adresse de debut de buffer et pas celle du code a executer ?
+Tous simplement parceque l'adresse serait trop dur a calculer... :)
+
+Ainsi, vous pourrez obtenir des privileges speciaux pour executer des programmes (du moment que le programme est Suid)  :)
+
+Voila, vous avez compris le principe d'un buffer overflow et vous pouvez desormais vous amuser a en faire si vous connaissez suffisament l'asm :)
+
+Pour la partie pratique, reportez-vous a l'article de Lionel (avec des shells code)..
+
+PS : Lionel dit que pour savoir si l'on peut faire un overflow des qu'il y a strcpy, ce qui est faux. En effet, le programmeur peut creer une variable avec la meme taille que la chaine a copier.
+
+Ex : 
+        char *copieur;
+        
+copieur = (char *) malloc (sizeof(argv[1]);
+
+HE, voila cet article se termine...
+
+Et pour ceux qui ont pas envie de se faire chier avec strcpy, utilisez strncpy, ce qui est plutot recommande ...
+
+uh j'arrete il est 4heures du mat...
+
+*****************************************************************************
+
+Voila l'habituel ptit GREEEET :
+
+Xtrash, ZonDybar, AraKIRY, PinGUssy, ExtrEmsutff, Kreme, Florian, NaNarD, Steeve, GrandGanjaMan, OrganIks CrEw, Shado, CryptEl team!, Shaddai, SurcouF, Vince (ehe, celui qui fout des coups dans son ordi quand y marche pas), rockme, CutKillEr, ThoMinoKer, Gui de HL, HPCool, tous ceux de #bsdfr dont j'ai oublie le nom, tous les Linuxiens, tous les lamerZ de #hack, #hack.fr et autres... (lol!!!!!), tous ceux qui m'ont aide quand je n'etais encore kin newBie (huhu ca fait vraiment pas bcp!!), tous ceux de l'uNdERgroUNd FraNcAiS!!!!!, tous les Gurus Unix, et pis mon Lit pour m'offrir de si bon moment de bonheur (mdr), oulala tous ceux que j'ai oublie... et VOUS CHERS LECTEURS... et pis le merveileux Emacs qui m'a permi d'ecrire ce PhIle...
+
+Pour me contacter (commentaires, desaccords, remarques, engeulades, felicitations...etc) : dacoder@altern.org 
+
+Vala j'espere que cet article vous aura plus...
+
+Coder...

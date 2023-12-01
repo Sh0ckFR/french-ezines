@@ -1,0 +1,319 @@
+                       -                              -
+                        --  TRANSACTiONS BANCAiRES  --
+                         ---      par hOtCodE     ---
+                        --                          -- PARTIE #1
+
+
+
+ --[ 0| Sommaire ]--
+
+  <  1 > Introduction
+  <  2 > Presentation d'ETEBAC 3
+  (  3 ) Structure des enregistrements
+  (  4 ) Poste Banque, le logiciel de la BNP : failles
+  (  5 ) Conclusion
+
+
+
+ --[ 1| Introduction ]--
+
+
+ Je vais essayer dans ce document de partager avec vous ce que j'ai appris
+durant mon job d'ete, lors d'une formation sur le logiciel Poste Banque de
+la BNP, qu'un formateur est venu installer au bureau.
+
+ Je vous presenterai brievement le standard ETEBAC 3, qui sert de support
+a la transmission des informations bancaires. D'autres version d'ETEBAC
+existent, mais seule cette version nous interesse pour le moment. Je vous
+decrirai egalement la forme que prennent les enregistrements dans les
+differents fichiers transmis, et je finirai par vous devoiler les problemes
+du logiciel de transactions bancaires Poste Banque, de la BNP.
+
+ Comme je n'ai pas le temps actuellement de faire cet article en entier,
+je ne vais presenter dans cette premiere partie que le protocole ETEBAC 3.
+
+ --[ 2| Presentation du standard ETEBAC 3 ]--
+
+ < Le standard >
+
+ Ces informations sont tirees du livret "La teletransmission de Fichiers"
+diffuse par la BNP avec son logiciel Poste Banque.
+
+ ETEBAC : Echanges Telematiques Entre les Banques et leurs Clients.
+ C'est une serie de standards definis pour l'ensemble des banques en France
+par le Comite Francais d'Organisation et de Normalisation Bancaire (CFONB).
+
+ Le systeme repose sur les principes et modalites pratiques suivantes :
+
+ * la transmission des fichiers (ce sont les informations echangees entre
+   les banques et les clients) est a l'initiative du client,
+ * apres etablisssement de la connexion, le client emet une carte parametre
+   qui permet au serveur d'identifier sa requete (virement, consultation de
+   compte, ...).
+
+ Nous n'allons ici traiter que d'ETEBAC 3, la forme que je connais.
+Trois types de connexions :
+
+ * Par un acces synchrone a TRANSPAC par le reseau telephonique commute, en
+   utilisant le protocole X32 (adaptation de la norme X25 - half duplex 2400
+   ou 4800 bauds).
+ * Par un acces asynchrone (PAD) a TRANSPAC par le reseau telephonique
+   commute avec mise en oeuvre recommandee de procedures de compression MNP 5
+   (V42 bis) et de detection et de corrections d'erreurs MNP 4 (V42).
+   Commande d'un numero NUI (Network User Identifier) a Transpac.
+ * Par un raccordement au Reseau TRANSPAC : 
+   - protocole X25, supporte par un equipement X25 (CLE : Concentrateur
+     Local Entreprise).
+   - abonnement a Transpac de 4800 a 19200 bauds qui comporte l'installation
+     d'un modem par Transpac.
+
+ ETEBAC 3 s'applique a la transmission de fichiers, y compris des fichiers au
+format interbancaire definis par le CFONB, dans les sens Client-Banque et
+Banque-Client.
+
+ La grosse difference entre ETEBAC 3 et ses comperes est que ce dernier
+utilise Transpac, alors que les autres utilisent le reseau commute.
+
+
+ < Types de fichier echangeables >
+
+ D'apres ce meme guide, "Tous les fichier qui ont fait l'objet de normes
+interbancaires sont echangeables. La liste des fichiers echangeables est
+disponible aupres des agences et du Service Apres-Vente BNP (fiche - Echange
+de Fichier Clientele - RC5939)."
+ Bon, alors je vais etre franc, j'ai pas tellement eu le temps de recuperer
+cette doc, mais cool comme je suis cool, je vais vous donner les numeros
+du SAV qui sont repartis un peu partout en France... Et en plus, c'est un
+numero vert! Que demande le peuple ? :)
+
+ [du lundi au vendredi de 8h30 a 16h30]
+
+      +-----------+---------------+
+      | Angers    | 0800 11 24 24 |
+      | Bordeaux  | 0800 03 24 24 |
+      | Lille     | 0800 13 24 24 |
+      | Lyon      | 0800 14 24 24 |
+      | Marseille | 0800 16 24 24 |
+      | Montreuil | 0800 17 24 24 |
+      | Nancy     | 0800 20 24 24 |
+      | Saran     | 0800 23 24 24 |
+      +-----------+---------------+
+
+ Et puis, c'est pas le theme de l'article, mais ca sent la PABX tout ca ;-)
+
+ J'avais ceci dit une petite liste des fichiers, que j'ai perdue dans le
+bordel qu'est ma chambre. En voici quand meme quelques uns que j'ai trouve
+dans un autre livret fourni avec Poste Banque...
+
+   22  Mouvements et soldes francs
+   24  Extraits de compte en francs
+   25  Soldes francs
+   28  Mouvements et soldes issus de la CAT (*)
+   2B  Mouvements et soldes en devises
+   2C  Mouvements et soldes enrichis en francs
+   2D  Mouvements et soldes enrichis en devises
+   2E  Mouvements a comptabilisation future francs (MCF)
+   L3  Cheques impayes
+
+ En revanche, je n'ai pas trouve ces deux-la dans le livret, mais il me
+semble qu'ils existent et que leur description est correcte.
+   J4  Releves de LCR
+   E4  Impayes LCR/BOR
+
+(*) CAT : Centralisation Automatisee de la Tresorerie
+
+
+ < La carte parametre >
+
+  [ Monofichier ]
+
+ "La carte parametre est destinee a indentifier l'entreprise et le fichier
+qu'elle souhaite transmettre ou recevoir. C'est un fichier d'un seul
+enregistrement de 80 octets (caracteres) transmis code en EBCDIC, sous
+la forme suivante :
+
+ * Une zone "Parametre" de 12 caracteres qui comporte :
+   * 1 caractere designant le sens de transmission : position 1
+     - A, sens Aller Transmission Client/Banque,
+     - R, sens Retour Transmission Banque/Client.
+
+ * 3 caracteres reserves a "blanc" : position 2 a 4.
+
+ * 4 caracteres correspondant (en ETEBAC 3 seulement) a la longueur des
+   paquets ou sous-blocs utilises durant la phase de tranfert (0120, 0160,
+   0240...) : position 5 a 8.
+
+ * 4 caracteres reserves a "blanc" : position 9 a 12."
+   [note hC: en fait, la BNP met TEST dans cette zone pour indiquer au
+   serveur qu'il ne faut pas prendre en compte ce qui est envoye (virements
+   factices...). Peut-etre que d'autres banques procedent de meme, ce qui
+   est probable]
+
+ Maintenant, voila la zone "Connexion" qui nous interesse plus. Elle se
+compose de 16 caracteres qui comporte, d'apres le meme livret :
+
+ * le numero utilisateur attribue a l'entreprise, compose de 6 caracteres
+   alphanumeriqes : position 13 a 18. Il permet de reconnaitre l'interlocuteur
+   et de verifier son abonnement.
+   [note hC: la BNP a un compte reserve au tests. Le numero d'utilisateur
+   est le 899001 et le mot de passe est "TEST"].
+
+ * un mot de passe en 4 caracteres alphanumeriques : position 19 a 22
+   specifique a chaque type de fcihier choisi par l'entreprise et modifiable
+   a tout moment.
+
+ * le type de fichier a echanger en 4 caracteres : position 23 a 26.
+   - les deux premiers caracteres (alphanumeriques) indiquent le type de
+     fichier a transmettre. La liste de ces codes figure sur l'imprime --
+     Echange de Fichiers Clientele -- RC 5939 [note hC: que je n'ai toujours
+     pas d'ailleurs]
+   - les deux derniers caracteres (numeriques) indiquent le numero d'ordre
+     du fichier dans la journee [note hC: ca commence a 01, logique. Afin que
+     le serveur ne vous pose pas de problemes, mettez un nombre comme 98
+     ou 99].
+
+ * la date du fichier transmis ou demande en 1 caractere : position 27.
+   - sens Client/Banque [note hC: position 1 a A] : 0 = date du jour.
+   - sens Banque/Client [note hC: position 1 a R] :
+     - 1 caractere alphabetique (a partir de D) pour appeler les generations
+       de fichiers.
+
+       D = derniere generation disponible       ...
+       E = generation -1                        ...
+       F = generation -2                        Y = generation -22
+       G = generation -3                        Z = generation -23
+
+  OU - 1 caractere numerique (de 0 a 9) pour appeler les journees calendaires
+       0 = date du jour
+       1 = J - 1, 2 = J - 2 ... n = J - n ... 9 = J - 9.
+
+   - Dans le sens Banque/Client : position 28
+     - 1 caractere de regroupement pouvant prendre les valeurs "N" si l'
+       entreprise ne veut obtenir que le(s) fichiers qui ne lui ont pas ete
+       transmis. "D" ou blanc pour tous les fichiers disponibles.
+
+ * Une zone "reservee" de 51 caracteres a blanc.
+     
+ < Schema de dialogue >
+
+ Je cite la BNP car je suis certain que ca se passe comme ca, mais je pense
+que c'est le schema adopte par toutes les banques. Ce schema de dialogue est
+specifique a ETEBAC 3.
+
+   Etape    Entreprise                    BNP
+ --------------------------------------------------------------------------
+     1      Effectue l'appel
+     2                                    Confirme l'appel
+     3      Envoie la carte parametre
+     4                                    Envoi message :
+                                          - OK suivi de 18 blancs si le
+                                            transfert est accepte
+                                          - NOK xxxx suivi de 13 blancs si le
+                                            transfert est refuse (cf + bas)
+     5      A reception du message NOK:
+            - demande la liberation
+              circuit OU
+            - envoie un nouveau message
+              parametre (retour a 3)
+                                          Demande la liberation du
+                                          circuit sur timer (1 minute)
+     5      A reception du message OK
+            envoie 1er enregistrement
+     6      Envoie 2e enregistrement
+
+   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+     n      Envoie le dernier enreg.
+   n + 1    Envoie message FF suivi
+            de 18 blancs
+   n + 2                                  Envoie message OKF suivi de 17 bl.
+   n + 3    Retour a 3 ou liberation
+            du circuit
+                                          Libere sur timer (1 minute)
+
+
+
+ < Code de retour ETEBAC 3 >
+
+ Les codes retour normalises sont divises en categories relatives a :
+ - l'analyse de la carte parametre,
+ - l'identification de l'appelant et aux controles d'acces,
+ - la disponibilite du service demande,
+ - la disponibilite des fichiers Banque/Client et a l'acceptation des
+   fichiers Client/Banque.
+
+ On distingue les anciens et les nouveaux codes et, parmi-ceux ci, ceux
+relatifs a des anomalies ou a des messages d'information.
+
+ Les nouveaux codes se situent dans la plage des 2000 et plus, afin de ne
+pas interferer avec ceux actuellement utilises.
+
+ ANCIENS MESSAGES
+
+  Code     Libelle
+ -------------------------------------------------------------------------
+  0000     Client inconnu
+  0002     Fichier inconnu
+  0004     Banque/Client : Fichier non disponible
+           Client/Banque : Fichier non recu
+
+
+ NOUVEAUX MESSAGES (relatifs a des anomalies)
+ 
+  Code     Libelle
+ -------------------------------------------------------------------------
+> Analyse de la carte parametre
+  2100     Longeur carte invalide
+  2102     Sens du transfert absent ou inconnu
+  2104     Identifiant client incorrect ou absent
+  2106     Mot de passe incorrect ou absent
+  2108     Nature du fichier incorrecte ou absente
+  2110     Longueur d'enregistrement incorrecte ou absente
+  2112     Date de fichier incorrecte ou absente
+  2114     Generation ou no. de version ou de sequence incorrecte ou absent
+  2116     Type de fichier/application incompatible avec sens de transfert
+  2118     Carte-parametre non reconnue
+  2120     Code Banque invalide
+  2122     Autre anomalie sur carte-parametre
+           [note hC: le code banque specifie ne correspond pas au serveur]
+  2199     Anomalie sur autre parametre
+
+> Identifiant de l'appelant et controles d'acces
+  2200     Client inconnu
+  2202     Mot de passe invalide
+  2204     Refus de taxation au demande
+  2206     Client non habilite pour cette nature de fichier ou de produit
+  2208     Numero appelant invalide
+  2210     Acces interdit en emission
+  2212     Acces interdit en reception
+  2214     Acces refuse suite a tentatives avec mot de passe invalide
+
+> Disponibilite du service demande
+  2300     Application / Service ferme
+  2302     Acces en emission provisoirement ferme
+  2304     Acces en reception provisoirement ferme
+  2306     Application non encore disponible
+  2308     Service plus assure
+  2310     Service non encore assure
+
+> Dispo. des fich. banque/client et accept. des fich. client/banque
+ .Banque/Client
+  2400     Fichier non disponible
+  2402     Fichier deja demande
+  2404     Pas de fichier ce jour pour cette application
+  2406     Date demandee trop ancienne
+ .Client/Banque
+  2420     Fichier deja recu
+
+> Messages d'information
+  3100     Heure depassee : traitement lors de la prochaine vacation
+  3102     Numero de compostage / transfert
+  3104     Un (des) fichier(s) est (sont) disponible(s) pour cette appli.
+  3106     (idem 3104)
+  3108     Tarification heures creuses
+  3109     Tarification heures pleines
+
+
+[ suite dans NoRoute #5 si tout va bien ]
+
+* Cles { BNP, Poste Banque, virements, banque, ETEBAC, Transpac, X25 }

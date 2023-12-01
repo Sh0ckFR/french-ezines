@@ -1,0 +1,1895 @@
+
+	 _                        _             _                 _                  
+	| |                      | |           | |               | |                 
+	| | _____ _ __ _ __   ___| |   __ _  __| |_   _____ _ __ | |_ _   _ _ __ ___ 
+	| |/ / _ \ '__| '_ \ / _ \ |  / _` |/ _` \ \ / / _ \ '_ \| __| | | | '__/ _ \
+	|   <  __/ |  | | | |  __/ | | (_| | (_| |\ V /  __/ | | | |_| |_| | | |  __/
+	|_|\_\___|_|  |_| |_|\___|_|  \__,_|\__,_| \_/ \___|_| |_|\__|\__,_|_|  \___|
+                                                                             
+
+
+
+    -- [ Aventures dans le kernel : A la recherche du processus perdu
+
+Ah, l'exploration de contrées sauvages, les indigènes parlant des
+dialectes inconnus, les ponts de singe s'élançant de bord en bord
+à travers de vertigineux précipices... Non, ca n'est pas de la
+publicité pour le prochain Indiana Jones. Juste de quoi vous mettre
+l'eau à la bouche pour l'article qui suit.
+
+Partir à l'aventure dans la jungle des structures du noyau de Windows
+(XP nosp en l'occurence), c'est toute une expédition. Quelques 
+cartes commencent à être disponibles, et la Terra Incognita se
+remplit peu à peu. Mais c'est loin de donner envie à un homme
+civilisé d'y mettre le pied. Après de multiples recoupements et des
+heures d'errance, je suis parvenu à mettre au clair un petit guide
+de survie indiquant de fidèles repères pour s'orienter.
+
+Laissez-vous emporter par cette invitation au voyage. Préparez vos
+sacs et vos rations de survie !
+En route, Junior.
+Indiana, père. Je préfère Indiana !
+
+
+
+AVANT DE SE METTRE EN ROUTE
+
+	. installer windbg
+	. installer les symboles
+	. configurer pour crash dump
+	. copier appli et driver
+	. faire un write
+	. récupérer le crashdump
+	. lancer windbg et ouvrir le crashdump
+
+
+PROCESSOR CONTROL REGION
+
+	"Par FS tu entreras, la région de contrôle tu trouveras"
+
+Par où attaquer ? Comme dans l'userland, le point d'entrée dans le
+labyrinthe des structures du noyau est FS:0. FS pointe sur le
+Processor Control Region (KPCR). Cette structure se trouve à
+l'adresse 0xFFDFF000. Bien que très stable, pour éviter de hardcoder
+cette adresse, on la retrouve en FS:0x1C. 
+
+
+
+APERCU DES STRUCTURES
+
+Le KPCR contient une structure NT_TIB à l'offset zéro. Il contient
+des informations sur l'état de l'exécution dans le kernel : kernel
+stack, kernel exception. Pour mémoire, dans l'userland un thread
+est caractérisé par une structure Thread environment Block (TEB) qui
+commence lui-aussi par un TIB. Le champ Self du nt_tib contient
+l'adresse du tib dans l'userland, c'est à dire le TEB du thread qui
+s'exécutait lorsqu'a eu le passage dans le noyau. Ca va, pas perdu ?
+
+nt!_KPCR
+   +0x000 NtTib            : _NT_TIB
+	   +0x000 ExceptionList    : Ptr32 _EXCEPTION_REGISTRATION_RECORD
+	   +0x004 StackBase        : Ptr32 Void
+	   +0x008 StackLimit       : Ptr32 Void
+	   +0x00c SubSystemTib     : Ptr32 Void
+	   +0x010 FiberData        : Ptr32 Void
+	   +0x010 Version          : Uint4B
+	   +0x014 ArbitraryUserPointer : Ptr32 Void
+	   +0x018 Self             : Ptr32 _NT_TIB
+   +0x01c SelfPcr          : Ptr32 _KPCR
+   +0x020 Prcb             : Ptr32 _KPRCB
+   +0x024 Irql             : UChar
+   +0x028 IRR              : Uint4B
+   +0x02c IrrActive        : Uint4B
+   +0x030 IDR              : Uint4B
+   +0x034 KdVersionBlock   : Ptr32 Void
+   +0x038 IDT              : Ptr32 _KIDTENTRY
+   +0x03c GDT              : Ptr32 _KGDTENTRY
+   +0x040 TSS              : Ptr32 _KTSS
+   +0x044 MajorVersion     : Uint2B
+   +0x046 MinorVersion     : Uint2B
+   +0x048 SetMember        : Uint4B
+   +0x04c StallScaleFactor : Uint4B
+   +0x050 DebugActive      : UChar
+   +0x051 Number           : UChar
+   +0x052 Spare0           : UChar
+   +0x053 SecondLevelCacheAssociativity : UChar
+   +0x054 VdmAlert         : Uint4B
+   +0x058 KernelReserved   : [14] Uint4B
+   +0x090 SecondLevelCacheSize : Uint4B
+   +0x094 HalReserved      : [16] Uint4B
+   +0x0d4 InterruptMode    : Uint4B
+   +0x0d8 Spare1           : UChar
+   +0x0dc KernelReserved2  : [17] Uint4B
+   +0x120 PrcbData         : _KPRCB
+
+
+
+EXAMEN DES VALEURS
+
+Comme prévu, le champ SelfPcr à l'offset 0x1C contient l'adresse
+linéaire du KPCR, parfait pour cesser d'utiliser FS lors des accès.
+Le PRCB, nous y reviendrons au chapitre suivant. 
+
+Le champ KdVersionblock contient un pointeur vers une structure
+sur laquelle nous reviendrons plus tard, le _KDDEBUGGER_DATA64.
+Entre autre chose, nous trouvons un flag pour détecter un débug
+mode, ainsi que l'adresse de l'IDT et de la GDT.
+
+kd> dt _kpcr 0xffdff000
+nt!_KPCR
+   +0x000 NtTib            : _NT_TIB
+	   +0x000 ExceptionList    : 0xfa463b64 
+	   +0x004 StackBase        : 0xfa463df0 
+	   +0x008 StackLimit       : 0xfa45f000 
+	   +0x00c SubSystemTib     : (null) 
+	   +0x010 FiberData        : (null) 
+	   +0x010 Version          : 0
+	   +0x014 ArbitraryUserPointer : (null) 
+	   +0x018 Self             : 0x7ffde000
+   +0x01c SelfPcr          : 0xffdff000 
+   +0x020 Prcb             : 0xffdff120 
+   +0x024 Irql             : 0 ''
+   +0x028 IRR              : 0
+   +0x02c IrrActive        : 0
+   +0x030 IDR              : 0xffffffff
+   +0x034 KdVersionBlock   : 0x80537d38 
+   +0x038 IDT              : 0x8003f400 
+   +0x03c GDT              : 0x8003f000 
+   +0x040 TSS              : 0x80042000 
+   +0x044 MajorVersion     : 1
+   +0x046 MinorVersion     : 1
+   +0x048 SetMember        : 1
+   +0x04c StallScaleFactor : 0xbfc
+   +0x050 DebugActive      : 0 ''
+   +0x051 Number           : 0 ''
+   +0x052 Spare0           : 0 ''
+   +0x053 SecondLevelCacheAssociativity : 0x8 ''
+   +0x054 VdmAlert         : 0
+   +0x058 KernelReserved   : [14] 0
+   +0x090 SecondLevelCacheSize : 0x80000
+   +0x094 HalReserved      : [16] 0
+   +0x0d4 InterruptMode    : 0
+   +0x0d8 Spare1           : 0 ''
+   +0x0dc KernelReserved2  : [17] 0
+   +0x120 PrcbData         : _KPRCB
+
+Dans le TIB, on remarque que les premiers pointeurs désignent un
+emplacement dans le noyau (supérieurs à F0000000) alors que le
+champ Self pointe sur un emplacement dans l'userland, ce qui
+confirme le fait qu'il désigne le TIB du thread userland.
+
+
+
+LE _KDDEBUGGER_DATA64
+
+Cette structure contient surtout quelques variables non exportées
+par ntoskrnl. Du coup, les voici faciles à trouver. Faciles, mais
+c'est pas gagné pour autant. La structure semble plus être alignée
+sur 64bits que 32 à ce que j'ai pu en voir dans mon crash dump.
+Une valeur sûre est l'offset 0x078 désignant PsActiveProcessHead,
+c'est à dire pointant sur la _LIST_ENTRY du champ ActiveProcessLinks
+de l'eprocess du premier processus créé, à savoir System. Voir le
+chapitre sur les processus pour plus de détail.
+
+_KDDEBUGGER_DATA32 
++0x000	DBGKD_DEBUG_DATA_HEADER64 	Header
+
++	ULONG 	KernBase
++	ULONG 	BreakpointWithStatus
+
++	ULONG 	SavedContext
+
++	USHORT 	ThCallbackStack
++	USHORT 	NextCallback
++	USHORT 	FramePointer
++	USHORT 	PaeEnabled:1
++	ULONG 	KiCallUserMode
++	ULONG 	KeUserCallbackDispatcher
+
++0x070	PLIST_ENTRY 	PsLoadedModuleList
++0x078	PLIST_ENTRY 	PsActiveProcessHead
++	ULONG 	PspCidTable
+
++	ULONG 	ExpSystemResourcesList
++	ULONG 	ExpPagedPoolDescriptor
++	ULONG 	ExpNumberOfPagedPools
+
++	ULONG 	KeTimeIncrement
++	ULONG 	KeBugCheckCallbackListHead
++	ULONG 	KiBugcheckData
+
++	ULONG 	IopErrorLogListHead
+
++	ULONG 	ObpRootDirectoryObject
++	ULONG 	ObpTypeObjectType
+
++	ULONG 	MmSystemCacheStart
++	ULONG 	MmSystemCacheEnd
++	ULONG 	MmSystemCacheWs
+
++	ULONG 	MmPfnDatabase
++	ULONG 	MmSystemPtesStart
++	ULONG 	MmSystemPtesEnd
++	ULONG 	MmSubsectionBase
++	ULONG 	MmNumberOfPagingFiles
+
++	ULONG 	MmLowestPhysicalPage
++	ULONG 	MmHighestPhysicalPage
++	ULONG 	MmNumberOfPhysicalPages
+
++	ULONG 	MmMaximumNonPagedPoolInBytes
++	ULONG 	MmNonPagedSystemStart
++	ULONG 	MmNonPagedPoolStart
++	ULONG 	MmNonPagedPoolEnd
+
++	ULONG 	MmPagedPoolStart
++	ULONG 	MmPagedPoolEnd
++	ULONG 	MmPagedPoolInformation
++	ULONG 	MmPageSize
+
++	ULONG 	MmSizeOfPagedPoolInBytes
+
++	ULONG 	MmTotalCommitLimit
++	ULONG 	MmTotalCommittedPages
++	ULONG 	MmSharedCommit
++	ULONG 	MmDriverCommit
++	ULONG 	MmProcessCommit
++	ULONG 	MmPagedPoolCommit
++	ULONG 	MmExtendedCommit
+
++	ULONG 	MmZeroedPageListHead
++	ULONG 	MmFreePageListHead
++	ULONG 	MmStandbyPageListHead
++	ULONG 	MmModifiedPageListHead
++	ULONG 	MmModifiedNoWritePageListHead
++	ULONG 	MmAvailablePages
++	ULONG 	MmResidentAvailablePages
+
++	ULONG 	PoolTrackTable
++	ULONG 	NonPagedPoolDescriptor
+
++	ULONG 	MmHighestUserAddress
++	ULONG 	MmSystemRangeStart
++	ULONG 	MmUserProbeAddress
+
++	ULONG 	KdPrintCircularBuffer
++	ULONG 	KdPrintCircularBufferEnd
++	ULONG 	KdPrintWritePointer
++	ULONG 	KdPrintRolloverCount
+
++	ULONG 	MmLoadedUserImageList
+	DWORD_PTR NtBuildLab;
+	 DWORD_PTR KiNormalSystemCall;
+
+	DWORD_PTR KiProcessorBlock;
+	DWORD_PTR MmUnloadedDrivers;
+	DWORD_PTR MmLastUnloadedDriver;
+	DWORD_PTR MmTriageActionTaken;
+	DWORD_PTR MmSpecialPoolTag;
+	DWORD_PTR KernelVerifier;
+	DWORD_PTR MmVerifierData;
+	DWORD_PTR MmAllocatedNonPagedPool;
+	DWORD_PTR MmPeakCommitment;
+	DWORD_PTR MmTotalCommitLimitMaximum;
+	DWORD_PTR CmNtCSDVersion;
+
+	DWORD_PTR MmPhysicalMemoryBlock;
+	DWORD_PTR MmSessionBase;
+	DWORD_PTR MmSessionSize;
+	DWORD_PTR MmSystemParentTablePage;
+
+
+80545b28 : PsLoadedModuleList
+ 0x80547b58 : PsActiveProcessHead
+Public Attributes
+LIST_ENTRY64 List ULONG OwnerTag ULONG Size 
+
+DBGKD_DEBUG_DATA_HEADER64 Header ULONG64 KernBase ULONG64
+BreakpointWithStatus ULONG64 SavedContext USHORT ThCallbackStack
+USHORT NextCallback USHORT FramePointer USHORT PaeEnabled:1 ULONG64
+KiCallUserMode ULONG64 KeUserCallbackDispatcher ULONG64
+PsLoadedModuleList ULONG64 PsActiveProcessHead ULONG64 PspCidTable
+ULONG64 ExpSystemResourcesList ULONG64 ExpPagedPoolDescriptor
+ULONG64 ExpNumberOfPagedPools ULONG64 KeTimeIncrement ULONG64
+KeBugCheckCallbackListHead ULONG64 KiBugcheckData ULONG64
+IopErrorLogListHead ULONG64 ObpRootDirectoryObject ULONG64
+ObpTypeObjectType ULONG64 MmSystemCacheStart ULONG64 MmSystemCacheEnd
+ULONG64 MmSystemCacheWs ULONG64 MmPfnDatabase ULONG64 MmSystemPtesStart
+ULONG64 MmSystemPtesEnd ULONG64 MmSubsectionBase ULONG64
+MmNumberOfPagingFiles ULONG64 MmLowestPhysicalPage ULONG64
+MmHighestPhysicalPage ULONG64 MmNumberOfPhysicalPages ULONG64
+MmMaximumNonPagedPoolInBytes ULONG64 MmNonPagedSystemStart ULONG64
+MmNonPagedPoolStart ULONG64 MmNonPagedPoolEnd ULONG64 MmPagedPoolStart
+ULONG64 MmPagedPoolEnd ULONG64 MmPagedPoolInformation ULONG64
+MmPageSize ULONG64 MmSizeOfPagedPoolInBytes ULONG64 MmTotalCommitLimit
+ULONG64 MmTotalCommittedPages ULONG64 MmSharedCommit ULONG64
+MmDriverCommit ULONG64 MmProcessCommit ULONG64 MmPagedPoolCommit
+ULONG64 MmExtendedCommit ULONG64 MmZeroedPageListHead ULONG64
+MmFreePageListHead ULONG64 MmStandbyPageListHead ULONG64 MmModifiedPageListHead
+ULONG64 MmModifiedNoWritePageListHead ULONG64 MmAvailablePages ULONG64
+MmResidentAvailablePages ULONG64 PoolTrackTable ULONG64 NonPagedPoolDescriptor
+ULONG64 MmHighestUserAddress ULONG64 MmSystemRangeStart ULONG64 MmUserProbeAddress
+ULONG64 KdPrintCircularBuffer ULONG64 KdPrintCircularBufferEnd ULONG64
+KdPrintWritePointer ULONG64 KdPrintRolloverCount ULONG64 MmLoadedUserImageList
+ULONG64 NtBuildLab ULONG64 KiNormalSystemCall ULONG64 KiProcessorBlock ULONG64
+MmUnloadedDrivers ULONG64 MmLastUnloadedDriver ULONG64 MmTriageActionTaken ULONG64
+MmSpecialPoolTag ULONG64 KernelVerifier ULONG64 MmVerifierData ULONG64
+MmAllocatedNonPagedPool ULONG64 MmPeakCommitment ULONG64 MmTotalCommitLimitMaximum
+ULONG64 CmNtCSDVersion ULONG64 MmPhysicalMemoryBlock ULONG64 MmSessionBase ULONG64
+MmSessionSize ULONG64 MmSystemParentTablePage 
+
+PROCESSOR CONTROL BLOCK
+
+Le KPRCB fait suite au KPCR. On trouve fréquemment des références
+à fs:0x124, ce qui désigne en fait le champ CurrentThread du KPRCB.
+Pour être parfaitement rigoureux, il faudrait obtenir l'adresse du
+KPRCB au moyen de KPCR:Prcb. Mais les deux structures se touchant
+il est inutile d'en passer par là.
+
+Il contient des pointeurs utiles sur le thread en cours, le prochain
+prévu pour exécution et un pointeur vers l'idle thread. On trouve
+également la vitesse du processeur et le fabricant du processeur,
+ca n'est pas très utile mais c'est là ! Il y a des conteurs de temps,
+des informations sur les DPC, et le contexte du processeur.
+
+
+
+APERCU DES STRUCTURES
+
+   +0x000 MinorVersion     : Uint2B
+   +0x002 MajorVersion     : Uint2B
+   +0x004 CurrentThread    : Ptr32 _KTHREAD
+   +0x008 NextThread       : Ptr32 _KTHREAD
+   +0x00c IdleThread       : Ptr32 _KTHREAD
+   +0x010 Number           : Char
+   +0x011 Reserved         : Char
+   +0x012 BuildType        : Uint2B
+   +0x014 SetMember        : Uint4B
+   +0x018 CpuType          : Char
+   +0x019 CpuID            : Char
+   +0x01a CpuStep          : Uint2B
+   +0x01c ProcessorState   : _KPROCESSOR_STATE
+   +0x33c KernelReserved   : [16] Uint4B
+   +0x37c HalReserved      : [16] Uint4B
+   +0x3bc PrcbPad0         : [92] UChar
+   +0x418 LockQueue        : [16] _KSPIN_LOCK_QUEUE
+   +0x498 PrcbPad1         : [8] UChar
+   +0x4a0 NpxThread        : Ptr32 _KTHREAD
+   +0x4a4 InterruptCount   : Uint4B
+   +0x4a8 KernelTime       : Uint4B
+   +0x4ac UserTime         : Uint4B
+   +0x4b0 DpcTime          : Uint4B
+   +0x4b4 DebugDpcTime     : Uint4B
+   +0x4b8 InterruptTime    : Uint4B
+   +0x4bc AdjustDpcThreshold : Uint4B
+   +0x4c0 PageColor        : Uint4B
+   +0x4c4 SkipTick         : Uint4B
+   +0x4c8 MultiThreadSetBusy : UChar
+   +0x4c9 Spare2           : [3] UChar
+   +0x4cc ParentNode       : Ptr32 _KNODE
+   +0x4d0 MultiThreadProcessorSet : Uint4B
+   +0x4d4 MultiThreadSetMaster : Ptr32 _KPRCB
+   +0x4d8 ThreadStartCount : [2] Uint4B
+   +0x4e0 CcFastReadNoWait : Uint4B
+   +0x4e4 CcFastReadWait   : Uint4B
+   +0x4e8 CcFastReadNotPossible : Uint4B
+   +0x4ec CcCopyReadNoWait : Uint4B
+   +0x4f0 CcCopyReadWait   : Uint4B
+   +0x4f4 CcCopyReadNoWaitMiss : Uint4B
+   +0x4f8 KeAlignmentFixupCount : Uint4B
+   +0x4fc KeContextSwitches : Uint4B
+   +0x500 KeDcacheFlushCount : Uint4B
+   +0x504 KeExceptionDispatchCount : Uint4B
+   +0x508 KeFirstLevelTbFills : Uint4B
+   +0x50c KeFloatingEmulationCount : Uint4B
+   +0x510 KeIcacheFlushCount : Uint4B
+   +0x514 KeSecondLevelTbFills : Uint4B
+   +0x518 KeSystemCalls    : Uint4B
+   +0x51c SpareCounter0    : [1] Uint4B
+   +0x520 PPLookasideList  : [16] _PP_LOOKASIDE_LIST
+   +0x5a0 PPNPagedLookasideList : [32] _PP_LOOKASIDE_LIST
+   +0x6a0 PPPagedLookasideList : [32] _PP_LOOKASIDE_LIST
+   +0x7a0 PacketBarrier    : Uint4B
+   +0x7a4 ReverseStall     : Uint4B
+   +0x7a8 IpiFrame         : Ptr32 Void
+   +0x7ac PrcbPad2         : [52] UChar
+   +0x7e0 CurrentPacket    : [3] Ptr32 Void
+   +0x7ec TargetSet        : Uint4B
+   +0x7f0 WorkerRoutine    : Ptr32    
+   +0x7f4 IpiFrozen        : Uint4B
+   +0x7f8 PrcbPad3         : [40] UChar
+   +0x820 RequestSummary   : Uint4B
+   +0x824 SignalDone       : Ptr32 _KPRCB
+   +0x828 PrcbPad4         : [56] UChar
+   +0x860 DpcListHead      : _LIST_ENTRY
+   +0x868 DpcStack         : Ptr32 Void
+   +0x86c DpcCount         : Uint4B
+   +0x870 DpcQueueDepth    : Uint4B
+   +0x874 DpcRoutineActive : Uint4B
+   +0x878 DpcInterruptRequested : Uint4B
+   +0x87c DpcLastCount     : Uint4B
+   +0x880 DpcRequestRate   : Uint4B
+   +0x884 MaximumDpcQueueDepth : Uint4B
+   +0x888 MinimumDpcRate   : Uint4B
+   +0x88c QuantumEnd       : Uint4B
+   +0x890 PrcbPad5         : [16] UChar
+   +0x8a0 DpcLock          : Uint4B
+   +0x8a4 PrcbPad6         : [60] UChar
+   +0x8e0 ChainedInterruptList : Ptr32 Void
+   +0x8e4 LookasideIrpFloat : Int4B
+   +0x8e8 SpareFields0     : [6] Uint4B
+   +0x900 VendorString     : [13] UChar
+   +0x90d InitialApicId    : UChar
+   +0x90e LogicalProcessorsPerPhysicalProcessor : UChar
+   +0x910 MHz              : Uint4B
+   +0x914 FeatureBits      : Uint4B
+   +0x918 UpdateSignature  : _LARGE_INTEGER
+   +0x920 NpxSaveArea      : _FX_SAVE_AREA
+   +0xb30 PowerState       : _PROCESSOR_POWER_STATE
+
+
+
+
+EXAMEN DES VALEURS
+
+Pour le moment, nous allons utiliser l'adresse du thread actuel
+pour trouver l'objet noyau gérant les threads.
+
+kd> dt _kprcb 0xffdff120
+ntdll!_KPRCB
+   +0x000 MinorVersion     : 1
+   +0x002 MajorVersion     : 1
+   +0x004 CurrentThread    : 0xffbde200 
+   +0x008 NextThread       : (null) 
+   +0x00c IdleThread       : 0x805443e0 
+   +0x010 Number           : 0 ''
+   +0x011 Reserved         : 0 ''
+   +0x012 BuildType        : 2
+   +0x014 SetMember        : 1
+   +0x018 CpuType          : 15 ''
+   +0x019 CpuID            : 1 ''
+   +0x01a CpuStep          : 0x208
+   +0x01c ProcessorState   : _KPROCESSOR_STATE
+   +0x33c KernelReserved   : [16] 0
+   +0x37c HalReserved      : [16] 0
+   +0x3bc PrcbPad0         : [92]  ""
+   +0x418 LockQueue        : [16] _KSPIN_LOCK_QUEUE
+   +0x498 PrcbPad1         : [8]  ""
+   +0x4a0 NpxThread        : 0xffbde200 
+   +0x4a4 InterruptCount   : 0xf4b9
+   +0x4a8 KernelTime       : 0x56d8
+   +0x4ac UserTime         : 0x13b
+   +0x4b0 DpcTime          : 0x87
+   +0x4b4 DebugDpcTime     : 0
+   +0x4b8 InterruptTime    : 0x35c
+   +0x4bc AdjustDpcThreshold : 0x14
+   +0x4c0 PageColor        : 0
+   +0x4c4 SkipTick         : 0
+   +0x4c8 MultiThreadSetBusy : 0 ''
+   +0x4c9 Spare2           : [3]  ""
+   +0x4cc ParentNode       : 0x80544a80 
+   +0x4d0 MultiThreadProcessorSet : 1
+   +0x4d4 MultiThreadSetMaster : (null) 
+   +0x4d8 ThreadStartCount : [2] 0
+   +0x4e0 CcFastReadNoWait : 0
+   +0x4e4 CcFastReadWait   : 0
+   +0x4e8 CcFastReadNotPossible : 0
+   +0x4ec CcCopyReadNoWait : 0
+   +0x4f0 CcCopyReadWait   : 0
+   +0x4f4 CcCopyReadNoWaitMiss : 0
+   +0x4f8 KeAlignmentFixupCount : 0
+   +0x4fc KeContextSwitches : 0x29f15
+   +0x500 KeDcacheFlushCount : 0
+   +0x504 KeExceptionDispatchCount : 0x5ed
+   +0x508 KeFirstLevelTbFills : 0
+   +0x50c KeFloatingEmulationCount : 0
+   +0x510 KeIcacheFlushCount : 0
+   +0x514 KeSecondLevelTbFills : 0
+   +0x518 KeSystemCalls    : 0x3cfc0e
+   +0x51c SpareCounter0    : [1] 0
+   +0x520 PPLookasideList  : [16] _PP_LOOKASIDE_LIST
+   +0x5a0 PPNPagedLookasideList : [32] _PP_LOOKASIDE_LIST
+   +0x6a0 PPPagedLookasideList : [32] _PP_LOOKASIDE_LIST
+   +0x7a0 PacketBarrier    : 0
+   +0x7a4 ReverseStall     : 0
+   +0x7a8 IpiFrame         : (null) 
+   +0x7ac PrcbPad2         : [52]  ""
+   +0x7e0 CurrentPacket    : [3] (null) 
+   +0x7ec TargetSet        : 0
+   +0x7f0 WorkerRoutine    : (null) 
+   +0x7f4 IpiFrozen        : 0
+   +0x7f8 PrcbPad3         : [40]  ""
+   +0x820 RequestSummary   : 0
+   +0x824 SignalDone       : (null) 
+   +0x828 PrcbPad4         : [56]  ""
+   +0x860 DpcListHead      : _LIST_ENTRY [ 0xffdff980 - 0xffdff980 ]
+   +0x868 DpcStack         : 0xfc8db000 
+   +0x86c DpcCount         : 0x9cd4
+   +0x870 DpcQueueDepth    : 0
+   +0x874 DpcRoutineActive : 0
+   +0x878 DpcInterruptRequested : 0
+   +0x87c DpcLastCount     : 0x9cd3
+   +0x880 DpcRequestRate   : 0
+   +0x884 MaximumDpcQueueDepth : 1
+   +0x888 MinimumDpcRate   : 3
+   +0x88c QuantumEnd       : 0
+   +0x890 PrcbPad5         : [16]  ""
+   +0x8a0 DpcLock          : 0
+   +0x8a4 PrcbPad6         : [60]  ""
+   +0x8e0 ChainedInterruptList : (null) 
+   +0x8e4 LookasideIrpFloat : 1369
+   +0x8e8 SpareFields0     : [6] 0
+   +0x900 VendorString     : [13]  "GenuineIntel"
+   +0x90d InitialApicId    : 0 ''
+   +0x90e LogicalProcessorsPerPhysicalProcessor : 0x2 ''
+   +0x910 MHz              : 0xbf8
+   +0x914 FeatureBits      : 0x73fff
+   +0x918 UpdateSignature  : _LARGE_INTEGER 0x0
+   +0x920 NpxSaveArea      : _FX_SAVE_AREA
+   +0xb30 PowerState       : _PROCESSOR_POWER_STATE
+
+
+
+
+
+LES THREADS
+Un thread est représenté dans le noyau par un objet divisé en
+deux parties. Le Kernel Thread et l'Executive Thread se répartissent
+les informations. Les deux structures se touchent comme le KPCR et
+le KPRCB. En fait, on considère que l'objet ethread contient et
+débute par le kthread. 
+
+
+
+APERCU DES STRUCTURES
+
+L'ethread contient les numéros d'identifications du thread et de son
+processus, ainsi que les adresses de début dans le kernel et dans
+l'userland.
+
+Le kthread pointe sur le TEB de l'userland, contient une list_entry
+reliant tous les threads d'un même processus, et permet de remonter
+sur l'objet représentant son processus parent.
+
+ntdll!_ETHREAD
+   +0x000 Tcb              : _KTHREAD
+   +0x1c0 CreateTime       : _LARGE_INTEGER
+   +0x1c0 NestedFaultCount : Pos 0, 2 Bits
+   +0x1c0 ApcNeeded        : Pos 2, 1 Bit
+   +0x1c8 ExitTime         : _LARGE_INTEGER
+   +0x1c8 LpcReplyChain    : _LIST_ENTRY
+   +0x1c8 KeyedWaitChain   : _LIST_ENTRY
+   +0x1d0 ExitStatus       : Int4B
+   +0x1d0 OfsChain         : Ptr32 Void
+   +0x1d4 PostBlockList    : _LIST_ENTRY
+   +0x1dc TerminationPort  : Ptr32 _TERMINATION_PORT
+   +0x1dc ReaperLink       : Ptr32 _ETHREAD
+   +0x1dc KeyedWaitValue   : Ptr32 Void
+   +0x1e0 ActiveTimerListLock : Uint4B
+   +0x1e4 ActiveTimerListHead : _LIST_ENTRY
+   +0x1ec Cid              : _CLIENT_ID
+   	+0x1ec UniqueProcess    : Ptr32 Void
+   	+0x1f0 UniqueThread     : Ptr32 Void
+   +0x1f4 LpcReplySemaphore : _KSEMAPHORE
+   +0x1f4 KeyedWaitSemaphore : _KSEMAPHORE
+   +0x208 LpcReplyMessage  : Ptr32 Void
+   +0x208 LpcWaitingOnPort : Ptr32 Void
+   +0x20c ImpersonationInfo : Ptr32 _PS_IMPERSONATION_INFORMATION
+   +0x210 IrpList          : _LIST_ENTRY
+   +0x218 TopLevelIrp      : Uint4B
+   +0x21c DeviceToVerify   : Ptr32 _DEVICE_OBJECT
+   +0x220 ThreadsProcess   : Ptr32 _EPROCESS
+   +0x224 StartAddress     : Ptr32 Void
+   +0x228 Win32StartAddress : Ptr32 Void
+   +0x228 LpcReceivedMessageId : Uint4B
+   +0x22c ThreadListEntry  : _LIST_ENTRY
+   +0x234 RundownProtect   : _EX_RUNDOWN_REF
+   +0x238 ThreadLock       : _EX_PUSH_LOCK
+   +0x23c LpcReplyMessageId : Uint4B
+   +0x240 ReadClusterSize  : Uint4B
+   +0x244 GrantedAccess    : Uint4B
+   +0x248 CrossThreadFlags : Uint4B
+   +0x248 Terminated       : Pos 0, 1 Bit
+   +0x248 DeadThread       : Pos 1, 1 Bit
+   +0x248 HideFromDebugger : Pos 2, 1 Bit
+   +0x248 ActiveImpersonationInfo : Pos 3, 1 Bit
+   +0x248 SystemThread     : Pos 4, 1 Bit
+   +0x248 HardErrorsAreDisabled : Pos 5, 1 Bit
+   +0x248 BreakOnTermination : Pos 6, 1 Bit
+   +0x248 SkipCreationMsg  : Pos 7, 1 Bit
+   +0x248 SkipTerminationMsg : Pos 8, 1 Bit
+   +0x24c SameThreadPassiveFlags : Uint4B
+   +0x24c ActiveExWorker   : Pos 0, 1 Bit
+   +0x24c ExWorkerCanWaitUser : Pos 1, 1 Bit
+   +0x24c MemoryMaker      : Pos 2, 1 Bit
+   +0x250 SameThreadApcFlags : Uint4B
+   +0x250 LpcReceivedMsgIdValid : Pos 0, 1 Bit
+   +0x250 LpcExitThreadCalled : Pos 1, 1 Bit
+   +0x250 AddressSpaceOwner : Pos 2, 1 Bit
+   +0x254 ForwardClusterOnly : UChar
+   +0x255 DisablePageFaultClustering : UChar
+
+
+
+ntdll!_KTHREAD
+   +0x000 Header           : _DISPATCHER_HEADER
+   +0x010 MutantListHead   : _LIST_ENTRY
+   +0x018 InitialStack     : Ptr32 Void
+   +0x01c StackLimit       : Ptr32 Void
+   +0x020 Teb              : Ptr32 Void
+   +0x024 TlsArray         : Ptr32 Void
+   +0x028 KernelStack      : Ptr32 Void
+   +0x02c DebugActive      : UChar
+   +0x02d State            : UChar
+   +0x02e Alerted          : [2] UChar
+   +0x030 Iopl             : UChar
+   +0x031 NpxState         : UChar
+   +0x032 Saturation       : Char
+   +0x033 Priority         : Char
+   +0x034 ApcState         : _KAPC_STATE
+   	+0x034 ApcListHead      : [2] _LIST_ENTRY
+   	+0x044 Process          : Ptr32 _KPROCESS
+   	+0x048 KernelApcInProgress : UChar
+   	+0x049 KernelApcPending : UChar
+   	+0x04a UserApcPending   : UChar
+   +0x04c ContextSwitches  : Uint4B
+   +0x050 IdleSwapBlock    : UChar
+   +0x051 Spare0           : [3] UChar
+   +0x054 WaitStatus       : Int4B
+   +0x058 WaitIrql         : UChar
+   +0x059 WaitMode         : Char
+   +0x05a WaitNext         : UChar
+   +0x05b WaitReason       : UChar
+   +0x05c WaitBlockList    : Ptr32 _KWAIT_BLOCK
+   +0x060 WaitListEntry    : _LIST_ENTRY
+   +0x060 SwapListEntry    : _SINGLE_LIST_ENTRY
+   +0x068 WaitTime         : Uint4B
+   +0x06c BasePriority     : Char
+   +0x06d DecrementCount   : UChar
+   +0x06e PriorityDecrement : Char
+   +0x06f Quantum          : Char
+   +0x070 WaitBlock        : [4] _KWAIT_BLOCK
+   +0x0d0 LegoData         : Ptr32 Void
+   +0x0d4 KernelApcDisable : Uint4B
+   +0x0d8 UserAffinity     : Uint4B
+   +0x0dc SystemAffinityActive : UChar
+   +0x0dd PowerState       : UChar
+   +0x0de NpxIrql          : UChar
+   +0x0df InitialNode      : UChar
+   +0x0e0 ServiceTable     : Ptr32 Void
+   +0x0e4 Queue            : Ptr32 _KQUEUE
+   +0x0e8 ApcQueueLock     : Uint4B
+   +0x0f0 Timer            : _KTIMER
+   +0x118 QueueListEntry   : _LIST_ENTRY
+   +0x120 SoftAffinity     : Uint4B
+   +0x124 Affinity         : Uint4B
+   +0x128 Preempted        : UChar
+   +0x129 ProcessReadyQueue : UChar
+   +0x12a KernelStackResident : UChar
+   +0x12b NextProcessor    : UChar
+   +0x12c CallbackStack    : Ptr32 Void
+   +0x130 Win32Thread      : Ptr32 Void
+   +0x134 TrapFrame        : Ptr32 _KTRAP_FRAME
+   +0x138 ApcStatePointer  : [2] Ptr32 _KAPC_STATE
+   +0x140 PreviousMode     : Char
+   +0x141 EnableStackSwap  : UChar
+   +0x142 LargeStack       : UChar
+   +0x143 ResourceIndex    : UChar
+   +0x144 KernelTime       : Uint4B
+   +0x148 UserTime         : Uint4B
+   +0x14c SavedApcState    : _KAPC_STATE
+   +0x164 Alertable        : UChar
+   +0x165 ApcStateIndex    : UChar
+   +0x166 ApcQueueable     : UChar
+   +0x167 AutoAlignment    : UChar
+   +0x168 StackBase        : Ptr32 Void
+   +0x16c SuspendApc       : _KAPC
+   +0x19c SuspendSemaphore : _KSEMAPHORE
+   +0x1b0 ThreadListEntry  : _LIST_ENTRY
+   +0x1b8 FreezeCount      : Char
+   +0x1b9 SuspendCount     : Char
+   +0x1ba IdealProcessor   : UChar
+   +0x1bb DisableBoost     : UChar
+
+
+
+EXAMEN DES VALEURS
+La valeur du thread id sera utilisée par notre programme d'exemple,
+ainsi que le pointeur sur le processus parent contenu dans l'ApcState
+du kthread.
+
+kd> dt _ethread 0xffbde200
+ntdll!_ETHREAD
+   +0x000 Tcb              : _KTHREAD
+   +0x1c0 CreateTime       : _LARGE_INTEGER 0xe2ad554`925e4760
+   +0x1c0 NestedFaultCount : 0y00
+   +0x1c0 ApcNeeded        : 0y0
+   +0x1c8 ExitTime         : _LARGE_INTEGER 0xffbde3c8`ffbde3c8
+   +0x1c8 LpcReplyChain    : _LIST_ENTRY [ 0xffbde3c8 - 0xffbde3c8 ]
+   +0x1c8 KeyedWaitChain   : _LIST_ENTRY [ 0xffbde3c8 - 0xffbde3c8 ]
+   +0x1d0 ExitStatus       : 0
+   +0x1d0 OfsChain         : (null) 
+   +0x1d4 PostBlockList    : _LIST_ENTRY [ 0xffbde3d4 - 0xffbde3d4 ]
+   +0x1dc TerminationPort  : 0xe1522610 
+   +0x1dc ReaperLink       : 0xe1522610 
+   +0x1dc KeyedWaitValue   : 0xe1522610 
+   +0x1e0 ActiveTimerListLock : 0
+   +0x1e4 ActiveTimerListHead : _LIST_ENTRY [ 0xffbde3e4 - 0xffbde3e4 ]
+   +0x1ec Cid              : _CLIENT_ID
+ 	+0x1ec UniqueProcess    : 0x00000538
+   	+0x1f0 UniqueThread     : 0x000003e8
+     +0x1f4 LpcReplySemaphore : _KSEMAPHORE
+   +0x1f4 KeyedWaitSemaphore : _KSEMAPHORE
+   +0x208 LpcReplyMessage  : (null) 
+   +0x208 LpcWaitingOnPort : (null) 
+   +0x20c ImpersonationInfo : (null) 
+   +0x210 IrpList          : _LIST_ENTRY [ 0xffb48288 - 0xffb48288 ]
+   +0x218 TopLevelIrp      : 0
+   +0x21c DeviceToVerify   : (null) 
+   +0x220 ThreadsProcess   : 0x80d08da8 
+   +0x224 StartAddress     : 0x77e5eb41 
+   +0x228 Win32StartAddress : 0x00402440 
+   +0x228 LpcReceivedMessageId : 0x402440
+   +0x22c ThreadListEntry  : _LIST_ENTRY [ 0x80d08f38 - 0x80d08f38 ]
+   +0x234 RundownProtect   : _EX_RUNDOWN_REF
+   +0x238 ThreadLock       : _EX_PUSH_LOCK
+   +0x23c LpcReplyMessageId : 0
+   +0x240 ReadClusterSize  : 7
+   +0x244 GrantedAccess    : 0x1f03ff
+   +0x248 CrossThreadFlags : 0
+   +0x248 Terminated       : 0y0
+   +0x248 DeadThread       : 0y0
+   +0x248 HideFromDebugger : 0y0
+   +0x248 ActiveImpersonationInfo : 0y0
+   +0x248 SystemThread     : 0y0
+   +0x248 HardErrorsAreDisabled : 0y0
+   +0x248 BreakOnTermination : 0y0
+   +0x248 SkipCreationMsg  : 0y0
+   +0x248 SkipTerminationMsg : 0y0
+   +0x24c SameThreadPassiveFlags : 0
+   +0x24c ActiveExWorker   : 0y0
+   +0x24c ExWorkerCanWaitUser : 0y0
+   +0x24c MemoryMaker      : 0y0
+   +0x250 SameThreadApcFlags : 0
+   +0x250 LpcReceivedMsgIdValid : 0y0
+   +0x250 LpcExitThreadCalled : 0y0
+   +0x250 AddressSpaceOwner : 0y0
+   +0x254 ForwardClusterOnly : 0 ''
+   +0x255 DisablePageFaultClustering : 0 ''
+
+kd> dt _kthread 0xffbde200
+ntdll!_KTHREAD
+   +0x000 Header           : _DISPATCHER_HEADER
+   +0x010 MutantListHead   : _LIST_ENTRY [ 0xffbde210 - 0xffbde210 ]
+   +0x018 InitialStack     : 0xfa464000 
+   +0x01c StackLimit       : 0xfa45f000 
+   +0x020 Teb              : 0x7ffde000 
+   +0x024 TlsArray         : (null) 
+   +0x028 KernelStack      : 0xfa463c20 
+   +0x02c DebugActive      : 0 ''
+   +0x02d State            : 0x2 ''
+   +0x02e Alerted          : [2]  ""
+   +0x030 Iopl             : 0 ''
+   +0x031 NpxState         : 0 ''
+   +0x032 Saturation       : 0 ''
+   +0x033 Priority         : 12 ''
+   +0x034 ApcState         : _KAPC_STATE
+   	+0x034 ApcListHead      : [2] _LIST_ENTRY [ 0xffbde234 - 0xffbde234 ]
+   	+0x044 Process          : 0x80d08da8 
+   	+0x048 KernelApcInProgress : 0 ''
+   	+0x049 KernelApcPending : 0 ''
+   	+0x04a UserApcPending   : 0 ''
+   +0x04c ContextSwitches  : 0x25e
+   +0x050 IdleSwapBlock    : 0 ''
+   +0x051 Spare0           : [3]  ""
+   +0x054 WaitStatus       : 0
+   +0x058 WaitIrql         : 0 ''
+   +0x059 WaitMode         : 1 ''
+   +0x05a WaitNext         : 0 ''
+   +0x05b WaitReason       : 0xd ''
+   +0x05c WaitBlockList    : 0xffbde270 
+   +0x060 WaitListEntry    : _LIST_ENTRY [ 0x805454e0 - 0x805454e0 ]
+   +0x060 SwapListEntry    : _SINGLE_LIST_ENTRY
+   +0x068 WaitTime         : 0x5813
+   +0x06c BasePriority     : 8 ''
+   +0x06d DecrementCount   : 0x10 ''
+   +0x06e PriorityDecrement : 2 ''
+   +0x06f Quantum          : 1 ''
+   +0x070 WaitBlock        : [4] _KWAIT_BLOCK
+   +0x0d0 LegoData         : (null) 
+   +0x0d4 KernelApcDisable : 0
+   +0x0d8 UserAffinity     : 1
+   +0x0dc SystemAffinityActive : 0 ''
+   +0x0dd PowerState       : 0 ''
+   +0x0de NpxIrql          : 0 ''
+   +0x0df InitialNode      : 0 ''
+   +0x0e0 ServiceTable     : 0x80544bc0 
+   +0x0e4 Queue            : (null) 
+   +0x0e8 ApcQueueLock     : 0
+   +0x0f0 Timer            : _KTIMER
+   +0x118 QueueListEntry   : _LIST_ENTRY [ 0x0 - 0x0 ]
+   +0x120 SoftAffinity     : 1
+   +0x124 Affinity         : 1
+   +0x128 Preempted        : 0 ''
+   +0x129 ProcessReadyQueue : 0 ''
+   +0x12a KernelStackResident : 0x1 ''
+   +0x12b NextProcessor    : 0 ''
+   +0x12c CallbackStack    : (null) 
+   +0x130 Win32Thread      : 0xe1a61e58 
+   +0x134 TrapFrame        : 0xfa463d64 
+   +0x138 ApcStatePointer  : [2] 0xffbde234 
+   +0x140 PreviousMode     : 1 ''
+   +0x141 EnableStackSwap  : 0x1 ''
+   +0x142 LargeStack       : 0x1 ''
+   +0x143 ResourceIndex    : 0 ''
+   +0x144 KernelTime       : 0xa
+   +0x148 UserTime         : 0
+   +0x14c SavedApcState    : _KAPC_STATE
+   +0x164 Alertable        : 0 ''
+   +0x165 ApcStateIndex    : 0 ''
+   +0x166 ApcQueueable     : 0x1 ''
+   +0x167 AutoAlignment    : 0 ''
+   +0x168 StackBase        : 0xfa464000 
+   +0x16c SuspendApc       : _KAPC
+   +0x19c SuspendSemaphore : _KSEMAPHORE
+   +0x1b0 ThreadListEntry  : _LIST_ENTRY [ 0x80d08df8 - 0x80d08df8 ]
+   +0x1b8 FreezeCount      : 0 ''
+   +0x1b9 SuspendCount     : 0 ''
+   +0x1ba IdealProcessor   : 0 ''
+   +0x1bb DisableBoost     : 0 ''
+
+
+
+
+LES PROCESSUS
+
+Comme l'objet noyau du thread, le processus est divisé en parties
+executive et kernel. On y trouve des valeurs qui vont confirmer
+ce qu'on sait déjà : le pid doit correspondre au pid trouvé dans
+le thread, sinon il y a une couille quelque part.
+
+
+
+APERCU DES STRUCTURES
+
+L'eprocess contient u e list_entry reliant les processus actifs
+entre eux. On y trouve le pid ainsi que celui du processus père,
+et un pointeur vers la table des handles. On a un pointeur vers
+le teb userland, le nom du fichier exécutable, le nombre de
+threads du processus. Et enfin des numeros de versions du sous-systeme
+windows. Le kprocess contient surtout une list_entry permettant
+de faire le tour des threads d'un processus, ainsi que la priorité
+d'exécution du processus.
+
+ntdll!_EPROCESS
+   +0x000 Pcb              : _KPROCESS
+   +0x06c ProcessLock      : _EX_PUSH_LOCK
+   +0x070 CreateTime       : _LARGE_INTEGER
+   +0x078 ExitTime         : _LARGE_INTEGER
+   +0x080 RundownProtect   : _EX_RUNDOWN_REF
+   +0x084 UniqueProcessId  : Ptr32 Void
+   +0x088 ActiveProcessLinks : _LIST_ENTRY
+   +0x090 QuotaUsage       : [3] Uint4B
+   +0x09c QuotaPeak        : [3] Uint4B
+   +0x0a8 CommitCharge     : Uint4B
+   +0x0ac PeakVirtualSize  : Uint4B
+   +0x0b0 VirtualSize      : Uint4B
+   +0x0b4 SessionProcessLinks : _LIST_ENTRY
+   +0x0bc DebugPort        : Ptr32 Void
+   +0x0c0 ExceptionPort    : Ptr32 Void
+   +0x0c4 ObjectTable      : Ptr32 _HANDLE_TABLE
+   +0x0c8 Token            : _EX_FAST_REF
+   +0x0cc WorkingSetLock   : _FAST_MUTEX
+   +0x0ec WorkingSetPage   : Uint4B
+   +0x0f0 AddressCreationLock : _FAST_MUTEX
+   +0x110 HyperSpaceLock   : Uint4B
+   +0x114 ForkInProgress   : Ptr32 _ETHREAD
+   +0x118 HardwareTrigger  : Uint4B
+   +0x11c VadRoot          : Ptr32 Void
+   +0x120 VadHint          : Ptr32 Void
+   +0x124 CloneRoot        : Ptr32 Void
+   +0x128 NumberOfPrivatePages : Uint4B
+   +0x12c NumberOfLockedPages : Uint4B
+   +0x130 Win32Process     : Ptr32 Void
+   +0x134 Job              : Ptr32 _EJOB
+   +0x138 SectionObject    : Ptr32 Void
+   +0x13c SectionBaseAddress : Ptr32 Void
+   +0x140 QuotaBlock       : Ptr32 _EPROCESS_QUOTA_BLOCK
+   +0x144 WorkingSetWatch  : Ptr32 _PAGEFAULT_HISTORY
+   +0x148 Win32WindowStation : Ptr32 Void
+   +0x14c InheritedFromUniqueProcessId : Ptr32 Void
+   +0x150 LdtInformation   : Ptr32 Void
+   +0x154 VadFreeHint      : Ptr32 Void
+   +0x158 VdmObjects       : Ptr32 Void
+   +0x15c DeviceMap        : Ptr32 Void
+   +0x160 PhysicalVadList  : _LIST_ENTRY
+   +0x168 PageDirectoryPte : _HARDWARE_PTE_X86
+   +0x168 Filler           : Uint8B
+   +0x170 Session          : Ptr32 Void
+   +0x174 ImageFileName    : [16] UChar
+   +0x184 JobLinks         : _LIST_ENTRY
+   +0x18c LockedPagesList  : Ptr32 Void
+   +0x190 ThreadListHead   : _LIST_ENTRY
+   +0x198 SecurityPort     : Ptr32 Void
+   +0x19c PaeTop           : Ptr32 Void
+   +0x1a0 ActiveThreads    : Uint4B
+   +0x1a4 GrantedAccess    : Uint4B
+   +0x1a8 DefaultHardErrorProcessing : Uint4B
+   +0x1ac LastThreadExitStatus : Int4B
+   +0x1b0 Peb              : Ptr32 _PEB
+   +0x1b4 PrefetchTrace    : _EX_FAST_REF
+   +0x1b8 ReadOperationCount : _LARGE_INTEGER
+   +0x1c0 WriteOperationCount : _LARGE_INTEGER
+   +0x1c8 OtherOperationCount : _LARGE_INTEGER
+   +0x1d0 ReadTransferCount : _LARGE_INTEGER
+   +0x1d8 WriteTransferCount : _LARGE_INTEGER
+   +0x1e0 OtherTransferCount : _LARGE_INTEGER
+   +0x1e8 CommitChargeLimit : Uint4B
+   +0x1ec CommitChargePeak : Uint4B
+   +0x1f0 AweInfo          : Ptr32 Void
+   +0x1f4 SeAuditProcessCreationInfo : _SE_AUDIT_PROCESS_CREATION_INFO
+   +0x1f8 Vm               : _MMSUPPORT
+   +0x238 LastFaultCount   : Uint4B
+   +0x23c ModifiedPageCount : Uint4B
+   +0x240 NumberOfVads     : Uint4B
+   +0x244 JobStatus        : Uint4B
+   +0x248 Flags            : Uint4B
+   +0x248 CreateReported   : Pos 0, 1 Bit
+   +0x248 NoDebugInherit   : Pos 1, 1 Bit
+   +0x248 ProcessExiting   : Pos 2, 1 Bit
+   +0x248 ProcessDelete    : Pos 3, 1 Bit
+   +0x248 Wow64SplitPages  : Pos 4, 1 Bit
+   +0x248 VmDeleted        : Pos 5, 1 Bit
+   +0x248 OutswapEnabled   : Pos 6, 1 Bit
+   +0x248 Outswapped       : Pos 7, 1 Bit
+   +0x248 ForkFailed       : Pos 8, 1 Bit
+   +0x248 HasPhysicalVad   : Pos 9, 1 Bit
+   +0x248 AddressSpaceInitialized : Pos 10, 2 Bits
+   +0x248 SetTimerResolution : Pos 12, 1 Bit
+   +0x248 BreakOnTermination : Pos 13, 1 Bit
+   +0x248 SessionCreationUnderway : Pos 14, 1 Bit
+   +0x248 WriteWatch       : Pos 15, 1 Bit
+   +0x248 ProcessInSession : Pos 16, 1 Bit
+   +0x248 OverrideAddressSpace : Pos 17, 1 Bit
+   +0x248 HasAddressSpace  : Pos 18, 1 Bit
+   +0x248 LaunchPrefetched : Pos 19, 1 Bit
+   +0x248 InjectInpageErrors : Pos 20, 1 Bit
+   +0x248 Unused           : Pos 21, 11 Bits
+   +0x24c ExitStatus       : Int4B
+   +0x250 NextPageColor    : Uint2B
+   +0x252 SubSystemMinorVersion : UChar
+   +0x253 SubSystemMajorVersion : UChar
+   +0x252 SubSystemVersion : Uint2B
+   +0x254 PriorityClass    : UChar
+   +0x255 WorkingSetAcquiredUnsafe : UChar
+
+
+ntdll!_KPROCESS
+   +0x000 Header           : _DISPATCHER_HEADER
+   +0x010 ProfileListHead  : _LIST_ENTRY
+   +0x018 DirectoryTableBase : [2] Uint4B
+   +0x020 LdtDescriptor    : _KGDTENTRY
+   +0x028 Int21Descriptor  : _KIDTENTRY
+   +0x030 IopmOffset       : Uint2B
+   +0x032 Iopl             : UChar
+   +0x033 Unused           : UChar
+   +0x034 ActiveProcessors : Uint4B
+   +0x038 KernelTime       : Uint4B
+   +0x03c UserTime         : Uint4B
+   +0x040 ReadyListHead    : _LIST_ENTRY
+   +0x048 SwapListEntry    : _SINGLE_LIST_ENTRY
+   +0x04c VdmTrapcHandler  : Ptr32 Void
+   +0x050 ThreadListHead   : _LIST_ENTRY
+   +0x058 ProcessLock      : Uint4B
+   +0x05c Affinity         : Uint4B
+   +0x060 StackCount       : Uint2B
+   +0x062 BasePriority     : Char
+   +0x063 ThreadQuantum    : Char
+   +0x064 AutoAlignment    : UChar
+   +0x065 State            : UChar
+   +0x066 ThreadSeed       : UChar
+   +0x067 DisableBoost     : UChar
+   +0x068 PowerState       : UChar
+   +0x069 DisableQuantum   : UChar
+   +0x06a IdealNode        : UChar
+   +0x06b Spare            : UChar
+
+
+
+
+
+
+
+EXAMEN DES VALEURS
+
+Pour notre programme d'exemple, nous récupèrerons le pid dans
+l'eprocess, puis passerons de processus en processus au moyen de
+la list_entry, et pour chacun descendrons dans les threads.
+
+kd> dt _eprocess 0x80d08da8
+ntdll!_EPROCESS
+   +0x000 Pcb              : _KPROCESS
+   +0x06c ProcessLock      : _EX_PUSH_LOCK
+   +0x070 CreateTime       : _LARGE_INTEGER 0x1c55aaa`924bc8ec
+   +0x078 ExitTime         : _LARGE_INTEGER 0x0
+   +0x080 RundownProtect   : _EX_RUNDOWN_REF
+   +0x084 UniqueProcessId  : 0x00000538 
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0x80547b58 - 0xffbc2e30 ]
+   +0x090 QuotaUsage       : [3] 0x690
+   +0x09c QuotaPeak        : [3] 0x7d8
+   +0x0a8 CommitCharge     : 0x92
+   +0x0ac PeakVirtualSize  : 0xff1000
+   +0x0b0 VirtualSize      : 0xff1000
+   +0x0b4 SessionProcessLinks : _LIST_ENTRY [ 0xfc9f3014 - 0xffbc2e5c ]
+   +0x0bc DebugPort        : (null) 
+   +0x0c0 ExceptionPort    : 0xe15773d0 
+   +0x0c4 ObjectTable      : 0xe19329b0     //Table des handles
+   +0x0c8 Token            : _EX_FAST_REF
+   +0x0cc WorkingSetLock   : _FAST_MUTEX
+   +0x0ec WorkingSetPage   : 0x44f1
+   +0x0f0 AddressCreationLock : _FAST_MUTEX
+   +0x110 HyperSpaceLock   : 0
+   +0x114 ForkInProgress   : (null) 
+   +0x118 HardwareTrigger  : 0
+   +0x11c VadRoot          : 0x80da7640 
+   +0x120 VadHint          : 0x80da8bc0 
+   +0x124 CloneRoot        : (null) 
+   +0x128 NumberOfPrivatePages : 0x59
+   +0x12c NumberOfLockedPages : 1
+   +0x130 Win32Process     : 0xe15b79d8 
+   +0x134 Job              : (null) 
+   +0x138 SectionObject    : 0xe10ca540 
+   +0x13c SectionBaseAddress : 0x00400000 
+   +0x140 QuotaBlock       : 0x80cec468 
+   +0x144 WorkingSetWatch  : (null) 
+   +0x148 Win32WindowStation : 0x0000002c 
+   +0x14c InheritedFromUniqueProcessId : 0x000007dc 
+   +0x150 LdtInformation   : (null) 
+   +0x154 VadFreeHint      : (null) 
+   +0x158 VdmObjects       : (null) 
+   +0x15c DeviceMap        : 0xe18ae440 
+   +0x160 PhysicalVadList  : _LIST_ENTRY [ 0x80d08f08 - 0x80d08f08 ]
+   +0x168 PageDirectoryPte : _HARDWARE_PTE_X86
+   +0x168 Filler           : 0
+   +0x170 Session          : 0xfc9f3000 
+   +0x174 ImageFileName    : [16]  "appli.exe"
+   +0x184 JobLinks         : _LIST_ENTRY [ 0x0 - 0x0 ]
+   +0x18c LockedPagesList  : (null) 
+   +0x190 ThreadListHead   : _LIST_ENTRY [ 0xffbde42c - 0xffbde42c ]
+   +0x198 SecurityPort     : (null) 
+   +0x19c PaeTop           : (null) 
+   +0x1a0 ActiveThreads    : 1
+   +0x1a4 GrantedAccess    : 0x1f0fff
+   +0x1a8 DefaultHardErrorProcessing : 0x8000
+   +0x1ac LastThreadExitStatus : 0
+   +0x1b0 Peb              : 0x7ffdf000 
+   +0x1b4 PrefetchTrace    : _EX_FAST_REF
+   +0x1b8 ReadOperationCount : _LARGE_INTEGER 0x2
+   +0x1c0 WriteOperationCount : _LARGE_INTEGER 0x2
+   +0x1c8 OtherOperationCount : _LARGE_INTEGER 0x98
+   +0x1d0 ReadTransferCount : _LARGE_INTEGER 0x20ae
+   +0x1d8 WriteTransferCount : _LARGE_INTEGER 0x48
+   +0x1e0 OtherTransferCount : _LARGE_INTEGER 0x1175e
+   +0x1e8 CommitChargeLimit : 0
+   +0x1ec CommitChargePeak : 0x92
+   +0x1f0 AweInfo          : (null) 
+   +0x1f4 SeAuditProcessCreationInfo : _SE_AUDIT_PROCESS_CREATION_INFO
+   +0x1f8 Vm               : _MMSUPPORT
+   +0x238 LastFaultCount   : 0
+   +0x23c ModifiedPageCount : 0
+   +0x240 NumberOfVads     : 0x2a
+   +0x244 JobStatus        : 0
+   +0x248 Flags            : 0xd0800
+   +0x248 CreateReported   : 0y0
+   +0x248 NoDebugInherit   : 0y0
+   +0x248 ProcessExiting   : 0y0
+   +0x248 ProcessDelete    : 0y0
+   +0x248 Wow64SplitPages  : 0y0
+   +0x248 VmDeleted        : 0y0
+   +0x248 OutswapEnabled   : 0y0
+   +0x248 Outswapped       : 0y0
+   +0x248 ForkFailed       : 0y0
+   +0x248 HasPhysicalVad   : 0y0
+   +0x248 AddressSpaceInitialized : 0y10
+   +0x248 SetTimerResolution : 0y0
+   +0x248 BreakOnTermination : 0y0
+   +0x248 SessionCreationUnderway : 0y0
+   +0x248 WriteWatch       : 0y0
+   +0x248 ProcessInSession : 0y1
+   +0x248 OverrideAddressSpace : 0y0
+   +0x248 HasAddressSpace  : 0y1
+   +0x248 LaunchPrefetched : 0y1
+   +0x248 InjectInpageErrors : 0y0
+   +0x248 Unused           : 0y00000000000 (0)
+   +0x24c ExitStatus       : 259
+   +0x250 NextPageColor    : 0xb463
+   +0x252 SubSystemMinorVersion : 0 ''
+   +0x253 SubSystemMajorVersion : 0x4 ''
+   +0x252 SubSystemVersion : 0x400
+   +0x254 PriorityClass    : 0x2 ''
+   +0x255 WorkingSetAcquiredUnsafe : 0 ''
+
+kd> dt _kprocess 0x80d08da8
+ntdll!_KPROCESS
+   +0x000 Header           : _DISPATCHER_HEADER
+   +0x010 ProfileListHead  : _LIST_ENTRY [ 0x80d08db8 - 0x80d08db8 ]
+   +0x018 DirectoryTableBase : [2] 0x17de000
+   +0x020 LdtDescriptor    : _KGDTENTRY
+   +0x028 Int21Descriptor  : _KIDTENTRY
+   +0x030 IopmOffset       : 0x20ac
+   +0x032 Iopl             : 0 ''
+   +0x033 Unused           : 0 ''
+   +0x034 ActiveProcessors : 0
+   +0x038 KernelTime       : 9
+   +0x03c UserTime         : 1
+   +0x040 ReadyListHead    : _LIST_ENTRY [ 0x80d08de8 - 0x80d08de8 ]
+   +0x048 SwapListEntry    : _SINGLE_LIST_ENTRY
+   +0x04c VdmTrapcHandler  : (null) 
+   +0x050 ThreadListHead   : _LIST_ENTRY [ 0xffbde3b0 - 0xffbde3b0 ]
+   +0x058 ProcessLock      : 0
+   +0x05c Affinity         : 1
+   +0x060 StackCount       : 1
+   +0x062 BasePriority     : 8 ''
+   +0x063 ThreadQuantum    : 18 ''
+   +0x064 AutoAlignment    : 0 ''
+   +0x065 State            : 0 ''
+   +0x066 ThreadSeed       : 0 ''
+   +0x067 DisableBoost     : 0 ''
+   +0x068 PowerState       : 0 ''
+   +0x069 DisableQuantum   : 0 ''
+   +0x06a IdealNode        : 0 ''
+   +0x06b Spare            : 0 ''
+
+
+
+
+DE PROC' EN PROC'
+
+Après avoir regardé l'enchainement des structures depuis le PCR
+jusqu'aux processus, nous sommes capables de nous ballader dans tout
+ca. Juste un petit rappel sur les list_entry. Le champ flink de
+eprocess -> ActiveprocessLinks ne pointe pas sur le eprocess suivant,
+mais sur l'ActiveProcessLinks de l'eprocess suivant. Il faut ajuster
+la valeur pour retomber sur le début de la structure.
+
+Pour savoir quand arrêter, il nous faudra comparer les valeurs de la
+listentry ActiveProcessLinks avec
+KPCR -> kddebuggerdata -> ActiveProcessHead. On voit tout de suite
+que le flink de appli.exe a justement cette valeur. Appli.exe est
+mon loader de driver, il est normal que ce soit le dernier programme
+chargé en mémoire avant que le driver ne cause son crash. On va donc
+partir en arrière, remontant les Blinks. Pour chacun, à titre de
+vérification rapide, je ne recopie que le nom de fichier.
+
+kd> dt _eprocess 0x80d08e30-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0x80547b58 - 0xffbc2e30 ]
+   +0x174 ImageFileName    : [16]  "appli.exe"
+
+kd> dt _eprocess 0xffbc2e30-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0x80d08e30 - 0xffa4c5c0 ]
+   +0x174 ImageFileName    : [16]  "svchost.exe"
+
+kd> dt _eprocess 0xffa4c5c0-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0xffbc2e30 - 0x80d4b968 ]
+   +0x174 ImageFileName    : [16]  "msmsgs.exe"
+
+kd> dt _eprocess 0x80d4b968-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0xffa4c5c0 - 0xffa48780 ]
+   +0x174 ImageFileName    : [16]  "bdnagent.exe"
+
+kd> dt _eprocess 0xffa48780-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0x80d4b968 - 0xffa48bb8 ]
+   +0x174 ImageFileName    : [16]  "bdmcon.exe"
+
+kd> dt _eprocess 0xffa48bb8-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0xffa48780 - 0xffb9f6b0 ]
+   +0x174 ImageFileName    : [16]  "VMwareUser.exe"
+
+kd> dt _eprocess 0xffb9f6b0-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0xffa48bb8 - 0xffbcf260 ]
+   +0x174 ImageFileName    : [16]  "VMwareTray.exe"
+
+kd> dt _eprocess 0xffbcf260-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0xffb9f6b0 - 0xffa86db8 ]
+   +0x174 ImageFileName    : [16]  "explorer.exe"
+
+kd> dt _eprocess 0xffa86db8-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0xffbcf260 - 0xffa9cdf8 ]
+   +0x174 ImageFileName    : [16]  "vsserv.exe"
+
+kd> dt _eprocess 0xffa9cdf8-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0xffa86db8 - 0xffb31b20 ]
+   +0x174 ImageFileName    : [16]  "bdss.exe"
+
+kd> dt _eprocess 0xffb31b20-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0xffa9cdf8 - 0xffb21800 ]
+   +0x174 ImageFileName    : [16]  "xcommsvr.exe"
+
+kd> dt _eprocess 0xffb21800-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0xffb31b20 - 0x80cdc590 ]
+   +0x174 ImageFileName    : [16]  "spoolsv.exe"
+
+kd> dt _eprocess 0x80cdc590-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0xffb21800 - 0x80ce0e30 ]
+   +0x174 ImageFileName    : [16]  "svchost.exe"
+
+kd> dt _eprocess 0x80ce0e30-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0x80cdc590 - 0xffb2de30 ]
+   +0x174 ImageFileName    : [16]  "svchost.exe"
+
+kd> dt _eprocess 0xffb2de30-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0x80ce0e30 - 0xffb89688 ]
+   +0x174 ImageFileName    : [16]  "svchost.exe"
+
+kd> dt _eprocess 0xffb89688-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0xffb2de30 - 0x80d0ca90 ]
+   +0x174 ImageFileName    : [16]  "svchost.exe"
+
+kd> dt _eprocess 0x80d0ca90-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0xffb89688 - 0xffb14b10 ]
+   +0x174 ImageFileName    : [16]  "lsass.exe"
+
+kd> dt _eprocess 0xffb14b10-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0x80d0ca90 - 0xffb262b0 ]
+   +0x174 ImageFileName    : [16]  "services.exe"
+
+kd> dt _eprocess 0xffb262b0-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0xffb14b10 - 0xffb19e30 ]
+   +0x174 ImageFileName    : [16]  "winlogon.exe"
+
+kd> dt _eprocess 0xffb19e30-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0xffb262b0 - 0xffb12668 ]
+   +0x174 ImageFileName    : [16]  "csrss.exe"
+
+kd> dt _eprocess 0xffb12668-0x88
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0xffb19e30 - 0x80e928c0 ]
+   +0x174 ImageFileName    : [16]  "smss.exe"
+
+kd> dt _eprocess 0x80e928c0-0x88 ( = 0x80e92838)
+   +0x088 ActiveProcessLinks : _LIST_ENTRY [ 0xffb12668 - 0x80547b58 ]
+   +0x174 ImageFileName    : [16]  "System"
+
+Le processus de tête est System, ce qui est plutôt cohérent. A noter que PEB de System est NULL, il n'a pas de composant userland. En tout cas on retombe plutôt bien sur nos pieds. Voici le code source de la fonction permettant de parcourir toutes ces structures pour récupérer les pids, tids et noms de fichier de tous les programmes actifs sur le système.
+
+NTSTATUS analyse (HANDLE hFichierStatus)
+{
+	char buffer[1024];
+
+	DWORD processor_control_region;
+	DWORD KdVersionBlock;
+	DWORD PsActiveProcessHead;
+	DWORD eprocess;
+	DWORD ethread;
+	unsigned int ActiveThreads;
+	unsigned int i;
+		
+	unsigned int  UniqueProcessId;
+	unsigned int  UniqueThreadId;
+	char* ImageFileName;
+	
+	//Partie 1 : se place sur le premier processus
+	__asm {
+		mov eax, dword ptr fs:[0x1C]			//KPCR -> SelfPCR
+		mov processor_control_region,eax
+		mov eax,[eax+0x34]					//KPCR -> KdVersionBlock
+		mov KdVersionBlock,eax
+		mov eax,[eax+0x78]					//KDDEBUGGER_DATA32 -> PsActiveProcessHead
+		mov PsActiveProcessHead,eax
+		mov eax,[eax+0x0]					//PsActiveProcessHead -> Flink
+		sub eax,0x88							//(eprocess -> ActiveProcessLink) - eprocess begin
+		mov eprocess,eax
+		}
+
+
+
+	RtlStringCbPrintfA(buffer,1024,"Processor Control Region (KPCR) : %#08X\n",processor_control_region);
+	ecris_fichier_log (hFichierStatus, buffer);
+
+	 RtlStringCbPrintfA(buffer,1024,"KdVersionBlock : %#08X\n",KdVersionBlock);
+	ecris_fichier_log (hFichierStatus, buffer);
+
+	RtlStringCbPrintfA(buffer,1024,"PsActiveProcessHead : %#08X\n",PsActiveProcessHead);
+	ecris_fichier_log (hFichierStatus, buffer);
+
+	RtlStringCbPrintfA(buffer,1024,"Processus de tête : %#08X\n",eprocess);
+	ecris_fichier_log (hFichierStatus, buffer);
+
+	do {
+		//Récupère les valeurs importantes du processus
+		__asm {
+			mov eax,eprocess
+			mov eax,[eax+0x084]				//eprocess -> UniqueProcessId
+			mov UniqueProcessId,eax	
+	
+			mov eax,eprocess
+			add eax,0x174					//eprocess -> ImageFileName
+			mov ImageFileName,eax
+
+			mov eax,eprocess
+			mov eax,[eax+0x1a0]				//eprocess -> ActiveThreads
+			mov ActiveThreads,eax
+
+			mov eax,eprocess
+			mov eax,[eax+0x050]				//eprocess -> ThreadListHead
+			sub eax,0x1b0					//(ethread -> ThreadListEntry) - ethread begin
+			mov ethread,eax
+			}
+
+		//Affiche les infos du processus
+		RtlStringCbPrintfA(buffer,1024,"\nProcessus %s : PID %u, %u thread(s)\n",ImageFileName,UniqueProcessId,ActiveThreads);
+		ecris_fichier_log (hFichierStatus, buffer);
+
+		//Parcours les threads
+		for (i=0;i<ActiveThreads;i++)
+		{
+			__asm {
+				mov eax,ethread
+				mov eax,[eax+0x1f0]			//ethread -> UniqueThread
+				mov UniqueThreadId, eax
+
+				mov eax,ethread
+				mov eax,[eax+0x1b0]			//ethread -> UniqueThread
+				sub eax,0x1b0				//(ethread -> ThreadListEntry) - ethread begin
+				mov ethread, eax
+				}
+
+			//Affiche les infos du thread
+			RtlStringCbPrintfA(buffer,1024,"     TID % 5u\n",UniqueThreadId);
+			ecris_fichier_log (hFichierStatus, buffer);
+		}
+
+		//Passe au processus suivant
+		__asm{
+			mov eax,eprocess
+			mov eax,[eax+0x088]
+			sub eax,0x88						//(eprocess -> ActiveProcessLink) - eprocess begin
+			mov eprocess,eax
+			}
+	
+	}while ((eprocess+0x88) != PsActiveProcessHead);  //(eprocess -> ActiveProcessLink) != PsActiveProcessHead
+
+	
+	return STATUS_SUCCESS;
+}
+
+Et voici ce que ca sort sur mon système.
+
+Analyse de la mémoire
+Processor Control Region (KPCR) : 0XFFDFF000
+KdVersionBlock : 0X80537D38
+PsActiveProcessHead : 0X80547B58
+Processus de tête : 0X80E92838
+
+Processus System : PID 4, 47 thread(s)
+     TID     8
+     TID    16
+     TID    20
+     TID    24
+     TID    28
+     TID    32
+     TID    36
+     TID    40
+     TID    44
+     TID    48
+     TID    52
+     TID    56
+     TID    60
+     TID    64
+     TID    68
+     TID    72
+     TID    76
+     TID    80
+     TID    84
+     TID    88
+     TID    92
+     TID    96
+     TID   100
+     TID   104
+     TID   108
+     TID   116
+     TID   136
+     TID   140
+     TID   144
+     TID   148
+     TID   172
+     TID   176
+     TID   280
+     TID   336
+     TID   340
+     TID   344
+     TID   352
+     TID   356
+     TID   484
+     TID  1340
+     TID  1344
+     TID  1348
+     TID  1352
+     TID  1360
+     TID  1548
+     TID  1552
+     TID   964
+
+Processus smss.exe : PID 488, 3 thread(s)
+     TID   492
+     TID   504
+     TID   508
+
+Processus csrss.exe : PID 612, 10 thread(s)
+     TID   620
+     TID   624
+     TID   628
+     TID   632
+     TID   648
+     TID   656
+     TID   660
+     TID   716
+     TID  1876
+     TID  2012
+
+Processus winlogon.exe : PID 636, 19 thread(s)
+     TID   640
+     TID   672
+     TID   676
+     TID   684
+     TID   696
+     TID   744
+     TID  1036
+     TID  1112
+     TID  1116
+     TID  1312
+     TID  1316
+     TID  1320
+     TID  1768
+     TID  1772
+     TID  1832
+     TID  1864
+     TID  1880
+     TID  1940
+     TID   200
+
+Processus services.exe : PID 688, 16 thread(s)
+     TID   720
+     TID   776
+     TID   780
+     TID   836
+     TID   844
+     TID   848
+     TID   852
+     TID   864
+     TID   868
+     TID   876
+     TID  1044
+     TID  1048
+     TID  1616
+     TID  1620
+     TID  1920
+     TID  1924
+
+Processus savedump.exe : PID 700, 0 thread(s)
+
+Processus lsass.exe : PID 708, 20 thread(s)
+     TID   724
+     TID   728
+     TID   732
+     TID   736
+     TID   740
+     TID   760
+     TID   784
+     TID   792
+     TID   804
+     TID   808
+     TID   812
+     TID   816
+     TID   828
+     TID   856
+     TID  1376
+     TID  1424
+     TID  1496
+     TID  1500
+     TID  1504
+     TID  1508
+
+Processus svchost.exe : PID 880, 8 thread(s)
+     TID   884
+     TID   888
+     TID   912
+     TID   916
+     TID   920
+     TID   980
+     TID  1528
+     TID  1932
+
+Processus svchost.exe : PID 972, 60 thread(s)
+     TID   976
+     TID   984
+     TID   988
+     TID  1000
+     TID  1012
+     TID  1028
+     TID  1064
+     TID  1152
+     TID  1196
+     TID  1220
+     TID  1224
+     TID  1228
+     TID  1236
+     TID  1240
+     TID  1244
+     TID  1248
+     TID  1252
+     TID  1256
+     TID  1268
+     TID  1336
+     TID  1404
+     TID  1412
+     TID  1416
+     TID  1460
+     TID  1540
+     TID  1544
+     TID  1560
+     TID  1568
+     TID  1572
+     TID  1576
+     TID  1580
+     TID  1596
+     TID  1604
+     TID  1632
+     TID  1656
+     TID  1664
+     TID  1668
+     TID  1836
+     TID  1972
+     TID  1976
+     TID  1980
+     TID  1984
+     TID  1988
+     TID  1992
+     TID  1996
+     TID  2004
+     TID  2016
+     TID  2020
+     TID   256
+     TID   432
+     TID   544
+     TID  1004
+     TID  1408
+     TID  1856
+     TID  1860
+     TID  1888
+     TID  1292
+     TID   480
+     TID  1160
+     TID  1952
+
+Processus svchost.exe : PID 1080, 5 thread(s)
+     TID  1084
+     TID  1164
+     TID  1168
+     TID  1692
+     TID   712
+
+Processus svchost.exe : PID 1136, 14 thread(s)
+     TID  1140
+     TID  1156
+     TID  1192
+     TID  1364
+     TID  1368
+     TID  1372
+     TID  1392
+     TID   304
+     TID   328
+     TID   364
+     TID   368
+     TID   412
+     TID   416
+     TID   496
+
+Processus spoolsv.exe : PID 1260, 9 thread(s)
+     TID  1264
+     TID  1272
+     TID  1284
+     TID  1296
+     TID  1896
+     TID  1912
+     TID  2024
+     TID  2028
+     TID  2040
+
+Processus VMwareService.e : PID 1464, 4 thread(s)
+     TID  1468
+     TID  1520
+     TID  1524
+     TID  1556
+
+Processus xcommsvr.exe : PID 1608, 2 thread(s)
+     TID  1612
+     TID  1652
+
+Processus bdss.exe : PID 1680, 6 thread(s)
+     TID  1684
+     TID  1696
+     TID  1700
+     TID  1704
+     TID  1708
+     TID  1712
+
+Processus vsserv.exe : PID 1716, 11 thread(s)
+     TID  1720
+     TID  1724
+     TID  1728
+     TID  1732
+     TID  1736
+     TID  1740
+     TID  1744
+     TID  1748
+     TID  1752
+     TID  1756
+     TID  1760
+
+Processus explorer.exe : PID 1960, 17 thread(s)
+     TID  1964
+     TID  2044
+     TID   120
+     TID   124
+     TID   132
+     TID   164
+     TID   252
+     TID   512
+     TID   580
+     TID   584
+     TID   360
+     TID  1052
+     TID  1072
+     TID   216
+     TID  1808
+     TID   704
+     TID   552
+
+Processus VMwareTray.exe : PID 236, 2 thread(s)
+     TID   240
+     TID   436
+
+Processus VMwareUser.exe : PID 248, 1 thread(s)
+     TID   260
+
+Processus bdmcon.exe : PID 276, 5 thread(s)
+     TID   284
+     TID   600
+     TID  1128
+     TID  1144
+     TID  1096
+
+Processus bdnagent.exe : PID 288, 1 thread(s)
+     TID   308
+
+Processus msmsgs.exe : PID 324, 2 thread(s)
+     TID   332
+     TID   528
+
+Processus appli.exe : PID 380, 1 thread(s)
+     TID   384
+
+
+
+
+LISTER LES MODULES
+
+Un autre champ du kddebugger_data est important, car il permet
+d'accéder à une list_entry des modules noyau ce coup-ci, c'est
+à dire aux drivers chargés : PsLoadedModuleList. Cette list_entry
+est membre d'une structure module_entry non reconnue par windbg.
+En voici la structure, récupérée dans le code source du rootkit FU.
+
+
+typedef struct _MODULE_ENTRY {
++0x000	LIST_ENTRY le_mod;
++0x008	DWORD  unknown[4];
++0x018   DWORD  base;
++0x01c	DWORD  driver_start;
++0x020	DWORD  unk1;
++0x024	UNICODE_STRING driver_Path;
+	+0x024  USHORT Length;
+	+0x026  USHORT MaximumLength;
+	+0x028  PWSTR Buffer;
++0x02c	UNICODE_STRING driver_Name;
+	+0x02c  USHORT Length;
+	+0x02e  USHORT MaximumLength;
+	+0x030  PWSTR Buffer;
+	//...
+} MODULE_ENTRY, *PMODULE_ENTRY;
+
+
+PsLoadedModuleList : 0x80545b28 : _LIST_ENTRY [ 0x80ebce68  - 0x80d5af18]
+
+Par exemple pour le premier :
++0x000 ActiveProcessLinks : _LIST_ENTRY [ 0x80ebce00 - 0x80545b28 ]
++0x018  base : 804d0000
++0x01c : driver_start : 8068612C
++0x030 : driver_Name.Buffer : L"ntoskrnl.exe"
+
+
+Mais automatisons la tâche. Voici un bout de code à greffer à celui
+du chapitre précédent pour lister les modules en plus des
+processus / threads.
+
+	//Se place sur le premier module
+		__asm {
+		mov eax, KdVersionBlock
+		mov eax,[eax+0x70]					//KDDEBUGGER_DATA32 -> PsLoadedModulesList
+		mov PsLoadedModuleList,eax
+		mov eax,[eax+0x0]					//PsLoadedModuleList -> Flink
+		mov module,eax
+		}
+
+	do {
+		//Chope les infos
+		__asm{
+		mov eax,module
+		mov eax,[eax+0x018]					//base
+		mov base,eax
+
+		mov eax,module
+		mov eax,[eax+0x01c]					//driver_start
+		mov driver_start,eax
+
+		mov eax,module
+		mov eax,[eax+0x030]					//driver_name
+		mov driver_name,eax
+
+		mov eax,module
+		mov eax,[eax+0x0]					//flink
+		mov module,eax
+			}
+
+		//Affiche les infos du module
+		RtlStringCbPrintfA(buffer,1024,"module %S : base %#08x, start %#08x\n",driver_name,base,driver_start);
+		ecris_fichier_log (hFichierStatus, buffer);
+
+
+		}while (module != PsLoadedModuleList );
+
+
+
+Et voici le résultat.
+
+	module ntoskrnl.exe : base 0x804d0000, start 0x80686a2c
+	module hal.dll : base 0x806b5000, start 0x806d14c2
+	module kdcom.dll : base 0xfc9bb000, start 0xfc9bbce6
+	module BOOTVID.dll : base 0xfc8cb000, start 0xfc8cc872
+	module ACPI.sys : base 0xfc46e000, start 0xfc494b80
+	module WMILIB.SYS : base 0xfc9bd000, start 0xfc9bdb80
+	module pci.sys : base 0xfc4bb000, start 0xfc4c76fc
+	module isapnp.sys : base 0xfc4cb000, start 0xfc4d23e4
+	module intelide.sys : base 0xfc9bf000, start 0xfc9bf4e6
+	module PCIIDEX.SYS : base 0xfc73b000, start 0xfc73f04a
+	module MountMgr.sys : base 0xfc4db000, start 0xfc4e2f40
+	module ftdisk.sys : base 0xfc44f000, start 0xfc46a4e2
+	module dmload.sys : base 0xfc9c1000, start 0xfc9c1bf6
+	module dmio.sys : base 0xfc42b000, start 0xfc4312a8
+	module PartMgr.sys : base 0xfc743000, start 0xfc746880
+	module VolSnap.sys : base 0xfc4eb000, start 0xfc4f3e80
+	module atapi.sys : base 0xfc415000, start 0xfc427874
+	module vmscsi.sys : base 0xfc8cf000, start 0xfc8cf420
+	module SCSIPORT.SYS : base 0xfc3ff000, start 0xfc4127cc
+	module disk.sys : base 0xfc4fb000, start 0xfc501700
+	module CLASSPNP.SYS : base 0xfc50b000, start 0xfc514c80
+	module sr.sys : base 0xfc3ed000, start 0xfc3fc044
+	module KSecDD.sys : base 0xfc3d9000, start 0xfc3eae9e
+	module Ntfs.sys : base 0xfc356000, start 0xfc3d1680
+	module NDIS.sys : base 0xfc32e000, start 0xfc352400
+	module Mup.sys : base 0xfc314000, start 0xfc32ad78
+	module agp440.sys : base 0xfc74b000, start 0xfc74e2ac
+	module processr.sys : base 0xfc5ab000, start 0xfc5afe3e
+	module i8042prt.sys : base 0xfc5bb000, start 0xfc5c3d00
+	module kbdclass.sys : base 0xfc77b000, start 0xfc77ed22
+	module vmmouse.sys : base 0xfc9d3000, start 0xfc9d3a40
+	module mouclass.sys : base 0xfc783000, start 0xfc7867c0
+	module parport.sys : base 0xfc26d000, start 0xfc26fca7
+	module serial.sys : base 0xfc5cb000, start 0xfc5d5793
+	module serenum.sys : base 0xfc957000, start 0xfc959d80
+	module fdc.sys : base 0xfc78b000, start 0xfc790030
+	module Imapi.SYS : base 0xfc5db000, start 0xfc5e2f00
+	module cdrom.sys : base 0xfc5eb000, start 0xfc5f4e80
+	module redbook.sys : base 0xfc5fb000, start 0xfc5fe7a0
+	module ks.sys : base 0xfc24c000, start 0xfc26a6a1
+	module usbuhci.sys : base 0xfc793000, start 0xfc793300
+	module USBPORT.SYS : base 0xfc22d000, start 0xfc22d380
+	module vmx_svga.sys : base 0xfc95f000, start 0xfc960920
+	module VIDEOPRT.SYS : base 0xfc60b000, start 0xfc618e80
+	module pcntpci5.sys : base 0xfc61b000, start 0xfc621acc
+	module es1371mp.sys : base 0xfc62b000, start 0xfc62fc68
+	module portcls.sys : base 0xfc20c000, start 0xfc223465
+	module drmk.sys : base 0xfc63b000, start 0xfc63d350
+	module audstub.sys : base 0xfcac3000, start 0xfcac3600
+	module rasl2tp.sys : base 0xfc64b000, start 0xfc655b80
+	module ndistapi.sys : base 0xfc963000, start 0xfc964a22
+	module ndiswan.sys : base 0xfc1f6000, start 0xfc2094b2
+	module raspppoe.sys : base 0xfc65b000, start 0xfc663800
+	module raspptp.sys : base 0xfc66b000, start 0xfc675280
+	module TDI.SYS : base 0xfc96f000, start 0xfc96f632
+	module psched.sys : base 0xfc1e5000, start 0xfc1f33a4
+	module msgpc.sys : base 0xfc67b000, start 0xfc67f232
+	module ptilink.sys : base 0xfc7ab000, start 0xfc7ae4a2
+	module raspti.sys : base 0xfc7b3000, start 0xfc7b6200
+	module rdpdr.sys : base 0xfc118000, start 0xfc13fedd
+	module termdd.sys : base 0xfc69b000, start 0xfc6a291e
+	module swenum.sys : base 0xfcbcb000, start 0xfcbcb780
+	module update.sys : base 0xfc0ce000, start 0xfc0eea80
+	module gameenum.sys : base 0xfc993000, start 0xfc994c00
+	module NDProxy.SYS : base 0xfc6ab000, start 0xfc6b2f20
+	module flpydisk.sys : base 0xfc7bb000, start 0xfc7bed80
+	module usbhub.sys : base 0xfc6cb000, start 0xfc6cc980
+	module USBD.SYS : base 0xfc9d7000, start 0xfc9d7300
+	module Fs_Rec.SYS : base 0xfc9d9000, start 0xfc9da5e4
+	module Null.SYS : base 0xfcbd1000, start 0xfcbd159a
+	module Beep.SYS : base 0xfc9db000, start 0xfc9db66c
+	module vga.sys : base 0xfc7d3000, start 0xfc7d7180
+	module mnmdd.SYS : base 0xfc9dd000, start 0xfc9dd646
+	module RDPCDD.sys : base 0xfc9df000, start 0xfc9df944
+	module Msfs.SYS : base 0xfc7db000, start 0xfc7de5a2
+	module Npfs.SYS : base 0xfc7e3000, start 0xfc7e8ffa
+	module rasacd.sys : base 0xfc2ab000, start 0xfc2ac66b
+	module ipsec.sys : base 0xfc71b000, start 0xfc727603
+	module tcpip.sys : base 0xfae05000, start 0xfae4e0a2
+	module netbt.sys : base 0xfade0000, start 0xfae012f1
+	module netbios.sys : base 0xfc72b000, start 0xfc731dc0
+	module rdbss.sys : base 0xfadb8000, start 0xfaddc4c1
+	module mrxsmb.sys : base 0xfad54000, start 0xfad834a3
+	module Fips.SYS : base 0xfc52b000, start 0xfc52ff2b
+	module wanarp.sys : base 0xfc53b000, start 0xfc541a46
+	module Cdfs.SYS : base 0xfc56b000, start 0xfc578580
+	module dump_atapi.sys : base 0xfad16000, start 0xfad28874
+	module dump_WMILIB.SYS : base 0xfc9e1000, start 0xfc9e1b80
+	module win32k.sys : base 0xbf800000, start 0xbf9a5046
+	module watchdog.sys : base 0xfc104000, start 0xfc106e00
+	module dxg.sys : base 0xbff80000, start 0xbff8f680
+	module dxgthk.sys : base 0xfcc11000, start 0xfcc11359
+	module vmx_fb.dll : base 0xbf9b8000, start 0xbf9bb5bc
+	module afd.sys : base 0xfab16000, start 0xfab32952
+	module ndisuio.sys : base 0xfac52000, start 0xfac541d8
+	module hgfs.sys : base 0xfa9ea000, start 0xfa9ecb12
+	module mrxdav.sys : base 0xfa997000, start 0xfa9a1c9c
+	module ParVdm.SYS : base 0xfca1f000, start 0xfca1fe1e
+	module filespy.sys : base 0xfaaae000, start 0xfaaae2fe
+	module regspy.sys : base 0xfa9e6000, start 0xfa9e62e6
+	module srv.sys : base 0xfa8f6000, start 0xfa940380
+	module wdmaud.sys : base 0xfa77a000, start 0xfa785a41
+	module sysaudio.sys : base 0xfac86000, start 0xfac92c4c
+	module TDTCP.SYS : base 0xfc7eb000, start 0xfc7eb9b8
+	module RDPWD.SYS : base 0xfa46c000, start 0xfa475098
+	module test_driver.sys : base 0xfcbc5000, start 0xfcbc5785
+
+
+A quoi correspond l'adresse de base et l'adresse de début ? Voici
+par exemple un dump mémoire et un début de disassembly de ces deux
+adresses pour ntoskrnl.exe.
+
+Dump :
+fc46e000 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00 b8 00 00 00  MZ..................
+fc46e014 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ....@...............
+fc46e028 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ....................
+fc46e03c c8 00 00 00 0e 1f ba 0e 00 b4 09 cd 21 b8 01 4c cd 21 54 68  ............!..L.!Th
+fc46e050 69 73 20 70 72 6f 67 72 61 6d 20 63 61 6e 6e 6f 74 20 62 65  is program cannot be
+fc46e064 20 72 75 6e 20 69 6e 20 44 4f 53 20 6d 6f 64 65 2e 0d 0d 0a   run in DOS mode....
+fc46e078 24 00 00 00 00 00 00 00 0e 21 b2 cc 4a 40 dc 9f 4a 40 dc 9f  $........!..J@..J@..
+fc46e08c 4a 40 dc 9f 4a 40 dd 9f c2 40 dc 9f b0 63 c5 9f 4d 40 dc 9f  J@..J@...@...c..M@..
+fc46e0a0 dd 63 99 9f 4b 40 dc 9f 90 63 c0 9f 04 40 dc 9f b0 63 e1 9f  .c..K@...c...@...c..
+fc46e0b4 4b 40 dc 9f 52 69 63 68 4a 40 dc 9f 00 00 00 00 00 00 00 00  K@..RichJ@..........
+fc46e0c8 50 45 00 00 4c 01 08 00 50 85 7d 3b 00 00 00 00 00 00 00 00  PE..L...P.};........
+
+Disassembly :
+No prior disassembly possible
+nt!KiSystemStartup:
+80686a2c ??               ???
+
+L'adresse de base commence par un petit MZ bien connu. Ooohhh
+le beau PE Header. C'est donc là qu'est chargée l'image du binaire
+à charger en tant que module dans l'espace d'adressage du noyau.
+Quant à l'adresse de début, c'est tout simplement le main. A noter
+que le main de ntoskrnl.exe n'est autre que KiSystemStartup. Comme
+le monde est petit.
+
+
+
+
+    -- [ Tolwin

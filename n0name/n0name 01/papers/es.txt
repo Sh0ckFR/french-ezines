@@ -1,0 +1,372 @@
+            _                                          _   _           
+           | |                                        | | (_)          
+  ___ _ __ | |_ _ __ ___  ___  ___      ___  ___  _ __| |_ _  ___  ___ 
+ / _ \ '_ \| __| '__/ _ \/ _ \/ __|    / __|/ _ \| '__| __| |/ _ \/ __|
+|  __/ | | | |_| | |  __/  __/\__ \    \__ \ (_) | |  | |_| |  __/\__ \
+ \___|_| |_|\__|_|  \___|\___||___/    |___/\___/|_|   \__|_|\___||___/
+                                                                 
+ 
+
+    -- [ Entrées/sorties standarts
+
+
+Principes généraux :
+
+
+On regroupe sous le terme d'  « entrées/sorties », d une part les opérations 
+de lecture et d'écriture, et d autre part les opérations de contrôle associées.
+Une opération d'écriture est un transfert de données effectué depuis une 
+zone mémoire du programme vers une unité périphérique : terminal, unité 
+de disque, imprimante, etc. L'opération de lecture est l'opération 
+symétrique, c'est-à-dire un transfert de données depuis une unité de 
+périphérique vers la mémoire.
+ 
+Ces opérations très bas niveaux sont réalisées par le systèmes 
+d'exploitation lorsqu un programme exécute une requête d entrée/sortie, 
+encore appelé entrée/sortie de « bas niveau ». Sous un système compatible 
+POSIX, ces requêtes correspondent aux fonctions de bas niveau write et 
+read.
+Les fonctions d'entrées/sorties de la bibliothèque standard, encore appelés 
+entrées/sorties « de haut niveau » constituent dans ce cas une interface 
+avec les entrées/sorties de bas niveau. Elles intègrent de plus, des 
+mécanismes de formatage/dé formatage et des mécanismes d optimisation 
+des transferts physiques.
+
+Les entrées/sorties peuvent s'effectuer sur des unités d'entrées/sorties aux 
+comportements très différents : terminal, lecteur de disquette, lecteur de 
+bande, fichier du système de fichier,etc. Afin d'unifier les mécanismes 
+d'entrées/sorties de haut niveau (que nous appellerons simplement 
+entrées/sorties dans la suite de ce document) s'effectue au moyen d un seul 
+type d'unité logique appelée flot (de l'anglo-saxon stream). De même, 
+toutes les unités physiques sont vues à travers une abstraction unique 
+appelée fichier. Ce terme de fichier peut donc désigner un fichier du 
+système de fichiers au sens strict, mais également un périphérique.
+Dans la suite de ce document, nous utilisons la terminologie POSIX de 
+fichier ordinaire, répertoire et fichier spécial pour désigner 
+respectivement un fichier de données à accès direct, un fichier référençant 
+d'autres fichiers, et un fichier représentant une unité d'entrées/sorties.
+	De manière générale, il existe deux types de flots :
+1° Les flots texte, dont le contenu est découpé en lignes 
+séparées par le caractère '\n'. Le contenu du flot peut subir 
+des modifications selon les conventions de représentation de 
+texte de l'environnement, comme par exemple la 
+suppression des espaces précédant le caractère '\n'.
+
+2° Les flots binaires qui permettent de transférer sans 
+altérations le codage interne des données.
+
+Sur certains systèmes, les flots texte peuvent être restreints de sortes qu'ils 
+peuvent seulement transmettre des caractères affichables et certains 
+caractères de contrôles. Par contre, les flots binaires ne comportent aucune 
+restriction.
+
+Cette distinction entre flots texte et flots binaires est imposée par la 
+compatibilité avec des systèmes dans lesquels les applications orientées 
+texte utilisent un format de fichier spécifique. Elle n'a pas de sens sous un 
+système UNIX ou un système compatibilité POSIX, tous les fichiers étant 
+gérés de façon homogène.
+
+La manière la plus élémentaire d'effectuer physiquement une entrée/sortie 
+est de procéder caractère par caractère. Cette façon de faire peut convenir 
+dans le cas d'entrées/sorties effectués sur le terminal. Elle s'avère par 
+contre inefficace lors de lectures et d'écritures sur disque. Dans ce cas, il 
+est préférable de procéder bloc par bloc. On utilise pour cela un tampon, 
+c'est-à-dire une mémoire de travail, où sont stockés les caractères 
+transitant par le flot. La norme ISO définit trois modes de fonctionnement 
+possibles :
+		1° Non mémorisé (unbuffered) : les caractères sont 
+transmis le plus tôt possible après la requête d'entrée/sortie ;
+
+		2° Pleinement mémorisé (fully buffered) : par défaut, les 
+caractères sont transmis par blocs de la taille du tampon ;
+
+		3° Mémorisé par ligne (line buffered) : par défaut, les 
+caractères sont transmis chaque fois qu'un '\n' est envoyé dans le flot ou 
+que le tampon est plein. Les caractères peuvent également être 
+automatiquement transmis lors des requêtes de lecture.
+
+L initialisation d'un flot est le résultat de l'ouverture d'un fichier, effectué 
+au moyen de la fonction fopen. Un flot peut être ouvert en « lecture », en 
+« écriture » ou en « lecture/écriture ». Cela conditionne les opérations 
+d'entrées/sorties qu'il sera possible d'effectuer sur ce flot. Par exemple, 
+une opération d'écriture échouera sur un flot ouvert en lecture. Le mode de 
+fonctionnement du flot est choisi par défaut en fonction de l'unité 
+physique correspondant au fichier.
+
+A chaque flot est associé une paire d'indicateurs composée de l'indicateur 
+de fin de fichier et l'indicateur d'erreur, positionnées par certaines 
+fonctions d'entrées/sorties. Diverses fonctions permettent de tester ou de 
+réinitialiser ces indicateurs. Chaque flot possède également une position 
+courante, généralement initialisée au début du fichier lors de l'ouverture, 
+indiquant la position de l'octet à partir duquel sera effectuée la prochaine 
+opération de lecture ou d'écriture. Chaque opération de lecture ou 
+d'écriture met à jour la position courante du flot.
+	Trois flots sont prédéfinis au démarrage d'un programme :
+
+Stdin : flot initialisé en lecture sur l'entrée standard (en général le clavier 
+du terminal)
+
+Stdout : flot initialisé en écriture sur la sortie standard (en général l'écran 
+du terminal ou la fenêtre du processus.)
+
+Stderr : flot initialisé en écriture immédiate sur la sortie erreur standard (en 
+général l'écran du  terminal ou de la fenêtre du processus.)
+Le flot stderr est toujours non mémorisé.
+
+Un flot est codé par une structure identifiée par l'identificateur de type 
+FILE. Elle regroupe l'ensemble des informations nécessaires à la mise en 
+œuvre d'une entrée/sortie : type du flot, fichier associé, tampon, taille du 
+tampon, mode d'ouverture, indicateurs, position courante dans le fichier… 
+Dans un programme, un flot est déclaré de type FILE *. Il constitue 
+l'argument principal de toute opération d'entrée/sortie.
+
+Les flots stdin et stdout sont utilisables implicitement au moyen des 
+fonctions scanf et printf. Diverses fonctions, comme par exemple fprintf, 
+fscanf, fflush… permettent de lire et d'écrire sur un passé en paramètre.
+
+Les définitions nécessaires à la mise en œuvre de ces fonctions (définition 
+du type FILE, déclaration des flots stdin, stdout et stderr…) se trouvent 
+dans l'en-tête <stdio.h>. Il est par conséquent nécessaire de placer la 
+directive #include <stdio.h> en tête de tout fichier dans lequel sont 
+effectuées des entrées/sorties standard.
+
+
+
+Ouverture et fermeture de flot
+
+
+Il est possible d'initialiser un nouveau flot au moyen de la fonction fopen 
+et de fermer un flot au moyen de la fonction fclose :
+
+#include <stdio.h>
+FILE *fopen(const char *chemin, const char *mode);
+Int fclose(FILE *flot);
+
+Le paramètre chemin est le nom du fichier à associer au nouveau flot. Le 
+flot peut être initialisé en mode « lecture », en mode « écriture », en mode 
+« lecture/écriture ». Le mode « écriture » permet de créer un nouveau 
+fichier, ou de réinitialiser un fichier existant. Le mode « lecture/écriture » 
+permet de faire des mises à jour partielles d'un fichier.
+
+Le paramètre mode décrit le type d'accès que l'on veut effectuer : lecture 
+et/ou écriture, et positionnement. C'est une chaîne formée de l'un des trois 
+caractères r, w et a, suivi éventuellement du caractère +. Lors d'une 
+ouverture en écriture, le fichier peut, soit être crée si il n'existe pas, soit 
+encore initialisé, c'est-à-dire ramené à une taille nulle, s'il existe deja. Par 
+défaut, chaque lecture ou écriture met à jour la position courante du flot 
+pour la prochaine lecture ou écriture.
+Ce n'est pas le cas avec le mode a (« append ») qui force automatiquement 
+le positionnement du flot a la fin du fichier lors de chaque écriture.
+
+Les modes r+, w+ et a+ correspondent à trois façons différentes 
+d'initialiser le flot en mode lecture et écriture. Il est dans ce cas nécessaire 
+d'effectuer une synchronisation du flot entre deux opérations de nature 
+différentes, c'est-à-dire une lecture après une écriture ou inversement.
+
+D'autre part, le suffixe b concaténé au mode signifie « entrée/sortie en 
+mode binaire », le mode par défaut étant le mode « texte ». Cette 
+distinction n'a pas de sens dans une implémentation POSIX. Les différents 
+modes d'ouverture sont résumés dans le tableau suivant :
+
+-----------------------------------------------------------------
+|Mode 	|Accès	|Positionnement	|Comportement    |		|
+|	|	|En ecriture	|Si le fichier   | si le ficher	|
+|  	|	|		|Existe          |n'existe pas	|
+-----------------------------------------------------------------
+|	|	|		|		|		|
+| R	|Read	|	--	|	--	|erreur		|
+|	|	|		|		|		|
+-----------------------------------------------------------------
+|	|	|		|		|		|
+|W	|Write	|	--	|initialisation	|creation	|
+|a	|	|à la fin	|	--	|creation	|
+|	|	|		|		|		|
+-----------------------------------------------------------------
+|	|	|		|		|		|
+|r+	|read	|	--	|	--	|erreur		|
+|w+	|&	|	--	|initialisation	|creation	|
+|a+	|write	|à la fin	|	--	|creation	|
+|	|	|		|		|		|
+-----------------------------------------------------------------
+|		Suffixe b : entrée - sortie binaire		|
+-----------------------------------------------------------------
+
+
+Tab. Paramétrage de l'ouverture d'un flot d'entrées/sorties. Les 
+modes a et a+ forcent le positionnement à la du fichier lors de chaque 
+opération d'écriture. Le mode b est sans objet sur un système compatible 
+POSIX.
+
+Lorsque l'ouverture s'effectue sans erreur, la fonction retourne la référence 
+à un flot. Il y a diverses situations d'erreur : chemin incorrect, fichier 
+protégé … Dans ces cas-là, la fonction fopen retourne la valeur NULL. 
+Par exemple, l'instruction :
+
+FILE *f_init = fopen (init_file_name, "r");
+
+Déclare un flot de nom f_init et l'ouvre en lecture sur le fichier dont le 
+nom est contenu dans la chaîne pointée par init_file_name. Si ce fichier 
+n'existe pas ou n'est pas accessible alors la valeur retournée par fopen est 
+la valeur NULL.
+
+L'opération symétrique de l'ouverture d'un flot est sa fermeture, réalisée 
+par la fonction fclose. Cette fonction vide le tampon du flot et ferme la 
+communication. Le descripteur de flot pourra être alloué à nouveau par la 
+fonction fopen. 
+
+Lors de la fermeture d'un tampon mémorisé, celui-ci est automatiquement 
+vidé, il est donc naturel de fermer tous les flots ouverts avant la 
+terminaison d'un processus. De toute manière, il faut savoir que la 
+fermeture de flot est automatique lors d'une terminaison normale, c'est-à-
+dire lors du retour à la fonction main ou lors de l'appel à la fonction exit. 
+
+La Macro constante FOPEN_MAX définit le nombre maximum 
+d'ouvertures simultanées garanties par l'environnement. A savoir que sous 
+un système compatible POSIX le nombre est au minimum 16. Il est 
+généralement plus élevé sur un système UNIX. Sous LINUX 2.0 il est de 
+256.
+La Macro constante FILENAME_MAX définit la taille d'un vecteur 
+pouvant contenir le plus long nom de fichier que supporte le système. Sur 
+certains systèmes, a priori il n'y a pas de limitation de longueur pour un 
+nom de fichier et la variable FILENAME_MAX est fixée à une valeur 
+arbitrairement grande. Par conséquent, elle ne doit pas être utilisée pour 
+déclarer un tampon de lecture de nom de fichier.
+
+Il est possible de redéfinir un flot déjà initialisé, en changeant le fichier qui 
+lui est associé. Cette opération correspond à la redirection d'entrées/sorties 
+classique sous UNIX. Pour cela, on utilise la fonction freopen :
+#include <stdio.h>
+FILE *freopen (const char *chemin, const char *mode, FILE *flot) ;
+
+Si le descripteur de flot flot est actif, la fonction freopen commence par 
+refermer le flot associé. Un nouveau flot est ensuite initialisé avec le même 
+descripteur de flot, de même façon qu avec la fonction open. Si 
+l'ouverture réussit, la référence au nouveau flot est placée dans le 
+descripteur flot, et la fonction reopen retourne le descripteur flot. Sinon, 
+elle retourne la valeur NULL. Il n'y a pas de notification d'erreur si la 
+fermeture du premier flot echoue.
+
+L'exemple suivant montre une redirection du flot sortie standard dans un 
+fichier de nom execution.log
+
+----- reopen.c------
+
+#include <stdlib.h>
+#include <stdio.h>
+
+#define NOM_LOG "execution.log"
+
+int
+main(void)
+{
+	freopen(NOM_LOG, "w", stdout);
+	printf("   ) Debut d'execution de reopen  )\n");
+	printf("  /                     …                        / \n");
+	printf(" ( Fin d'execution de reopen __ ( \n");
+	return EXIT_SUCCESS;
+}
+
+----reopen.c----
+
+La première commande exécute dans la session suivante permet de vérifier 
+qu'aucun fichier suffixé par .log n'existe. C'est donc l'exécution de la 
+commande reopen qui le crée. Le fichier est ensuite listé au moyen de la 
+commande POSIX.2 cat. On peux vérifier qu'il contient toutes les lignes 
+écrites par printf sur la sortie standard.
+
+	| $ ls *.log
+	| *.log not found
+	| $ reopen ; ls *.log
+	| execution.log 
+	| $ cat execution.log
+	|    ) Debut d'execution de reopen )
+	|   /                     …                        /
+	| ( Fin d'execution de reopen __ (
+	| $
+	| 
+
+Un programme peut délibérément ignorer les redirections d'entrées/sorties 
+standard effectuées depuis l'interprète de commandes, en effectuant une 
+réouverture du terminal auquel il est attaché. Par exemple sous UNIX, le 
+terminal attaché étant représenté par le fichier spécial /dev/tty l'exécution 
+de : 
+	freopen("/dev/tty", "w" , stdout)
+
+rend un programme insensible aux redirections de sa sortie standard.
+
+La commande noredir suivante recopie une chaîne reçue en argument (ou 
+son entrée standard dans le cas où il n y a pas d'argument) sur sa sortie 
+standard. Auparavant, elle effectue une réouverture de cette sortie standard 
+sur le terminal attaché au processus.
+
+
+-----noredir.c-----
+#include <stdlib.h>
+#include <stdio.h>
+#define TTY "/dev/tty"
+
+int
+main(int argc, char *argv[])
+{
+	freopen(TTY, "w", stdout);
+
+	if (argc >1)
+	{
+		int i;
+	
+		for (i = 1; i < argc; i++)
+			printf("%s", argv[i]);
+		printf("\n");
+	}
+	else
+	{
+		for(;;)
+		{
+			int c = getchar();
+	
+			if ( c == EOF)
+				break;
+			putchar(c);
+		}
+	}
+	return EXIT_SUCCESS;
+}
+
+-----noredir.c-----
+
+L'exemple d'exécution suivant illustre l'impossibilité de détourner les 
+sorties du programme noredir, en effectuant une redirection sur le fichier 
+spécial /dev/null (Sous UNIX, le fichier spécial /dev/null est associé à une 
+unité d'entrée/sortie qui fait disparaître toutes les données qu'il reçoit). Les 
+données lues par le programme sont typographiés en italiques soulignées.
+
+	| $ Les écrits s'envolent parfois …
+	| Les écrits s'envolent parfois…
+	| $ echo Les écrits s'envolent parfois … > /dev/null
+	| $
+	| $ noredir > /dev/null
+	| Des mots
+	| Des mots
+	| que l'on ne peut détourner . . .
+	| que l'on ne peut détourner …
+	| $ noredir Des mots que l'on ne peut détourner … > /dev/null
+	| Des mots que l'on ne peut détourner…
+	| $
+
+
+Voila pour une petite présentation sur les entrées/sorties standard avec 
+quelques subtilités peu connues.
+
+J'espere avoir été assez clair dans ma présentation et que vous en tirerez 
+quelque chose.
+Pour toutes critiques, avis, conseils mais aussi félicitations :p je suis ouvert a tout:p
+Mais a vous de me trouver .. 
+
+
+La petite partie obligatoire et qui me tiens a cœur les GreetZ :D
+
+Special GreetZ to n0name : bleyme, Night_Fall, ScanX, Tolwin, Icing
+		 &   P41f0X (SecurityHack) , Drim (RedKod)
+
+
+    -- [ Yp3rite

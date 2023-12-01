@@ -1,0 +1,15 @@
+#include <stdio.h>
+char shellcode[] = 
+
+	"\x6a\x00\x68\x6b\x75\x75\x6c\xb9" 
+	"\xed\x01\x00\x00\x89\xe3\xb8\x27" 
+	"\x00\x00\x00\xcd\x80\x31\xdb\xb8" 
+	"\x01\x00\x00\x00\xcd\x80"; 
+
+int main(void) 
+
+{ 
+	int * ret; 
+	ret = (int *)&ret + 2; 
+	(*ret) = (int)shellcode; 
+}

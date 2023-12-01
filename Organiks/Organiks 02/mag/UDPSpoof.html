@@ -1,0 +1,274 @@
+<HTML>
+<HEAD>
+<TITLE>Alligator 427 - Coding Spoofed Datagrams</TITLE>
+</HEAD>
+<BODY BGCOLOR="#FFFFFF" TEXT="#000000" LINK="#000080" VLINK="#000080" ALINK="#000080">
+<PRE>
+
+-------------------------[ Coding Spoofed Datagrams ]--------------------------
+-------------------------[     Reference Guide      ]--------------------------
+-------------------------[      Alligator 427       ]--------------------------
+
+
+0 - What is this about ?
+------------------------
+
+This text explains the way to code spoofed IP packets. Nothing new, just a 
+quick reference guide for educational purpose only.
+
+
+1 - Headers
+-----------
+
+/* Required Headers */
+
+#include &lt;sys/types.h&gt;
+     /* defines format according to system type (ie bsd or SVR4) under linux*/
+     /* it includes &lt;linux/types.h&gt; where the definitions can be found.     */
+     /*                                                                     */
+     /*       typedef unsigned long u_long;                                 */
+     /*       typedef __kernel_size_t size_t;                               */
+
+
+#include &lt;netinet/protocols.h&gt;
+     /* defines protocol numbers                                            */
+     /*                                                                     */
+     /*       #define IP_UDP           17                                   */
+
+#include &lt;netinet/ip.h&gt;
+     /* defines ip packet structure and main values under linux it includes */ 
+     /* &lt;linux/ip.h&gt; where the definitions can be found.                    */
+     /*                                                                     */
+     /*   IP Header Definition                                              */
+     /*       struct iphdr {                                                */
+     /*             #if defined(__LITTLE_ENDIAN_BITFIELD)                   */
+     /*             __u8    ihl:4,version:4;                                */
+     /*             #elif defined (__BIG_ENDIAN_BITFIELD)                   */
+     /*             __u8    version:4,ihl:4;                                */
+     /*             #endif                                                  */
+     /*             __u8    tos;                                            */
+     /*             __u16   tot_len;                                        */
+     /*             __u16   id;                                             */
+     /*             __u16   frag_off;                                       */
+     /*             __u8    ttl;                                            */
+     /*             __u8    protocol;                                       */
+     /*             __u16   check;                                          */
+     /*             __u32   saddr;                                          */
+     /*             __u32   daddr;                                          */
+     /*       };                                                            */
+     /*       =&gt; see RFC 791 p.11+ for fields description                   */
+
+#include &lt;netinet/ip_udp.h&gt;
+     /* defines udp packet structure and main values under linux it includes*/ 
+     /* &lt;linux/udp.h&gt; where the definitions can be found.                   */
+     /*                                                                     */
+     /*   UDP Header Definition                                             */
+     /*       struct udphdr {                                               */
+     /*             unsigned short        source;                           */
+     /*             unsigned short        dest;                             */
+     /*             unsigned short        len;                              */
+     /*             unsigned short        check;                            */
+     /*       };                                                            */
+     /*       source : UDP source port                                      */
+     /*       dest : UDP destination port                                   */
+     /*       len : UDP packet length                                       */
+     /*       check : checksum                                              */
+     /*       =&gt; see RFC 768 for details                                    */  
+
+
+#include &lt;netinet/in.h&gt;
+     /* defines IP stuff                                                    */
+     /* under linux interesting definitions have moved to &lt;linux/in.h&gt;      */
+     /*                                                                     */
+     /*   Definition of an Internet Socket                                  */ 
+     /*       struct sockaddr_in {                                          */
+     /*             short int             sin_family;                       */
+     /*             unsigned short int    sin_port;                         */
+     /*             struct in_addr        sin_addr;                         */
+     /*             unsigned char                                           */ 
+     /*                __pad[__SOCK_SIZE__ - sizeof(short int) -            */
+     /*                sizeof(unsigned short int) - sizeof(struct in_addr)];*/
+     /*      };                                                             */
+     /*      sin_family : AF_INET (Internet IP Protocol)                    */
+     /*      sin_port : source port number                                  */
+     /*      sin_addr : destination IP address                              */
+     /*      __pad : data                                                   */
+
+#include &lt;sys/socket.h&gt;
+     /* defines socket operations (main values are in &lt;linux/socket.h&gt;)     */
+     /*                                                                     */
+     /*   Creating the Socket                                               */
+     /*       int socket(int family, int type, int protocol)                */
+     /*       family : AF_INET (Internet IP Protocol)                       */
+     /*       type : SOCK_RAW (Raw Socket)                                  */
+     /*       protocol : IPPROTO_RAW (Raw Packet defined in &lt;linux/in.h&gt;)   */
+     /*       return socket descriptor (-1 on failure)                      */
+     /*                                                                     */
+     /*   Sending a Packet                                                  */
+     /*       int sendto(int socket_desc, const void *buffer,               */
+     /*                  size_t buff_length,  unsigned int fragment_flags,  */
+     /*                  const struct sockaddr *to, int to_length)          */
+     /*       socket_desc : returned by socket()                            */
+     /*       buffer : packet to send                                       */
+     /*       buff_length : self explanatory                                */
+     /*       fragment_flags : 0 - May Fragment, Last Fragment              */
+     /*                        1 - May Fragment, More Fragments             */
+     /*                        2 - Don't Fragment, Last Fragment            */
+     /*                        3 - Don't Fragment, More Fragments           */
+     /*                        =&gt;for more details see RFC 791 p.13          */
+     /*       sockaddr : address of destination socket (see sockaddr_in)    */
+     /*       to_length : socket address length                             */
+
+#include &lt;netinet/arpa.h&gt;
+     /* misc. definitions                                                   */
+
+
+/* Usefull Header */
+
+#include &lt;netdb.h&gt;
+     /* Defines structures and functions for hostname resolution            */
+     /* Not Included in this exemple                                        */
+     /*        =&gt; see source code for details                               */
+/* Basic Headers */
+
+#include &lt;stdio.h&gt;
+#include &lt;string.h&gt;
+
+
+2 - Coding the Understanding
+----------------------------
+
+/* Defining the UDP packet Structure */
+
+#define DATA            28
+
+struct udp_packet
+{
+        struct iphdr    ip;
+        struct udphdr   udp;
+        char data[DATA]="abcdefghijklmnopqrstuvwxyz01";
+};
+
+
+/* Checksum stuff */
+
+#define UDPHDRSIZE sizeof(struct udphdr)
+#define IPHDRSIZE sizeof(struct iphdr)
+
+unsigned short in_cksum(u_short *addr, int len) 
+{ 
+    register int nleft = len; 
+    register u_short *w = addr; 
+    register int sum = 0; 
+    u_short answer = 0;
+
+/* Our algorithm is simple, using a 32 bit accumulator (sum), we add
+ * sequential 16 bit words to it, and at the end, fold back all the
+ * carry bits from the top 16 bits into the lower 16 bits.
+ */
+ 
+    while (nleft &gt; 1) 
+    { 
+         sum += *w++; 
+         nleft -= 2; 
+    } 
+
+    /* mop up an odd byte, if necessary */ 
+    if (nleft == 1) 
+    { 
+         *(u_char *)(&answer) = *(u_char *)w ; 
+         sum += answer; 
+    } 
+
+    /* add back carry outs from top 16 bits to low 16 bits */ 
+    sum = (sum &gt;&gt; 16) + (sum & 0xffff);
+
+    /* add hi 16 to low 16 */ 
+    sum += (sum &gt;&gt; 16); 
+
+    /* add carry */ 
+    answer = ~sum; 
+
+    /* truncate to 16 bits */ 
+    return(answer);
+} 
+
+
+
+/* Main Sample Function */
+
+void main()
+{
+
+     /* Variables */
+     struct hostent *tmp;              /* Temporary Structure */
+                                       /* for Name Resolution */
+     int socket_d;                     /* Socket Descriptor */
+     struct  sockaddr_in to;           /* Internet Socket */
+     struct udp_packet packet;         /* Our Packet */
+     int packet_size=sizeof(struct udphdr)+sizeof(struct iphdr)+DATA;
+                                       /* Packet Overall Size */
+     u_long src_ip;                    /* Source IP Address (to be spoofed)*/
+     u_long dst_ip;                    /* Destination IP Address */
+
+     /* Should be transmitted via argv */
+     int src_prt=1024;
+     int dst_prt=25;
+     char *src_ip_txt="10.0.0.1";                 
+     char *dst_ip_txt="www.micro$oft.com";
+
+     /* Name Resolution */
+     tmp = gethostbyname(src_ip_txt);
+     memcpy(&src_ip, tmp-&gt;h_addr, tmp-&gt;h_length);
+
+     memset(tmp, 0, sizeof(struct hostent));   /* Clear */
+
+     tmp = gethostbyname(dst_ip_txt);
+     memcpy(&dst_ip, tmp-&gt;h_addr, tmp-&gt;h_length);
+
+     /* Opening the Socket */
+     if(!(socket_d=socket(AF_INET, SOCK_RAW, IPPROTO_RAW)))
+          return(-1);                  /* Couldn't open Socket */
+
+    /* Loading Packet Headers */
+    memset(&packet, 0, packet_size);   /* Clear */
+        
+    packet.ip.version = 4;
+    packet.ip.ihl = 5;
+    packet.ip.tot_len = htons(packet_size);
+    packet.ip.id = htons(0x455);
+    packet.ip.ttl = 255;
+    packet.ip.protocol = IP_UDP;
+    packet.ip.saddr = src_ip;
+    packet.ip.daddr = dst_ip;
+    packet.ip.frag_off = htons(0x0000);        /* last fragment */
+    /* for fragmented packets frag_off = htons(0x2000+0x0offset)*/ 
+                   where is the offset                          */
+    packet.ip.check = in_cksum((char *)&packet,IPHDRSIZE);
+
+    packet.udp.source = htons(src_prt);     
+    packet.udp.dest = htons(dst_prt);
+    packet.udp.len = htons(8 + DATA);
+        packet.udp.check = in_cksum((char *)&packet,IPHDRSIZE + UDPHDRSIZE 
+                                                                       + DATA);
+
+                                   
+    /* Filling Socket Address informations */
+    to.sin_family = AF_INET;
+    to.sin_port = htons(src_prt);
+    to.sin_addr.s_addr = dst_addr; 
+
+    /* Sending the Packet */
+    sendto(socket_d, &packet, packet_size, 0, (struct sockaddr *) &to,
+           sizeof(struct sockaddr));
+    /* Note the CAST operation between sockaddr */
+    /* and sockaddr_in data structures          */
+
+}
+
+1234567890123456789012345678901234567890123456789012345678901234567890123456789
+         1         2         3         4         5         6         7         
+
+</PRE>
+</BODY>
+</HTML>

