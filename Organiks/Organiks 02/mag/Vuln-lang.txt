@@ -1,0 +1,141 @@
+                 Vulnerabilité dans les langages de programmation
+                 ================================================
+                              By Lionel & prfalken
+                              ====================
+
+
+
+1)Intro
+-------
+
+Beaucoups de programmeur ne font pas attention a la securité de leur code en
+programmant des deamon, tools,... Cela est une grave faute, il existe les
+buffer overflows très connus, mais il y a aussi d'autre possibilités , comme
+nous allons le voir ci-dessous.
+
+2) Expliquation
+---------------
+
+Certaine fonction en C font appel à "/bin/sh" pour executer la
+commande appropriée a la fonction.
+Je vais prendre un exemple pour que vous compreniez bien le probleme.
+
+Prenons WHois.cgi, pkoi en faisant ";/bin/sh" on obtient un shell?
+C'est tres simple et tres "con", pour faire un whois le cgi utilise
+"/usr/sbin/whois ip-que-vous-avez-rentrez"
+Donc si on rentre ;/bin/sh a la place de l'ip:
+->[shell-whois]$/usr/sbin/whois ;bin/sh
+usage: fwhois user[@<whois.server>]
+bash$     
+Voila un jolie bash en 2seconde!!
+
+3)Fonctions Vulnerables
+-----------------------
+ En langage "c":
+ _______________
+
+system(string);
+Cette fonction execute une commande contenue dans string en appellant "/bin/sh
+-c".
+Exemple d'exploitation de cette fonction:
+
+/* Vulnerable1.c by Lionel -> cronos56@yahoo.com */
+#include <stdlib.h>
+#include <stdio.h>
+
+int main(int argc, char **argv)
+{
+    char ar1[256];
+
+    if (argc < 3) {
+        printf("OrganiKs Crew -> organiks@iname.com\n");
+        exit(0);
+    }
+
+    strcpy(ar1, "argv");
+    strcat(ar1,argv[1]);
+    strcat(ar1,argv[2]);
+    system(ar1);
+}
+/* EOF */
+
+[shell]$cc -o vulerable1 vulnerable1.c
+    /* important les "" car sinon ca vas etre pris comme une autre commande */
+[shell]$./vulnerable1 ls -l";/bin/sh;"
+sh: argvls-l: command not found
+bash$
+:o)
+
+
+system(3) étant une fonction de librairie, elle est faite grace à des appels
+systeme. En fait, deux appels système sont utilisés: fork(2) et execve(2).
+
+En gros (et tres approximatif), system(3) peut etre recréé comme ca:
+
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <string.h>
+#include <errno.h>
+
+extern char **environ;
+
+/* la man page de system(3) dit que system execute:
+    /bin/sh -c string   */
+int system(const char *string)
+{
+    pid_t child;
+    int child_ret;
+    char *exec_str = (char *)malloc(257);
+    char *argv[] = { "/bin/sh", "-c", exec_str, NULL };
+
+    child = fork();
+
+    if (child == -1) {      /* fork a foiré */
+        perror("system");
+        return -1;
+    }
+
+    if (child == 0) {
+        strncpy(exec_str, string, 256);
+        execve(argv[0], argv, environ);
+        exit(127);          /* execve a foiré */
+    }
+
+    if (child > 0)
+        wait(&child_ret);
+
+    free(exec_str);
+    return child_ret;
+}
+
+
+On voit qu'on peut mettre n'importe quoi dans string, et que ca sera
+exécuté sans distinction par le shell, donc BEWARE!
+
+Par contre, ici un buffer overflow n'est pas faisable, car exec_str est
+"protégé" d'un possible flood par string, en effet, au dela de 256 caracteres,
+string est tronquée (on a meme 1 octet en rab, pour le zéro terminal).
+
+
+Attention aussi a popen, qui exécute une commande et envoie le stdout du
+processsus ki l'a exécuté vers le stdin du nouveau processus.
+
+4)Conclusion
+------------
+
+Quand vous programmez reflechissez 30sec ca eviterais des tas de problemes.
+
+5)Greetz
+--------
+
+To: ANTILOVE(le raw je te salut bien bas),spoty , ank , tiffa, shado, klog,
+XSFX, Datahck, OrganiKs,[fred], Mayhem, rix, exile , chx , prfalken , togusa ,
+einstein , #toulouse, #r9,#rhino9,madchat(#madchat->undernet),Darkbug,#linux-fr(ircnet),#oracle(efnet),
+torcy&marcx dormoy&18eme (Ali k.,Xav,Olivier,Mathieux,Mémet,Arnauld,Camel,...),
+cantepeau(sophie,ced,youness,seb,la shente,bouboule,ouadgerie, ...), 
+toulouse(Gui.,florian,Lionel,JM,Dav,Vincent,Bruno,yohan,seb,cyril,
+damien,jenny&virginie,stef&julie...).......Et tous ce que j'oublie...
+

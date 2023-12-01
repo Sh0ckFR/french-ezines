@@ -1,0 +1,235 @@
+                                               _                   _          _ _               _            
+                                              (_)                 | |        | | |             | |          
+     ___ _   _ _ __   ___ _ __ ___  ___  _ __  _  ___ ___      ___| |__   ___| | | ___ ___   __| | ___  __
+    / __| | | | '_ \ / _ \ '__/ __|/ _ \| '_ \| |/ __/ __|    / __| '_ \ / _ \ | |/ __/ _ \ / _` |/ _ \/ __|
+    \__ \ |_| | |_) |  __/ |  \__ \ (_) | | | | | (__\__ \    \__ \ | | |  __/ | | (_| (_) | (_| |  __/\__ \
+    |___/\__,_| .__/ \___|_|  |___/\___/|_| |_|_|\___|___/    |___/_| |_|\___|_|_|\___\___/ \__,_|\___||___/
+              | |                                         
+              |_|                                         
+                                _       _           _   _             
+                               (_)     (_)         | | (_)            
+                                _ _ __  _  ___  ___| |_ _  ___  _ __  
+                               | | '_ \| |/ _ \/ __| __| |/ _ \| '_ \ 
+                               | | | | | |  __/ (__| |_| | (_) | | | |          #1
+                               |_|_| |_| |\___|\___|\__|_|\___/|_| |_|
+                                      _/ |                            
+                                     |__/                             
+
+
+    -- [ supersonics shellcodes injection part-1
+
+--------------------------
+SHELL CODE SUPERSONIQUE  /
+________________________/
+
+
+
+Jusqu'a Chuck Yeager, le mur du son etait la barriere ultime que la nature
+opposait aux reves de vitesse des hommes. Mais quel mur n'a pas pour destin
+de se faire perforer, que ce soit par un avion d'essai ou par un shellcode
+aerodynamique ?
+
+Dans ce papier, je prendrais l'exemple d'une attaque sur un serveur Web. Le
+port visé sur la cible sera le 80, systematiquement autorise par le firewall.
+Par contre pour le reste, le firewall est supposé très coriace. Les autres
+ports ouverts sont... yen a pas !
+
+Le shellcode a tout ce qu'il faut a l'intérieur pour ouvrir un shell sur un port
+donné. Le but de l'article n'est pas d'expliquer comment renvoyer un shell, mais
+comment BIEN le renvoyer.
+
+
+
+[ 1 ] ... Rudiments de dynamique des fluides
+
+ Aux premiers temps de la conquete de l'air, les ingenieurs se battaient
+ pour determiner si l'avenir appartenait au plus lourd que l'air ou au
+ plus leger que l'air. En terme de shellcoding, on trouve le shell et le
+ reverse shell. Bon, les explications sont moins balaises que la partie
+ "avionique" du manuel dde Flight simulator mais... accrochez vos ceintures !
+
+
+ shell : 1) le shellcode ouvre le port 1234 sur la cible.
+         2) l'attaquant peut alors etablir une connexion sur ce port
+            afin d'accéder au shell.
+
+            +-----+                       +-----+
+            |     [X] -----(1)----->   [80]     |
+            |  A  |                       |  C  |
+            |     [Y] -----(2)-----> [1234]     |
+            +-----+                       +-----+
+
+         Dans ce premier cas, il faut que le firewall laisse passer une
+         connexion sur un port entrant Y a destination d'un port 1234.
+
+         Et ca, c'est pas gagne ! Un firewall, son boulot, c'est pas d'avoir
+         des trous, sinon c'est une passoire. Donc cette connection Y -> 1234,
+         hum, c'est pas evident que ca passe.
+
+	Il faut deja tenter quelques numéros "probables" au lieu de 1234. Par
+        exemple Si le serveur a fait du HTTPS il y a un moment mais que cette
+        fonctionnalité a ete enlevee depuis, le firewall lui n'a peut-etre pas
+        ete reconfigure pour interdire le port 8080. Les ports des serveurs
+        classiques sont de bons candidats. Mais si rien n'y fait, il reste le
+        plan B...
+
+
+
+ reverse shell : 1) l'attaquant ouvre le port 1234 en ecoute et envoie
+            son shellcode.
+         2) Le shellcode force le serveur … venir s'y connecter
+            pour apporter le shell.
+
+            +-----+                        +-----+
+            |     [X]    -----(1)-----> [80]     |
+            |  A  |                        |  C  |
+            |     [1234] <----(2)------  [Y]     |
+            +-----+                        +-----+
+
+         Le plan B, c'est de faire initier la connexion par le serveur. Dans
+         ce cas, il y a plus de chances qu'un firewall laisse passer. Une telle
+         connexion a plus de chances de sembler "licite", surtout pour un firewall
+         qui ne sait pas gerer les protocoles de haut niveau et complexes comme
+         ftp...
+
+
+ Ca n'est pas pour le plaisir de couper les cheveux en quatre. L'objectif,
+ c'est bien de pouvoir se faufiler par les breches d'un firewall. Du bon choix
+ des ports source et destination pour le shell/reverse shell depend la reussite
+ de l'attaque.
+
+ Reprenons. L'idee de base est de trouver un couple de ports source/destination et
+ un sens de connexion afin que l'attaquant et la cible puissent communiquer :
+ rendre l'etablissement de la fleche 2 possible.
+
+ Mais cette petite logique neglige tout bonnement la fleche 1. Lors de l'envoi du
+ shellcode, l'attaquant EST DEJA connecte a la cible. Et ce socket n'est pas referme
+ tout seul. Si un socket se refermait tout seul, ca se saurait ! Et mes premiers
+ programmes n'auraient pas eu ces fuites de ressources que j'ai traque maintes nuits !
+
+ La troisiemme technique est la : comme le mascaret remonte la seine pour bouffer les
+ curieux qui se regroupent sur les berges, le shell mascaret remonte a contre-courant
+ la connexion qui a servi a deposer le shellcode dans la cible.
+
+
+
+ shell mascaret : 1) l'attaquant envoie le shellcode a la cible.
+         2) Le shellcode retrouve le socket que le processus actif
+            a utilise pour le recevoir, et le recycle pour envoyer
+            le shell.
+
+            +-----+                        +-----+
+            |     |                        |     |
+            |  A  [X] <-----(1/2)-----> [80]  C  |
+            |     |                        |     |
+            +-----+                        +-----+
+
+[ 2 ] ... Le supersonique, ou l'art du recyclage
+
+ La tache consiste maintenant a identifier le socket deja etabli reliant
+ l'ordinateur de l'attaquant a la cible. Pour l'enumeration de tous les
+ ports actuellement en service sur un systeme on dispose de quantite d'apis :
+   Native : NtQuerySystemInormation 16 / NtQueryObject/ NtDeviceIoControlFile
+   Ip Helper : GetExtendedTcpTable / GetExtendedUdpTable
+
+ Pour chacun on arrive facilement a savoir a quel processus il appartient.
+ Mais pour savoir quel socket du serveur web correspond au port voulu, c'est
+ loin d'etre automatique. Donc plutot que recuperer la liste de tous les
+ ports ouverts, voire de tous les handles du systeme, puis de trier apres
+ pour n'avoir que ce qui concerne le processus actif, puis de trier pour
+ trouver enfin le bon socket, il serait pas mal de contourner ce sac de noeuds
+ et aller droit au but.
+
+ Petit rappel sur le socket. Le socket est un handle correspondant a un objet
+ alloue dans le noyau. Le numero du socket est donc, comme tout handle, defini
+ pour son seul processus. C'est un  pointeur sur une case d'un tableau, propre
+ au processus, contenant l'adresse effective de l'objet en memoire dans l'espace
+ d'adressage du noyau. Deux process peuvent avoir un socket numero 23, mais le
+ tableau etant propre au process, 23 represente pas le meme objet en memoire et
+ donc pas le meme canal de communication, pour en revenir a ce qui nous interesse.
+
+                  
+ Pour un socket donne, la fonction getpeername va s'averer tres utile. A partir
+ d'un numero de socket, cette sympathique fonction remplit un buffer avec un
+ sockaddr contenant l'identite du correspondant.
+
+ int getpeername(
+   SOCKET s,
+   struct sockaddr* name,
+   int* namelen
+ );
+
+ Petit rappel sur le sockaddr :
+ struct sockaddr_in {
+        short   sin_family;
+        u_short sin_port;
+        struct  in_addr sin_addr;
+        char    sin_zero[8];
+ };
+
+ Et au passage sur la structure alambiquee du in_addr :
+ typedef struct in_addr {
+  union {
+    struct {
+      u_char s_b1,s_b2,s_b3,s_b4;
+    } S_un_b;
+    struct {
+      u_short s_w1,s_w2;
+    } S_un_w;
+    u_long S_addr;
+  } S_un;
+ } in_addr;
+
+ Au moment d'envoyer le shellcode, on connait notre identite : notre adresse IP et
+ le port sortant. On peut donc fournir ces deux informations a notre shellcode sans
+ aucun probleme.
+
+ Le shellcode peut alors tester si, pour un socket :
+     1) le socket est valide
+     2) le correspondant est bien identifie par le couple notre_ip, notre_port
+
+ Et si on peut faire ca pour un socket, on peut tres bien le faire en masse. Car 
+ apres tout, pourquoi s'emm***er a chercher une liste des sockets valides pour
+ le processus ? Autant essayer tous les nombres de 1 a MAX_SHORT. Brutal certes,
+ mais o combien efficace !
+
+
+
+
+[ 3 ] ... Petit code a haute concentration d'octane
+
+ La methode est archi simple. Tellement simple et utile qu'elle ne meritait pas
+ de rester enfouie au fin fond d'un obscur document angliche. Je rigole, mais le 
+ document "Assembly Components" du goupe LSD, avec le petit code source qui va
+ avec est un incontournable must.
+
+ L'implementation est quasiment aussi simple que ca :
+
+ for (i = 0; i < 32767; i++)
+   if ( getpeername(i,&buffer,sizeof(sockaddr)) != SOCKET_ERROR )
+     if (buffer.sin_addr.S_un.S_addr == notre_ip && buffer.sin_port == notre_port)
+        break;
+
+ Et a la sortie, i contient le socket tant convoite. On possede maintenant et
+ A COUP SUR un canal de communication entre l'attaquant et la cible. A coup sur
+ car c'est le shellcode lui-meme qui a ouvert la voie.
+
+ * BANG *
+
+ Le mur de feu, lorsqu'il est perce, a le merite de ne pas se trahir avec un bruit
+ de tonnerre. Petit detail reconfortant, je trouve.
+
+ Schematiquement, il ne manque plus qu'un petit do_exec(i) et le tour est joue.
+
+
+
+ Tout ca pour dire qu'en matiere de programmaion systeme, la solution existe en 
+ general depuis des annees. La solution a quoi ? Ben a quasiment tout. Et pourtant,
+ la meilleure facon d'apprendre reste encore de se casser les dents et de redecouvrir
+ plutot que d'aller la chercher, toute chaude et prete.
+
+ C'est vraiment trop injuste. Apprendre est deja donne a peu de monde, alors innover
+ j'en parle meme pas !
+
+ 
+    -- [ Tolwin

@@ -1,0 +1,213 @@
+          _____                     _ _____ _                            
+         /  ___|                   | /  ___| |                           
+         \ `--. _ __   ___  ___  __| \ `--.| |_ _ __ ___  __ _ _ __ ___  
+          `--. \ '_ \ / _ \/ _ \/ _` |`--. \ __| '__/ _ \/ _` | '_ ` _ \ 
+         /\__/ / |_) |  __/  __/ (_| /\__/ / |_| | |  __/ (_| | | | | | |
+         \____/| .__/ \___|\___|\__,_\____/ \__|_|  \___|\__,_|_| |_| |_|
+               | |                                                       
+               |_|                                                       
+                        _                               
+                       | |                              
+                       | |__  _   _ _ __   __ _ ___ ___ 
+                       | '_ \| | | | '_ \ / _` / __/ __| 
+                       | |_) | |_| | |_) | (_| \__ \__ \        #2
+                       |_.__/ \__, | .__/ \__,_|___/___/
+                               __/ | |                  
+                              |___/|_|  
+ 
+
+    -- [ SpeedStream bypass part 2
+
+
+Encore une fois je revient a l'attaque sur le speedstream 5200 et leur
+équipe de merde. Après une vulnérabilité qui dump la config , ainsi que
+les passwords en clair, j'ai trouver un autre moyen de bypasser leur
+protection de merde pour la configuration. Bon ici ce ne sera pas de
+pouvoir acceder au ftp ni au login et au pass mais de completement
+désactiver la sécurité sur le modem. Je donnerai ici toutes les maniere
+possible de configurer le modem/router sans etre forcer de se logger en
+administrateur.
+
+Pour les incultes qui ne savent pas encore unlocker leur modem (soit
+dit en passant, apres ma technique ont n'en aura plus rien a foutre) il
+y a ici une belle page sur un forum qui explique exactement comment faire
+cela en 2 petites étapes:
+http://www2.dslreports.com/forum/remark,11490618~mode=flat
+
+Vous pouvez l'essayer mais cela est falcultatif. Toutes les techniques
+seront présentée histoire de se faire une tite dmz quand ont est dans une
+compagnie ou encore du port fowarding ou de completement désactiver le
+firewall interne (si activé). 
+Pour expliquer un peu la situation:
+Le modem quand l'unlock est activé nous permet de voir des pages html pour
+le configurer, ces pages html ne sont accessibles seulement si notre
+addresse ip est validé par le modem. Je vous voit venir avec votre spoofing
+lol mais non n'essayer pas j'ai déja essayer et cela ne donne absolument rien.
+Continuont, les pages html contienne des bouton pour valider les choix que
+nous avont fait dans l'interface donnée a chaque page. Mais ou vont se logger
+ces configurations, dans des scripts cgi. AHHHHHHHHH vous me voyez venir la
+^^'. La restriction est seulement basé sur l'ip mais que pour les pages html,
+et non pour la validation des scripts cgi. Mon dieu qu'il sont con !!!
+ok pour vous le démontrer je vais vous fournir un exemple bien concret avec
+l'explication qui suit.
+
+Maintenant que vous savez vous mettre en admin sur votre modem vous savez
+que cette page existe, http://xxx.xxx.xxx.xxx/adscfg.htm qui représente
+"Attack Detection System Configuration". Quand vous y acceder en admin (avec
+la bonne ip) vous avez des ti checkbox pour enabler les options de votre
+choix, et aussi pour les disabler ^^'. Imaginont que vous travailler dans une
+entreprise et que vous voulez completement killer ce firewall mais que vous
+ne posseder pas les droit d'acceder a la page web demandée. Il vous suffit
+de valider vos variable dans la page cgi y correspondant. Pour notre exemple
+la page est ici: http://xxx.xxx.xxx.xxx/adscfg.cgi nous avont bien regarder
+la source et nous avont récupérer la variable adsMonNone et sa valeur "t"
+qui soit dit en passant veut dire: Enable Attack Detection System = true
+nous ont veut carrement le dissabler, rien de plus facile tapper cette requete:
+http://xxx.xxx.xxx.xxx/adscfg.cgi?adsMonNone=f le f étant pour false.
+vous recevrez un message disant a peu pres ceci: Form Input - Accepted 
+Attack Detection System configuration saved
+et vous pourez scanner avec nmap avec la méthode que vous voulez, c'est pas
+beau ca. Voila pour la désactivation de la sécurité totale du modem.
+
+Je vous ai fait une table avec toute les variables pour la configuration du
+firewall ci-dessous.
+
+
+ -----------------------------------------------------------------------------------------
+|     Pages     |   Variables   |        Définitions        |     Valeurs des variables   |
+ -----------------------------------------------------------------------------------------
+|  adscfg.cgi   |  adsMonNone   | Active ou désactive le FW |  t (activé) f (désactivé)   |
+|                -------------------------------------------------------------------------
+|               |    AllMon     | Active ou désactive toute |  t (activé) f (désactivé)   |
+|               |               |     les options du FW     |                             |
+|                -------------------------------------------------------------------------
+|               |               |  Active ou désactive le   |                             |
+|               |    AllLog     |  logging pour toute des   |  t (activé) f (désactivé)   |
+|               |               |    activité de Hacking    |                             |
+|                -------------------------------------------------------------------------
+|               |               |  Option du firewall pour  |                             |
+|               |  monSameAddr  |      Same Source and      |  t (activé) f (désactivé)   |
+|               |               |    Destination Address    |                             |
+|                -------------------------------------------------------------------------
+|               |               |  Option du firewall pour  |                             |
+|               |  logSameAddr  | le logging de Same Source |  t (activé) f (désactivé)   |
+|               |               |  and Destination Address  |                             |
+|                -------------------------------------------------------------------------
+|               |  monSrcBcast  |  Option du firewall pour  |  t (activé) f (désactivé)   |
+|               |               |  Broadcast Source Address |                             |
+|                -------------------------------------------------------------------------
+|               |               |  Option du firewall pour  |                             |
+|               |  logSrcBcast  |  le logging de Broadcast  |  t (activé) f (désactivé)   |
+|               |               |      Source Address       |                             |
+|                -------------------------------------------------------------------------
+|               | monBadSrcAddr |  Option du firewall pour  |  t (activé) f (désactivé)   |
+|               |               | LAN Source Address On WAN |                             |
+|                -------------------------------------------------------------------------
+|               |               |  Option du firewall pour  |                             |
+|               | logBadSrcAddr |       le logging de       |  t (activé) f (désactivé)   |
+|               |               | LAN Source Address On WAN |                             |
+|                -------------------------------------------------------------------------
+|               | monInvalidFrag|  Option du firewall pour  |  t (activé) f (désactivé)   |
+|               |               | Invalid IP Packet Fragment|                             |
+|                -------------------------------------------------------------------------
+|               |               |  Option du firewall pour  |                             |
+|               | logInvalidFrag|       le logging de       |  t (activé) f (désactivé)   |
+|               |               | Invalid IP Packet Fragment|                             |
+|                -------------------------------------------------------------------------
+|               |   monTcpNull  |  Option du firewall pour  |  t (activé) f (désactivé)   |
+|               |               |          TCP NULL         |                             |
+|                -------------------------------------------------------------------------
+|               |   logTcpNull  |  Option du firewall pour  |  t (activé) f (désactivé)   |
+|               |               |   le logging de TCP NULL  |                             |
+|                -------------------------------------------------------------------------
+|               |   monTcpFin   |  Option du firewall pour  |  t (activé) f (désactivé)   |
+|               |               |          TCP FIN          |                             |
+|                -------------------------------------------------------------------------
+|               |   logTcpFin   |  Option du firewall pour  |  t (activé) f (désactivé)   |
+|               |               |   le logging de TCP FIN   |                             |
+|                -------------------------------------------------------------------------
+|               |  monTcpXmas   |  Option du firewall pour  |  t (activé) f (désactivé)   |
+|               |               |         TCP Xmas          |                             |
+|                -------------------------------------------------------------------------
+|               |  logTcpXmas   |  Option du firewall pour  |  t (activé) f (désactivé)   |
+|               |               |   le logging de TCP Xmas  |                             |
+|                -------------------------------------------------------------------------
+|               | monTcpFragPkt |  Option du firewall pour  |  t (activé) f (désactivé)   |
+|               |               |   Fragmented TCP Packet   |                             |
+|                -------------------------------------------------------------------------
+|               |               |  Option du firewall pour  |                             |
+|               | logTcpFragPkt |       le logging de       |  t (activé) f (désactivé)   |
+|               |               |   Fragmented TCP Packet   |                             |
+|                -------------------------------------------------------------------------
+|               | monTcpFragHdr |  Option du firewall pour  |  t (activé) f (désactivé)   |
+|               |               |   Fragmented TCP Header   |                             |
+|                -------------------------------------------------------------------------
+|               |               |  Option du firewall pour  |                             |
+|               | logTcpFragHdr |       le logging de       |  t (activé) f (désactivé)   |
+|               |               |   Fragmented TCP Header   |                             |
+|                -------------------------------------------------------------------------
+|               | monUdpFragHdr |  Option du firewall pour  |  t (activé) f (désactivé)   |
+|               |               |   Fragmented UDP Header   |                             |
+|                -------------------------------------------------------------------------
+|               |               |  Option du firewall pour  |                             |
+|               | logUdpFragHdr |       le logging de       |  t (activé) f (désactivé)   |
+|               |               |   Fragmented UDP Header   |                             |
+|                -------------------------------------------------------------------------
+|               | monIcmpFragHdr|  Option du firewall pour  |  t (activé) f (désactivé)   |
+|               |               |   Fragmented ICMP Header  |                             |
+|                -------------------------------------------------------------------------
+|               |               |  Option du firewall pour  |                             |
+|               | logIcmpFragHdr|       le logging de       |  t (activé) f (désactivé)   |
+|               |               |   Fragmented ICMP Header  |                             |
+|                -------------------------------------------------------------------------
+|               |               |  Option du firewall pour  |                             |
+|               |  monUdpBomb   |    Inconsistent UDP/IP    |  t (activé) f (désactivé)   |
+|               |               |      header lengths       |                             |
+|                -------------------------------------------------------------------------
+|               |               |  Option du firewall pour  |                             |
+|               |  logUdpBomb   |       le logging de       |  t (activé) f (désactivé)   |
+|               |               |    Inconsistent UDP/IP    |                             |
+|               |               |      header lengths       |                             |
+|                -------------------------------------------------------------------------
+|               |               |  Option du firewall pour  |                             |
+|               |  monIpZeroLen |      Inconsistent IP      |  t (activé) f (désactivé)   |
+|               |               |      header lengths       |                             |
+|                -------------------------------------------------------------------------
+|               |               |  Option du firewall pour  |                             |
+|               |  logIpZeroLen |       le logging de       |  t (activé) f (désactivé)   |
+|               |               |      Inconsistent IP      |                             |
+|               |               |      header lengths       |                             |
+ -----------------------------------------------------------------------------------------
+|  FwLevel.cgi  |               |                           |          0 (off)            |
+|               |               |                           |          1 (Low)            |
+|               |   fwNewLevel  |  Niveau de configuration  |         2 (Medium)          |
+|               |               |        du firewall        |          3 (High)           |
+|               |               |                           |    4 (ICSA 3.0a Compliant   |
+|               |               |                           |         5 (Custom)          |
+ -----------------------------------------------------------------------------------------
+|  FwSnooze.cgi |    fwSnooze   |     Snooze interval       |        0 (Disable)          |
+|                -------------------------------------------------------------------------
+|               |   fwSnooze &  |   Snooze interval & set   |        1 (enable) &         |
+|               |fwSetSnoozeTime|  the Snooze time interval |    <input text (minutes>    |
+|                -------------------------------------------------------------------------
+|               |   fwSnooze &    | Snooze interval & reset |        2 (reset) &          |
+|               |fwResetSnoozeTime| the Snooze time interval|    <input text (minutes>    |
+ -----------------------------------------------------------------------------------------
+
+
+mot de la fin:
+J'espere que vous avez aprécier cet article et que vous enculez encore plus
+bell et leur imbécilitée :) 
+
+P.S. Il existe biensur d'autre form cgi permettant de configurer bien d'autre
+     options débiles mais cela ne sera pas aborder dans cet article. Trouver les
+     (ca peut prendre du temps ^^') Certaines configuration peuvent être bonne
+     quand l'administrateur a mis des filtres sur les ip pour que son réseau soit
+     construit comme bon lui semble. Ou encore quand vous attaquer de l'extérieur
+     du réseau et que voulez mettre une addresse statique (no-ip, dyndns, etc)
+     Innovez et aillez de la patience. Mais c'est a tester absolument.
+
+Article écrit par Night_Fall pour n0name
+Greetz to all n0name crew, que je considère comme mes freres tous autant qu'ils soit :)
+
+    -- [ night_fall

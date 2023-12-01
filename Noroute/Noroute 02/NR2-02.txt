@@ -1,0 +1,479 @@
+
+                     sS$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$Ss
+                    sS$$    Networking with Unix.    $$Ss
+                    SS$  par hOtCodE <phe@mygale.org  $SS
+                     SS$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$SS
+
+
+                               -=$( iNTRo )$=-
+
+ La prog reseau sous Unix n'a rien de complique contrairement a ce que l'on
+pourrait croire... Il suffit de piger les concepts de base (un cerveau normal
+suffira) des sockets pour etre operationnel...
+ Dans la suite de ce doc, on va voir comment creer une socket, l'ouvrir,
+envoyer et recevoir des donnees avec les fonctions standard, et enfin la
+fermer (huh). Nous conclurons sans doute par un petit exemple qui regroupera
+tout ce qu'on a vu, si j'ai le temps de l'ecrire... :)
+
+                              -=$( LooK Up )$=-
+
+ Comme vous le savez (j'espere, sinon, vous pouvez direct arreter la lecture),
+un reseau possede un nom... Qui correspond a une IP... Qui est en fait la
+representation `dot quad' d'un nombre codé sur 32 bits: chaque nombre qui
+compose l'IP -- 4 au total -- est compris entre 0 et 255, ce qui signifie
+qu'il n'a que 8 bits (2^8 = 256, et en informatique, on commence a 0). Et
+devinez quoi, 4*8=32 ! Alors quand vous voyez une IP, ne gueulez pas en
+disant que c'est lourd a retenir, y'a pire: un nombre qui va jusqu'a 4
+milliards et des poussieres !
+
+ Et c'est justement de ce nombre qu'a besoin notre socket pour s'ouvrir...
+Il faut donc faire un `lookup' sur un nom ou une IP donnee pour pouvoir le
+rendre exploitable. Les librairies standard nous fournissent ce qu'il faut,
+mais il est plus simple d'utiliser la fonction que je vais vous fournir, et
+qui encapsule le tout:
+
+ /*
+  Dirty hostname resolver.
+ */
+
+ #include <arpa/inet.h>
+ #include <netdb.h>
+ #include <sys/types.h>
+ #include <sys/socket.h>
+ #include <netinet/in.h>
+
+ struct in_addr resolve (char *name)
+ {
+  static struct in_addr in;
+  unsigned long l;
+  struct hostent *ent;
+
+  if ((l = inet_addr(name)) != INADDR_NONE)
+  {
+   in.s_addr = l;
+   return in;
+  }
+  if (!(ent = gethostbyname(name)))
+  {
+   in.s_addr = INADDR_NONE;
+   return in;
+  }
+  return *(struct in_addr *)ent->h_addr;
+ }
+
+
+ Ce que renvoie cette fonction est le champ sin_addr de la structure
+sockaddr_in (houla! faudrait que je sois plus clair j'ai l'impression... Vous
+comprendrez mieux avec l'exemple a la fin). Si sin_addr.s_addr == INADDR_NONE,
+c'est que le lookup est foireux.
+
+                     -=$( OuVERtUre d'UnE ConNexIon )$=-
+
+ Ok, voila notre nom d'hote resolu... Voila maintenant en gros les etapes
+necessaires pour ouvrir une connexion:
+
+   1.  Definir les structures
+   2.  Ouvrir un(e) socket (le feminin/masculin est au choix)
+   2b. Definir les options de notre socket (facultatif)
+   3.  Remplir les structures
+   4.  Appeler connect()
+
+* 1 ** Definir les structures
+
+ Pour la definition des structures, integrez ce qui va suivre au debut de
+votre fonction:
+
+  struct sockaddr_in addr;
+  int soc;
+
+ Simple...
+
+* 2 ** Ouvrir un socket
+
+ Maintenant, il faut ouvrir un socket (allez, je penche pour le masculin,
+meme si litteralement, socket veut dire chaussette et que chaussette est
+feminin... Pas de polemique). La fonction a utiliser est tout bonnement
+socket().
+
+  #include <sys/types.h>
+  #include <sys/socket.h>
+
+  int socket(int domain, int type, int protocol);
+
+ Pour `domain', il faut donner un type d'adresse. Les types sont definis dans
+`sys/types.h' et sont les suivants:
+
+  AF_UNIX     (Unix internal protocols)
+  AF_INET     (ARPA Internet protocols)
+  AF_ISO      (ISO protocols)
+  AF_NS       (Xerox Network Systems protocols)
+  AF_IMPLINK  (IMP "host at IMP" link layer)
+
+ Nous ne sommes concernes que par AF_INET dans notre cas.
+ Les types de connexions maintenant:
+
+  SOCK_STREAM
+  SOCK_DGRAM
+  SOCK_RAW
+  SOCK_SEQPACKET
+  SOCK_RDM
+
+ Le type SOCK_STREAM est le type le plus generalement utilise. Il est continu,
+bidirectionnel et fonctionne sur le model standard des flux d'octets. Il
+garantit que les donnees arriveront dans l'ordre dans envoye.
+
+ SOCK_DGRAM permet d'ouvrir une connexion de type datagramme. Il n'y a aucune
+garantie que l'ordre d'envoi soit le meme que l'ordre d'arrivee, ni meme qu'il
+y ait d'arrivee ! Ca a l'air stupide, mais ca peut etre utile...
+
+ Une connexion utilisant SOCK_RAW doit etre lancee par le root, car elle
+permet au programmeur d'acceder directement aux protocoles et interfaces
+internes du reseau. C'est tres utile dans le cas de connexions spoofees
+(indispensable meme).
+
+ SOCK_SEQPACKET m'est un peu inconnu, il faut l'avouer... Il est implemente
+lorsque domain prend AF_NS...
+
+ SOCK_RDM est prevu mais pas encore implemente d'apres ce que je sais.
+
+ Pour le protocole, les definitions se trouvent dans /etc/protocols. Voici
+ce que j'ai pour ma part.
+
+  ip     0   IP    # internet protocol, pseudo protocol number
+  icmp   1   ICMP  # internet control message protocol
+  igmp   2   IGMP  # internet group multicast protocol
+  ggp    3   GGP   # gateway-gateway protocol
+  tcp    6   TCP   # transmission control protocol
+  pup    12  PUP   # PARC universal packet protocol
+  udp    17  UDP   # user datagram protocol
+  idp    22  IDP   # WhatsThis?
+  raw    255 RAW   # RAW IP interface
+
+ Chaque protole est cense correspondre a un type de domain et de connexion.
+Pour les connexions standard (AF_INET, SOCK_STREAM), le plus simple est d'
+utiliser 0. Certains cas peuvent cependant necessiter d'autres valeurs, comme
+les connexions RAW.
+
+ Voila pour les parametres. Maintenant, il faut verifier que l'ouverture s'est
+deroule correctement, a l'aide d'un test stupide qui est de verifier que
+la valeur renvoyee par socket n'est pas inferieure a 0, auquel cas il y a
+eu une erreur.
+
+* 2b ** Definir les options du socket
+
+ Les options du socket se definissent a l'aide de la fonction setsockopt()
+dont voila le prototype:
+
+  #include <sys/types.h>
+  #include <sys/socket.h>
+
+  int setsockopt(int s, int level, int optname, void *optval, int *optlen);
+
+ Cette etape n'est pas indispensable, et il serait preferable de voir la
+page de manuel dediee (setsockopt(2)) pour plus d'informations a ce sujet.
+
+* 3 ** Remplissage des structures
+
+ On a donc cree notre socket, mais si reflechissez un peu, vous voyez qu'a
+aucun moment on ne lui a dit sur quoi on travaillerait (hote) ! Car le socket
+n'est pas specifique au networking mais peut aussi etre utilise pour la
+communication entre les processus. C'est la fonction connect() qui va gerer
+ca. On lui donnera un pointeur vers une structure que l'on aura prealablement
+remplie (addr que l'on a defini au debut). 
+
+ struct sockaddr_in
+ {
+  short           sin_family;
+  u_short         sin_port;
+  struct in_addr  sin_addr;
+ }
+
+ Pour remplir sin_family, on donne la meme valeur que l'on a passe a socket()
+pour `domain'. Ainsi, pour une connexion ouverte vers le Net, on passera
+AF_INET dans les deux cas.
+
+ ** A Propos Du Little-Endian Et Du Big-Endian **
+ Le port est plus complexe a remplir, quoique... Les machines, en fonction de
+leur processeur et surtout de leur architecture, rangent les nombres entiers
+dans la memoire avec la partie `haute' et la partie `basse' du nombre a une
+zone definie. La ou les machines a base de processeurs a architecture i80x86,
+VAX ou DEC placent les octets de poids faible dans la partie basse du nombre
+(modele dit `little-endian'), les machines a base de processeurs Motorola
+680x0 et Sun SPARC procedent differement (`big-endian'). Les programmeurs en
+assembleur comprendront sans trop de mal...
+
+ Et le numero de port TCP (celui ou l'on souhaite etablir la connexion) n'
+echappe pas a cette regle. Ainsi, a partir de BSD 4.3, on voit l'apparition
+en standard de fonctions qui gerent tout ca... (elles sont dependantes de la
+becane, vous n'avez donc a vous soucier de rien).
+
+  #include <netinet/in.h>
+
+  unsigned long int htonl(unsigned long int hostlong);
+  unsigned short int htons(unsigned short int hostshort);
+  unsigned long int ntohl(unsigned long int netlong);
+  unsigned short int ntohs(unsigned short int netshort);
+
+ Le `n' est l'abbreviation de Network et `h' est la pour Host. Ainsi, htons()
+convertit un nombre de 16 bits (hostshort) a partir du modele utilise sur l'
+hote au modele 16 bits utilise sur le reseau.
+
+ En bref, si vous ne voulez pas vous remplir le crane avec tout ca, dites-vous
+que le numero de port se definit avec:
+
+  addr.sin_port = htons(port);
+
+ Enfin, on definira l'adresse de l'hote en utilisant la fonction resolve()
+que j'ai donne au debut du chapitre... Ce qui nous donne:
+
+  addr.sin_addr = resolve(host);
+
+ Voila notre structure remplie. Bien que j'ai ecrit un certain nombre de
+lignes pour tout expliquer, 3 suffisent pour l'initialisation globale :).
+
+* 4 ** Appel de connect()
+
+ On a fait le plus difficile, et bien que l'on entame deja la 233e ligne,
+la connexion n'est pas encore lancee. Nous devons pour cela utiliser la
+fonction connect(), dont voici le prototype et le fichier a inclure:
+
+  #include <sys/types.h>
+  #include <sys/socket.h>
+
+  int connect(int sockfd, struct sockaddr *serv_addr, int addrlen);
+
+ Pour `sockfd', on passe le socket que l'on a deja initialise (soc dans notre
+cas). Pour `serv_addr', c'est tout simplement un pointeur vers addr, avec un
+cast pour faire plus propre (cf. exemple a la fin). Pour addrlen, c'est un
+sizeof(addr) qui fera l'affaire.
+
+ Si connec() renvoie un nombre strictement negatif, c'est que la connexion a
+echoue. Si toutes les etapes ont bien ete controlees (reussite de la creation
+du socket et du lookup), on en deduit que le port est `unreachable', c'est-a-
+dire injoignable.
+
+                     -=$( EnvOi Et ReCePTiOn dE DoNneEs )$=-
+
+ L'envoi et la reception de donnees se fait a l'aide des fonctions send() et
+recv(), ou encore sendto() et recvfrom() (huh)... Les deux premieres envoient
+et recoivent des donnees a l'aide du socket que nous avons cree. Les deux
+autres sont sélectives, et n'envoient/recoivent qu'allant/venant a un
+socket que l'on connait deja...
+
+ Place aux prototypes:
+
+  #include <sys/socket.h>
+
+  int recv(int s, void *buf, int len, unsigned int flags);
+  int send(int s, const void *msg, int len, unsigned int flags);
+
+  int recvfrom(int s, void *buf, int len, unsigned int flags, struct sockaddr
+   *from, int *fromlen);
+  int sendto(int s, const void *msg, int len, unsigned int flags, const
+   struct sockaddr *to, int tolen);
+
+ Les valeurs renvoyees sont le nombre d'octets envoyes/recus, ou -1 si une
+erreur est apparue.
+
+ Je pense qu'il n'y a rien a rajouter, excepté que `len' est la longueur de
+la chaine que l'on envoie, et que l'on obtient par sizeof(buf)... Ah si, les
+flags aussi, j'allais oublier...
+
+ MSG_DONTROUTE, si specifie lors d'un appel a send(), desactive le routage
+des donnees. N'est en general utilise que par les proggies de diagnostic et
+de routage.
+
+ MSG_OOB. Avec send(), fait passer les donnees envoyees en `out-of-band',
+et les fait passer par dessus toutes les donnees envoyees et non recues
+(point obscur ? on peut par exemple les utiliser pour la gestion des
+caracteres d'interruption dans une session de telnet ou dans le genre). Avec
+recv(), toutes les donnees en fin de bande seront retournees a la place des
+donnees classiques.
+
+                       -=$( FeRmeTurE d'uNe CoNnExIon )$=-
+
+ La fermeture des connexions est vraiment trop bete, et je me demande bien
+pourquoi je vous en parle... Il suffit de fermer le socket comme si c'etait
+un descripteur de fichier (s'en est un d'ailleurs !) avec
+
+  #include <unistd.h>
+
+  int close(int fd);
+
+ Ou l'on passera `soc' comme file descriptor.
+
+
+                            -=$( l'ExEmplE BonUs )$=-
+
+ L'exemple que je daigne vous fournir pour que vous compreniez bien comment
+fonctionne la prog reseau sous Unix est un scanner de ports. Je l'ai
+developpe dans le cadre de H.AT, un outil de securite que developpe PhE!
+(The Philament Empire) en ce moment. Si vous souhaitez obtenir plus d'
+informations et meme les releases en cours, passez faire un tour sur
+http://www.mygale.org/00/phe (hop! un ptit coup de pub :)
+ Je n'utilise pas ici les fonctions recv() et send() que nous avons etudiees,
+car elles ne nous sont d'aucun interet.
+ A ceux qui vont me reprocher de faire une connexion `complete' pour voir si
+un port est ouvert, je leur repond que le SYN scanning n'est pas l'objet de
+cet article, et que la connexion a une seule etape (cf. Phrack no. 49,
+fichier 15) n'est pas si efficace que ca et chiante a mettre en oeuvre...
+
+---------------8--> Snip! Cut me! --------------------8-->--------------------
+/*
+ TCP Scanner (based on H.AT TCP Scanner).
+ (c) 1997 The Philament Empire (http://www.mygale.org/00/phe).
+ Coded by HoTCoDe <phe@mygale.org>.
+*/
+
+/** these are ANSI-C compliant I think */
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+
+/*
+   Resolves an hostname.
+*/
+struct in_addr resolve (char *name)
+{
+   static struct in_addr in;
+   unsigned long l;
+   struct hostent *ent;
+   
+   if ((l = inet_addr(name)) != INADDR_NONE)
+   {
+      in.s_addr = l;
+      return in;
+   }
+   if (!(ent = gethostbyname(name)))
+   {
+      in.s_addr = INADDR_NONE;
+      return in;
+   }
+   return *(struct in_addr *)ent->h_addr;
+}
+
+/*
+ main() entry point, everything's here!
+*/
+void main(int argc, char **argv)
+{
+ /** definition of our variables */
+ struct sockaddr_in addr;
+ int soc, rc, addr_len;
+ unsigned long port, endp = 65334;
+ char *victim;
+ 
+ /** enough parameters in command line ? */
+ if (argc < 2)
+ {
+  fprintf(stderr,
+   "Not enough parameters.\n"\
+   "Syntax is %s <host> [endport]\n", argv[0]);
+  exit(1);
+ }
+
+ /** ok, get victim */
+ victim = argv[1];
+
+ /** cool, more than two args ! probably endport */
+ if (argc > 2)
+ {
+  endp = atol(argv[2]);
+  /** is it *really* an integer ? */
+  if (endp == 0 && strncmp(argv[2], "0", 2))
+  {
+   fprintf(stderr, "endport should be an integer\n");
+   exit(1);
+  }
+ }
+
+ /** what we'll do */
+ printf("** Scanning tcp ports (1 through %ld) on port %s...\n\n", endp, victim);
+
+ /** resolve of adress */
+ addr.sin_addr = resolve(victim);
+ if (addr.sin_addr.s_addr == INADDR_NONE)
+ {
+  fprintf(stderr, "Host [%s] not found\n", victim);
+  exit(1);
+ }
+
+ /** type of adress */
+ addr.sin_family = AF_INET;
+
+ /** cache of sizeof(addr) */
+ addr_len = sizeof(addr);
+
+ /** brutal scan... linear :( */
+ for (port = 1; port <= endp; port++)
+ {
+  /** socket initialization */
+  soc = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+  /** host to network byte order conversion */
+  addr.sin_port = htons(port);
+
+  /** connect and close */
+  rc = connect(soc, (struct sockaddr*) &addr, addr_len);
+  close(soc);
+
+  /** if connect() gave us rc < 0, port is closed... next one please ! */
+  if (rc < 0)
+   continue;
+
+  /** return the port we'd found */
+  printf("port %s:[%5ld/tcp] opened\n", victim, port);
+ }
+ 
+ /** all done */
+ printf("\nThat's all folks...\n");
+ exit(0);
+}
+---------------8--> Snip! Cut me! --------------------8-->--------------------
+
+                          -=$( pOUr appRofOndIr )$=-
+                        
+ `Unix Systems programming for SVR4'
+  David A. Curry, O'Reilly Ed.
+  ISBN: 1-56592-163-1
+
+ Les pages de manuel correspondant aux fonctions que l'on a étudié.
+
+ Des sources de programmes de networking, qui, avec le peu que nous avons vu,
+vous permettront d'acquerir des techniques.
+
+ Si vous etes parisien, passez au Monde en Tique, 6 rue Maitre Albert, dans
+le 5e arrondissement, c'est une librairie qui a pas mal de stuff relatif aux
+reseaux et a Unix... Vous pouvez aussi aller sur http://www.lmet.fr, leur
+site sur le ouebe, avec le catalogue et la possibilite de commander (non non,
+je n'ai pas d'actions la-bas, je leur fais de la pub gratos :-)
+
+                       -=$( lE MOt dE lA fIN )$=-
+
+ J'espere que j'ai ete assez clair sur le sujet. Si vous etes deja
+familiarise avec les communications entre processus (IPC), vous n'avez pas
+du avoir trop de mal a comprendre, vu que c'est sensiblement les memes
+fonctions et concepts.
+ Certains passages sont tres proches du livre de David A. Curry (references
+plus haut), car ses explications etaient claires et m'ont fait gagner un peu
+de temps...
+ Si vous souhaitez me faire une quelconque remarque: /dev/null si elles n'ont
+rien d'interessant, ou phe@mygale.org autrement.
+
+                           -=$( gReeTinGz )$=-               (can be cutted)
+
+ Les #bananiens, les aminches d'#insomnies, les membres de PhE! of course,
+les mecs du meeting 2600 a Paname... Noms en vrac: Kewl4, CoD4, vOx, Yodah,
+dOC|SEDOv, DheA, HoCuS, Daemon-, methos (nan, j'deconne), WatizZz & TufQi,
+Maxime, MoT, Doggie, Chetan, Vik, ObeeWan, Ghost (il se reconnaitra), k0rtEx,
+PhiL, Gargl, Larsen, Thierry de FT (huh), Mister Meridian Mail, ZeZeBaR,
+Caroline le zentil bot, Morgan, Alex, RaF, Kauf, SaRace, Sorcery, Mikasoft,
+Gibson, Samson, un-mec-du-meet2600-mais-j'me-rappelle-plus-le-nom-:/, eeeet...
+...toi qui as lu jusqu'ici !
+
+ Enjoy hacking and stay tuned !
+
+ -- hOtCodE <phe@mygale.org>

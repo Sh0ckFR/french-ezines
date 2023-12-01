@@ -1,0 +1,382 @@
+
+                            The WORM is back,
+                                  aka
+                  la vie artificielle sur réseau TCP/IP :))
+                par Professor Falken <prfalken@freeshell.org>
+
+
+chtit Disclamer + prérequis:
+***************************
+
+Je ne suis pas responsable d'une utilisation des infos contenues dans cet
+article a des fins malveillantes.
+Pour moi, un worm est un fascinant exemple de "vie artificielle", et n'est
+aucunement dédié à des fins destructrices, mais à des fins éducatives et
+d'expérimentation.
+Le fait de lacher un worm sur Internet ou tout autre réseau public peut
+vous attirer de graves ennuis, que ce soit par le(s) gouvernement(s)
+ou des organismes privés. Un worm étant avant tout un objet de recherche
+expérimentale (comme un virus), son "utilisation" doit être exclusivement
+restreinte à un réseau privé.
+Bon, voila, en disant ça, je suis complètement dégagé de toute responsabilité
+si vous avez quand même décidé d'essayer de lacher un worm dans la nature :))
+
+Cet article se veut avant tout théorique, et vise à analyser le fonctionnement
+des worms en général, dans le but de les comprendre et de pouvoir en
+concevoir avec des outils existants, ou de pouvoir mêttre en oeuvre les parades
+pour les éviter.
+
+
+Intro:
+*****
+
+2 Novembre 1988, 18:00 et des peufs, Eastern Time:
+    Rober Tippet Morris, fils d'un officiel de la NSA, et étudiant en
+computer science, lance son fameux 'Internet Worm' sur un VAX de son
+université; celui-ci va se propager d'une façon incontrolée sur le net,
+le paralysant en l'espace de moins de 24 heures [soit dit en passant, c'est
+pas le worm qui a directement paralysé le net, mais le fait que beaucoup de
+systèmes aient été mis en quarantaine pour patcher les trous de sécurité
+et pour vérifier qu'une copie n'était pas présente; quoique la présence
+d'un worm sur un système se traduisait souvent par un overload du système].
+C'est d'ailleurs à la suite de cet évenement que le CERT fut créé.
+
+Le worm de Morris est l'exemple le plus connu de ce type de progs, car il
+a été l'une des principales motivations de la 'course à la sécurité' qui a
+fait que le hack est beaucoup moins évident aujourdhui que dans les années 80.
+
+Mais, la n'est pas la question, et j'en vois pas mal se demander,
+"pourquoi il nous parle de worms prfalken ?? et d'abord, c'est quoi un worm ?"
+
+
+C'est quoi un worm ?
+******************
+
+Un worm, c'est un programme qui peut être comparable à un virus, c'est à dire
+qu'il s'exécute tout seul, qu'il évolue tout seul, et peut se reproduire.
+La différence avec un virus, c'est qu'au lieu de se propager dans des
+fichiers, un worm se propage entre les hosts d'un réseau -dans le cas
+de celui de Morris, c'était Internet, mais des worms peuvent exister sur
+tous les types de réseaux-, en exploitant les trous de sécurité de ces hosts.
+Un worm, si il ne se propage pas, est donc une sorte de bot, car il utilise
+un ou des services réseaux donnés, sans utilisateur qui le commande.
+En fait, il n'existe pas UN worm, mais DES worms, tout comme il n'existe pas
+qu'un seul virus.
+Le terme worm que j'utiliserais par la suite désigne les worms en général,
+et les comportements que je citerais, loin d'etre les seuls, sont soit les
+plus communs, soit les plus efficaces.
+
+
+Ca sert à quoi un worm ?
+**********************
+
+Intrinsèquement (ça faisait longtemps que je voulais le placer celui-la :),
+un worm ne sert pas à grand chose de plus qu'un virus, si ce n'est explorer
+les capacités d'une forme d'IA primitive, ou, d'une manière plus stupide,
+foutre le bordel sur des ordinateurs.
+En 1988, Morris avait lancé son worm dans le but d'explorer le net.
+Aujourd'hui, on peut encore explorer les réseaux avec un worm, les admins
+peuvent les utiliser afin de vérifier la sécurité de leurs réseaux face aux
+attaques primitives, les hackers peuvent s'en servir pour pénétrer des
+systèmes sans se fatiguer, et c'est un bon sujet de TP pour les étudiants
+en info... en gros tout le monde est heureux... sauf quand le worm devient
+incontrolable et qu'il paralyse un réseau, comme celui de Morris.
+Bien sur, ya les paranos, qui voient dans les worms un nouveau moyen de foutre
+le bordel facilement; c'est le meme genre de paranos qui font circuler des
+fausses alertes aux virus sur le net, qui dépensent des fortunes en
+anti-virus, et pour qui hacker == terroriste.
+Mais c'est vrai qu'un worm, si il est mal controlé ou programmé, peut vraiment
+faire beaucoup de dégats !
+Et aussi, pour ceux ayant des lectures cyberpunks, on peut se prendre à
+délirer sur le moyen de faire des 'constructs' à partir de worms =))))
+[whoaa, je délire trop moi !]
+
+
+dissection d'un worm, bweerk =)
+*******************************
+
+Généralement, un worm se décompose en deux parties:
+    * le vecteur, ou bootstrap, est la partie "active" du worm. C'est cette
+partie qui va faire tout le job, de recherche et d'infection, ainsi que la
+transmission de la deuxième partie, qui est
+    * l'archive. Celle-ci est en fait la copie du vecteur, qui sera
+envoyée et exécutée sur l'host victime. Elle peut être sous forme de sources,
+pour infecter plusieurs architectures différentes sans distinction, ou sous
+forme binaire, destinée à un type de victime particulier.
+
+Les deux solutions ont leurs avantages et inconvénients:
+    * la forme binaire ne peut infecter qu'une architecture de système
+particulière. Ainsi, si le-dit système n'est pas très répandu, le worm et ses
+descendants sont pour ainsi dire voués à une disparition à court terme.
+Par exemple, en 1988, le worm de Morris était archivé sous forme de binaires
+exécutables sur VAX, d'autres sur SUN3, et aussi sous forme de sources.
+Cette diversité assura à la génération de worms une propagation rapide et
+efficace.
+Parmis d'autres avantages, la forme binaire n'a pas besoin d'un compilateur
+sur le système à envahir, et, de plus, elle est généralement bien plus
+compacte que la forme source.
+    * la forme source, elle, pourra pénétrer beaucoup plus de systèmes
+différents. Par exemple, si elle répond strictement aux normes tel POSIX,
+et qu'elle implémente une compilation conditionnelle (avec des #define,...),
+elle pourra infiltrer la majeure partie des Unix, populaires actuellement,
+comme Solaris, Linux, *BSD, AIX..., dans la mesure ou les holes k'elle exploite
+sont présents sur tous ces systèmes.
+En contrepartie, il lui faut absolument disposer d'un compilateur sur la machine
+cible, sous peine de ne pas pouvoir s'activer.
+De plus, l'archivage sous forme de sources prend plus de place que les binaires,
+et nécessite la plupart du temps une compression.
+
+Il est aussi possible d'utiliser un code interpreté, comme du Perl, du Java,
+ou du script shell, qui aura le mérite de pouvoir fonctionner sur un maximum
+de systèmes, sans pour autant nécessiter de compilation, dans la mesure ou
+l'interpréteur est présent sur la cible.
+
+
+mode d'action d'un worm
+***********************
+
+Le mode d'action du worm est en fait le mode d'action du vecteur.
+L'action du vecteur est divisée en plusieurs parties distinctes:
+
+    * L'initialisation...
+
+    * La recherche de l'hôte: le worm cherche une bekane susceptible de
+l'accueillir, soit dans son voisinage direct (en regardant /etc/hosts, par
+exemple), soit d'une façon aléatoire ou incrémentale (incrémentation des IP).
+A chaque IP, on regarde si l'host est up ou down. Si celui-ci est down, on
+continue à chercher, si il est up, on passe a l'étape suivante.
+
+    * L'identification de l'hôte: le worm cherche a savoir si sa future
+victime est vulnérable à la ou l'une des attaques qu'il utilise.
+Cela commence généralement par un port scan, suivi de différents tests de
+versions des daemons, de check rpc, détection de l'architecture et du système...
+en fait, tout ce qui peut indiquer qu'une vulnérabilité connue du worm est
+présente sur le système.
+Si l'hôte n'est pas vulnérable, on retourne à la phase de recherche.
+
+    * L'attaque: Dans cette phase, le worm tente d'obtenir un accès sur sa
+victime. C'est ici qu'il exploite les vulnérabilités qu'il a détectées
+dans la phase précédente.
+A la fin de cette opération, le worm doit posséder un shell non-interactif,
+ou tout autre moyen d'exécuter des commandes et d'accéder au système de fichier
+de l'hôte pour pouvoir continuer. Cet accès n'est pas obligatoirement un accès
+super-user (quoique c'est assez pratique d'en avoir un :)
+
+    * L'invasion: A cet instant, le worm a pris pied sur le système, mais n'y
+est pas encore actif. Les opérations sont toujours dirigées depuis le système
+de départ.
+Durant cette phase, le worm va effectuer une série d'opérations visant à
+faciliter sa reproduction (eg. ajout d'un login pour le worm, vérification
+de la présence d'un compilateur...)
+
+    * La reproduction: c'est ici que le vecteur et son archive se distinguent.
+Le vecteur va faire parvenir l'archive sur le système hôte, afin de l'activer,
+et d'engendrer un nouveau worm autonome.
+Le transfert peut s'effectuer de diverses façons, pouvant être un stream TCP
+pour un worm autonome, ou un transfert FTP d'un système fixe, pour un worm
+dépourvu d'archive.
+Une fois l'archive copiée, on procède à l'activation du worm nouveau né,
+soit directement s'il s'agit d'une archive binaire ou interprétée, soit après
+compilation si c'est une archive source.
+Le nouveau worm est alors prêt à se propager à son tour =)
+
+C'est après la reproduction que se dessinent 2 tendances:
+    La première est de killer le worm parent sur la machine de départ, et de
+laisser le worm reproduit faire comme son prédécesseur, simulant ainsi le
+déplacement d'une entité unique.
+    La deuxième est de laisser le worm parent en vie, et de lui faire
+recommencer le cycle de propagation, ce qui produira un effet exponentiel, et
+potentiellement beaucoup plus dangereuse que la première solution.
+
+
+analyse des différentes parties :
+*******************************
+
+    * L'initialisation:
+      ----------------
+    Dépend de l'implémentation. Ca peut aller de la création de fichiers
+temporaires à la précompilation de certaines parties archivées...
+
+    * la recherche de l'hôte:
+      ----------------------
+        Elle peut se faire de différentes façons.
+Tout d'abord une méthode purement aléatoire. On prend une adresse de départ
+au hasard dans le réseau, et on incrémente jusqu'à trouver un host valide et
+up, avant de passer à son idenfication.
+
+un ptit example en C, avec une addresse IPv4
+(peut facilement être amélioré pour tenir compte des classes de réseaux)
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <netinet/in.h>
+
+struct in_addr *find_valid_host(void)
+{
+    struct in_addr *address = (struct in_addr *)malloc(sizeof(struct in_addr));
+
+    srand(time(NULL));      /* on initialise le générateur aléatoire */
+    address->s_addr = rand();
+
+    while (!isup(*address))
+        (address->s_addr)++;
+    /* ici, on utilise la routine isup() de nmap pour voir si la cible est up
+       voir Phrack 51 article 11 */
+
+    return address;
+}
+------>snip>------->snip>----->snip>------->snip>------->snip>----->snip>-----
+
+cette méthode peut aussi être réalisée avec un scanner d'IPs comme nmap et un
+générateur aléatoire comme ci dessus, le tout appelé depuis un script shell.
+
+Une autre méthode consiste à utiliser des répertoires d'IPs, soit locaux,
+comme /etc/hosts, le résultat d'un showmount, ou un hosts.byaddr si la bekane
+a NIS, soit dans des répertoires sur le web, genre netcraft...
+Cette méthode a l'avantage d'avoir une plus grande rapidité de réussite, dans
+la mesure ou l'on cherche des békanes existantes, mais d'un autre côté est
+moins intéressante pour l'expérimentation, car la propagation peut être plus
+facilement prévisible, c'est moins marrant =)
+
+    * L'identification de l'hôte:
+      --------------------------
+        Une fois la cible potentielle découverte, le worm doit savoir si elle
+est susceptible d'être investie, donc vulnérable.
+Un ptit port scan et une identification de la stack IP feront l'affaire
+(ici encore, nmap peut se révéler très utile, quoique un peu encombrant...),
+de meme qu'un scan des services potentiellements exploitables par les exploits
+dont dispose le worm... (cf scanvuln par Lionel :)
+
+    * L'abordage (niahahah :))):
+      -------------------------
+    Maintenant que le worm a trouvé une cible, et que celle-ci répond aux
+critères de pénétration (OS, services vulnérables...), on peut commencer
+l'invasion, en lancant un ou plusieurs exploits remote, sur la victime,
+le but étant de récupérer une session (un shell) non-interactive (un root
+n'est pas indispensable) sur celle-ci.
+Une fois le shell obtenu, il faut vérifier qu'on peut récupérer et exécuter
+l'archive. Un test genre 'configure' fera l'affaire...
+Si l'hote a NIS ou n'est pas shadow, et que l'on a pas d'accès root, on peut
+tenter de cracker un ou deux accounts pour, par exemple, uploader l'archive
+en FTP...
+A partir de ce moment, le worm n'est pas encore actif sur la victime, car c'est
+son image présente sur la victime précédente qui tient les commandes de
+l'invasion
+
+    * L'upload de l'archive :
+      ----------------------
+    A ce stade, on est sur que le worm est reproductible sur la victime et
+qu'on va pas griller du temps et de la bande passante à uploader l'archive
+pour rien.
+L'upload peut se faire de plusieurs manières...
+Il ya principalement deux tendances:
+    - Le worm emporte son archive avec lui, l'uploadant de victime en victime
+    - Ou il n'a pas d'archive "embarquée", et il download son archive sur
+      un ou des sites fixes sur le net, par ftp ou http
+
+La deuxième solution est bien sur la plus simple à réaliser, car elle dispense
+le worm de trimballer son archive, ainsi que le sous-système permettant de la
+transmettre. Elle a par contre l'inconvénient de dépendre d'un système
+extérieur, empechant la propagation si celui-ci venait à etre down,
+et elle permet également aux victimes de retracer plus facilement l'auteur
+de l'invasion...
+
+Dans la première option, on a encore le choix entre deux possibilités.
+On peut soit uploader l'archive directement par une socket dédiée que l'on
+dirige sur un nouveau fichier sur la victime (cette opération est simplifiée
+si on dispose de netcat ou d'un prog similaire), soit utiliser un protocole
+standard comme ftp ou http si la victime ou la base de départ disposent d'un
+serveur pour ce(s) service(s).
+
+Attention au format de l'archive. Pour infecter un *nix, on est tenté de la
+transporter dans un .tar.gz, mais attention, gzip n'est pas si répandu qu'il
+n'y parait... il faut préferer le format 'compress' (.Z), qui, lui est présent
+sur quasi tous les systèmes, mais compresse moins bien.
+Par contre, tar ne pose aucun probleme, car il est standard à tous les *nix.
+Pour les autres OS, utiliser un format dont on est sur qu'il se trouve sur
+le système (ne pas hésiter à vérifier sa présence pendant la phase d'abordage)
+
+    * L'activation de l'archive :
+      -------------------------
+Rien de bien compliqué... décompression et unpackage, compilation s'il s'agit
+d'une source, ou alors passage direct a la phase suivante si c'est un binaire
+ou un interpréteur...
+
+    * La reproduction :
+      ---------------
+C'est la phase finale du cycle de propagation... rien de bien compliqué là
+non-plus... on lance juste le prog qu'on vient de compiler ou d'uploader.
+Le nouveau worm est maintenant autonome, et il faut choisir si on veut
+killer le worm parent, ou le laisser continuer sa reproduction...
+
+    * L'initialisation du nouveau worm:
+      --------------------------------
+    Et c'est reparti pour un tour :))
+
+
+tracabilité de la bestiole (label WF => Worm Frenchie :))))
+***********************************************************
+    Lancer un worm sans savoir ou il est allé, c'est moins marrant...
+On peut donc ajouter un moyen de savoir dans quels systèmes il est allé,
+par quel trou il a pu rentrer, etc...
+Ca peut s'avérer utile pour récupérer des accounts un peu partout sans se
+fatiguer, ou, plus philanthropiquement, pour prévenir l'admin concerné que
+son système est vulnérable...
+Pour faire cela, on peut faire des choses plus ou moins complexes, allant
+de l'envoi d'un simple packet vers un server fixe, jusqu'au mail contenant
+le log complet de l'attaque...
+Mais ATTENTION aux ptits malins... l'ajout de cette feature permettra aux
+différentes victimes de vous retrouver plus rapidement, donc gaffe !
+
+
+notes aux admins, ou comment éviter de se faire enculer par un worm (aie :))
+***************************************************************************
+    Le meilleur moyen de se prémunir contre les worms, c'est le meme que
+celui d'éviter de se faire hacker: patcher les trous de sécu dès qu'ils sont
+détectés, faire confiance à un minimum de systèmes pour le NFS, NIS et tous
+ce genre de services, en gros SECURISER au maximum, pas faire le branlot
+d'admin dont la journée se résume à boire du café dans un fauteuil et
+draguer les secrétaires :)
+Sinon, les IDS (Intrusion Detection System) peuvent être efficaces pour les
+feignants, d'autant plus que le comportement d'un worm est beaucoup plus
+prévisible que celui d'un vrai chtit nacker des bois ;^p
+
+
+références et sources qui m'ont permis d'écrire cet article :
+***********************************************************
+    - diverses descriptions du worm de Morris... (allez dans un search engine,
+      tapez "internet worm", et vous en aurez une chiée plus 1000)
+    - le worm de ADM, qui m'a permis de vérifier par la pratique les théories
+      que j'avais imaginées, et qui m'a éclairci certains aspects
+      d'implémentation
+    - mon cerveau, mes mains, mon clavier, mon écran, mon n'ordi, la musik,
+      le chien du voisin... :)
+    - bon, ok, j'arrete de déconner =)
+
+
+conclusion, greetz and misc shit...
+***********************************
+    Vala, c'est fini les tinamis :'(
+Prochaine réalisation (pour organiks #2 si j'ai le temps): une série d'articles
+sur l'électronique digitale, partant des bases jusqu'aux microprocesseurs...
+yen aura pour tout les gouts :)
+
+    Greetz: The CHX Hacking Crew: dlight, neo, francky, dark_will, elecriz,
+            bignose, et moi bien sur :) http://chx.freeshell.org
+
+            OrganiKs Crew: lionel, tbh, seb, datahck, lacrampe, shado, coder,
+            cyberyoyo, jacko, peace... ralalah, on commence a etre beaucoup :)
+            j'en oublie :)
+
+            mayem, rockme, astar0th, brets, madvax....... et tout et tout...
+
+            #chx, #organiks, #linuxfr, #aohell, #exile....
+
+            bon, et pis sa commence a me saouler d'écrire des greetz de
+            3 kilomètres à chaque fois :))))
+
+
+"fight stupidity and violence" - prfalken
+
+

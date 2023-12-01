@@ -1,0 +1,1119 @@
+      Commandes HAYES non documentees pour USRobotics (Voice)
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ .m0sfet.
+
+Encore un peu de social chez USR m'a permis de recuperer un phile assez
+interessant sur les commandes enhanced pour les modeles voice.
+
+Il y a des choses assez interessantes a employer lors de la conception 
+de wardiallers (possibilite de donner des frequences precises (hors de
+la numerotation DTMF standard)  a envoyer sur la ligne, choix de la
+frequence de sampling, GSMs, etc...)
+
+BBS de US Robotics (j'ai plus le numero !):
+(WiLDCAT / WIN NT)
+
+Login par defaut:
+
+ nom:      toto 
+ prenom:   toto
+ password: toto
+
+Ahh facile le vilain vieux password !! ;)
+
+U.S. Robotics
+Voice Command Functional Specification
+Internal use only ! If you aren't a USR developper, you shouldn't have
+this document.
+
+Chapter 1.  Rockwell Voice Command Set
+
+Global AT Command Set Extensions
+
+      The AT commands in the following section are global, meaning that
+    they can be issued in any appropriate mode (i.e., any #CLS setting).
+    For consistency, the command set is divided into action commands and
+    parameters (non-action commands).  Those commands which are action
+    commands (i.e., those which cause some change in the current operating
+    behavior of the modem) are identified as such, and the remaining
+    commands are parameters.
+
+   ATA - Answering in Voice
+
+    The answer action command works analogously to the way it works in
+    Data and Fax Modes except for the following:
+
+    1.   When configured for Voice Mode (#CLS=8), the modem enters Online
+	 Voice Command Mode immediately after going off-hook.  When the
+	 #CLS=8  command is issued, the modem can be programmed to look
+	 for 1100 and 1300 Hz calling tones (see #VTD), thus eliminatng the
+	 need to do so as part of A command processing.  After the VCON
+	 message is issued, the modem re-enters Online Voice Command Mode
+	 while sending any incoming DTMF or Calling Tone indications to the
+	 DTE as described in Section 8.2.5.
+
+     2.  After answering in Voice Mode (#CLS=8), the DTE, as part of its
+	 call discrimination processing, can decide to change the #CLS
+	 setting to attempt receiving a fax in Class 1, or to make a data
+	 connection. In such a case, the DTE commands the modem to proceed
+	 with the data or fax handshake via the A command even though the
+	 modem is already off-hook.
+
+Result Code:
+
+VCON Issued in Voice Mode (#CLS=8) immediately after going off-hook.
+
+ATD - Dial Command in Voice
+      The dial action command works analogously to the way it works in Data
+    or Fax modes.  When in Voice Mode (#CLS=8):
+
+      1.  The modem attempts to determine when the remote has picked up the
+    telephone line and once this determination has been made, the VCON
+    message is sent to the DTE.  This determination is initially made based
+    upon ringback detection and disappearance.  (Se e #VRA and #VRN
+    commands.)
+
+      2.  Once connected in Voice Mode, the modem immediately enters the
+    command state and switches to Online Voice Command Mode which enables
+    unsolicited reporting of DTMF and answer tones to the DTE.
+
+Parameters:    Same as Data and Fax modes.
+
+Result Codes:
+
+VCON Issued in Voice Mode (#CLS=8) when the modem determines that the
+    remote modem or handset has gone off-hook, or when returning to the
+    Online Voice Command Mode.  (See #VRA and #VRN.)
+
+NO ANSWER Issued in Voice Mode (#CLS=8) when the modem determines
+    that the remote has not picked up the line before the S7 timer expires.
+
+
+ATH - Hang Up in Voice
+      This command works the same as in Data and Fax modes by hanging up
+    (disconnecting) the telephone line.  There are, however, some specific
+    considerations when in Voice Mode:
+
+      1.  The H command forces #CLS=0, but does not destroy any of the
+    voice parameter settings such as #VBS, #VSP, etc.  Therefore, if the
+    DTE wishes to issue an H command and then pursue another voice call, it
+    must issue a subsequent #CLS=8 command, but it ne edn't reestablish the
+    voice parameter settings again unless a change in the settings is
+    desired.
+
+      2.  The #BDR setting is forced back to 0, re-enabling autobaud.
+
+      3.  If the #VLS setting is set to select a device which is not, or
+    does not include the telephone line (such as a local handset or
+    microphone), the H command deselects this device and reselects the
+    normal default setting (#VLS =0).  Normally, the DTE shou ld not issue
+    the H command while connected to a local device such as a handset,
+    because merely selecting this device results in VCON.  The normal
+    sequence of terminating a session with such a device is to use the #VLS
+    command to select the telephone line, which by definition makes sure it
+    is on-hook.
+
+    Parameters:    Same as Data and Fax modes.
+
+    Result Codes:  Same as Data and Fax modes.
+
+
+ATZ - Reset from Voice Mode
+
+      This command works the same as in Data and Fax modes.  In addition,
+    the Z command resets all voice related parameters to default states,
+    forces the #BDR=0 condition (autobaud enabled), and forces the
+    telephone line to be selected with the handset on-hook.  No voice
+    parameters are stored in NVRAM so the profile loaded does not affect
+    the voice aspects of this command.
+
+Parameters:    Same as Data and Fax modes.
+
+Result Codes:  Same as Data and Fax modes.
+
+#BDR - Select Baud Rate (Turn off Autobaud)
+
+      This command forces the modem to select a specific DTE/modem baud
+    rate without further speed sensing on the interface.  When a valid
+    #BDR=n command is entered, the OK result code is sent at the current
+    assumed speed.  After the OK has been sent, the modem switches to the
+    speed indicated by the #BDR=n command it has just received.  When in
+    Online Voice Command Mode and the #BDR setting is nonzero (no autobaud
+    selected), the modem supports a full duplex DTE interface.  This means
+    that the DTE can enter commands at any time, even if the modem is in
+    the process of sending a shielded code indicating DTMF detection to
+    the DTE.  When in Online Voice Command Mode and the #BDR setting is
+    zero (autobaud selected), shielded code reporting to the DTE is
+    disabled.  [Note that when #BDR has been set nonzero, the modem employs
+    the S30 Deadman Timer, and this timer starts at the point where #BDR is
+    set nonzero.  If this period expires (nominally 60 seconds) with no
+    activity on the DTE interface, the modem reverts to #BDR=0 and #CLS=0.]
+
+Parameters:    n = 0 - 48 (New baud rate is n*2400 bps)
+
+Default:  0
+
+Result Codes:
+
+OK        If n = 0 - 48.
+ERROR     Otherwise.
+
+Command options:
+
+#BDR?     Returns the current setting of the #BDR command as an ASCII decimal
+     value in result code format.
+
+#BDR=?    Returns a message indicating the speeds that are supported.
+
+#BDR=0    Enables autobaud detection on the DTE interface.
+
+#BDR=n    Where 1<n<48.  Sends OK message at current speed, then
+	  switches to the new speed defined by n*2400 bps unless and until
+	  another #BDR=n command is received.  Autobaud is disabled, and
+	  the character format is maintained at the format most recently
+	  detected.
+
+
+#CID - Enable Caller ID Detection and Select Reporting Format - Future Support
+     This command selects or disables Caller ID recognition and reporting
+     in any mode.
+
+Parameters:    n = 0, 1, or 2
+
+Default:  0
+
+Result Codes:
+
+OK   n = 0, 1, or 2.
+ERROR     Otherwise.
+
+
+Command options:
+
+#CID?  Returns the current setting (0,1 or 2) of the #CID command as
+    an ASCII decimal value in result code format.
+
+#CID=? Returns the message, "0,1,2".
+
+#CID=0 Disables Caller ID.
+
+#CID=1 Enables formatted Caller ID reporting of ICLID SDM (Single Data
+    Message)  and MDM (Multiple Data Message) packets.
+
+#CID=2 Enables unformatted Caller ID reporting of any ICLID packet received
+    after the first RING cycle
+    including SDM, MDM, or call waiting packets.
+
+#CLS - Select Data, Fax,or Voice 
+    in any mode.  Parameters: n = 0, 1, 2, or 8 Default: 0 Result Codes: OK
+    If n = 0, 1, 2, or 8.  ERROR Otherwise.  Command options:
+This command selects Data, Fax, or Voice Mode from operation
+
+#CLS? - Returns the current setting (0,1,2, or 8) of the #CLS command as an
+    ASCII decimal value in result code format.  #CLS=?  Returns the
+    message, "0,1,2,8".
+
+#CLS=0 Data. This is similar to
+    setting +FCLASS=0, and instructs the modem to act like a data modem on
+    subsequent answer or originate operations.  When a disconnect or
+    inactivity time out in the non-autobaud mode is detected, the modem
+    automatically sets the #CLS setting to 0 and hangs up.  This ensures
+    that the modem is always in a known state despite disorderly DTE
+    behavior.
+
+#CLS=1 Class 1 fax. This is similar to setting +FCLASS=1,
+    and instructs the modem to be a Class 1 fax modem.  Once this is set,
+    either the +FAA or +FAE command can be used to force subsequent answers
+    to be Class 1 adaptive answers.
+
+#CLS=2 Class 2 fax. This is similar to setting +FCLASS=2, and instructs the
+    modem to be a Class 2 fax modem.  Once this is set, the +FAA command
+    can be used to force subsequent answers to be Class 2 adaptive answers.
+
+#CLS=8 Voice Mode. This is the main setting the DTE uses to effect
+    directed or adaptive answer or originate sequences involving voice
+    modes.  All telephone calls initialized by #CLS=8 result (after answer
+    or successful call progress) in the modem in Online Voice Command Mode.
+
+#MDL? - Identify Model. 
+   This command requests the model number or name of
+    the modem.
+
+Command option:
+
+#MDL? -  USRobotics144FX
+
+#MFR? - Identify Manufacturer 
+    This command requests the modem manufacturer.
+   
+Command option:
+
+#MFR? -  USRobotics
+
+#REV?  - Identify Revision Level 
+    This command requests the revision level
+    of the modem. 
+
+Command option:
+
+#REV? - XXXX-XXXX-XXX YYY     (Those places occupied by "X"'s represent the
+part number, while those places occupied by `Y"'s represent the revision
+number. The values are determined at time of production.)
+
+
+AT#V Commands Enabled Only in Voice Mode (#CLS=8)
+
+      The commands described in the following subsection are extensions to
+    the command set which the modem recognizes only when configured for
+    Voice Mode with the #CLS=8 command.
+
+#VBQ? - Query Buffer Size
+
+      This query-only command returns the size of the modem's voice
+    transmit and voice receive buffers in ASCII decimal, followed by the OK
+    result code.
+
+Parameters:    None
+
+Command option:
+
+#VBQ?  Returns the size of the modem voice transmit and voice receive buffers.
+
+#VBS - Bits Per Sample (Compression Factor)
+
+     This command selects the degree of ADPCM voice compression to be
+    used.
+
+Parameters:    n = 2, 3, or 4  (Voice compression bits per sample)
+
+Default:  4
+
+Result Codes:
+OK   If n = 2, 3, or 4.
+ERROR     Otherwise.
+
+Command options:
+
+#VBS?  Returns the current setting of the #VBS command as an ASCII decimal
+    value in result code format.
+
+#VBS=?  Returns "2,3,4", which are the ADPCM compression bits/sample rates
+    available.  These bits/sample rates are correlated with the #VCI?
+    query command response which provides the single compression method
+    available.
+
+#VBS=2    Selects 2 bits per sample.
+
+#VBS=3    Selects 3 bits per sample.
+
+#VBS=4    Selects 4 bits per sample.
+
+#VBT - Beep Tone Timer
+
+      This command defines the time period, in 10ths of a second up to 4
+    seconds (40) which is used by the modem as the DTMF or fixed tone
+    duration for generating tones via the D command while in Online Voice
+    Command Mode.
+
+Parameters:    n = 0 - 40 (0 - 4 seconds)
+
+Default:  10
+
+Result Codes:
+OK   If n = 0 - 40.
+ERROR     Otherwise.
+
+Command options:
+
+#VBT?     Returns the current setting of the #VBT command as an ASCII
+    decimal value in result code format.
+
+#VBT=?    Returns the message, "0-40".
+
+#VBT=0    Disables the tone generation capability.
+
+#VBT=1 to 40   Sets tone duration time.
+
+#VCI? - Identify Compression Method
+
+      This command queries the modem as to its compression method and raw
+    bits-per-sample capability.  <OP0C0>;<D> pairs, separated by <LF0>s.
+    Within each line, the <O> is left justified, and is separated from the
+    <D> by the semicolon character and separated fro m the bits-per-sample
+    string by another semicolon.<F255P255C255>
+
+Parameters:    None
+
+Command option:
+
+#VCI?     Returns the message, "USRobotics;GSM;8".
+
+#VLS - Voice Line Select
+
+      This action command can be used to select which devices are routed
+    through the modem.
+
+Parameters: n = 0, 1, 2, 3, or 4 [This is the device position number
+    (not device number) as reflected in response to #VLS=?]
+
+Default:  0
+
+Result Codes:
+OK   If n = 0, 1, 2, 3, or 4.
+VCON If device selected does not connect to the telephone line.  (A speaker
+     is such a device, but a telephone line with speaker ON is not such a
+     device, and generates OK.) ERROR If n does not equal 0, 1, 2, 3, or 4,
+     or if already off-hook.
+
+Command options:
+
+#VLS?  This query returns the current setting of the #VLS command as an
+    ASCII decimal value in result code format.
+
+#VLS=?  This query requests a report of the device types available
+    for selection.  The response is a series of numbers separated by
+    commas, and each number indicates a device position number.  Currently,
+    device position numbers do happen to correspond to device type numbers, 
+    but this correlation is not required (i.e., 0's could be placed in the
+    first few device position number locations to correspond to multiple
+    telephone line connections).
+
+      #VLS=0 The default option on the modem.  This command instructs the
+    modem that when entering any of the three voice operating submodes
+    (Online Command, Transmit, or Receive), that the telephone line
+    interface should be routed through the modem.  The OK response is sent
+    to the DTE, and any previous connection is lost (i.e., the modem ends
+    up on-hook as a result of issuing this command to connect to the
+    telephone line).
+
+#VLS=1 This command instructs the modem to route only the handset through
+    the modem. This setting can be chosen before recording a greeting message.
+
+#VLS=2 This command instructs the modem to route only the speaker
+    through the modem.  This setting can be chosen before playing back any
+    message.  The modem immediately switches to Online Voice Command Mode ,
+    and the VCON response is generated for completeness.  However, since
+    this is an output only device, nothing of consequence can happen until
+    the DTE sends the #VTX command.
+
+#VLS=3 This command instructs the modem that only the auxiliary input
+    device (microphone) should be routed through the modem.  This setting
+    can be chosen before recording a greeting message.
+
+#VLS=4 This command is the same as #VLS =0, except that the modem  enables
+    the internal speaker as well as the telephone line/handset circuit.
+
+#VRA - Ringback Goes Away Timer (Originate)
+
+      This command can be used, when originating a voice call (#CLS=8) to
+    set the "Ringback Goes Away" timer value, i.e., an amount of time (in
+    units of 100 ms) measured from when the ringback cadence stops once
+    detected.  If ringback is not detected within this period, the modem
+    assumes that the remote has picked up the line and switches to Online
+    Voice Command Mode.  Every time a ringback cycle is detected, this
+    timer is reset.
+
+Parameters:    n = 0 - 255  (0 - 2.55 seconds)
+
+Default:  70
+Result Code:   OK
+Result Code:
+OK   If n = 0 - 255.
+ERROR     Otherwise.
+
+Command options:
+
+#VRA?  Returns the current setting of the #VRA command as an ASCII decimal
+    value in result code format.
+
+#VRA=? Returns the message, "0-255".
+
+#VRA=0 Turns off the "ringback goes away timer." After one ringback, the
+    dialing  modem sends VCON and enters Online Voice Command Mode
+    immediately.
+
+#VRA=n Where n defines the period without ringback (after at least one
+    ringback has been detected) in 100 ms units.
+
+
+#VRN - Ringback Never Came Timer (Originate)
+
+      This command can be used when originating a voice call (#CLS=8) to
+    set the "Ringback Never Came" timer value, i.e., an amount of time (in
+    units of 100 ms) measured from completion of dialing.  If ringback is
+    not detected within this period, the modem assumes the remote has
+    picked up the line and switches to Online Voice Command Mode.
+
+Parameters:    n = 0 - 255  (0 - 2.55 seconds)
+
+Default:  100
+
+Result Code:
+OK   If n = 0 - 255.
+ERROR     Otherwise.
+
+Command options:
+
+#VRN?  Returns the current setting of the #VRN command as an ASCII decimal
+    value in result code format. #VRN=?    Returns the message, "0-255".
+
+#VRN=0 Turns off the "ringback never came timer." After dialing, the modem
+    sends VCON and immediately enters Online Voice Command Mode.
+
+#VRN=n Where n defines the period without ringback after dialing in  100 ms
+    units.
+
+
+#VRX - Voice Receive
+
+      This action command is only valid if the modem is in the Online Voice
+    Command Mode (indicated previously with the VCON message), and is the
+    switch to the Voice Receive Mode.  This command is used when a voice
+    file is to be received from the line, microphon e, or handset.  The
+    #VLS command should have been previously issued to select the input
+    source.
+
+Parameters:    None
+
+Result Codes:
+CONNECT   When voice transfer from modem to DTE can begin.
+ERROR     If #VLS=0 and not connected to any input device.
+
+
+#VSD - Enable Silence Deletion (Voice Receive)
+
+      This command is used to enable or disable Voice Receive Mode silence
+    deletion.
+
+Parameters:    n = 0 or1
+
+Default:  0 or 1
+
+Result Code:
+OK   If n = 1.
+ERROR     Otherwise.
+
+Command options:
+
+#VSD?  Returns the current setting of the #VSD command as an ASCII decimal
+    value in result code format.
+
+#VSD=?  Returns the message, "1".
+
+#VSD=0    Turns off the silence deletion.
+
+#VSD=1 Turns on the silence deletion if the silence sensitivity setting
+    #VSS is nonzero.  The aggressiveness of the silence deletion is
+    controlled by #VSS.
+
+
+
+#VSK - Buffer Skid Setting
+
+      This command queries and sets the number of bytes of spare space,
+    after the XOFF threshold is reached, in the modem's buffer during Voice
+    Transmit Mode.  This equates to the "skid" spare buffer space, or the
+    amount of data the DTE can continue to send after being told to stop
+    sending data by the modem, before the modem voice transmit buffer
+    overflows.
+
+Parameter:     n = 255  (Number of bytes of "skid spare buffer space)
+
+Default:  255
+
+Result Code:
+OK   If n = 255.
+ERROR     Otherwise.
+
+Command options:
+
+#VSK?     Returns the current setting of the #VSK command as an ASCII decimal
+    value in result code format.
+
+#VSK=?    Returns the message, "255".
+
+#VSK=n    n defines the 255 unused bytes remaining in the modem voice
+    transmit buffer after an XOFF is sent to the DTE.
+
+
+#VSP - Silence Detection Period (Voice Receive)
+      This command sets the Voice Receive Mode silence detection period
+    (inactivity timer) value.  The parameter, in units of 100 ms, can be
+    used when receiving voice data.  This is an amount of time, which if
+    elapsed without receiving any ADPCM data, causes the modem to send the
+    <DLE>s or <DLE>q codes after insuring that the buffer is empty.  There
+    are two cases:
+
+      1.  With the modem's silence deletion feature enabled, the #VSP
+    setting is in effect an inactivity timer.  The modem must reset this
+    timer on every byte of voice data received.
+
+      2.  With the modem's silence deletion feature disabled, the modem
+    determines what constitutes silence.  This involves monitoring and
+    debouncing the modem value for average energy.  If this debounced value
+    is less than an arbitrary threshold constituting the modem's
+    definition of silence for a period greater than that defined by the
+    #VSP setting, the modem sends the <DLE>q or <DLE>s shielded code to the
+    DTE.
+
+Parameters:    n = 0 - 255 (0 - 25.5 seconds)
+
+Default:  55
+
+Result Code:
+OK   If n = 0 - 255.
+ERROR     Otherwise.
+
+Command options:
+
+#VSP?  Returns the current setting of the #VSP command as an ASCII decimal
+    value in result code format. #VSP=?    Returns the message, "0-255".
+
+#VSP=0 Turns off the silence period detection timer.
+#VSP=n Where n defines the period without received voice data in 100 ms units.
+
+
+#VSR - Sampling Rate Selection
+
+      This parameter, along with the bits per sample (#VBS) command,
+    determines the necessary DTE interface speed to transmit and receive in
+    the Voice Mode.
+
+Parameter:     n = 8000  (8000 Hz sampling rate)
+
+Default:  8000
+
+Result Codes:
+OK   If n = 8000.
+ERROR     Otherwise.
+
+Command options:
+
+#VSR?  Returns the current setting of the #VSR command as an ASCII decimal
+    value in result code format.
+
+#VSR=?    Returns the message, "8000".
+
+#VSR=8000 Default.
+
+
+#VSS - Silence Detection Tuner (Voice Receive)
+
+      This command enables or disables the Voice Receive mode silence
+    detection, and controls the sensitivity employed by the modem in
+    compressing periods of silence.
+
+Parameters:    n = 0 - 3
+
+Default:  2
+
+Result Codes:
+OK   If n = 0 - 3.
+ERROR     Otherwise.
+
+Command options:
+
+#VSS?  Returns the current setting of the #VSS command as an ASCII decimal
+    value in result code format.
+
+#VSS=? Returns the message, "0-3".
+
+#VSS=0 Disables silence detection by the modem when in Voice Receive Mode.
+
+#VSS=1 Least sensitive setting.  When this command is received by the
+    modem, the system is configured to a state which is least likely to
+    detect and compress periods of silence, but still able to do so if the
+    line is really quiet.
+
+#VS=2 Midrange setting (default).  When this command is received by
+    the modem, the system is configured to a state which is likely to be
+    the best overall compromise on normal telephone lines.
+
+#VSS=3 Most sensitive setting.  When this command is received by the
+    modem, the system is configured to a state which is most likely to
+    detect and compress periods of silence.
+
+
+
+#VTD - DTMF Tone Reporting
+      This command queries and controls which types of tones can be
+    detected and reported to the DTE via shielded codes in Voice Transmit,
+    Voice Receive, and Online Voice Command Modes.
+
+Parameters: i,j,k (three ASCII hexadecimal bit maps)
+
+
+
+Default: 3F,3F,3F
+
+Result Codes:
+OK If bits supported with #VTD=?  are selected.
+ERROR Otherwise.
+
+Command options:
+
+VTD?  Returns the current setting of the #VTD command as an ASCII decimal
+    value in result code format.
+
+#VTD=?  Returns the tone reporting capabilities of the modem.
+
+#VTD=i,j,k Where i,j,k corresponds (in ASCII hexadecimal) to the  desired
+    capabilities, as shown in Table 2-1, for Voice Transmit, Voice
+    Receive, and Online Voice Command Modes, respectively.
+
+
+
+Table 2-1.  #VTD Tone Detection/Reporting Bit Settings
+
+Bit    |     Description
+---     |     -----------
+
+
+0
+0 = Disable DTMF tone capability;
+1 = Enable DTMF tone capability 1.
+
+1
+
+0 = Disable V.25 1300 Hz Calling tone capability;
+1 = Enable V.25 1300 Hz Calling tone capability 1.
+
+2
+
+0 = Disable T.30 1100 Hz Facsimile Calling tone capability;
+1 = Enable T.30 1100 Hz Facsimile Calling tone capability 1.
+
+3
+
+0 = Disable V.25/T.30 2100 Hz Answer tone capability;
+1 = Enable V.25/T.30 2100 Hz Answer tone capability 1.
+
+4
+
+0 = Disable Bell 2225 Hz Answer tone capability;
+1 = Enable Bell 2225 Hz Answer tone capability 1.
+
+5
+
+0 = Disable call progress tone and cadence (e.g., busy and dial tone)
+    capability;
+1 = Enable call progress tone and cadence (e.g., busy and dial tone)
+    capability 1.
+
+6-7
+
+Reserved.
+#VTS - Generate Tone Signals (Online Voice Command)
+
+      This action command can be issued to play one of more DTMF or other
+    tones (such as a "beep") if and only if the modem is in the Online
+    Voice Command Mode.  The modem parses and plays the tones defined in
+    the parameter in the order listed, and no key abort is accepted.  The
+    parameter can have three types of elements separated by commas: Dual or
+    Single Tones: These are represented by a substring enclosed in square
+    brackets ("[ ]") within the parameter.  Each such substring consists of
+    three sub-elements corresponding to 2 frequencies in Hz (0, or
+    200-3000) and a duration (ASCII decimal in units of 100 ms).
+
+Varying DTMF Digits: This is represented by a substring enclosed in curly
+    braces ("{ }") within the parameter.  Each such substring consists of
+    two sub-elements corresponding to a DTMF digits (0-9,A-D,*,#), and
+    alternate durations in units of 100 ms.
+
+Parameters: The tone generation consists of elements in a list with each
+    element separated by commas.
+
+Result Codes:
+OK Command to play tones on currently selected device is accepted.
+ERROR Command was not issued during Online Voice Command Mode or string is
+    grammatically incorrect.
+
+
+
+#VTX - Voice Transmit
+
+      This action command can be issued if and only if the modem is in the
+    Online Voice Command Mode (indicated previously with the VCON message),
+    and is the switch to Voice Transmit Mode.  #VTX is used when a voice
+    file is to be transmitted to the line, speaker , or handset.  The #VLS
+    command should have been previously issued to select the output source.
+
+Parameters:    None
+
+Result Codes:
+CONNECT   When voice transmission by DTE can begin.
+ERROR     If #VLS =0 and output device not connected.
+Chapter 2.  Rockwell Shielded Codes
+
+Shielded <DLE> Commands from the DCE
+
+Code Sent to DTE
+		Meaning
+
+<DLE>0 - <DLE>9, <DLE>*, <DLE>#, <DLE>A -<DLE>D
+
+      DTMF.  Digits 0 through 9, *, #, or A through D detected by the
+    modem, i.e., user has pressed a key on a local or remote telephone.
+    The modem sends only one <DLE> code per DTMF button pushed.
+
+<DLE>a
+
+      Answer Tone (CCITT).  Send to the DTE when the V.25/T.30 2100 Hz
+    Answer Tone (Data or Fax) is detected.  If the DTE fails to react to
+    the code, and the modem continues to detect Answer tone, the code is
+    repeated as often as once every half second.
+
+<DLE>b
+
+      Busy.  Sent in Voice Receive Mode when the busy cadence is detected,
+    after any remaining data in the voice receive buffer.  The modem sends
+    the busy <DLE>b code every 4 seconds if busy continues to be detected
+    and the DTE does not react.  This allows the DTE the flexibility of
+    ignoring what could be a false busy detection.
+
+<DLE>c
+
+      Calling Tone.  Sent when the T.30 1100 Hz Calling Tone (Fax Modem) is
+    detected in any of the voice operating modes.  The modem assumes that
+    the calling tone is valid and sends this code only after 4 seconds of
+    proper cadence has been detected.  If the DTE does not react to the
+    <DLE>c, and calling tone continues, the code is sent again as often as
+    once every 4 seconds.
+
+<DLE>d
+
+      Dialtone.  Sent in Voice Receive Mode when dial tone is detected
+    after any remaining data in the voice receive buffer.  The modem sends
+    the <DLE>j code every 3 seconds if dial tone continues to be detected
+    and the DTE does not react.  This allows the DTE the flexibility of
+    ignoring what could be a false dial tone detection.
+
+<DLE>e
+
+      European Data Modem Calling Tone.  Sent when the V.25 1300 Hz Calling
+    Tone (Data Modem) is detected in a voice submode.  The modem assumes
+    that the calling tone is valid, and sends this code only after 4
+    seconds of proper cadence has been detected.  If the DTE does not
+    react to the <DLE>e and calling tone continues, the code is sent again
+    as often as once every 4 seconds.
+
+<DLE>f
+
+      Bell Answer Tone.  Sent when Bell 2225 Hz Answer Tone (Data) is
+    detected.  If the DTE fails to react to the code and the modem
+    continues to detect Answer tone, the code is repeated as often as every
+    1/2 second.
+
+<DLE>h
+
+      Hung Up Handset.  Sent immediately when the modem detects that the
+    local handset has hung-up (i.e., has transitioned from off-hook to
+    on-hook) while in any of the three voice submodes.
+
+<DLE>o
+
+      Overrun.  Sent in Voice Receive Mode if the voice receive data buffer
+    overflows, in which case, the latest data is lost in favor of retaining
+    the oldest data in the buffer.  (The DTE may not have been reading data
+    from the modem lately.) The modem inserts t he <DLE>o at the end of the
+    buffer, thus marking the location where data was lost by the DTE.  The
+    modem does not append<E> <D><DLE>o codes to the buffer contiguously.
+    If more than one data byte is lost before the DTE begins reading again,
+    there is only on <DLE>o code in the data stream.  However, if the DTE
+    resumes reading, and then once again allows the buffer to overflow, a
+    new <DLE>o is appended to the data by the modem.  Thus, the<E>
+    <D><DLE>o does not indicate how many bytes of contiguous data has been
+    lost, but may report multiple gaps of lost data in the data stream.
+
+<DLE>q
+
+      Quiet.  Sent in Voice Receive Mode following any remaining data in
+    the receive voice buffer when the silence detection timer (#VSP)
+    expires and there has been voice data passed to the DTE.  Note that
+    with #VSS=0, the Quiet message never occurs.  But with silence
+    deletion turned on, #VSS may not in itself be sufficient since "cracks
+    and pops" for a short duration directly after a connection should not
+    be considered voice.  In general, <DLE>q is sent if first there was
+    sound, and now there is no sound, and means that somebody has stopped
+    talking, and according to the criteria selected in the #VSP and #VSS
+    settings, is probably not going to start again.  If the DTE ignores the
+    <DLE>q code, the modem automatically resets its timer and sends the
+    code again if the # VSP time period again expires.  This allows the DTE
+    time to react to what may be a false silence detection.
+
+<DLE>s
+
+      Silence.  Sent in Voice Receive Mode after the silence detection
+    timer (#VSP) expires and if valid voice has not been detected (#VSS).
+    In general, <DLE>s is sent if no sound was detected at all.  This
+    differs slightly from Quiet (<DLE>q) in that it can be used by the DTE
+    in its discrimination algorithms as a means of determining if anything
+    at all is coming from the remote station.  If the DTE ignores the
+    <DLE>s code, the modem automatically resets its timer and sends the
+    code again if the #VSP time period a gain expires.  This allows the DTE
+    time to react to what may be a false detection of silence.
+
+<DLE>t
+
+      Handset Off-Hook.  Sent one time when the local handset transition
+    from on-hook to off-hook is detected in any of the three voice
+    submodes.
+
+<DLE>u
+
+      Underrun.  Sent in Voice Transmit Mode when the voice transmit buffer
+    becomes empty without receiving a <DLE><ETX> or <DLE><CAN> command
+    first.  The modem remains in transmit mode, but issues the <DLE>u to
+    indicate that silence is being generated.  When the DTE resumes sending
+    bytes, the modem allows a small number of bytes to build up in the
+    buffer before re-enabling the transmitter to avoid repeated underruns.
+    However, with the underrun condition, the modem does not wait for the
+    XOFF threshold (or timer) to be met before resuming, as it does on an
+    initial transmit or resume operation because the remote listener may be
+    unaware of the underrun, and keeping the silence short may serve to
+    mask the underrun altogether.
+
+
+<DLE><ETX>
+
+      End of Stream.  <DLE><ETX> is sent to denote the end of a voice data
+    stream, similar to fax Class 1 and 2.  This occurs in Voice Receive
+    Mode only after the DTE issues the key abort.
+
+Shielded <DLE> Commands from the DTE
+
+      Most commands issued for voice are implemented as extensions to the
+    AT command set, and are accepted only if the modem is in a valid
+    command mode, such as Online Voice Command Mode.  However, there are
+    some operations which are available to the DTE without necessitating a
+    switch to Online Voice Command Mode.  The most obvious of these is the
+    <DLE><ETX> which the DTE issues during Voice Transmit Mode to terminate
+    an output message.  Table 3-2 lists shielded <DLE> commands recognized
+    by the modem.
+
+
+Code Sent to Modem
+
+		Meaning
+
+<DLE><ETX>
+
+      Terminate.  Sent during Voice Transmit Mode to indicate that the DTE
+    has finished transmitting a voice message.  The modem completes
+    transmission of any remaining data in the voice transmit buffer before
+    responding with the VCON message and entering Online Voice Command
+    Mode.  (This command is ignored by the modem when not in Voice Transmit
+    Mode.)
+
+<DLE><CAN>
+
+      Cancel.  Sent during Voice Transmit Mode to indicate that the DTE has
+    finished transmitting a voice message and wants the modem to discard
+    any remaining data in the voice transmit buffer.  The modem immediately
+    purges its buffer, and then responds with the VCON message entering
+    Online Voice Command Mode.  (This command is ignored by the modem when
+    not in Voice Transmit Mode.)
+
+<DLE>p
+
+
+      Pause.  Sent during Voice Transmit Mode to force the modem to suspend
+    sending voice data to the selected output device(s).  Any data
+    currently in the voice transmit buffer is saved until either a resume
+    (<DLE>r), or cancel <DLE><CAN>, is received, in which case the data is
+    lost.  If a <DLE><ETX> is received during the paused state, the modem
+    processes it normally, and also automatically resumes transmission of
+    the data left in the buffer (appended with <DLE><ETX>).  Any other data
+    received from the DTE while in this paused state is placed in the
+    transmit buffer according to available space, with flow control active.
+    (This command is ignored in other voice submodes.)
+
+<DLE>r
+
+      Resume.  Sent during Voice Transmit Mode to force the modem to resume
+    sending voice data to the selected output device(s).  Any data
+    currently in the voice transmit buffer is now played.  (This command is
+    ignored in other voice modes.) The pause and resume commands are
+    different than a simple suspension of data; data in the buffer is
+    "frozen" and not played when the DTE pauses.
+
+
+Chapter 3.  Rockwell S-Registers
+
+S-REGISTERS
+
+The following S-register is global, meaning that it can be set in any
+    appropriate mode (i.e., any #CLS setting).
+
+S30 - Deadman (Inactivity) Timer
+
+Range:    n = 0 - 255
+
+Default:  0 (OFF, which means DTE should usually set it to some value for
+    Voice)
+
+Command options:
+
+S30=0     Deadman timer off. No matter how long it might continue, the
+    modem never spontaneously hangs up the telephone line or switches to
+    autobaud mode as a result of inactivity.
+
+S30=1 to 255   This is the period of time (in seconds), which if expired
+    causes the modem to hang up the telephone line if it is off-hook and
+    no data has passed during the period.  The timer is also active
+    whenever the #BDR setting is non-zero.  In order to avoid a state
+    where speed sense is disabled (even though the PC can crash, come back
+    up, and try to issue commands at what should be a supported speed), the
+    inactivity time-out occurs if there is no data passed on the DTE
+    interface within the S30 period, even if the modem is on-hook.  DTE
+    software must not select a nonzero setting for #BDR until it is ready
+    to establish a telephone call or virtual connection to a speaker or
+    microphone.  When there is an inactivity time out with #CLS=8, the
+    modem always forces #CLS=0 and #BDR=0.
+
+Chapter 4.  Result Codes for Voice Operation, Rockwell
+
+VCON
+
+      VCON is sent when the modem is configured for voice (#CLS=8), or when
+    after answering or originating a call, the modem enters the Online
+    Voice Command Mode for the first time.  Typically, this is immediately
+    after an off-hook in answer mode, and after ringback ceases in
+    originate mode.  VCON is also sent when the DTE requests a switch from
+    Voice Transmit Mode to Online Voice Command Mode by issuing a
+    <DLE><ETX> to the modem, or when the DTE requests a switch from Voice
+    Receive Mode to Online Voice Command Mode via the key abort.
+
+CONNECT
+
+      CONNECT is sent when switching from the Online Voice Command Mode to
+    either Voice Receive Mode via the #VRX command, or to Voice Transmit
+    Mode via the #VTX command.  This message is sent to the DTE to inform
+    it that it may begin receiving or send ing ADPCM data.
+
+Chapter 5.   GSM audio format for voice products
+
+Introduction
+	This document covers the GSM audio format used in USRobotics voice
+products. It includes detailed information of the GSM bit stream format.
+On the Web site www.cs.tu-berlin/~jutta/toast.html there are some info and
+exemples.
+
+The GSM specs can be purchased at :
+ETSI (European Telecommunications Standards Institute) 
+ETSI Secretariat
+B.P.152
+F-06561 Valbonne Cedex 
+France
+Phone: +33 92 94 42 00
+Fax: +33 93 65 47 16
+Telex: 47 00 40 F
+Ask for specification : prI-ETS 300 036 
+The ETSI home page on the world wide web can be found at http://www.etsi.fr/.
+GSM data format
+
+	A GSM frame consists of 260 bits which contains 20ms of audio information.
+The 260 bits GSM frame is made up of 36 bits for filter parameters and four
+sub frames of 56 bits each as shown in table 1. Details of the filter
+parameters and the sub frames can be found in the GSM recommendation ESTI
+06.10.
+
+	Currently, there is no official definition for the arrangement of the bits
+in a GSM frame.  There is, however, an adopted arrangement as shown in table
+2.  The arrangement is used as the standard GSM format by publicly available
+GSM players and audio format conversion utilities.
+
+	The 260 bits GSM frame divides into 32.5 bytes.  For byte alignment, the
+GSM frame is extended to 264 bits for 33 bytes as in the standard GSM frame
+format.  The 4 bits extension is labeled as the "Head" of a GSM frame as
+shown in table 2.  To ID the type of GSM data stream, the 4 bit head is used
+store a "magic key".  For GSM recommendation 06.10 the head is set with the
+value 13 for 13kbs rate.
+
+Table 1
+Parameter       Parameter number        Var name        Number of bits  
+	1       LAR1    6       
+	2       LAR2    6       
+Filter Parameters
+   3       LAR3    5       
+	4       LAR4    5       
+	5       LAR5    4       
+	6       LAR6    4       
+	7       LAR7    3       
+	8       LAR8    3       
+	9       N1      7       
+	10      B1      2       
+Sub Frame1      11      M1      2       
+	12      Xmax1   6       
+	13      X1(0)   3       
+	14      X1(1)   3       
+	..      .....           
+	25      X1(12)  3       
+	26      N2      7       
+	27      B2      2       
+	28      M2      2       
+Sub Frame2      29      Xmax2   6       
+	30      X2(0)   3       
+	31      X2(1)   3       
+	..      .....           
+	42      X2(12)  3       
+	43      N3      7       
+	44      B3      2       
+	45      M3      2       
+Sub Frame3      46      Xmax3   6       
+	47      X3(0)   3       
+	48      X3(1)   3       
+	..      .....           
+	59      X3(12)  3       
+	60      N4      7       
+	61      B4      2       
+	62      M4      2       
+Sub Frame4      63      Xmax4   6       
+	64      X4(0)   3       
+	65      X4(1)   3       
+	..      .....           
+	76      X4(12)  3       
+Table 2  GSM Bit Stream Format
+
+Index   Byte1   Byte2   
+1       Head(4) LAR1(4/6)       LAR1(2/6)  LAR2(6)      
+2       LAR3(5)  LAR4(3/5)      LAR4(2/5) LAR5(4)  LAR6(2/4)    
+3       LAR6(2/4) LAR7(3) LAR8(3)       N1(7) B1(1/2)   
+4       B1(1) M1(2)  XMAX1(5/6) XMAX1(1/6) X10(3) X11(3) X12(1/3)       
+5       X12(2/3) X13(3) X14(3)  X15(3)  X16(3) X17(2/3) 
+6       X17(1/3) X18(3) X19(3) X110(1/3)        X110(2/3) X111(3) X112(3)       
+7       N2(7) B2(1/2)   B2(1/2) M2(2) XMAX2(5/6)        
+8       XMAX2(1/5) X20(3) X21(3) X22(1/3)       X22(2/3) X23(3) X24(3)  
+9       X25(3) X26(3)X27(2/3)   X27(1/3) X28(3) X29(3) X210(1)  
+10      X210(2) X211(3) X212(3) N3(7) B3(1/2)   
+11      B3(1/2) M3(2) XMAX3(5/6)        XMAX3(1/6) X30(3) X31(3) X32(1/3)       
+12      X32(2/3)  X33(3) X34(3) X35(3) X36(3)X37(2/3)   
+13      X37(1/3) X38(3) X39(3) X310(1/3)        X310(2/3) X311(3) X312(3)       
+14      N4(7)B4(1/2)    B4(1/2) M4(2) XMAX4(5/6)        
+15      XMAX4(1)  X40(3)  X41(3) X42(1/3)       X42(2/3)  X43(3) X44(3) 
+16      X45(3) X46(3)X47(2/3)   X47(1/3) X48(3) X49(3) X410(1/3)        
+17      X410(2/3)  X411(3)  X412(3)             
+USR's GSM data format
+
+	The USR's GSM format is similar to the standard GSM format.  Also, with
+each voice product release, the format of USR's GSM format has changed.
+
+	In the voice products based on the Sportster 28800 Vi architecture, the
+head of the GSM frame is set to zero and the GSM frame is encapsulated by a
+two bytes head and a three bytes tail.  As shown in figure 1,.the value of
+the head may either be FE FE hex for audio or B6 B6 hex for silence.  The
+value of the tail is 00 A5 A5 hex.
+
+Figure 1
+	In the voice products based on the Sportster 14400 Vi or the future
+Sportster 28800 Voice architecture, the format is the same as the Sportster
+28800 Vi with the exception of the head of the GSM frame. As shown in figure
+2, the head of the GSM frame is set with the value 13 (or D hex) instead of
+zero as in the Sportster 28800 Vi GSM frame.
+ 
+Figure 2
+	The Sportster 14400 Vi product for the countries : France, Austria and
+Spain are with a GSM format that is compliance with the standard GSM format
+as shown in table 2.  Its GSM format is compatible with the GSM format used
+by GSM players and conversion utilities.  For backwards compatibility, it is
+able to do auto-detection between USR's GSM format and the standard GSM
+format.

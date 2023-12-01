@@ -1,0 +1,1236 @@
+         _ _                                        _                    _____ 
+        | (_)                                      | |                  |____ |
+        | |_ _ __  _   ___  __   ___ _ __ __ _  ___| | ___ __ ___   ___     / /
+        | | | '_ \| | | \ \/ /  / __| '__/ _` |/ __| |/ / '_ ` _ \ / _ \    \ \
+        | | | | | | |_| |>  <  | (__| | | (_| | (__|   <| | | | | |  __/.___/ /
+        |_|_|_| |_|\__,_/_/\_\  \___|_|  \__,_|\___|_|\_\_| |_| |_|\___|\____/ 
+                                                                       
+                           _       _   _                 
+                          | |     | | (_)                
+                 ___  ___ | |_   _| |_ _  ___  _ __  ___ 
+                / __|/ _ \| | | | | __| |/ _ \| '_ \/ __|
+                \__ \ (_) | | |_| | |_| | (_) | | | \__ \
+                |___/\___/|_|\__,_|\__|_|\___/|_| |_|___/
+                                         
+
+
+
+
+    -- [ linux-crackme3 - solutions
+
+
+N.B. C'est article etait prevu pour un autre magazine, a savoir IOC#7. Vous
+trouverez certainne des allusions  a  IOC (R.I.P.)  dans cet  article merci
+de ne pas  en tenir compte.
+
+
+
+SOMMAIRE:
+
+    1 - Introduction.
+
+    2 - Solution compléte.
+
+    3 - Brute force.
+        a - hérisson brute force.
+        b - emp brute force.
+
+    4 - Crackme3: code source.
+
+
+
+
+1 - Introduction.
+-----------------
+
+  C'est sur un  coup de  tete  que  je  décide de  coder  un 3eme  crackme.
+Ce crackme coder en une petite nuit connais quelque défaut que  certain  on
+su exploiter.
+C'est la première fois que j'integre de la crypto  dans  un crackme, le mot
+de  passe  permétais  de  décrypter  une  parti  du  code  crypté  en  RC4.
+Il fallait donc bruteforcer pour trouver le mot de passe. J'ai recu
+plusieurs solution de brute forcer, allant de plusieurs  heures  a quelques
+secondes pour trouver le mot de passe.
+
+Le binaire ce trouve ici : http://afturgurluk.org/~emper0r/crk3
+--> voir annexe du mag section crkme, le binaire se nomme crk.
+
+Pour la suite de l'article je laisse parler witzy qui  a étais  le  premier
+a m'envoyer le mot de passe, a noter qu'il  fut aussi  le premier a cracker
+le crackme2 ;)
+(note de emp pour witzy : dépeche toi de faire ton crackme que je puisse me
+venger ;) )
+
+
+
+
+
+
+2 - Solution compléte.
+----------------------
+
+
+        _____________________________
+       /  soluce du crkme3 d'emper0r )
+       )  par witzy                 (
+       \_____________________________)
+ (\(\  /
+  (oo)/
+ (")(")
+
+
+Aaaah c'était une bonne surprise qu'emp remette le couvert avec un crackme3 !
+Je me suis mis dessus aussitôt que je l'ai vu, et  étant donné  que  je  l'ai
+fini en premier (aucune vantardise  ici,  je suis  certain  que si  saurtains
+avaient eu le temps de se pencher dessus ils l'auraient cracké  plus vite  et
+mieux), je vous donne ici la façon dont j'ai procédé.
+
+
+
+  premiers ébats avec la bête
+  ***************************
+
+$ cp crk3 crk3.org # un ptit backup fait jamais de mal
+
+On sait que  le  binaire  est  au  format ELF, on va donc sortir  readelf  en
+esperant recuperer les infos utiles :
+
+$ readelf -a crk3
+[...]
+  Adresse du point d'entrée:         0x804828a
+[...]
+En-têtes de programme:
+  Type           Décalage Adr. vir.  Adr.phys.  T.Fich. T.Mém.  Fan Alignement
+  LOAD           0x000000 0x08048000 0x08048000 0x0038c 0x0038c RWE 0xa5001000
+[...]
+
+Voila tout ce qui m'intéressait :
+
+- l'exécutable est formé d'un seul segment mémoire, qui sera mappé a partir de
+l'adresse virtuelle 0x08048000, c'est-à-dire que, vu depuis le processus crk3,
+on trouvera le premier octet du binaire crk3 à  l'adresse 0x08048000, et  tout
+le contenu de ce  binaire  se  trouvera  transposé  dans  cette  zone  unique.
+A  noter  que  les  droits  sur  ce  segment sont RWX, puisqu'il faut au moins
+pouvoir  lire et  executer  les  opcodes, et  ecrire  le password  en  mémoire
+lorsqu'il sera fourni par le luser durant l'exécution.
+Cela présage aussi du  decryptage  de code  en direct, comme  dans  le crkme2,
+puisque le code est situé dans un segment  writable (ce qui n'est pas  le  cas
+des  programmes  faits  de  façon  conventionnelle, "cat /proc/self/maps" pour
+celles et ceux qui auraient un doute).
+
+- l'adresse du point d'entrée  est 0x804828a, et  étant  donné  les  remarques
+précédentes, le 1er opcode exécuté sera le 0x28a ème du fichier crk3.
+
+- comme la dernière fois, emp n'a pas laissé la tables des symboles, ni aucune
+information sur les sections, ni sur rien d'autre en fait ;)
+
+
+
+  désassemblage
+  *************
+
+Tout d'abord, quelques petites options intéressantes de ndisasm :
+
+-b bits
+ se placer dans une architecture 16 bits ou 32 bits.
+
+-o origin
+ permet d'indiquer l'adresse où est placé le  début  du  code à  désassembler,
+ça permet d'avoir l'illusion de manipuler les   adresses virtuelles et donc de 
+mieux s'y retrouver dans la mémoire du processus.
+
+-s sync-point
+ force le  désassemblage  à  se  synchroniser  pour ne pas  "passer au-dessus"
+de l'adresse  indiquée.  Ca permet de  bypass  le false disassembly "statique"
+(qui est présent de base dans le binaire)
+
+Cette option de synchronisation se révèle  utile  dès  le premier coup, car un
+"ndisasm -o 0x8048000 -b 32 crk3" se fait berner :
+[...]
+08048287  E8EB9AEBA8        call 0xb0f01d77
+0804828C  0000              add [eax],al
+[...]
+
+puisqu'il  ne   commence   pas  de  lecture   d'instruction  à  l'entry  point
+(adresse 0x804828a), à cause de l'octet parasite E8 en 0x08048287.
+
+
+On 
+$ ndisasm -o 0x8048000 -b 32 crk3 -s 0x804828a 
+[...]
+0804828A  EBA8              jmp short 0x8048234
+[...]
+
+Voilà qui est mieux, rendez-vous en 0x8048234 :
+[...]
+08048234  BF52820408        mov edi,0x8048252
+08048239  66B8EB01          mov ax,0x1eb
+0804823D  66AB              stosw
+0804823F  BF67820408        mov edi,0x8048267
+08048244  66AB              stosw
+08048246  BF85820408        mov edi,0x8048285
+0804824B  66AB              stosw
+0804824D  BF24820408        mov edi,0x8048224
+08048252  90                nop
+08048253  90                nop
+[...]
+
+
+Ouh que c'est sournois ! Le code à suivre est écrit à l'exécution,  mais pire,
+ce sont  des  jumps  d'1  octet  qui  sont  ainsi  écrits, qui  décaleront  le 
+désassembleur, ce dernier nous montrera  alors  des instructions  incohérentes
+puisqu'il  interprétera  depuis  le milieu  d'une  véritable  instruction (emp
+appelle ça du live CCA : Code Changeant d'Aspect en direct).
+
+En détails, la 1ère instruction mets la valeur 0x8048252 dans le registre edi,
+cette  valeur  correspondant  à  une  adresse  plus  loin où  de  petits  nops 
+(opcode 0x90,  ne réalise aucune opération) ne  demandent  qu'à être  écrasés.
+Puis 0x01eb (instruction de jmp d'1 octet)  est  placé  dans  le  registre  ax 
+(16 bits celui-ci), et le stosw va placer le mot contenu dans  ax à  l'adresse 
+pointée par edi.
+
+Ainsi, on n'a plus :
+08048252  90                nop
+08048253  90                nop
+mais
+08048252  EB01              jmp short 0x08048255
+
+Cela est fait pour 3 adresses : 0x8048252, 0x8048267 et 0x8048285.
+Pour y voir plus clair, j'ai utilisé bvi (comme vi, mais édite en hexadécimal)
+pour écrire les EB 01 (et non pas 01 EB, crk3 est fait pour x86, donc écriture
+en mémoire selon little endian) dans le fichier crk3,  qui  s'appellera  après
+ces modifs crk3.1, et se remettre à désassembler la suite qui est en 0x8048255.
+
+
+$ ndisasm -o 0x8048000 -b 32 -s 0x8048255 crk3.1
+
+08048255  B8BE548004        mov eax,0x48054be
+0804825A  AB                stosd
+0804825B  B80889F7B9        mov eax,0xb9f78908
+08048260  AB                stosd
+08048261  B8D0010000        mov eax,0x1d0
+08048266  AB                stosd
+08048267  EB01              jmp short 0x804826a
+
+Pas la peine de ré-expliquer, encore un ptit coup  de bvi  (je me répète, mais
+attention au little endian, et à son tomahawk aussi) qui met au monde  crk3.2,
+puis on retourne (mais sans courir!) au désassemblage : 0x804826a.
+
+
+$ ndisasm -o 0x8048000 -b 32 -s 0x804826A crk3.2
+
+0804826A  B831DBB3A5        mov eax,0xa5b3db31
+0804826F  AB                stosd
+08048270  B8AC30D8AA        mov eax,0xaad830ac
+08048275  AB                stosd
+08048276  B8E2FAE915        mov eax,0x15e9fae2
+0804827B  AB                stosd
+0804827C  66B8FEFF          mov ax,0xfffe
+08048280  66AB              stosw
+08048282  B0FF              mov al,0xff
+08048284  AA                stosb
+08048285  EB01              jmp short 0x8048288
+
+Change pas d'main, je sens qu'ça vient !
+
+
+$ ndisasm -o 0x8048000 -b 32 -s 0x8048288 crk3.3
+
+08048288  EB9A              jmp short 0x8048224
+A noter que ce jump emmène à une adresse où du code avait été  écrit  en  live.
+
+
+$ ndisasm -o 0x8048000 -b 32 -s 0x8048224 crk3.3
+
+08048224  BE54800408        mov esi,0x8048054
+08048229  89F7              mov edi,esi
+0804822B  B9D0010000        mov ecx,0x1d0
+08048230  31DB              xor ebx,ebx
+08048232  B3A5              mov bl,0xa5
+08048234  AC                lodsb
+08048235  30D8              xor al,bl
+08048237  AA                stosb
+08048238  E2FA              loop 0x8048234
+0804823A  E915FEFFFF        jmp 0x8048054
+
+On retrouve ici un ptit algo décryptant  le code  qui démarre  en 0x8048054  et
+d'une longueur  de  0x1d0 octets, en l'xor'izant avec  une clé "privée" : 0xa5.
+
+Pour continuer de  désassembler,  j'ai écrit crk3_decoder.c qui décode  tout ça
+dans le fichier crk3_d.
+On arrive maintenant au boss final !
+
+$ ndisasm -o 0x8048000 -b 32 -s 0x8048054 crk3_d
+
+08048054  B96F810408        mov ecx,0x804816f	; ecx <- 0x804816f
+08048059  BA8A000000        mov edx,0x8a	; edx <- 0x8a
+0804805E  E8F8000000        call 0x804815b	; 1er call - affichage texte
+08048063  B91A820408        mov ecx,0x804821a	; ecx <- 0x804821a
+08048068  31D2              xor edx,edx		; edx <- 0
+0804806A  B208              mov dl,0x8		; dl <- 0x8, pour lire 8 char
+0804806C  E8F4000000        call 0x8048165	; 2e call - lecture du pass
+08048071  48                dec eax		; eax--
+08048072  85C0              test eax,eax	; maj des flags selon eax
+08048074  744A              jz 0x80480c0	; jmp si eax == 0 (juste lu \n)
+08048076  89C6              mov esi,eax		; esi <- eax
+08048078  BF1A820408        mov edi,0x804821a	; edi <- 0x804821a (adr passwd)
+0804807D  E845000000        call 0x80480c7	; 3e call - KSA
+08048082  BF11000000        mov edi,0x11	; edi <- 0x11
+08048087  BEAF800408        mov esi,0x80480af	; esi <- 0x80480af
+0804808C  E884000000        call 0x8048115	; 4e call - PRGA
+08048091  BEAF800408        mov esi,0x80480af	; esi <- 0x80480af
+08048096  AD                lodsd		; EAX <- [ESI]; ESI += 4
+08048097  3D9090B90B        cmp eax,0xbb99090	; jmp si eax == 0xbb99090
+0804809C  7411              jz 0x80480af	; jmp <=> crack0red
+0804809E  B9F9810408        mov ecx,0x80481f9	; ecx <- 0x80481f9
+080480A3  BA12000000        mov edx,0x12	; edx <- 0x12
+080480A8  E8AE000000        call 0x804815b	; 1er call (wrong password)
+080480AD  EB11              jmp short 0x80480c0 ; exit
+
+1er call :
+0804815B  31C0              xor eax,eax
+0804815D  B004              mov al,0x4
+0804815F  31DB              xor ebx,ebx
+08048161  43                inc ebx
+08048162  CD80              int 0x80 ; sys_write sur stdout du msg d'accueil
+08048164  C3                ret
+
+2e call :
+08048165  31C0              xor eax,eax
+08048167  B003              mov al,0x3
+08048169  31DB              xor ebx,ebx ; lecture sur le descr. 1, ce qui emp_
+0804816B  43                inc ebx	; eche de filer le passe en stdin
+0804816C  CD80              int 0x80 ; sys_read du pass, qui est mis en 0x804821a
+0804816E  C3                ret
+
+3e call (KSA, Key Setup Algorithm) :
+080480C7  B8FCFDFEFF        mov eax,0xfffefdfc
+080480CC  B940000000        mov ecx,0x40
+080480D1  89048D88820408    mov [ecx*4+0x8048288],eax
+080480D8  2D04040404        sub eax,0x4040404
+080480DD  49                dec ecx
+080480DE  75F1              jnz 0x80480d1	; init tableau 804828C->8048388
+080480E0  31C0              xor eax,eax
+080480E2  31DB              xor ebx,ebx		; bl : index pour le pass
+080480E4  BE04000000        mov esi,0x4		; esi : gère la boucle annexe
+080480E9  E905000000        jmp 0x80480f3
+080480EE  FEC3              inc bl
+080480F0  4E                dec esi
+080480F1  74EF              jz 0x80480e2	; le jmp de la boucle annexe
+080480F3  8A918C820408      mov dl,[ecx+0x804828c]
+080480F9  02041F            add al,[edi+ebx]
+080480FC  00D0              add al,dl
+080480FE  8AB08C820408      mov dh,[eax+0x804828c]
+08048104  88B18C820408      mov [ecx+0x804828c],dh
+0804810A  88908C820408      mov [eax+0x804828c],dl
+08048110  FEC1              inc cl
+08048112  75DA              jnz 0x80480ee	; melange des valeurs
+08048114  C3                ret
+
+4e call (PRGA, Pseudo-Random Generation Algorithm) :
+08048115  85FF              test edi,edi
+08048117  7441              jz 0x804815a
+08048119  31C0              xor eax,eax
+0804811B  31DB              xor ebx,ebx
+0804811D  31C9              xor ecx,ecx
+0804811F  31D2              xor edx,edx
+08048121  FEC3              inc bl
+08048123  8A938C820408      mov dl,[ebx+0x804828c]
+08048129  00D0              add al,dl
+0804812B  8A888C820408      mov cl,[eax+0x804828c]
+08048131  888B8C820408      mov [ebx+0x804828c],cl
+08048137  88908C820408      mov [eax+0x804828c],dl
+0804813D  00D1              add cl,dl
+0804813F  8A898C820408      mov cl,[ecx+0x804828c]
+08048145  300E              xor [esi],cl
+08048147  46                inc esi
+08048148  4F                dec edi
+08048149  75D6              jnz 0x8048121	; chiffre de [esi] à [esi+16]
+0804814B  31C0              xor eax,eax
+0804814D  BF8C820408        mov edi,0x804828c
+08048152  B940000000        mov ecx,0x40
+08048157  FC                cld
+08048158  F3AB              rep stosd		; remplit 804828C->8048388 de 0
+0804815A  C3                ret			; pour cacher ça aux ptracers
+
+un jump (exit) :
+080480C0  31C0              xor eax,eax
+080480C2  40                inc eax
+080480C3  31DB              xor ebx,ebx
+080480C5  CD80              int 0x80	; sys_exit
+
+un autre jump (code exécuté si cracked) :
+080480AF  54                push esp
+080480B0  62                db 0x62
+080480B1  F33064913B        rep xor [ecx+edx*4+0x3b],ah
+080480B6  5A                pop edx
+080480B7  1F                pop ds
+080480B8  47                inc edi
+080480B9  A9E109021D        test eax,0x1d0209e1
+080480BE  54                push esp
+080480BF  91                xchg eax,ecx
+puis c'est le code de "un jump" c'est-a-dire exit
+
+
+
+Le premier bout de programme va afficher le texte puis demander le pass, grâce
+à un sys_read de 8 caractères. Ce pass est  stocké en 0x804821a, puis  vérifié
+qu'il n'est pas vide. Si c'est le cas, le  programme  saute en 0x80480c0,  qui
+effectue l'appel système sys_exit.
+
+La vérification du pass est ici basée  sur le  chiffrement RC4. Cet algorithme
+permet de passer d'une clé (symétrique) à un nombre pseudo-aléatoire.
+Ca se passe en 2 parties : KSA et PRGA.
+
+. KSA (Key Setup Algorithm)
+Un tableau de 256 octets  est  créé, et  rempli avec  les valeurs  de 0 à 255,
+c'est-à-dire une boucle de i de 0 à 255 avec tableau[i] = i;
+Ici, emp a choisi de remplir le tableau 4  par 4, avec   la valeur  0xfffefdfc
+qui est décrémentée de 0x4040404 à chaque boucle.
+Etonnamment, le tableau va de 0x804828c à 0x8048388, ce qui ne  fait  que  253
+octets. FIXME : je fais une erreur de calcul ou quoi ? surtout qu'a la fin  du
+fichier, y a bien 256 octets.
+
+Le tableau est ensuite mélangé de la façon suivante :
+j = 0;
+for i de 0 à 255
+    j = (j + tableau[i] + pass[i % lg_pass]) mod 256 // lg_pass == 4 ici
+    permute (S[i],S[j])
+
+Pour réaliser le modulo dans le code  du  3e call, il y  a une  boucle  annexe
+basée sur esi qui permet de faire tourner bl entre 0 et 3 (bl est utilisé pour
+prendre les octets 0 à 3 du pass : [edi+ebx], edi contenant l'adresse où a été
+stocké le pass).
+
+A la sortie de l'initialisation du tableau (0x080480E0), ecx était à 0.
+cl est incrémenté à chaque loop donc au bout de 256 tours la  boucle  s'arrête, 
+à cause du jnz : 08048112  75DA              jnz 0x80480ee.
+
+La modification de j et la permutation sont faites ici :
+080480F3  8A918C820408      mov dl,[ecx+0x804828c]
+080480F9  02041F            add al,[edi+ebx]		; al remplit le
+080480FC  00D0              add al,dl			; role de j
+080480FE  8AB08C820408      mov dh,[eax+0x804828c]
+08048104  88B18C820408      mov [ecx+0x804828c],dh	; tation
+0804810A  88908C820408      mov [eax+0x804828c],dl	;       permu
+
+
+. PRGA (Pseudo-Random Generation Algorithm)
+Le tableau est utilisé pour crypter le message ainsi :
+ i = 0
+ j = 0
+ boucle sur la longueur du message a chiffrer
+     i = (i + 1) % 256
+     j = (j + S[i]) % 256
+     permuter (S[i],S[j])
+     k = S[(S[i] + S[j]) % 256]
+     message[next] = message[next] XOR k
+
+
+bl joue le rôle de i (le modulo 256   se  fait  tout  seul  puisque  c'est un
+registre 8 bits), al celui de j.
+
+La permutation se fait à ce moment-là :
+08048131  888B8C820408      mov [ebx+0x804828c],cl
+08048137  88908C820408      mov [eax+0x804828c],dl
+et l'octet k est récupéré ici :
+0804813D  00D1              add cl,dl
+0804813F  8A898C820408      mov cl,[ecx+0x804828c]
+puis vient le chiffrement :
+08048145  300E              xor [esi],cl
+
+Pour déchiffrer, c'est exactement le même algorithme (puisque  c'est  le  cas
+du xor). Le  destinataire  du  message  réalise le KSA  depuis  la  même  clé
+(puisqu'elle est  symétrique  et partagée)  et  applique le PRGA  au  message
+crypté reçu.
+
+
+
+Ici, la vérification du pass est faite de la façon suivante :
+
+- On initialise RC4 avec  la  valeur  du  password  donné  par  l'utilisateur, 
+c'est-à-dire que le 3e call  est  appelé.  Celui-ci remplit  son rôle de  KSA.
+Ensuite, c'est le tour du 4e call, qui est  censé chiffrer  (ou déchiffrer) un 
+message.
+Et bien le message qu'il va  traiter, c'est la  plage  d'octets  à  partir  de 
+l'adresse 0x80480af et sur une  longueur  de 17  octets (puisque la  condition
+de boucle porte sur edi nul, et qu'il a démarré à  0x11  en  étant  décrémenté
+entre chaque loop.
+
+- En sortie, les 4 premiers octets de cette plage (désolé de  sortir  de  tels
+mots sachant que certains ne sont peut-être  pas  en  vacances :P) sont testés
+pour voir s'ils  ont  été mis à  0xbb99090. Si  c'est  le cas, le crackme  est 
+officiellement certifié Crack3d, et on  jump à cet  endroit justement, car  le
+code  déchiffré  correspond   aux  instructions   nécessaires  pour   afficher
+Crack3d, et la suite correspond au code de "un jump", qui exit.
+
+Ca correspond à cette partie :
+
+08048091  BEAF800408        mov esi,0x80480af	; esi <- 0x80480af
+08048096  AD                lodsd		; EAX <- [ESI]; ESI += 4
+08048097  3D9090B90B        cmp eax,0xbb99090	; jmp si eax == 0xbb99090
+0804809C  7411              jz 0x80480af	; jmp <=> crack0red
+
+
+
+  brute force
+  ***********
+
+Au moment où je m'affairais sur ce crackme, je ne connaissais pas les  détails
+des  algos  de  RC4,  à  part  la  façon  dont il  est   utilisé  pour  WEP ;)
+Une fois que  j'avais  compris  le code assembleur, j'ai   cherché comment  je 
+pouvais calculer le pass, commencé à émuler le fonctionnement  de l'algo en  C
+pour y voir plus clair, mais ne trouvant  rien, et  ne  sachant  même pas  que
+c'était RC4, j'ai préparé un patch pour pouvoir brute-forcer  cette saloperie,
+et écrit à la va-vite un brute-forceur. Mais avant de le laisser  mouliner, et 
+vu que je pouvais pas le laisser tourner dans les  heures  qui  venaient, j'ai
+mailé emp  pour  lui dire  où j'en  étais,  et ce que je m'apprêtais à  faire,
+quelque peu honteux :)
+
+Le lendemain, il m'avait déjà répondu, me disant que c'était  du RC4, et  donc
+que la seule solution était de brute-forcer le crackme, à moins de trouver une
+faille dans son implémentation ou bien dans l'algo lui-même.
+D'ailleurs, les faiblesses qui  permettent de  casser du WEP ne  sont pas  ici
+exploitables puisqu'on ne peut pas récupèrer plusieurs  messages cryptés  avec
+la même clé (qui est la bonne) pour réaliser du  brute-force efficace. Ici, on
+connait  aussi  le  message  crypté mais  on  cherche  la bonne clé en n'ayant
+aucun autre message crypté par  elle. On  doit  donc  essayer  toutes les clés
+possibles, une à une.
+
+
+Concernant le patch, si on jette a nouveau un oeil sur ce qui precede la 
+lecture du pass :
+
+08048169  31DB              xor ebx,ebx
+0804816B  43                inc ebx
+
+on voit que bl, qui sera interprété par le code du syscall sys_read comme  le
+numéro du  descripteur dans  lequel lire,  est  mis à 1 (stdout), et  non à 0
+(stdin) comme  le  veut la  coutume. Ainsi, les caractères  du pass  sont lus
+lorsqu'ils  s'affichent  dans  le terminal.  Un "echo abcd | ./crk3" n'avance
+donc à rien, car il faut quand même taper "abcd" lorsque le pass est  demandé
+(la chaine "abcd" qui est disponible dans stdin  n'est jamais lue). Adieu  le
+brute force aveugle à peine le crk3 wget'd !
+
+Pour  remédier  a  ca, on  veut  mettre  un nop (opcode 0x90) à la  place  du
+0x43 (inc ebx) à l'octet d'adresse virtuelle 0804816B. Comme on l'a vu tout à
+l'heure, cet octet à été  manipulé durant  l'exécution par  l'algorithme  qui 
+réalise un xor des opcodes avec la valeur 0xb5.
+
+Pour connaître l'opcode à mettre dans le binaire, on fait :
+
+  0011 0101     35 <- opcode à trouver
+^ 1010 0101     b5 <- xor'd avec cette valeur
+  ---------
+  1001 0000     90 nop <- opcode obtenu après passage de l'algo durant l'exécution
+
+Il faut donc remplacer l'octet en 0x0804816B pour y mettre la valeur 0x35, ce
+que fait crk3_patcher.c.
+
+
+Ensuite, pour brute-forcer, j'ai fais un bf.sh qui  utilise  des redirections
+dans des fichiers, c'est beaucoup plus rapide de faire :
+
+echo $a$b$c$d | ./crk3.bf >>/data/results
+
+que de faire des choses du genre :
+
+echo $a$b$c$d | ./crk3.bf | grep Crack3d && echo "pass:$a$b$c$d"
+
+à cause du temps de vérification de  la valeur  de retour  du grep  je pense.
+
+Dans le 1er cas, le grep est fait entre  chaque  boucle  de la  1ère  lettre,
+c'est-à-dire très peu souvent. A noter  que  le  fichier  results  atteignant
+la centaine de megs avant le grep,  lorsque  ce  dernier  est  fructueux,  il
+dit juste que ça concorde. Il faut  alors  regarder à  la main dans  results.
+
+Ce script est loin d'être  optimisé,  d'ailleurs  il a  mis  2h30  pour faire 
+parcourir à la 1ère lettre a-zA-F, lancé en le ralentissant niveau priorité :
+
+$ nice -n 19 bash bf.sh
+sur un Athlon 1GHz (256 Mo de RAM).
+
+Enfin après en avoir chié sa carte, le PC me donne finalement le password :
+m3uh
+
+
+Une ptite vérif :
+$ ./crk3.org
+
+Update : Tout compte fait, il s'est averé qu'IOC7 n'est pas paru, et emp ayant
+proposé ce texte à n0name, le voilà ici. Je prends donc ma plume pour rajouter
+toute la team de n0name dans mes remerciements !
+
+                ---== emp' crackme 3 ==---
+                --------------------------
+
+http://afturgurluk.org/~emper0r/
+emper0r@secureroot.com
+
+PASSWORD: m3uh
+
+Crack3d !...
+
+
+
+w00t w00t ! J'ai entendu quelque chose craquer !
+
+
+  retour sur les lieux du crime
+  *****************************
+
+Apres avoir dit tout ça à emp, il m'a confié qu'il s'attendait à ce que  l'on
+brute  force  depuis  l'intérieur du  programme, c'est plus rapide  et  aussi
+simple, puisqu'on a les fonctions de RC4 à disposition. Pour faire les choses
+jusqu'au bout, et trouvant que c'était une meilleure idée et  que ça  pouvait
+être fun, je me suis mis à le faire.
+
+Pour faire simple (et rapide  car il  est  6h et demi du mat là), le  fichier
+bf.asm contient le code à  insérer  dans crk3 à  l'adresse 0x08048054, là  où
+reposait les instructions du programme principal. Il y a  également un  autre
+programme qui s'appelle  crk3_patchbf.c, chargé  d'écrire  le  code du  brute
+force dans crk3, ainsi que de patcher  l'entry point  pour le  faire  pointer
+en 0x08048054. Les sources sont assez commentés pour être compréhensibles.
+
+Le mode d'emploi (ou la recette ;) est le suivant :
+$ nasm -o crk3_autobf.data bf.asm
+$ cp crk3.org crk3 ; ./crk3_decoder ; cp crk3_d crk3
+$ ./crk3_patchbf
+$ ./crk3
+
+Toujours sur la même machine, ça s'est fait en 54 minutes. C'est  très  long,
+surtout que je teste des pass non composés  de  caractères  alpha-numériques.
+Bon c'était marrant dans le principe, mais pour du brute force vraiment
+efficace je vous renvoie sur les soluces des autres qui ont fini ce crackme !
+
+Voilà c'est fini, j'espère que ça vous a intéressé et que vous avez peut-être
+appris 2, 3 choses. Je te remercie emper0r  pour avoir  fait  ce crkme3, j'ai
+pris plaisir à  le reverse,  et  aussi  pour  m'avoir  offert  l'occasion  de
+paraitre dans  IOC (petite note : NNL now :P) ! Un ptit  greetz aussi  à ceux
+que  je  commence à  connaître,  et au  FRHC continuez comme ça, j'aime  bien
+votre esprit, vivement nc1 !
+
+
+ - witzy (stazzz@altern.org)
+
+
+
+
+3 - Brute force.
+----------------
+
+        a - herisson brute force.
+        ---------------------
+
+$ tar xzvf herisson.tar.gz
+herisson/
+herisson/func.asm
+herisson/soluce.emp.c
+herisson/Makefile
+herisson/soluce2.emp.c
+$ cd herisson
+$ make
+nasm -f elf func.asm -o func.o
+gcc -O3 -fomit-frame-pointer func.o soluce.emp.c -o brutepowa
+$ time ./brutepowa
+Soluce : m3uh (6875336d)
+ 
+real    0m16.188s
+user    0m15.958s
+sys     0m0.001s
+
+
+
+
+        b - emp brute force.
+        --------------------
+
+$ nasm -f elf emp.asm ; cc emp.o -nostdlib
+$ time ./a.out
+pass: m3uh
+ 
+real    0m8.215s
+user    0m8.187s
+sys     0m0.001s
+
+
+
+
+
+
+4 - Crackme3: code source.
+--------------------------
+
+$ cat Makefile
+all:
+        nasm -f bin crk.asm
+        chmod +x ./crk
+
+$ cat crk.asm
+
+BITS 32
+
+
+;header define
+%define         BASE            0x8048000
+%define         ET_EXEC         2
+%define         EM_386          3
+%define         PT_LOAD         1
+%define         RWX             7                                              
+%define         NULL            0
+                                                                                
+                                                                               
+; The ELF header.
+                                                                                
+ehdr:                                           ;   Elf32_Ehdr
+                db      0x7F, "ELF", 1, 1, 1    ;   e_ident
+        times 9 db      0
+                dw      ET_EXEC                 ;   e_type
+                dw      EM_386                  ;   e_machine
+                dd      1                       ;   e_version
+                dd      BASE + _start           ;   e_entry
+                dd      phdr - $$               ;   e_phoff
+                dd      NULL                    ;   e_shoff
+                dd      NULL                    ;   e_flags
+                dw      ehdrsize                ;   e_ehsize
+                dw      phdrsize                ;   e_phentsize
+                dw      1                       ;   e_phnum
+                dw      NULL                    ;   e_shentsize
+                dw      NULL                    ;   e_shnum
+                dw      NULL                    ;   e_shstrndx
+ehdrsize        equ     $ - ehdr
+                                                                                
+                                                                                
+                                                                                
+phdr:                                           ; Elf32_Phdr
+                dd      PT_LOAD                 ;   p_type
+                dd      NULL                    ;   p_offset
+                dd      BASE                    ;   p_vaddr
+                dd      BASE                    ;   p_paddr
+                dd      filesize                ;   p_filesz
+                dd      memsize                 ;   p_memsz
+                dd      RWX                     ;   p_flags
+                dd      0x1000                  ;   p_align
+phdrsize        equ     $ - phdr
+
+
+intro:
+        mov  	ecx, msg+BASE
+        mov  	edx, len
+        call 	aff
+
+;demande de pass
+        mov  	ecx, pass+BASE
+        xor  	edx, edx
+        mov      dl, 8
+        call 	lect
+
+	dec	eax		;pas de "\n"
+	test	eax, eax
+	je	 fin
+
+;setkey
+	mov	esi, eax
+	mov	edi, pass+BASE
+	call	rc4_setkey
+
+;decrypt
+	mov	edi, b_encrypted - a_encrypted
+	mov	esi, a_encrypted+BASE
+	call	_rc4_crypt
+	
+;décryption correcte ?
+	mov	esi, a_encrypted+BASE
+	lodsd
+	cmp	eax, 0x0bb99090	
+	je	a_encrypted
+
+;affiche mauvais mot de passe	
+	mov	ecx, msg1+BASE
+	mov	edx, len1
+	call	aff
+	jmp	SHORT	fin	
+
+
+a_encrypted:
+nop
+nop
+	mov	ecx, msg2+BASE
+	mov	edx, len2
+	call	aff
+b_encrypted:
+
+
+fin:
+	xor	eax, eax
+	inc 	eax
+	xor	ebx, ebx
+	int	0x80
+
+
+;--------------------------------------------------
+rc4_setkey:    
+                                                                                
+        mov     eax, 0FFFEFDFCh
+        mov     ecx, 256/4
+_init_rc4keytable:
+        mov     dword  [rc4keytable+BASE+4*ecx-4], eax
+        sub     eax, 04040404h
+        dec     ecx
+        jnz     _init_rc4keytable
+                                                                                
+        xor     eax, eax
+                                                                                
+                                                                                
+_key_return:
+        xor     ebx, ebx
+        mov     esi, 4
+        jmp     _new_key
+                                                                                
+_key_loop:
+        inc     bl
+        dec     esi
+        jz      _key_return
+                                                                                
+_new_key:
+        mov     dl, byte  [rc4keytable+BASE+ecx]
+        add     al, byte  [edi+ebx]
+        add     al, dl
+        mov     dh, byte  [rc4keytable+BASE+eax]
+        mov     byte  [rc4keytable+BASE+ecx], dh
+        mov     byte  [rc4keytable+BASE+eax], dl
+        inc     cl
+        jnz     _key_loop
+        ret
+
+
+
+
+;--------------------------------------------
+_rc4_crypt:
+                                                                                
+        test    edi, edi
+        jz      _rc4_enc_exit
+                                                                                
+        xor     eax, eax
+        xor     ebx, ebx
+        xor     ecx, ecx
+        xor     edx, edx
+                                                                                
+_rc4_enc_loop:
+        inc     bl
+        mov     dl, byte  [rc4keytable+BASE+ebx]
+        add     al, dl
+        mov     cl, byte  [rc4keytable+BASE+eax]
+        mov     byte  [rc4keytable+BASE+ebx], cl
+        mov     byte  [rc4keytable+BASE+eax], dl
+        add     cl, dl
+        mov     cl, byte  [rc4keytable+BASE+ecx]
+        xor     byte  [esi], cl
+        inc     esi
+        dec     edi
+        jnz     _rc4_enc_loop
+                                                                                
+        xor     eax, eax
+        mov     edi, rc4keytable+BASE
+        mov     ecx, 256/4
+        cld
+        rep     stosd
+_rc4_enc_exit:
+	ret
+
+
+
+;---------------------------------------------
+aff:
+        xor eax, eax
+        mov  al, 4                              ;sys_write
+        xor ebx, ebx
+        inc ebx                                 ;stdout
+        int 0x80
+        ret                                                          
+;---------------------------------------------
+                                                                                
+                                                                                
+                                                                                
+;---------------------------------------------
+lect:
+        xor eax, eax
+        mov  al, 3
+        xor ebx, ebx
+        inc ebx
+        int 0x80
+        ret 
+;----------------------------
+
+
+msg             db      10,09,09,"---== emp' crackme 3 ==---"
+                db      10,09,09,"--------------------------",10
+		db	10,"http://afturgurluk.org/~emper0r/"
+		dd	10,"emper0r@secureroot.com",10,10
+                db      "PASSWORD: "
+len             equ     $ - msg
+
+msg1		db	10,"Wrong password.",10,10
+len1		equ	$ - msg1
+
+msg2		db	10,"Crack3d !...",10,10
+len2		equ	$ - msg2
+
+pass		times	2	dd	0	
+
+
+nop
+nop
+
+enddata:
+
+;le decrypteur est écrit ici
+decrypt:
+times 16	nop
+;	mov	esi, intro
+;	mov	edi, esi
+;	mov	ecx, enddata-intro
+;	xor	ebx, ebx
+;	mov	 bl, 0xa5
+;boucle;
+;	lodsb
+;	xor	al, bl
+;	stosb
+;	loop	boucle
+;	jmp  intro
+
+
+
+;construit le décrypteur
+build:
+	mov	edi, cca1+BASE
+	mov	 ax, 0x01eb 
+	stosw
+	mov	edi, cca2+BASE
+	stosw
+	mov	edi, cca3+BASE
+	stosw	
+	mov	edi, decrypt+BASE
+cca1:
+nop
+nop
+db	0xe8
+	mov	eax, 0x048054be		;0xBE548004
+	stosd
+	mov 	eax, 0xb9f78908		;0x0889F7B9
+	stosd
+	mov	eax, 0x000001d0		;0xD0010000
+	stosd
+cca2:
+nop
+nop
+db	0xe8
+	mov	eax, 0xa5b3db31		;0x31DBB3A5
+	stosd
+	mov	eax, 0xaad830ac		;0xAC30D8AA
+	stosd
+	mov	eax, 0x15e9fae2		;0xE2FAE915
+	stosd
+	mov	 ax,0xfffe		;0xFEFF
+	stosw
+	mov	 al, 0xff		;0xFF				
+	stosb
+cca3:
+nop
+nop
+db	0xe8
+	jmp	short decrypt
+
+
+_start:
+	jmp short build
+
+
+rc4keytable     times   256     db      0
+
+
+filesize        equ     $ - $$
+memsize         equ 	$ - $$
+
+
+Note : voir les codes dans l'annexe.
+
+
+			####################
+                        #   soluce2emp.c   #
+			####################
+						by herisson
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+
+/*
+ * 0x804821a -> chaine sousmise
+ * 0x804816f -> chaine output 
+ * 0x80480af -> instructions cryptees		(zone)
+ * 0x8048288 -> buffer TRASH de 260 octets	(data1)
+ * 
+ */
+
+
+unsigned char data1[256];
+unsigned char zone[0x20];
+
+unsigned int eax = 0;
+unsigned int ebx = 0;
+unsigned int ecx = 0;
+unsigned int edx = 0;
+unsigned int edi = 0;
+unsigned int esi = 0;
+
+unsigned char *p_al = (unsigned char*)&eax;
+unsigned char *p_ah = (unsigned char*)(&eax + 1);
+unsigned char *p_bl = (unsigned char*)&ebx;
+unsigned char *p_cl = (unsigned char*)&ecx;
+unsigned char *p_dl = (unsigned char*)&edx;
+unsigned char *p_dh = (unsigned char*)(&edx + 1);
+
+static __inline__
+void dummy2(char *chaine)
+{
+
+	unsigned char *p = data1;
+	unsigned char temp;
+	
+	eax = 0xfffefdfc;
+	ecx = 0x40;
+
+	// boucle1
+	
+	while(1)
+	{
+		*((int *)(p-4+ecx*4)) = eax;
+		eax -= 0x4040404;
+		
+		--ecx;
+		if(!ecx)
+			break;
+	}
+
+	eax = 0;
+
+init:
+
+	ebx = 0;
+	esi = 4;
+
+	goto debut;
+	
+	// boucle 2
+
+	for(ecx=1; ecx < 256; ++ecx)
+	{
+		++ebx;
+		--esi;
+	
+		if(!esi)
+		{
+			ebx = 0;
+			esi = 4;
+		}	
+debut:	
+		// 256 octets parcourus !
+		
+		*p_dl = *(p+ecx);
+		*p_al += *(chaine + ebx) + *p_dl;
+		*(p+ecx) = *(p+eax);
+		*(p+eax) = *p_dl;
+	} 
+
+	return;
+}
+
+static __inline__
+void dummy1(char *zone)
+{
+	// vars
+	
+	unsigned char *p = data1;
+	int i = 0;
+	unsigned char temp;
+	
+	// init
+	
+	eax = 0;
+	ebx = 0;
+	ecx = 0;
+	edx = 0;
+
+	edi = 0x11;
+	
+	while(edi)
+	{
+		++(*p_bl);
+		temp = *(p+ebx);
+		*p_al += temp;
+		*p_cl = *(p+eax);
+		*(p+ebx) = *p_cl;
+		*(p+eax) = temp;
+		*p_cl += temp;
+		
+		zone[i] ^= *(p+ecx);
+		++i;
+		--edi;
+	}
+	
+	return;
+}
+
+
+int is_it_ok(char *chaine)
+{
+	unsigned int *ptr = NULL;//(int *)saisie;
+	
+	/* init du tableau */
+	
+	bzero(data1,sizeof(data1));
+	ptr = (unsigned int *)data1+4;
+	*ptr = 0xa8eb9aeb;
+	
+	/* Init de zone */
+
+	ptr = (unsigned int *)zone;
+	*ptr++ = 0x30f36254;
+	*ptr++ = 0x5a3b9164;
+	*ptr++ = 0xe1a9471f;
+	*ptr++ = 0x541d0209;
+	*ptr++ = 0x40c03191; 
+	*ptr++ = 0x80cddb31;
+  	*ptr++ = 0xfefdfcb8;
+  	*ptr++ = 0x0040b9ff;
+	*ptr++ = 0x04890000;
+  	*ptr++ = 0x0482888d;
+  	*ptr++ = 0x04042d08;
+  	*ptr++ = 0x75490404;
+	*ptr++ = 0x31c031f1;
+  	*ptr++ = 0x0004bedb;
+  	*ptr++ = 0x05e90000;
+  	*ptr++ = 0xfe000000;
+	*ptr++ = 0xef744ec3;
+  	*ptr++ = 0x828c918a;
+  	*ptr++ = 0x04020804;
+  	*ptr++ = 0x8ad0001f;
+	*ptr++ = 0x04828cb0;
+  	*ptr++ = 0x8cb18808;
+  	*ptr++ = 0x88080482;
+  	*ptr++ = 0x04828c90;
+	*ptr++ = 0x75c1fe08;
+  	*ptr++ = 0xff85c3da;
+  	*ptr++ = 0xc0314174;
+  	*ptr++ = 0xc931db31;
+	*ptr++ = 0xc3fed231;
+  	*ptr++ = 0x828c938a;
+  	*ptr++ = 0xd0000804;
+  	*ptr++ = 0x828c888a;
+	*ptr++ = 0x8b880804;
+  	*ptr++ = 0x0804828c;
+  	*ptr++ = 0x828c9088;
+  	*ptr++ = 0xd1000804;
+	*ptr++ = 0x828c898a;
+  	*ptr++ = 0x0e300804;
+  	*ptr++ = 0xd6754f46;
+  	*ptr++ = 0x8cbfc031;
+	*ptr++ = 0xb9080482;
+  	*ptr++ = 0x00000040;
+  	*ptr++ = 0xc3abf3fc;
+  	*ptr++ = 0x04b0c031;
+	*ptr++ = 0xcd43db31;
+  	*ptr++ = 0xc031c380;
+  	*ptr++ = 0xdb3103b0;
+  	*ptr++ = 0xc380cd43;
+	*ptr++ = 0x2d09090a;
+  	*ptr++ = 0x3d3d2d2d;
+  	*ptr++ = 0x706d6520;
+  	*ptr++ = 0x72632027;
+	*ptr++ = 0x6d6b6361;
+  	*ptr++ = 0x20332065;
+  	*ptr++ = 0x2d2d3d3d;
+  	*ptr++ = 0x09090a2d;
+	*ptr++ = 0x2d2d2d2d;
+  	*ptr++ = 0x2d2d2d2d;
+  	*ptr++ = 0x2d2d2d2d;
+  	*ptr++ = 0x2d2d2d2d;
+	*ptr++ = 0x2d2d2d2d;
+  	*ptr++ = 0x2d2d2d2d;
+  	*ptr++ = 0x0a0a2d2d;
+  	*ptr   = 0x70747468;
+	
+	/* Ok c tipar */
+
+	eax = 7;
+	esi = 7;
+	dummy2(chaine);
+	
+	edi = 0x11;
+	dummy1(zone);
+	
+	ptr = (unsigned int *)zone;
+	if(*ptr == 0xbb99090)
+		return 1;
+	else
+		return 0;
+	
+}
+
+static __inline__
+int gimme_next_val(char *string)
+{
+	int i=0;
+	unsigned int *val = (unsigned int *)string;
+	
+#define IS_NOT_NUM(x)			((x >= 48 && x <= 57) ? 0 : 1)
+#define IS_NOT_CHAR_MAJ(x)		((x >= 65 && x <= 90) ? 0 : 1)
+#define IS_NOT_CHAR_MIN(x)		((x >= 97 && x <= 122) ? 0 : 1)
+	
+	for(i=0;i<4;i++)
+	{	
+		if( IS_NOT_NUM(string[i]) && IS_NOT_CHAR_MIN(string[i])
+		&& IS_NOT_CHAR_MAJ(string[i]))
+			return 0;
+	}
+	
+	//printf("NEXT : %.8x\n",*val);
+	return 1;
+}
+
+int main(int argc, char **argv)
+{
+	
+	
+	unsigned int val = 0x30303031;	// 0x0x804821a
+	unsigned char *p_chaine = (unsigned char*)&val;
+	
+	while(!is_it_ok(p_chaine))
+	{
+		
+		++val;
+
+		while(!(gimme_next_val(p_chaine)))
+			++val;
+
+		if(val == 0x30303030)
+		{
+			printf("Erreur : impossible de trouver une soluce T_T\n");
+			exit(EXIT_FAILURE);
+		}
+		
+		
+	}
+	
+	printf("soluce : %c%c%c%c (0x%.8x)\n",p_chaine[0],p_chaine[1],
+			p_chaine[2],p_chaine[3],val);
+	
+	return 0;
+}
+
+
+    --[ emp / witzy
+

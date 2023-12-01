@@ -1,0 +1,233 @@
+                             Spoof tools By Lionel
+                             _____________________
+
+
+
+1)Intro
+-------
+
+J'ai fais 3 tools pour aider a realiser une chose rapidement et proprement!
+Certain dirons que le spoof par wingate c'est pourrie et que c'est mieux par
+proxy ou sock et en faite je m'en bat les *****!
+Moi ca me sert!!
+
+2)Code tools spoof
+------------------
+
+Sp1.c: Ce tool produit une connection sur x a travers 1 wingate.
+syntaxe: ./sp1 wingate victim port-destination
+
+Sp2.c: Ce tool produit une connection sur x a travers 6wingate.
+synatxe: ./sp2 victim port-destination 
+ou 
+(si vous voulez passé par des wingate qui sont pas dans ma list deja pret addé)
+synatxe: ./sp2 victim port-destination wingate1 wingate2 ....
+
+Scw2.c: Ce tool produit un scan de port en proto TCP sur x a travers 1 winagte.
+synatxe: ./scw2 victim bas-port haut-port
+ou
+(si vous voulez passé par un wingate different que celui addé)
+synatxe: ./scw2 victim bas-port haut-port wingate
+`exemple: './scw2 127.0.0.1 1 1000 wingate.com'`
+
+3)Expliquation du codage
+------------------------
+
+Vue que la crew a comme mentalité ne donne pas un objet a une personne si il
+ne sais pas se que c'est reelment je vous explique comment vous codez vos
+propres tool sur le concepte des miens:
+
+------------------------****************************----------------------
+/* include obligatoire :) */
+#include <stdio.h>
+#include <stdarg.h>
+#include <unistd.h>
+#include <stdlib.h> 
+#include <sys/time.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <string.h>
+/* fin include */
+
+/* cherche pas a comprendre ca mets puis voila :) */
+void prise(int leesock);
+int connect_tcp(struct in_addr addr,unsigned short port);
+int fdprintf(int dafd,char *fmt,...);
+struct in_addr victim; 
+/* base stop */
+
+/* debut code */
+int main (int argc,char **argv)
+{
+/* buffer de read de connection */
+char recvbuf[1024];
+/* int */
+int sockfd;
+int i; 
+/* presentation */
+printf("OrganiKs Crew\n");
+printf("Spoof connection tools via wingate By Lionel\n");
+
+/* si les argvs ne sont pas egale a 3 alors exit() */
+
+if (argc != 4)
+{
+  printf("Usage: %s <wingate> <host> <port>\n",argv[0]);
+  exit(0);
+}
+
+/* petit recapi */
+printf("connection on %s from %s\n" ,argv[2],argv[1]);
+/* gethostbyname (verife host) */
+if (!host_to_ip(argv[1],&victim))
+{
+  fprintf(stderr,"Erreur de resolution hostname\n");
+  exit(0);
+}
+/* teste wingate */
+/* si connection < 0 donc -1 alors fermé */
+if ((sockfd=connect_tcp(victim,23)) < 0)
+{
+  fprintf(stderr,"service wingate fermé\n");
+}
+/* si connection > 0 donc 1 alors ouvert */
+/* j'aurrais put faire un else{} */
+if ((sockfd=connect_tcp(victim,23)) > 0)
+{
+  printf("service wingate ouvert\n");
+/* attend 2sec */
+sleep(2);
+/* lit la connection et l'enregistre dans recvbuf */
+read(sockfd,recvbuf,1024);
+/* regarde si dans le buffer y a "WinGate>" */
+if (strstr(recvbuf,"WinGate>")) {
+/* si oui good */
+printf("Bon wingate\n");
+}
+/* else{} contraire faux */
+else{
+/* bad */
+printf("Mauvais wingate\n");
+}
+}
+/* connection sur victime */
+/* on recommence  > 0 yes */
+if ((sockfd=connect_tcp(victim,23)) > 0)
+{
+printf("connection sur wingate\n");
+/* attend */
+sleep(2);
+/* envoie sur connection les argv2 et 3 */
+fdprintf(sockfd,"%s %s\n",argv[2],argv[3]);
+printf("envoie demande de connection au wingate\n");
+/* met a zero recvbuf */
+bzero(recvbuf,1024);
+/* lit la connec et la foue dans recvbuf */
+read(sockfd,recvbuf,1024);
+/* envoie de la connection  sur fonction prise() */
+prise(sockfd);
+}
+/* prise de connection */
+
+void prise(int lesock)
+{
+/* bla bla bla */
+int n;
+char recvbuf[1024];
+fd_set rset;
+
+while (1)
+{
+  FD_ZERO(&rset);
+  FD_SET(lesock,&rset);
+  FD_SET(STDIN_FILENO,&rset);
+  select(lesock+1,&rset,NULL,NULL,NULL);
+  if (FD_ISSET(lesock,&rset))
+  {
+/* verif que la connection est ouverte */
+    n=read(lesock,recvbuf,1024);
+    if (n <= 0)
+    {
+      printf("Connection fermée\n");
+      exit(0);
+    }
+    recvbuf[n]=0;
+    printf("%s",recvbuf);      
+  }
+  if (FD_ISSET(STDIN_FILENO,&rset))
+  {
+    n=read(STDIN_FILENO,recvbuf,1024);
+    if (n>0)
+    {
+      recvbuf[n]=0;
+/* ecrie sur connection */
+      write(lesock,recvbuf,n);
+    }
+  }
+}
+}
+/* ecrit dans une connection */
+
+int fdprintf(int dafd,char *fmt,...)
+{
+char mybuffer[4096];
+va_list va;
+
+va_start(va,fmt);
+vsnprintf(mybuffer,4096,fmt,va);
+write(dafd,mybuffer,strlen(mybuffer));
+va_end(va);
+return(1);
+}
+
+/* connextion tcp usage: host port */
+
+int connect_tcp(struct in_addr addr,unsigned short port)
+{
+struct sockaddr_in serv;
+int thesock,flags;
+
+thesock=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
+bzero(&serv,sizeof(serv));
+memcpy(&serv.sin_addr,&addr,sizeof(struct in_addr));
+serv.sin_port=htons(port);
+serv.sin_family=AF_INET;
+if (connect(thesock,(struct sockaddr *)&serv,sizeof(serv)) < 0)
+  return(-1);
+else
+  return(thesock);
+}
+
+/* gethostname */
+int host_to_ip(char *hostname,struct in_addr *addr)
+{
+struct hostent *res;
+
+res=gethostbyname(hostname);
+if (res==NULL)
+  return(0);
+memcpy((char *)addr,res->h_addr,res->h_length);
+return(1);
+}
+/* EOF */
+
+-------------************************------------------------
+
+4)Conculsion
+------------
+
+C'est simple de codé alors allez y foncé!!!!!!! Faut pas utiliser les progs
+des autres c'est bien meiux quand tu utilise tes propres codes!
+
+5) Greetz
+---------
+
+To: clemm, spoty , ank , tiffa, shado, klog, XSFX, Datahck, OrganiKs,[fred],
+Mayhem, rix, exile , chx , prfalken , togusa , einstein , #toulouse, #r9,
+#rhino9,madchat(#madchat->undernet),Darkbug,#linux-fr(ircnet),#oracle(efnet),
+torcy&marcx dormoy&18eme (Ali k.,Xav,Olivier,Mathieux,Mémet,Arnauld,Camel,...),
+cantepeau(sophie,ced,youness,seb,la shente,bouboule,ouadgerie, ...),
+ toulouse(Gui.,florian,Lionel,JM,Dav,Vincent,Bruno,yohan,seb,cyril,
+damien,jenny&virginie,stef&julie...).......Et tous ce que j'oublie...
+
