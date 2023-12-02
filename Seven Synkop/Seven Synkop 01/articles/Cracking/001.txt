@@ -1,0 +1,444 @@
++-----+----------+----------+-------------------------------+
+| 001 | cracking | An-Mojeg | an-mojeg@mail-developpeur.com |
++-----+----------+----------+-------------------------------+
+
+Tutorial - crack de Setup2go
+############################
+
+Introduction
+------------
+	Je tien quand même a bien mentionner le caractère exeptionel de ce crack puissque c'est un crack
+qui m'avait été demandé sur irc. Je suis pas un esclave donc c'est pas la peine de me demander ça.
+Voilà, bon, let's go ! Setup2Go v.1.4.9 (disponible sur http://dev4pc.com)
+
+Setup2go
+--------
+	D'abord on lance le programme et la on voit une sorte de nag screen qui nous que la version
+qu'on a n'est pas enregistré mais qu'il n'est jamais trop tard hahaha ... erm bref on clique sur 
+registration et là un belle boite de dialog avec user/serial apparait on rentre n'importe quoi et 
+... rien ne  se passe ... snif. Ben on va quand même désassemblé tout ça (je passe les vérification
+quand à la compression/cryptage du prog, il n'a rien de tout ça). Et comme toujours on matte un peu 
+les string references :
+
+"regcode"
+"Registered Version"
+
+Bon je pense que c'est assez explicite on va se lancer sur la piste de "regcode" et là on tombe sur
+une fonction pas mal interressante :
+
+================================================================
+
+* Referenced by a CALL at Address:
+|:004058A9   
+|
+:00402F50 51                      push ecx
+:00402F51 8B44240C                mov eax, dword ptr [esp+0C]
+:00402F55 53                      push ebx
+:00402F56 55                      push ebp
+:00402F57 56                      push esi
+:00402F58 8B742414                mov esi, dword ptr [esp+14]
+:00402F5C 57                      push edi
+:00402F5D 8BD9                    mov ebx, ecx
+:00402F5F 50                      push eax
+:00402F60 56                      push esi
+:00402F61 895C2418                mov dword ptr [esp+18], ebx
+:00402F65 E896FFFFFF              call 00402F00
+:00402F6A 84C0                    test al, al
+:00402F6C 0F84EB010000            je 0040315D
+:00402F72 8D4C2418                lea ecx, dword ptr [esp+18]
+:00402F76 6A00                    push 00000000
+:00402F78 51                      push ecx
+:00402F79 6A00                    push 00000000
+:00402F7B 683F000F00              push 000F003F
+:00402F80 6A00                    push 00000000
+
+* Possible StringData Ref from Data Obj ->"Setup2GO"
+                                  |
+:00402F82 681C014700              push 0047011C
+:00402F87 6A00                    push 00000000
+
+* Possible StringData Ref from Data Obj ->"software\SDS Software\Setup2GO"
+                                  |
+:00402F89 68A0014700              push 004701A0
+:00402F8E 6802000080              push 80000002
+
+* Reference To: ADVAPI32.RegCreateKeyExA, Ord:015Fh
+                                  |
+:00402F93 FF1504704600            Call dword ptr [00467004]
+:00402F99 85C0                    test eax, eax
+:00402F9B 7565                    jne 00403002
+:00402F9D 8BFE                    mov edi, esi
+:00402F9F 83C9FF                  or ecx, FFFFFFFF
+:00402FA2 F2                      repnz
+:00402FA3 AE                      scasb
+:00402FA4 8B542418                mov edx, dword ptr [esp+18]
+
+* Reference To: ADVAPI32.RegSetValueExA, Ord:0186h
+                                  |
+:00402FA8 8B1D10704600            mov ebx, dword ptr [00467010]
+:00402FAE F7D1                    not ecx
+:00402FB0 49                      dec ecx
+:00402FB1 51                      push ecx
+:00402FB2 56                      push esi
+:00402FB3 6A01                    push 00000001
+:00402FB5 50                      push eax
+
+* Possible StringData Ref from Data Obj ->"username"
+                                  |
+:00402FB6 68D8014700              push 004701D8
+:00402FBB 52                      push edx
+:00402FBC FFD3                    call ebx
+:00402FBE 8B54241C                mov edx, dword ptr [esp+1C]
+:00402FC2 8BE8                    mov ebp, eax
+:00402FC4 8BFA                    mov edi, edx
+:00402FC6 83C9FF                  or ecx, FFFFFFFF
+:00402FC9 33C0                    xor eax, eax
+:00402FCB F2                      repnz
+:00402FCC AE                      scasb
+:00402FCD F7D1                    not ecx
+:00402FCF 49                      dec ecx
+:00402FD0 51                      push ecx
+:00402FD1 52                      push edx
+:00402FD2 6A01                    push 00000001
+:00402FD4 50                      push eax
+:00402FD5 8B442428                mov eax, dword ptr [esp+28]
+
+* Possible StringData Ref from Data Obj ->"regcode"
+                                  |
+:00402FD9 68E4014700              push 004701E4
+:00402FDE 50                      push eax
+:00402FDF FFD3                    call ebx
+:00402FE1 8B4C2418                mov ecx, dword ptr [esp+18]
+:00402FE5 8BF8                    mov edi, eax
+:00402FE7 51                      push ecx
+
+* Reference To: ADVAPI32.RegCloseKey, Ord:015Bh
+                                  |
+:00402FE8 FF1500704600            Call dword ptr [00467000]
+:00402FEE 85ED                    test ebp, ebp
+:00402FF0 0F8567010000            jne 0040315D
+:00402FF6 85FF                    test edi, edi
+:00402FF8 0F855F010000            jne 0040315D
+:00402FFE 8B5C2410                mov ebx, dword ptr [esp+10]
+
+(...)
+
+================================================================
+
+Bon je pense que c'est clair cette fonction est appellée pour foutre le serial et l'user dans 
+la base de registre quand ils concordent. Nous allons aller maintenant a l'endroit où cette 
+fonction est appellée : 004058A9. On tombe sur un bout de code qui provient d'un jump conditionel
+ce bout de code est situé à l'offset 00405819 on va mettre un breakpoint ici avec softice pour 
+voir si on passe par là. Bingo ! voilà le code :
+
+================================================================
+
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:004057E8(C)
+|
+:00405819 8B4330                  mov eax, dword ptr [ebx+30]
+:0040581C 55                      push ebp
+
+* Reference To: USER32.SendMessageA, Ord:0214h
+                                  |
+:0040581D 8B2D9C724600            mov ebp, dword ptr [0046729C]
+:00405823 56                      push esi
+:00405824 57                      push edi
+:00405825 6820754700              push 00477520
+:0040582A 6800020000              push 00000200
+:0040582F 6A0D                    push 0000000D
+:00405831 50                      push eax
+:00405832 FFD5                    call ebp				; recupère le username fournit ( et le fou dans 00477520 )
+:00405834 BF20754700              mov edi, 00477520
+:00405839 83C9FF                  or ecx, FFFFFFFF
+:0040583C 33C0                    xor eax, eax
+:0040583E 8D942414010000          lea edx, dword ptr [esp+00000114]
+:00405845 F2                      repnz
+:00405846 AE                      scasb
+:00405847 F7D1                    not ecx
+:00405849 2BF9                    sub edi, ecx
+:0040584B 6820754700              push 00477520
+:00405850 8BC1                    mov eax, ecx
+:00405852 8BF7                    mov esi, edi
+:00405854 8BFA                    mov edi, edx
+:00405856 6800020000              push 00000200
+:0040585B C1E902                  shr ecx, 02
+:0040585E F3                      repz
+:0040585F A5                      movsd
+:00405860 8BC8                    mov ecx, eax
+:00405862 6A0D                    push 0000000D
+:00405864 83E103                  and ecx, 00000003
+:00405867 F3                      repz
+:00405868 A4                      movsb
+:00405869 8B4B38                  mov ecx, dword ptr [ebx+38]
+:0040586C 51                      push ecx
+:0040586D FFD5                    call ebp				; recupère ici le serial fournit
+:0040586F BF20754700              mov edi, 00477520
+:00405874 83C9FF                  or ecx, FFFFFFFF
+:00405877 33C0                    xor eax, eax
+:00405879 8D542410                lea edx, dword ptr [esp+10]
+:0040587D F2                      repnz
+:0040587E AE                      scasb
+:0040587F F7D1                    not ecx
+:00405881 2BF9                    sub edi, ecx
+:00405883 8BC1                    mov eax, ecx
+:00405885 8BF7                    mov esi, edi
+:00405887 8BFA                    mov edi, edx
+:00405889 8D942414010000          lea edx, dword ptr [esp+00000114]
+:00405890 C1E902                  shr ecx, 02
+:00405893 F3                      repz
+:00405894 A5                      movsd
+:00405895 8BC8                    mov ecx, eax
+:00405897 83E103                  and ecx, 00000003
+:0040589A F3                      repz
+:0040589B A4                      movsb
+:0040589C 8D4C2410                lea ecx, dword ptr [esp+10]
+:004058A0 51                      push ecx				; serial fourni
+:004058A1 52                      push edx				; username fourni
+:004058A2 E8990D0300              call 00436640				; meuh kesske c cette fonction dit-donc ?
+:004058A7 8BC8                    mov ecx, eax
+:004058A9 E8A2D6FFFF              call 00402F50				; notre fonction (pour la base de registre)
+:004058AE 5F                      pop edi
+:004058AF 5E                      pop esi
+:004058B0 84C0                    test al, al
+:004058B2 5D                      pop ebp
+:004058B3 7426                    je 004058DB
+:004058B5 8B842410020000          mov eax, dword ptr [esp+00000210]
+:004058BC 680D080000              push 0000080D
+:004058C1 50                      push eax
+
+* Reference To: USER32.EndDialog, Ord:00B9h				; fin de la boit de dialog register
+                                  |
+:004058C2 FF1570734600            Call dword ptr [00467370]
+:004058C8 B001                    mov al, 01
+:004058CA 5B                      pop ebx
+:004058CB 81C408020000            add esp, 00000208
+:004058D1 C21000                  ret 0010
+
+================================================================
+	Bon ben on a trouvé un fonction en 00436640 qui prend pour paramètre le serial en ecx et l'user en edx ...
+Jettons un coup d'oeil sur ça. un breakpoint sur Setup2Go a l'addresse 00436640 (bpx 00436640). Rien d'interressant
+en fait c sur la fonction qui fou tout dans la base de registre qui va falloir se pencher. Et en effet
+au début de cette fonction voilà sur quoi on tombe :
+
+================================================================
+* Referenced by a CALL at Address:
+|:004058A9   
+|
+:00402F50 51                      push ecx
+:00402F51 8B44240C                mov eax, dword ptr [esp+0C]
+:00402F55 53                      push ebx
+:00402F56 55                      push ebp
+:00402F57 56                      push esi
+:00402F58 8B742414                mov esi, dword ptr [esp+14]
+:00402F5C 57                      push edi
+:00402F5D 8BD9                    mov ebx, ecx
+:00402F5F 50                      push eax
+:00402F60 56                      push esi
+:00402F61 895C2418                mov dword ptr [esp+18], ebx
+:00402F65 E896FFFFFF              call 00402F00				; call interressant
+:00402F6A 84C0                    test al, al
+:00402F6C 0F84EB010000            je 0040315D				; ce jump nous zape toute la fonction si al est égale a 0
+(...)
+================================================================
+	Pour vérifier cette hypothèse nous alons modifier ce je 0040315D en nop, nous allons le 'noper' soit
+remplacer grace a un editeur hexadecimal 0F84EB010000 en 909090909090 pour voir si on a juste. On lance le prog
+on entre user : An-Mojeg / serial : arfarfarf et là bingo tout se grise, registered version dans tout les sens
+etc ... Bin nous reste plus qu'a voir kesskisspass en fait. Analyson le call juste avant ...
+Voici l'état des registres avant le call :
+	EAX : serial
+	EDX : user
+En suivant le call on tombe sur une fonction bizare avec ... un str ref bizare aussi :
+ 
+================================================================
+* Referenced by a CALL at Addresses:
+|:00402F65   , :00403247   
+|
+:00402F00 56                      push esi
+:00402F01 8B742408                mov esi, dword ptr [esp+08]
+:00402F05 85F6                    test esi, esi
+:00402F07 57                      push edi
+:00402F08 743F                    je 00402F49				; ici un petit va te faire foutre
+:00402F0A 8B542410                mov edx, dword ptr [esp+10]
+:00402F0E 85D2                    test edx, edx
+:00402F10 7437                    je 00402F49				; ici aussi
+:00402F12 8BFE                    mov edi, esi
+:00402F14 83C9FF                  or ecx, FFFFFFFF
+:00402F17 33C0                    xor eax, eax
+:00402F19 F2                      repnz
+:00402F1A AE                      scasb
+:00402F1B F7D1                    not ecx
+:00402F1D 49                      dec ecx
+:00402F1E 7429                    je 00402F49				; ici aussi  ( user vide )
+:00402F20 8BFA                    mov edi, edx
+:00402F22 83C9FF                  or ecx, FFFFFFFF
+:00402F25 F2                      repnz
+:00402F26 AE                      scasb
+:00402F27 F7D1                    not ecx
+:00402F29 49                      dec ecx
+:00402F2A 741D                    je 00402F49				; encore ici ( serial vide )
+:00402F2C 8944240C                mov dword ptr [esp+0C], eax
+:00402F30 8D44240C                lea eax, dword ptr [esp+0C]
+:00402F34 52                      push edx
+:00402F35 50                      push eax
+
+* Possible StringData Ref from Data Obj ->"pasha and andrey"
+                                  |
+:00402F36 681C044700              push 0047041C				; meuh ?
+:00402F3B 56                      push esi	
+:00402F3C E8AFFC0400              call 00452BF0				; encore un call interressant
+:00402F41 83C410                  add esp, 00000010
+:00402F44 5F                      pop edi
+:00402F45 5E                      pop esi
+:00402F46 C20800                  ret 0008
+
+
+
+* Referenced by a (U)nconditional or (C)onditional Jump at Addresses:	; haaa il est là notre va te faire foutre ;)
+|:00402F08(C), :00402F10(C), :00402F1E(C), :00402F2A(C)
+|
+:00402F49 5F                      pop edi
+:00402F4A 32C0                    xor al, al
+:00402F4C 5E                      pop esi
+:00402F4D C20800                  ret 0008
+================================================================
+
+	Bon on va voir qu'est-ce qu'il en découle grace a softice. Attaquons nous encore a ce jump :
+
+================================================================
+* Referenced by a CALL at Address:
+|:00402F3C   
+|
+:00452BF0 53                      push ebx
+:00452BF1 8B5C2414                mov ebx, dword ptr [esp+14]
+:00452BF5 56                      push esi
+:00452BF6 57                      push edi
+:00452BF7 8BFB                    mov edi, ebx
+:00452BF9 83C9FF                  or ecx, FFFFFFFF
+:00452BFC 33C0                    xor eax, eax
+:00452BFE F2                      repnz
+:00452BFF AE                      scasb
+:00452C00 F7D1                    not ecx
+:00452C02 49                      dec ecx
+:00452C03 8BF9                    mov edi, ecx
+:00452C05 8D4701                  lea eax, dword ptr [edi+01]
+:00452C08 50                      push eax
+:00452C09 E88D480000              call 0045749B
+:00452C0E 8BF0                    mov esi, eax
+:00452C10 8B44241C                mov eax, dword ptr [esp+1C]
+:00452C14 83C404                  add esp, 00000004
+:00452C17 85C0                    test eax, eax
+:00452C19 742C                    je 00452C47
+:00452C1B 8A4B01                  mov cl, byte ptr [ebx+01]
+:00452C1E 55                      push ebp
+:00452C1F 51                      push ecx
+:00452C20 E89BFFFFFF              call 00452BC0
+:00452C25 8A13                    mov dl, byte ptr [ebx]
+:00452C27 8BE8                    mov ebp, eax
+:00452C29 52                      push edx
+:00452C2A E891FFFFFF              call 00452BC0
+:00452C2F C1E004                  shl eax, 04
+:00452C32 03E8                    add ebp, eax
+:00452C34 8B442424                mov eax, dword ptr [esp+24]
+:00452C38 81F5FF000000            xor ebp, 000000FF
+:00452C3E 83C408                  add esp, 00000008
+:00452C41 83ED55                  sub ebp, 00000055
+:00452C44 8928                    mov dword ptr [eax], ebp
+:00452C46 5D                      pop ebp
+
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:00452C19(C)
+|
+:00452C47 8B00                    mov eax, dword ptr [eax]
+:00452C49 8B4C2414                mov ecx, dword ptr [esp+14]
+:00452C4D 8B542410                mov edx, dword ptr [esp+10]
+:00452C51 57                      push edi
+:00452C52 56                      push esi
+:00452C53 50                      push eax
+:00452C54 51                      push ecx
+:00452C55 52                      push edx
+:00452C56 E835FEFFFF              call 00452A90
+:00452C5B 57                      push edi
+:00452C5C 53                      push ebx
+:00452C5D 56                      push esi
+:00452C5E E88D5F0000              call 00458BF0
+:00452C63 85C0                    test eax, eax
+:00452C65 56                      push esi
+:00452C66 0F94C3                  sete bl
+:00452C69 E8E2430000              call 00457050
+:00452C6E 83C424                  add esp, 00000024
+:00452C71 8AC3                    mov al, bl
+:00452C73 5F                      pop edi
+:00452C74 5E                      pop esi
+:00452C75 5B                      pop ebx
+:00452C76 C3                      ret
+================================================================
+	
+	Perso j'ai pas trop envie de me lancer dans la création d'un keygen donc je vais faire
+ça à la porcos. La routine qui teste les serial user (en 00402F00) est appelé par deux endroits 
+dans le prog :
+
+* Referenced by a CALL at Addresses:
+|:00402F65   , :00403247   
+
+On va donc tout simple supprimer les : 
+	test al, al
+	je ********
+qui suivent l'appelle de cette fonction en les noppants.
+
+Le premier :
+	:00402F6A 84C0                    test al, al
+	:00402F6C 0F84EB010000            je 0040315D
+
+Le second :
+	:0040324C 84C0                    test al, al
+	:0040324E 0F846A010000            je 004033BE
+
+Bon ben on fait un ptit test puis on s'attaque à la programmation (facile) du crack. Alors toujours
+avec l'editeur hexadécimale on remplace les tests + les jumps puis voilàà :)
+On est registered :)
+
+Création du crack :
+-------------------
+	Je vois tout de suite ceux qui vont me faire des merdes avec leur prog qui fait des cracks
+automatiquements ... NON ! On est pas des PD ok ? Ce qui veulent le faire qu'ils arrete de lire
+ce zine complètement non mais ! ;-)
+Bon je vous file le code source en C++ :
+
+//------------------------------------------------------------
+#include <stdio.h>
+
+void noper(FILE *f, long offset)
+{
+	int i;
+	for (i=1;i<9;i++,offset++)
+	{
+		fseek(f,offset,SEEK_SET);
+		fprintf(f,"%c",0x90);
+	}
+}
+
+void main()
+{
+	FILE *crck = fopen("Setup2Go.exe", "r+");
+
+	if(!crck){
+		printf("Mettez ce crack dans le meme dossier que setup2go merci.");
+		return;
+	}
+
+	noper(crck,12138L);
+	noper(crck,12876L);
+
+	fclose(crck);
+
+	printf("crack Setup2go - An-Mojeg fear biensur :)");
+	return;
+}
+
+//------------------------------------------------------------
+
+	Je n'ai fait aucune verification pour la version etc ... a vous de voir ...
+Un signature MD5 du fichier ? ... faut que j'arrete avec MD5 moi :)
+
+An-Mojeg		[ an-mojeg@mail-developpeur.com ]

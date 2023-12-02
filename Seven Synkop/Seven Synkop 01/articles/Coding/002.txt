@@ -1,0 +1,186 @@
++-----+--------+----------+-------------------------------+
+| 002 | coding | An-Mojeg | an-mojeg@mail-developpeur.com |
++-----+--------+----------+-------------------------------+
+
+Création d'un système d'exploitation (OS) - première partie (disquette boot) -
+##############################################################################
+
+Introduction
+------------
+	Bon je prévient tout l'monde la construction d'un système d'exploitation est extrèmement ardue
+donc va falloir vous accrocher, je ne compte pas construire un Windows NT version An-Mojeg ou bien un
+nouveau linux je veux juste faire un petit truc tout simple.
+	Le noyau que j'ai décidé de construire s'appellera HykOS, il ne tiendra seulement sur une seule
+disquette et s'executera a partir de celle-ci.
+	Je tien a préciser que des connaissances en ASM sont IMPERATIVES, huh vous avez aussi besoin 
+d'un bon stock de disquettes :).
+
+Théorie
+-------
+	Alors déjà que se passe-t-il lorsque nous mettons une disquette quelconque dans le lecteur
+puis que nous démarrons la becane ... si c'est une disquette banale il nous envera chier avec un message
+style "DISK ERROR REPLACE SYSTEM DISK ..." bref ça lui va pas par contre quand il lance une disquette boot
+là ya pas de problem ... ?
+	Sachant que c'est le bios qui réagit a tout ça analysons sont comportement lors de la présence d'une
+disquette dans le lecteur :
+
+	- Il charge le secteur boot de la disquette (secteur 1, piste 0, tête 0) à l'adresse 07C00 jusqu'à
+07DFF, 512 bytes (un secteur, le secteur boot d'ailleur ;) ).
+
+	- Ensuite il vérifie si à l'adresse 07DFE il trouve la combinaison 'magique' (celle qui définit une 
+disquette comme étant une disquette boot ou pas) : AA55.
+Donc pour qu'une disquette soit considérée comme disquette boot il faut que sur son secteur boot il y figure
+AA55 à son offset 001FE.
+					07C00 + 001FE = 07DFE !!!
+
+	- Finalement le bios laisse la place au programme contenu dans le secteur boot en effectuant un jump 
+sur l'adresse :
+						0000:7C00
+
+Pour info voilà l'état des registres après cette opération :
+	Le registre DL contient 00 car il s'agit de la disquette (80h si il s'agisait du disque dur, hé oui c
+le même principe que pour le disque dur).
+	Le registre CS contient 00.
+	Le registre IP contient 0x7C00 (l'adresse en mémoire du secteur).
+
+Notre but
+---------
+	Faire en sorte que lorsque nous introduisons une disquette au démarrage il figure un texte a l'écran.
+
+Pratique
+--------
+	Let's go, comme vous vous en doutez on va pas coder notre ptit secteur boot en VB donc laisson la place
+à l'ASM. On va quand même d'abord commencer a se faciliter la vie en créeant un ptit outils qui va me servir
+a écrire notre secteur sur le secteur 1, piste 0, tête 0 d'une disquette puissque si on copie-colle simplement
+les données sous explorer il nous fait n'importe quoi donc faisont tout nous même :).
+	Voici le code source du programme d'ecriture (en Borland C++):
+
+//------------------------------------------------------------------------------
+//
+//	Rawthat v0.1 - Permet d'écrire le contenu d'un fichier sur le secteur
+//	boot d'une disquette.
+//		Veillez bien a entrer une disquette avant de lancer le prog.
+//------------------------------------------------------------------------------
+#include <bios.h>
+#include <stdio.h>
+
+#define secteur_size		512
+
+#define CMD_W		3
+#define CMD_V		4
+#define DRIVE  	0
+#define HEAD   	0
+#define TRACK  	0
+#define SECT   	1
+#define NSECT  	1
+
+void main (int argc, char *argv[])
+{
+	FILE *fin;
+	char secteur[secteur_size] = "";
+
+	if(argc!=2){
+		printf("USAGE : rawthat [FICHIER A INSCRIRE]");
+		return;
+	}
+
+	if((fin = fopen(argv[1],"r")) == NULL){
+		printf("Veuillez fournir un nom de fichier existant.");
+		return;
+	}
+
+	if(fread(&secteur,secteur_size - 1,NSECT,fin) != 1){
+		printf("Impossible de lire a partir du fichier.");
+		return;
+	}
+
+	printf("Ecriture du secteur ... ");
+
+	if(biosdisk(CMD_W,DRIVE,HEAD,TRACK,SECT,NSECT,secteur) != 0x00){
+		printf("Erreur lors de l'accès au disque.");
+		return;
+	}
+
+	printf("OK.");
+
+	fclose(fin);
+
+	return;
+}
+//------------------------------------------------------------------------------
+
+	Bon ben maintenant faut qu'on s'attaque a notre secteur boot, il va rappelons juste écrire
+une chaîne de caractères a l'écran, il vous faut quand même savoir qu'aux moment de l'execution rien
+n'est chargé en mémoire a part notre prog donc tchao les intéruptions dos qui facilite la vie de 
+tout l'monde :) mais bonjour les belles interuptions BIOS !! Ici j'ai utilisé l'assembleur qui convenait
+mieu a la situation NASM qui est disponible a peu près partout en free. Je vous explique pas à pas
+ce que va faire le programme :
+
+	-	tout d'abord il va initialiser les segments en 07C00 (data et stack(début de la pile 
+et fin de la pile))
+	-	il va ensuite nous afficher notre chaîne de caractères grace a 
+l'interuption 0x10 fonction 0x0E :
+			Entrée :
+				AH 	= 0Eh
+				AL 	= Code ASCII du caractère
+				BL 	= Couleur de premier plan du caractère (en mode graphique uniquement)
+	-	puis il va nous faire une boucle sans fin pour faire patienter le système et voilà voilà :)
+
+Bon ben je crache tout de suite le code :
+
+;-----------------------------------------------------------------------------------------------------
+;	HykOS v0.1b - Secteur boot par An-Mojeg
+;
+;							Mails : an-mojeg@mail-developpeur.com
+;-----------------------------------------------------------------------------------------------------
+[BITS 16]
+[ORG 0x0]
+;--------------------------------------------------> Initialisation des segments
+	mov	ax,0x07C0	; \
+	mov	ds,ax		;  > ces trois opérations indiques la zone de mémoire ou se situe le seg de données	
+	mov	es,ax		; /
+	mov	ax,0x8000	; \
+	mov	ss,ax		;  >	initialisation du stack (de la pile) segment de pile : 0x80000 et pointeur de pile 0xF000
+	mov	sp, 0xf000	; /  	la pile commence donc en 0x8F000 et finit en 0x80000
+;<------------------------------------------------------------------------------	
+	jmp	start		; on saute directement au code
+;----------------------------------------------------> Notre chaîne de caractère
+	welcome		db		"Welcome to HykOS v0.1b by An-Mojeg",0
+;<------------------------------------------------------------------------------
+
+start:
+
+;################################### AFFICHE LE MESSAGE
+	mov	si,welcome
+
+afficher:
+	lodsb
+	mov	ah, 0Eh
+	push	ax
+	int 	10h
+	pop	ax
+	cmp	al, 0
+	jne	afficher
+;######################################################
+
+;####################################### BOUCLE INFINIE	
+boucle:
+	jmp	boucle
+;######################################################
+
+;rempli le reste du fichier (secteur) par des nops et finit par le Magic Offset
+	times 510-($-$$) db 144
+	dw 0xAA55
+;-----------------------------------------------------------------------------------------------------
+	A mon avis le code est assez explicite et n'as donc pas besoin de plus amples explications
+(sinon mail).
+
+Conclusion
+----------
+	Ben voilà on à finit notre premier secteur c'est pas mal :) Reste plus qu'a faire le reste ...
+le plus dur koi :). Si vous n'avez pas compris cet article relisez le plein de fois, cherchez de la docs
+sur les points que vous ne comprenez pas et si le brouillard persiste mailez moi mais accrochez vous bien
+pour bien attaquer la seconde partie de cette article.
+	
+
+An-Mojeg		[ an-mojeg@mail-developpeur.com ]
