@@ -81,6 +81,18 @@ Some articles are also sensitive and may mention, for example, the creation of h
 * Nozep
 * Organiks
 * Phreakazoide
+* Pretty Good Keys
+* Silmarillon
+* Pyrofreak
+* Shogun
+* Quebec Hackers Alliance
+* Polio
+* SécuriMag
+* Revolution
+* Psykaos
+* Seven Synkop
+* Pirage
+* Row
 
 # How to deploy it
 
