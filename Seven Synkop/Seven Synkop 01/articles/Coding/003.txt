@@ -1,0 +1,195 @@
++-----+--------+----------+-------------------------------+
+| 003 | coding | An-Mojeg | an-mojeg@mail-developpeur.com |
++-----+--------+----------+-------------------------------+
+
+Carahack : Carapopup, c'est-y comment que ça marche ?
+#####################################################
+
+Introduction
+------------
+	Cet article s'adresse à tout les amis codeurs qui font partie de cette grande communauté les
+carahackeur. Qu'ils soient codeurs de clients chat, pop, ou analyseurs de cookie ils s'attaquent tous
+à un système extrèmement interressant à attaquer j'ai nommé : Caramail. Faisant partie de cette communauté
+je voudrait vous faire découvrir un outil proposé par notre gentil service mail pour voir si on a de
+nouveaux messages : Carapopup. Allez, allez, on me telecharge ça let's go !
+
+Carapopup
+---------
+	Notre carapopup a nous pèse 85 ko, hum ... voyons voir si ya du cryptage d'exe, on lance tout 
+d'abord procdump > PE Editor > notre exe carapopup et là on va regarder les sections : UPX0, UPX1, .rsrc
+ok carapopup est compréssé par UPX bon là la meilleur solution pour décomprésser facilement et sans 
+pertes de données un exe ayant subit cette compression il suffit d'utiliser UPX avec l'option -d et voilà
+le tour est joué on se retrouve nez a nez avec un carapopup de 280 ko rhaa est qui plus est totalement
+désassemblale avec W32ASM, c'est y pas bô tout ça ?
+	Bon désassemblons le monstre est trions quelques string references intérressantes :
+
+" CaraPop version 1.1       7 Janvier 2002"
+"carapop.caramail.com"
+"Changement de mot de passe !!!"
+"GET /cgi-bin/clogin?login1=%s&password1=%s&rand1=%d HTTP/1.0"
+"GET /cgi-bin/cmail?key=%s&rand1=%d HTTP/1.0"
+"GET http://%s:80/cgi-bin/clogin?login1=%s&password1=%s&rand1=%d HTTP/1.0"
+"GET http://%s:80/cgi-bin/cmail?key=%s&rand1=%d HTTP/1.0"
+"http://www.caramail.com"
+"http://www.caramail.lycos.fr/cgi-bin/redirect?url=/bin/inscription/FormulaireNomPrenom.jsp"
+"Passe"
+
+	Voilà pourquoi j'ai choisis ces str. ref. :
+		*	" CaraPop version 1.1       7 Janvier 2002"
+Il s'agit de la version du produit, c'est pour être sûr qu'on bosse sur le même prog koi ! :)
+		*	"carapop.caramail.com"
+Le site de l'hôte carapop qui va nous rediriger surement vers des trucs style carapopup2.caramail.com,... 
+pour dispatcher le trafic.
+		*	"GET /cgi-bin/clogin?login1=%s&password1=%s&rand1=%d HTTP/1.0"
+			"GET /cgi-bin/cmail?key=%s&rand1=%d HTTP/1.0"
+Les requêtes effectuées vers le serveur directement.
+		*	"GET http://%s:80/cgi-bin/clogin?login1=%s&password1=%s&rand1=%d HTTP/1.0"
+			"GET http://%s:80/cgi-bin/cmail?key=%s&rand1=%d HTTP/1.0"
+Les requêtes effectuées vers le serveur en passant par un proxy.
+		*	"http://www.caramail.com"
+En fait çà c'est inutile.
+		* 	"http://www.caramail.lycos.fr/cgi-bin/redirect?url=/bin/inscription/FormulaireNomPrenom.jsp"
+Bon ça aussi mais on sait se que ça fait quand t'on click sur le lien "Inscrivez vous".
+		*	"Changement de mot de passe !!!"
+			"Passe"
+Ca ça ma l'air super interressant mais je ne le traiterai pas ici donc si qqun veux s'affairer a cette tache ...
+Il me semble que ça pourait etre une possibilité de carahack superbe, la procedure de changement de mot de passe étant
+une procédure très à risque dans n'importe quel système :)
+
+	Bon ben go on va s'atthacker a ce carapopup je vais tout d'abord créer sous cara l'utilisateur
+"mojegtemp" avec le mot de passe "theorie" et là pour annalyser le protocole échangé j'ai deux solution.
+La première est de créer un proxy et de faire passer toutes les requêtes caramail par celui là pour les 
+étudier, la seconde est de changer avec un editeur hexadécimal la str ref "carapop.caramail.com" en 
+"127.0.0.1", puis de faire une ptite application serveur qui ouvrira le port 80 et affichera à l'écran
+ce qu'on lui envoie. Pour cause d'une soudaine montée de flemmardise je décide d'opter pour la seconde
+solution. Bon bé ... let's go !
+
+	Alors avec l'héditeur héxa on cherche dans notre bô carapopup décompréssé où se trouve la chaine
+de carctère carapop.caramail.com puis on la remplace par 127.0.0.1 puis un caractère nul(le zéro, pour montrer
+la fin de la chaine de caractère), vient maintenant la programmation du mini serveur. Bon on va pas se
+faire chier on va faire ça en VB. Déposez sur la feuille un contrôle texte puis un contrôle winsock.
+Ne modifiez pas leurs noms et pastez ce code (comprenez le avant ça peut servir :) :
+
+'------------------------------------------------------------------------------------------>
+Private Sub Form_Load()
+    Text1.Text = ""
+    Winsock1.Bind 80
+    Winsock1.Listen
+End Sub
+
+Private Sub Winsock1_ConnectionRequest(ByVal requestID As Long)
+    If Winsock1.State <> sckClosed Then Winsock1.Close
+    Winsock1.Accept requestID
+End Sub
+
+Private Sub Winsock1_DataArrival(ByVal bytesTotal As Long)
+    Dim strData As String
+    Winsock1.GetData strData, vbString
+    Text1.Text = Text1.Text & strData
+End Sub
+'<------------------------------------------------------------------------------------------
+
+	Ce code est assez simple a comprendre donc je ne fournirait pas d'expliquation.
+Bon voilà deux essais et leurs résultats avec login/pass : "mojegtemp"/"theorie" :
+	GET /cgi-bin/clogin?login1=mojegtemp&password1=MCLGMIOEDLEFKCPAMMPDDNMCAAHGEDNE&rand1=1030209428 HTTP/1.0
+	GET /cgi-bin/clogin?login1=mojegtemp&password1=MCLGMIOEDLEFKCPAMMPDDNMCAAHGEDNE&rand1=1030209486 HTTP/1.0
+Nous voyons donc le mot de passe est crypté et que l'argument passé en variable rand1 n'est pas dutout aléatoire
+mais qu'elle semble plus être un truc style les secondes, ou qqchose du genre, le login lui reste en clair.
+
+	Maintenant nous allons voir se qui se passe lorsque nous soumettons cette requete au vraie serveur.
+Voilà ce qu'il nous renvoi :
+
+JGKEPBLMMLBDFKEIMAGHBAPPKDOHEJCNHJOCOJJPCBLPOOAL 1.0 1
+
+JGKEPBLMMLBDFKEIMAGHBAPPKDOHEJCNHJOCOJJPCBLPOOAL : un hash de session ?
+1.0 : un numéro de version ?
+1 : ??? le niveau de l'utilisateur (admin ou pas ?) -> supposition
+
+second éssais avec la même requete que précédament :
+
+HNHIAKGHHOEFAOBBDKAECJNANOPINKDMOJAIBIJIDNDOPDBM 1.0 1
+
+Nous savons donc que la valeur de rand1 n'est absolument pas importante pour le déroulement de l'identification
+rand1 doit juste être composé de 10 chiffres, que nous sommes vraiment en présence d'un hash et pour le reste
+rien est sûr.
+
+	En suivant la logique du prog je vais effectuer la requete suivante envers le serveur:
+
+/cgi-bin/cmail?key=<LE HASH>&rand1=<LA VALEUR PSEUDOALEATOIRE> HTTP/1.0
+
+soit :
+/cgi-bin/cmail?key=HNHIAKGHHOEFAOBBDKAECJNANOPINKDMOJAIBIJIDNDOPDBM&rand1=1030209428 HTTP/1.0
+
+et je vois un bo zero qui saffiche ... ben oui, aucun nouveaux messages. Alors je m'envois un message
+a partir de mon adresse an-mojeg@caramail.com avec comme sujet "test test test", je recommence la
+requete et là ... réponse du serveur :
+
+1 141233452 An-Mojeg test test test 
+
+hem hem hem :
+1 : nombre de nouveaux messages
+141233452 : numéro du message ?
+An-Mojeg : expéditeur - moi
+test test test : sujet du message.
+
+Esske 141233452 est le numéro du message ? une seul manière de le vérifier : 
+http://www56.caramail.lycos.fr/cgi-bin/AfficheBody?IDMAIL=141233452
+
+... bingo ... très fort ... wouawouuuu !!!
+
+	Huh un petit détail reste choquant ... comment il nous crypte le mot de passe ?
+
+Cryptage du mot de passe
+------------------------
+	Alors comment se fait-il que notre password : 
+theorie se transforme subitement en MCLGMIOEDLEFKCPAMMPDDNMCAAHGEDNE ???
+Que se passe-t-il si theorie se transforme en aaaa ?, abjzkelb ?
+résultats :
+pour "aaaa" :
+HELIHDDHEFECAANENDDPIAMEGGDNMFOF
+pour "abjzkelb" :
+IINGOGNFEHODDLBFKJOGPCFNNJIGHAOE
+
+ok ok ok j'ai compris il s'agit d'un hash. ( hmmmm ouaouuuuuuuuuuuuuuuuuu ! )
+
+Bon ben on va tracer le programme avec softice en foutant un breakpoint a l'appel de la fonction
+GetDlgItemTextA donc bpx GetDlgItemTextA on fait une fois F10 (pour passez outre la prise du login)
+Et puis après tout vous cherchez j'en ai marre.
+Nan en fait ça serait trop sadique puissque moi j'ai mis environ une après-midi pour me rendre compte
+que ces ... connard ... apliquaient un algorythme MD5 puis un ptit changement tout bête.
+Le code source est situé dans la partie data du zine (VC++ 6), je vous lache ici le petit changement
+qu'ils effectuent au hash :
+
+//----------------------------------------------------------------------------------
+unsigned char digest[16];		// le hash
+unsigned char final[50];		// le resultat
+
+int i=0,x1=0,x2=0;			// un compteurs et des variables temporaires.
+
+for(i=0;i<16;i++){
+	x1 = x2 = digest[i];
+	
+	x1 >>= 4;			
+	x1 += 65;
+
+	x2 &= 15;
+	x2 += 65;
+
+	final[j] = x1;
+	j++;
+	final[j] = x2;						
+	j++;
+}
+//----------------------------------------------------------------------------------
+
+	Mattez le code source entier et analysez le bien.
+
+Conclusion
+----------
+	J'espère que cet article aura bien servi au carahackeurs et qu'il aura aussi su faire de futurs
+carahackeur parmis les lecteurs. Bon ben voilà maintenant vous pouvez me coder un ptit client POP ou un
+bruteforcer de comptes cara ( foutez moi dans les greetz, ça coute rien ! j'ai passé du temps a faire 
+cette article ) et sendez moi les sources de vos progr ! ;)
+	Bon ben rendez vous au prochain zine pour un autre article du même style.
+
+An-Mojeg		[ an-mojeg@mail-developpeur.com ]

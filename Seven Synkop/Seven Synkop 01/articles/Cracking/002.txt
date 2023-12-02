@@ -1,0 +1,165 @@
++-----+----------+----------+-------------------------------+
+| 003 | cracking | An-Mojeg | an-mojeg@mail-developpeur.com |
++-----+----------+----------+-------------------------------+
+
+Tutorial - crack de Universe v1.5
+#################################
+
+Introduction
+------------
+	Voilà un second tut de crack sur un soft que vous connaissez pas dutout j'imagine (encore! lol :)
+Universe est un prog sympa comme tout (mais payant) qui permet de créer des images spatiales avec la
+possibilité de mettre des étoiles, des galaxies etc ... mais en version shareware on peut pas mettre
+quelques planètes :'(
+	hum ... en fait l'utilitée du soft on s'en tape ce qui nous interresse au niveau technique
+c'est qu'avec ce soft je veux vous apprendre à patcher un prog pas seulement en nopant par-ci par-là
+voilà na ! :)
+
+Universe v1.5
+-------------
+	Là tout d'abord nous allons le désassembler mais sans commencer a ce jeter comme des malades
+sur les string ref. (elles sont trompeuses ;) alors allons-y au débugger (si vous ne savez pas utiliser
+softice, lisez les hccc ou un zine a lise grim je croit aussi) là vous avez le choix, soit vous 
+posez un breakpoint sur GetWindowTextA (la fonction qui récup le couple nom d'utilisateur/serial) soit
+vous posez un breakpoint sur MessageBox (pour localiser où il nous dit d'aller nous faire foutre en fait).
+Bon je vous épargne tous Goto Code locations avec W32DASM et tout les bpx et je vous file la fonction qui
+les enregistrement (elle est en 0041A3B0) regardons un peu ça :
+
+================================================================
+
+* Referenced by a CALL at Addresses:
+|:0041A009   , :0041A2A8   
+|
+:0041A3B0 53                      push ebx
+:0041A3B1 56                      push esi
+:0041A3B2 57                      push edi
+:0041A3B3 8BF1                    mov esi, ecx
+:0041A3B5 55                      push ebp
+:0041A3B6 33FF                    xor edi, edi
+:0041A3B8 33DB                    xor ebx, ebx
+:0041A3BA 8B442414                mov eax, dword ptr [esp+14]
+:0041A3BE 8B08                    mov ecx, dword ptr [eax]
+
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:0041A3E8(U)
+|
+:0041A3C0 3B59F8                  cmp ebx, dword ptr [ecx-08]			; tout ça nous concerne pas (on veut pas faire un keygen)
+:0041A3C3 7D25                    jge 0041A3EA					; tout ça nous concerne pas (on veut pas faire un keygen)
+:0041A3C5 0FBE2C19                movsx ebp, byte ptr [ecx+ebx]			; tout ça nous concerne pas (on veut pas faire un keygen)
+:0041A3C9 03FD                    add edi, ebp					; tout ça nous concerne pas (on veut pas faire un keygen)
+:0041A3CB 8BC3                    mov eax, ebx					; tout ça nous concerne pas (on veut pas faire un keygen)
+:0041A3CD 99                      cdq						; tout ça nous concerne pas (on veut pas faire un keygen)
+:0041A3CE 33C2                    xor eax, edx					; tout ça nous concerne pas (on veut pas faire un keygen)
+:0041A3D0 2BC2                    sub eax, edx					; tout ça nous concerne pas (on veut pas faire un keygen)
+:0041A3D2 83E001                  and eax, 00000001				; tout ça nous concerne pas (on veut pas faire un keygen)
+:0041A3D5 33C2                    xor eax, edx					; 
+:0041A3D7 2BC2                    sub eax, edx					;
+:0041A3D9 83F801                  cmp eax, 00000001				;
+:0041A3DC 1BC0                    sbb eax, eax					;
+:0041A3DE 43                      inc ebx					;
+:0041A3DF 83E002                  and eax, 00000002				;
+:0041A3E2 48                      dec eax					;
+:0041A3E3 0FAFE8                  imul ebp, eax					;
+:0041A3E6 03FD                    add edi, ebp					;
+:0041A3E8 EBD6                    jmp 0041A3C0					; etc ... lol
+
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:0041A3C3(C)
+|
+:0041A3EA 8BC7                    mov eax, edi
+:0041A3EC 0FAFC7                  imul eax, edi
+:0041A3EF 03C7                    add eax, edi
+:0041A3F1 33FF                    xor edi, edi
+:0041A3F3 50                      push eax					; ça aussi
+:0041A3F4 E827D7FEFF              call 00407B20
+:0041A3F9 83C404                  add esp, 00000004
+:0041A3FC 393E                    cmp dword ptr [esi], edi
+:0041A3FE 7E0A                    jle 0041A40A
+
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:0041A408(C)
+|
+:0041A400 47                      inc edi
+:0041A401 E83AD7FEFF              call 00407B40
+:0041A406 393E                    cmp dword ptr [esi], edi			; ça aussi
+:0041A408 7FF6                    jg 0041A400
+
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:0041A3FE(C)
+|
+:0041A40A 8B7C2418                mov edi, dword ptr [esp+18]
+:0041A40E 85FF                    test edi, edi
+:0041A410 7F03                    jg 0041A415					; ça aussi
+:0041A412 8B7E10                  mov edi, dword ptr [esi+10]
+
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:0041A410(C)
+|
+:0041A415 E826D7FEFF              call 00407B40
+:0041A41A 2BC7                    sub eax, edi
+:0041A41C 5D                      pop ebp
+:0041A41D 5F                      pop edi
+:0041A41E 83F801                  cmp eax, 00000001				; voilà qui nous interresse
+:0041A421 1BC0                    sbb eax, eax					; ça aussi :)
+:0041A423 5E                      pop esi
+:0041A424 F7D8                    neg eax
+:0041A426 5B                      pop ebx
+:0041A427 C20800                  ret 0008
+
+================================================================
+
+	Je vient de me rendre compte que c'était pas la peine de balancer toute là fonction si seulement
+deux lignes m'interressait mais bon ... c'est pas grave :). En fait ces deux lignes nous montre le retour
+de la fonctions qui est traité comme cela en 0041A009 :
+
+================================================================
+
+(...)
+call	0041A05E		; appelle de notre chère fonction
+test	eax, eax		; 
+jne	0041A05E		; si eax = 0 alors sérial incorrect meuh !
+(...)
+
+================================================================
+
+	Ben voilà nous avons plus qu'a modifier le retour de la fonction. Puisque nous savons maintenant que
+la fonction d'enregistrement renvoi 0 lorsque le sérial est faux. Mais voilà nous pouvont le faire seulement
+en utilisant la place donnée avec ces deux instructions :
+
+cmp eax, 00000001	; 
+sbb eax, eax		; si eax est different de 1 nous soutrayons (?) eax par eax, on le fout a zéro quoi
+
+soit 83 F8 01 1B C0 soit 5 octets :)
+
+Nous allons donc remplacer ces instructions par :
+xor eax, eax		; on met eax a 0
+inc eax			; on l'incrémente
+
+Pis voilà voilou. Pour tester cela avec SoftIce on met un breakpoint sur 0041A41E.
+
+bpx 0041A41E
+On va a la boite de dialog d'enregistrement on met n'importe quoi (bah An-Mojeg/666 ça va très bien :) et on
+appuie sur le bouton register, là softice arrive puis on entre nos ptites instructions comme ça :
+a		; <- pour rentrer les instructions quoi :)
+xor eax, eax
+inc eax
+nop		; ben oui faut un peu noper pour combler les trous 
+nop		;
+(echap)
+(ctrl+D)
+
+Bingo ! c'est enregistré yaouuuuuuuuuuuuuuu ! Voilà maintenant ce que ça nous donne au desassembleur :
+
+================================================================
+
+:0041A41E 33C0                    xor eax, eax
+:0041A420 40                      inc eax
+:0041A421 90                      nop
+:0041A422 90                      nop
+
+================================================================
+
+	Il ne vous reste plus qu'a remplacer 83 F8 01 1B C0 par 33 C0 40 90 90 à l'offset 0x1981E.
+	Que c'est bôooo bon ben vous savez faire les cracks maintenant nan ? (cf 001)
+
+An-Mojeg		[ an-mojeg@mail-developpeur.com ]
