@@ -1,0 +1,489 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<!-- saved from url=(0055)http://membres.lycos.fr/netixyz/tutos/ida/ida2/ida2.htm -->
+<HTML>
+<!-- Mirrored from frenchezines.free.fr/tries/shmeitcorp/5/Netix/ida2.htm by HTTrack Website Copier/3.x [XR&CO'2007], Thu, 07 Aug 2008 04:41:17 GMT -->
+<HEAD><TITLE>IDA - The Interactive Disassembler - part 2</TITLE>
+<META http-equiv=Content-Type content="text/html; charset=windows-1252">
+<META content="MSHTML 6.00.2600.0" name=GENERATOR></HEAD>
+<BODY bgColor=#000000 text=#FFFFFF link="#FFFFFF" vlink="#FFFFFF" alink="#FFFFFF" leftmargin="0" topmargin="0" marginwidth="0" marginheight="0">
+<table width="670" border="0">
+  <tr> 
+    <td><font size="2"><b><font face="Arial, Helvetica, sans-serif">IDA - The 
+      Interactive Disassembler - part 2</font></b></font><font size="2" face="Arial, Helvetica, sans-serif"><br>
+      <br>
+      Dans la premi&egrave;re partie nous avons vu les bases de IDA, nous allons 
+      maintenant l'illustrer par l'analyse de A à Z en dead-listing d'un crackme 
+      très simple. <br>
+      Nous partirons de la source pure tout juste désassemblé pour finir par une 
+      source compl&eacute;tement modifiée et adaptée à notre compréhension, je 
+      vais y allez doucement en rappelant quelques fondement sur l'ASM et j'essairai 
+      de commenter chaque manoeuvre et de détailler l'utilisation des commandes 
+      de IDA, en esp&eacute;rant ne rien oublier.<br>
+      <br>
+      Pour la suite il est nécéssaire d'avoir quelques bases en assembleur et 
+      quelques notions de la programmation system en Win32, et surtout d'&ecirc;tre 
+      muni d'une référence des fonctions Windows comme <strong>Win32.hlp</strong> 
+      ou le <strong>MSDN</strong> afin de pouvoir se référer aux prototypes des 
+      fonctions, comprendre la fonction en elle m&ecirc;me et les argument dont 
+      elle se sert. Vous verrez que ces documents sont indispensables.<br>
+      Les blocs d'exemples seront de 2 couleurs, bleu pour original, rouge une 
+      fois modifié.</font><font size="2" face="Arial, Helvetica, sans-serif"><a 
+href="http://membres.lycos.fr/netixyz/tutos/ida/ida2/Crackme1.zip"><b>Voici le 
+      programme</b></a></font><font size="2" face="Arial, Helvetica, sans-serif">On 
+      l'ouvre sous IDA, on laisse les options de désassemblage par d&eacute;faut. 
+      Une fois le désassemblage fini, on adpate les options personnelles et au 
+      saute directement à l'entry point par le menu <strong>jump / jump to entry 
+      point</strong> ou (<strong>ctrl-E</strong>)</font> 
+      <pre><font color=#0000cc size="2" face="Courier New, Courier, mono">CODE:00401000 ; ¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦ S U B R O U T I N E ¦¦¦¦¦¦s¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦<br>CODE:00401000 <br>CODE:00401000 <br>CODE:00401000         public start<br>CODE:00401000 start   proc near<br>CODE:00401000         push    0                       ; lpModuleName<br>CODE:00401002         call    GetModuleHandleA<br>CODE:00401007         mov     ds:hInstance, eax<br>CODE:0040100C         push    0                       ; dwInitParam<br>CODE:0040100E         push    offset sub_40102B       ; lpDialogFunc<br>CODE:00401013         push    0                       ; hWndParent<br>CODE:00401015         push    offset aMydialog        ; lpTemplateName<br>CODE:0040101A         push    ds:hInstance            ; hInstance<br>CODE:00401020         call    DialogBoxParamA<br>CODE:00401025         push    eax                     ; uExitCode<br>CODE:00401026         call    ExitProcess<br>CODE:00401026 start   endp</font>
+</pre>
+      <font size="2" face="Arial, Helvetica, sans-serif">Nous voici donc l&agrave; o&ugrave; le programme commence. 
+      Cet endroit est defini par le label <font 
+color=#0000cc><b>start</b></font> comme dans une source assembleur. IDA a ici 
+      interprété ce bloc comme une procedure à l'image de la fonction main() ou 
+      winmain() dans un programme en C/C++, puique ces fonctions repr&eacute;sentent 
+      le point d'entrée d'un programme dans une source en C (à savoir que IDA 
+      analyse le code comme si il venait d'une source en C/C++).<br>
+      <br>
+      Le 1er call que l'on rencontre est <font color=#0000cc><b>GetModuleHandleA</b></font> 
+      cette fonction sert à recup&eacute;rer l'Hinstance handle du programme, 
+      qui est en fait un numero d'identification du programme qui est souvent 
+      utilisé pour appeler d'autres fonctions, on rencontre cette fonction vers 
+      l'entry point sur la quasi totalité des programmes. Si l'on regarde en amont 
+      d'un call on verra ses argument pushé dans la pile.<br>
+      <br>
+      D'apr&egrave;s le prototype de la fonction GetModuleHandle celle-ci necessite 
+      1 seul argument, que l'on retrouve ici par <font color=#0000cc><b>push 0</b><font color=#FFFFFF>.<br>
+      On voit que IDA a ajouté un commentaire qui identifie l'argument de la fonction 
+      avec son nom tel que déclaré dans son prototype : </font><font 
+color=#0000cc><b>lpModuleName</b></font><font color=#FFFFFF>.<br>
+      Pour comprendre pourquoi sa valeur est 0 il suffit de lire le prototype 
+      qui nous dit que si </font></font>ce param&egrave;tre est NULL (0), GetModuleHandle 
+      retourne un handle repr&eacute;sentant le programme. Suit une instruction 
+      qui place dans une variable (nommé automatiquement par IDA) la valeur de 
+      retour de GetModuleHandle (le retour d'une fonction se faisant par le registre 
+      eax, j'espere que je ne vous apprend rien) soit l'Hinstance handle.<br>
+      Si on double clique sur le nom de cette variable (<font 
+color=#0000cc>ds:hInstance</font>) on se retrouve dans la partie .data ou elle 
+      est declaré comme suit :</font>
+<pre><font color=#0000cc size="2" face="Courier New, Courier, mono">DATA:00402000 ; HINSTANCE hInstance<br>DATA:00402000 hInstance dd 0                          ; DATA XREF: start+7w<br>DATA:00402000                                         ; start+1Ar</font>
+</pre>
+      <font size="2" face="Arial, Helvetica, sans-serif">On voit que cette variable 
+      est de type double-word ( dd : declare double-word ) et qu'elle est référencée 
+      deux fois (note: le nombre maximum de XREF affiché est par defaut de 2, 
+      si il y a plus de référence vous pourrez voir ... à la fin de la ligne, 
+      a moins que vous n'ayer modifié le nbr de XREF à afficher dans les options). 
+      Le nom par d&eacute;faut de cette variable est tres bien représentatif nous 
+      ne la renommerons donc pas. On fait 'echap' pour revenir en arriere et continuer 
+      notre analyse. Commence ensuite une serie de push avant l'appel de <font 
+color=#0000cc><b>DialogBoxParamA</b></font>.<br>
+      <br>
+      Pareil on regarde dans le manuel à quoi sert cette fonction : elle sert 
+      à cr&eacute;er une boite de dialogue à partir d'un fichier ressource.<br>
+      Et on analyse les arguments que l'on vient de lui passer par la pile. (n'oubliez 
+      pas que les argument sont pushés en ordre inverse par rapport au prototype) 
+      <br>
+      <br>
+      On voit ainsi qu'on lui passe l'Hinstance tout juste recupéré précedement, 
+      et parmi les autres arguments un particuli&egrave;rement interressant est 
+      l'adresse d'une procedure qui va servir à gérer les &eacute;venements qui 
+      se produisent sur cette boite de dialog. Cet argument est <b><font 
+color=#0000cc>lpDialogFunc</font></b> <b>// dialog box procedure</b>.<br>
+      <br>
+      Nous reviendrons sur ce point dans quelques instants, finissons par le dernier 
+      call que l'on rencontre ensuite qui est <font color=#0000cc><b>ExitProcess</b></font> 
+      et qui va se servir du retour de la fonction precedente (eax) comme unique 
+      argument. Cette fonction sert à terminer un processus en l'ocurrence notre 
+      programme. Nous voyons bien ensuite la fin de la procedure start par le 
+      label <font color=#0000cc><b>start endp</b></font> qui pourrait représenter 
+      la fin de la fonction main() en C/C++.<br>
+      <br>
+      Mais que devient le programme ? En realité il ne va pas tout de suite sur 
+      le <font color=#0000cc><b>call ExitProcess, </b><font color=#FFFFFF>lors 
+      de l'appel de la fonction </font><b>DialogBoxParamA</b></font> celle-ci 
+      va creer et afficher une boite de dialog qui entrera dans une sorte de boucle 
+      sans fin. Le dialog sera alors g&eacute;rer par une procedure et le seul 
+      moyen de quitter le dialog et de revenir apr&egrave;s l'appel de <font color=#0000cc><b>DialogBoxParamA</b></font> 
+      sera d'envoyer un message à ce dialogue que l'on recuperera via sa procedure 
+      de gestion des messages et en specifiant de mettre fin à ce dialog et le 
+      detruire.<br>
+      On reviens donc sur l'argument de <font 
+color=#0000cc><b>DialogBoxParamA</b></font> qui specifie l'adresse de cette procedure 
+      de gestion des message:</font> 
+      <pre><font color=#0000cc size="2" face="Courier New, Courier, mono">CODE:0040100E         push    offset sub_40102B       ; lpDialogFunc</font></pre>
+      <font size="2" face="Arial, Helvetica, sans-serif">On double-click sur <font color=#0000cc face="Courier New, Courier, mono"><b>sub_40102B</b></font> 
+      et l'on se retouve au debut de cette procedure:</font>
+<pre><font color=#0000cc size="2" face="Courier New, Courier, mono">CODE:0040102B ; ¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦ S U B R O U T I N E ¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦<br>CODE:0040102B <br>CODE:0040102B <br>CODE:0040102B ; int __cdecl sub_40102B(HWND hWnd,int,int)<br>CODE:0040102B ; Attributes: bp-based frame<br>CODE:0040102B <br>CODE:0040102B sub_40102B proc near                    ; DATA XREF: start+Eo<br>CODE:0040102B <br>CODE:0040102B hWnd    = dword ptr  8<br>CODE:0040102B arg_4   = dword ptr  0Ch<br>CODE:0040102B arg_8   = dword ptr  10h</font></pre>
+      <font size="2" face="Arial, Helvetica, sans-serif">Si on regarde dans notre 
+      manuel pour <font 
+color=#0000cc face="Courier New, Courier, mono"><b>DialogBoxParamA</b></font> 
+      et le parametre <font 
+color=#0000cc face="Courier New, Courier, mono"><b>lpDialogFunc</b></font>.<br>
+      On nous dit de nous r&eacute;f&eacute;rer, pour plus d'informations sur 
+      la procedure de la dialog-box, &agrave; la déclaration <b>DialogProc</b> 
+      dont voici le prototype :</font> 
+      <pre><font size="2" face="Courier New, Courier, mono">BOOL CALLBACK DialogProc(<br></font><font size="2" face="Courier New, Courier, mono"> HWND hwndDlg,  // handle to dialog box
+ UINT uMsg, 	// message
+ WPARAM wParam, // first message parameter
+ LPARAM lParam  // second message parameter
+);</font><font size="2">
+</font></pre>
+      <p><font size="2">Si nous comparons avec celui qu'IDA nous donne on voit 
+        qu'il n'est pas tout à fait bon, ou plut&ocirc;t qu'il n'a mentionné en 
+        argument que ceux que le code qui suit exploite. De plus mis à part <b>hWnd</b> 
+        qui est bien nommé les argument suivants n'ont pas de noms. Comme nous 
+        sommes surs à 100% que cette proc&eacute;dure est bien la proc&eacute;dure 
+        de <b>DialogBoxParam</b> nous allons r&eacute;ctifier le prototype ( nom 
+        de la fonction, et argument ). Pour cela il nous faut placer notre curseur 
+        sur <b><font 
+color=#0000cc face="Courier New, Courier, mono">sub_40102B proc near</font></b> 
+        <font face="Arial, Helvetica, sans-serif">et cliquer droit pour choisir 
+        '<b>edit fuction</b>' à partir du menu contextuel.<br>
+        <br>
+        Dans la case '<b>Name of function</b>' on tape : <b>DialogProc</b> puis 
+        OK, IDA a renomm&eacute; la fonction. Maintenant on va editer les arguments 
+        selon le prototype, pareil clic droit et on chosit '<b>Set fuction type</b>'. 
+        On tape le bon prototype (sans le CALLBACK que IDA ne supporte pas) :</font></font></p>
+      <pre><font size="2" face="Courier New, Courier, mono">BOOL DialogProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);</font><font size="2" face="Arial, Helvetica, sans-serif"><br><br></font><font face="Arial, Helvetica, sans-serif"><strong><font size="2">Nous devrions obtenir ca :</font></strong></font></pre>
+      <pre><font color=#cc0000 size="2" face="Courier New, Courier, mono">CODE:0040102B ; ¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦ S U B R O U T I N E ¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦<br>CODE:0040102B <br>CODE:0040102B <br>CODE:0040102B ; BOOL DialogProc(HWND hWnd,UINT uMsg,WPARAM wParam,LPARAM lParam)<br>CODE:0040102B ; Attributes: bp-based frame<br>CODE:0040102B <br>CODE:0040102B DialogProc proc near                    ; DATA XREF: start+Eo<br>CODE:0040102B <br>CODE:0040102B hWnd    = dword ptr  8<br>CODE:0040102B uMsg    = dword ptr  0Ch<br>CODE:0040102B wParam  = dword ptr  10h<br>CODE:0040102B lParam  = dword ptr  14h</font>
+</pre>
+      <font size="2"><font face="Arial, Helvetica, sans-serif">Tous les arguments 
+      ont été renommés et l'un a </font><font size="2"><font face="Arial, Helvetica, sans-serif">m&ecirc;me 
+      </font></font><font face="Arial, Helvetica, sans-serif">été ajouté (lParam). 
+      Il n'était pas présent avant car il n'etait sans doute pas utilisé par le 
+      code. Faisons un petit saut en arriere histoire de voir que le re-nommage 
+      s'est effectué dans toutes les parties référencées, pour l'entry-point nous 
+      obtenons désormais ca:</font></font><font color=#cc0000 size="2" face="Courier New, Courier, mono"><br>
+      <br>
+      CODE:00401000 ; ¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦ S U B R O U T I N E ¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦<br>
+      CODE:00401000 <br>
+      CODE:00401000 <br>
+      CODE:00401000 public start<br>
+      CODE:00401000 start proc near<br>
+      CODE:00401000 push 0 ; lpModuleName<br>
+      CODE:00401002 call GetModuleHandleA<br>
+      CODE:00401007 mov ds:hInstance, eax<br>
+      CODE:0040100C push 0 ; dwInitParam<br>
+      CODE:0040100E push offset DialogProc ; lpDialogFunc<br>
+      CODE:00401013 push 0 ; hWndParent<br>
+      CODE:00401015 push offset aMydialog ; lpTemplateName<br>
+      CODE:0040101A push ds:hInstance ; hInstance<br>
+      CODE:00401020 call DialogBoxParamA<br>
+      CODE:00401025 push eax ; uExitCode<br>
+      CODE:00401026 call ExitProcess<br>
+      CODE:00401026 start endp</font><br> <font size="2" face="Arial, Helvetica, sans-serif"><br>
+      On voit que l'argument <font 
+color=#cc0000><b>lpDialogFunc</b></font> est <font color=#cc0000><b>push offset 
+      DialogProc</b></font> et on comprend clairement que l'on push l'adress de 
+      la procedure <b>DialogProc</b> plutot qu'un simple<b> <font color=#0000cc>push 
+      offset sub_40102B</font></b>. Continuons dans cette proc&eacute;dure qui 
+      est le moteur de notre boite de dialogue.</font><font color=#0000cc size="2" face="Courier New, Courier, mono"><br>
+      <br>
+      CODE:0040102B ; BOOL DialogProc(HWND hWnd,UINT uMsg,WPARAM wParam,LPARAM 
+      lParam)<br>
+      CODE:0040102B ; Attributes: bp-based frame<br>
+      CODE:0040102B <br>
+      CODE:0040102B DialogProc proc near ; DATA XREF: start+Eo<br>
+      CODE:0040102B <br>
+      CODE:0040102B hWnd = dword ptr 8<br>
+      CODE:0040102B uMsg = dword ptr 0Ch<br>
+      CODE:0040102B wParam = dword ptr 10h<br>
+      CODE:0040102B lParam = dword ptr 14h<br>
+      CODE:0040102B <br>
+      CODE:0040102B enter 0, 0<br>
+      CODE:0040102F cmp [ebp+uMsg], 10h<br>
+      CODE:00401033 jz short loc_40104E<br>
+      CODE:00401035 cmp [ebp+uMsg], 110h<br>
+      CODE:0040103C jz short loc_40105F<br>
+      CODE:0040103E cmp [ebp+uMsg], 111h<br>
+      CODE:00401045 jz short loc_401079<br>
+      CODE:00401047 mov eax, 0<br>
+      CODE:0040104C jmp short locret_4010A5<br>
+      CODE:0040104E ; ---------------------------------------------------------------------------</font> 
+      <font size="2"><br>
+      <br>
+      Analysons cette premiere partie très importante :</font><font color=#0000cc size="2" face="Courier New, Courier, mono"><b> 
+      enter 0, 0</b></font><font size="2" face="Arial, Helvetica, sans-serif"> 
+      va permettre de préparer la pile, pour un acc&egrave;s conventionnel,<br>
+      cette instruction revient à :</font> 
+      <ul>
+        <li><font size="2" face="Arial, Helvetica, sans-serif">sauvegarder la 
+          valeur de ebp en la poussant dans la pile =&gt; push ebp </font> 
+        <li><font size="2" face="Arial, Helvetica, sans-serif">placer dans ebp 
+          le pointeur de pile esp =&gt; mov ebp, esp </font></li>
+      </ul>
+      <font size="2" face="Arial, Helvetica, sans-serif">Une fois cela accompli 
+      on peux acc&eacute;der aux arguments de la proc&eacute;dure comme ceci:</font> 
+      <ul>
+        <li><font size="2" face="Arial, Helvetica, sans-serif">ebp = valeur du 
+          pointeur de pile qui pointe sur le dernier element pushé qui est ebp 
+          </font> 
+        <li><font size="2" face="Arial, Helvetica, sans-serif">ebp+04h = adresse 
+          de retour du call qui appel cette procedure </font> 
+        <li><font size="2" face="Arial, Helvetica, sans-serif">ebp+08h = 1er argument 
+          </font> 
+        <li><font size="2" face="Arial, Helvetica, sans-serif">ebp+0Ch = 2eme 
+          argument </font> 
+        <li><font size="2" face="Arial, Helvetica, sans-serif">ebp+10h = 3eme 
+          argument </font> 
+        <li><font size="2" face="Arial, Helvetica, sans-serif">ebp+14h = 4eme 
+          argument </font></li>
+      </ul>
+      <font size="2" face="Arial, Helvetica, sans-serif">L'instruction qui permet 
+      de réequilibrer l'état de la pile une fois la procedure terminé est l'instruction 
+      <b>leave</b> qui est quelque sorte l'inverse de <b>enter </b>et qui va effectuer:</font>
+      <ul>
+        <li><font size="2" face="Arial, Helvetica, sans-serif">mov esp,ebp =&gt; 
+          replace dans esp la valeur de ebp </font> 
+        <li><font size="2" face="Arial, Helvetica, sans-serif">pop ebp ; désempile 
+          en reprenant l'ancienne valeur de ebp </font></li>
+      </ul>
+      <font size="2" face="Arial, Helvetica, sans-serif">En continuant &agrave; 
+      la suite on trouve :</font> 
+      <pre><font color=#0000cc size="2" face="Courier New, Courier, mono">CODE:0040102F         cmp     [ebp+uMsg], 10h<br>CODE:00401033         jz      short loc_40104E</font></pre>
+      <font color=#FFFFFF size="2" face="Arial, Helvetica, sans-serif">Le programme 
+      compare </font><font 
+color=#0000cc size="2" face="Arial, Helvetica, sans-serif"><b>[ebp+uMsg]</b> <font color=#FFFFFF>qui 
+      correspond donc au 2eme argument de</font> <font color=#FFFFFF>cette proc&eacute;dure 
+      (soit <b>uMsg</b>).<br>
+      Regardons à quoi correspond cet argument. Il repr&eacute;sente le message 
+      que la procedure est chargé d'intercepter et de lier à un evenement si l'on 
+      souhaite le traiter. En gros, tout sous Windows est lié à la gestion de 
+      message, chaque evenement (clic sur un bouton...) declenche un message, 
+      et si l'on souhaite traiter cet evenement on va intercepter ce message et 
+      le lier à une procedure.<br>
+      L&agrave; nous voyons donc que nous comparons <b>uMsg</b> avec la valeur 
+      10h. Cette valeur represente un message, chaque message correspond à un 
+      nombre entier representé <font 
+color=#0000cc size="2" face="Arial, Helvetica, sans-serif">par 
+      un nom</font></font> <font color=#FFFFFF>pour faciliter la vie des programmeurs. 
+      Quel est le message qui à la valeur 10h ? <b>WM_CLOSE.<br>
+      <br>
+      </b>IDA va encore nous aider ici car il possede toute la liste des messages 
+      avec leur valeur numerique et pour faire la correspondance entre la valeur 
+      numerique et le nom du message il suffit de clicker droit et du menu chosir 
+      '<b>use standart symbol content</b>'. Une liste assez immense appara&icirc;t 
+      et indique tous les noms symboliques qui representent la valeur 10h. En 
+      se situant dans le context on sait que l'on cherche un message, ceux-ci 
+      commence par <b>WM_</b>, alors il suffit de commencer à taper au clavier 
+      <b>WM </b>pour placer la recherche sur ce que nous voulons.<br>
+      <br>
+      On se trouve sur <b>WM_CLOSE </b>et on clique OK. IDA a remplac&eacute; 
+      10h par le nom du message qu'il symbolise. Faites pareil pour les deux autres 
+      comparaisons avec<b> uMsg.</b></font></font><font color=#FFFFFF size="2" face="Arial, Helvetica, sans-serif"> 
+      Suivi du <b>cmp [ebp+uMsg], WM_CLOSE </b>on trouve un saut conditinnel qui 
+      saute vers un label si la comparaison est &eacute;gale.<br>
+      C'est la que sera defini le code à executer si notre dialog a bien recu 
+      le message <b>WM_CLOSE</b>. On peut donc renommer les 3 labels suivant les 
+      comparaisons avec des noms plus explicites et en rapport avec les messages 
+      qu'ils traitent et pourquoi pas mettre quelques commentaires, tel que mon 
+      exemple :<br>
+      </font><font color=#FF0000 size="2" face="Courier New, Courier, mono">CODE:0040102B 
+      enter 0, 0<br>
+      CODE:0040102F cmp [ebp+uMsg], WM_CLOSE<br>
+      CODE:00401033 jz short _CloseDlg ; Ferme le dialog<br>
+      CODE:00401035 cmp [ebp+uMsg], WM_INITDIALOG<br>
+      CODE:0040103C jz short _InitDlg ; Initialisation du dialog<br>
+      CODE:0040103E cmp [ebp+uMsg], WM_COMMAND<br>
+      CODE:00401045 jz short _Command ; Commande actionné sur le dialog<br>
+      CODE:00401047 mov eax, 0<br>
+      CODE:0040104C jmp short locret_4010A5<br>
+      CODE:0040104E ; ---------------------------------------------------------------------------</font><br>
+      <p><font size="2">Apres la comparaison des messages on trouve <font color=#cc0000><b>mov 
+        eax, 0</b></font><b> </b>et<b> <font color=#cc0000>jmp short locret_4010A5</font></b>, 
+        si on double-clique sur le jmp on voit que l'on se retrouve sur la fin 
+        de la proc&eacute;dure symbolisée par <b><font color=#cc0000>DialogProc 
+        endp</font></b>. Toujours dans le manuel, il est dit que la procedure 
+        <b>DialogProc</b> doit retourner non-zero si elle a repondu à un message 
+        et zero dans le cas contraire, une exception se faisant sur le message 
+        <b>WM_INITDIALOG</b> si dans le code qui lui correspond on appel la fonction 
+        <b>SetFocus</b> auquel cas nous devrions retourner zero aussi. </font><font size="2">Ici 
+        on voit que l'on respecte bien cette condition et on mettra 0 dans eax, 
+        si aucun message n'a été traité. Avant de sauter sur un label qui nous 
+        envois vers la fin de la procedure, renommons ce label en <b>_LeaveProc</b>.</font></p>
+      <pre><font color=#FF0000 size="2" face="Courier New, Courier, mono">CODE:004010A5 _LeaveProc:                                  ; CODE XREF: DialogProc+21j<br>CODE:004010A5                                              ; DialogProc+32j ...<br>CODE:004010A5         leave<br>CODE:004010A6         retn    10h<br>CODE:004010A6 DialogProc endp</font>
+</pre>
+      <p><font size="2">On voit ici l'instruction <font color=#cc0000><b>leave</b></font> 
+        qui va permettre de r&eacute;tablir la pile qui a été modifi&eacute; lors 
+        de <b>enter 0,0</b>. Suivi de <font color=#cc0000><b>retn 10h</b></font> 
+        qui marque le retour de la fonction et qui precise en specifiant &agrave; 
+        10h de désempiler les 4 argument de <b>DialogProc. </b>Pourquoi 10h ? 
+        <b>DialogProc</b> se sert de 4 arguments sur la pile tous sont des <b>DWORD</b> 
+        ( DWORD = 4 BYTES ) 4 bytes * 4 argument = 16 soit 10 en hexa.</font></p>
+      <p><font size="2"><strong>Analysons les routines des 2 premiers messages 
+        traités : WM_CLOSE et WM_INITDIALOG</strong></font></p>
+      <pre><font color=#FF0000 size="2" face="Courier New, Courier, mono">CODE:0040104E ; ---------------------------------------------------------------------------<br>CODE:0040104E <br>CODE:0040104E _CloseDlg:                                   ; CODE XREF: DialogProc+8j<br>CODE:0040104E         push    0                            ; nResult<br>CODE:00401050         push    [ebp+hWnd]                   ; hDlg<br>CODE:00401053         call    EndDialog<br>CODE:00401058         mov     eax, 1<br>CODE:0040105D         jmp     short _LeaveProc<br>CODE:0040105F ; ---------------------------------------------------------------------------<br>CODE:0040105F <br>CODE:0040105F _InitDlg:                                    ; CODE XREF: DialogProc+11j<br>CODE:0040105F         push    3E8h                         ; nIDDlgItem<br>CODE:00401064         push    [ebp+hWnd]                   ; hDlg<br>CODE:00401067         call    GetDlgItem<br>CODE:0040106C         push    eax                          ; hWnd<br>CODE:0040106D         call    SetFocus<br>CODE:00401072         mov     eax, 0<br>CODE:00401077         jmp     short _LeaveProc<br>CODE:00401079 ; ---------------------------------------------------------------------------</font>
+</pre>
+      <p><font size="2">Pour le code executé si l'on recoit le message <b>WM_CLOSE</b> 
+        (message qui est declenché lors de l'appuie sur la croix de fermeture 
+        de la fenetre) on voit que l'on appel l'API <font color=#cc0000><b>EndDialog</b></font> 
+        en lui passant l'handle de notre boite boite de dialog que l'on met eax 
+        à 1 pour etre conforme à la valeur de retour de DialogProc puisqu'on à 
+        traité le message et que l'on saute vers le label defini il y a quelques 
+        instants vers la fin de la procedure.</font></p>
+      <p><font size="2">Pour <b>WM_INITDIALOG</b> (message qui est déclenché une 
+        seule fois au moment de la creation de la fenetre) on appel <font 
+color=#cc0000><b>GetDlgItem</b></font>, cette fonction permet de recuperer l'handle 
+        d'un control, pour ensuite appeler la fonction <font 
+color=#cc0000><b>SetFocus</b></font> en lui passant cet handle. <b>SetFocus</b> 
+        sert à 'donner la main' à un controle ou encore sur un edit-box de placer 
+        le curseur tout de suite sur ce controle permettant de pouvoir écrire 
+        directement dans celui-ci sans avoir besoin de le selectionner avant. 
+        Si on lance le programme on s'apercoit que c'est le champ 'Name' qui va 
+        recevoir le focus puisque le curseur est placé dans celui-ci au démarrage. 
+        On peux en conclure du n° d'identification du controle qui est celui presicé 
+        par dans le 1er argument pushé de <font color=#cc0000><b>GetDlgItem</b></font> 
+        correspond au controle Edit-box 'Name'. On va placer cette info en commentaire. 
+        Pareil la suite se conforme à la condition de retour de <b>DialogProc</b> 
+        laquelle precise l'exeption de retourné 0 si le message WM_INITDIALOG 
+        est traité mais que celui-ci appel dans sa routine fera appel à <font 
+color=#cc0000><b>SetFocus</b></font>.</font></p>
+      <p><font size="2"><strong>Passons au traitement de WM_COMMAND</strong></font></p>
+      <pre><font color=#FF0000 size="2" face="Courier New, Courier, mono">CODE:00401079 _Command:                                    ; CODE XREF: DialogProc+1Aj<br>CODE:00401079         mov     eax, [ebp+wParam]<br>CODE:0040107C         cmp     ax, 3EAh<br>CODE:00401080         jnz     short loc_40108C<br>CODE:00401082         push    [ebp+hWnd]                   ; hDlg<br>CODE:00401085         call    sub_4010A9<br>CODE:0040108A         jmp     short loc_4010A0<br>CODE:0040108C ; ---------------------------------------------------------------------------<br>CODE:0040108C <br>CODE:0040108C loc_40108C:                                  ; CODE XREF: DialogProc+55j<br>CODE:0040108C         cmp     ax, 3EBh<br>CODE:00401090         jnz     short loc_4010A0<br>CODE:00401092         push    0                            ; lParam<br>CODE:00401094         push    0                            ; wParam<br>CODE:00401096         push    10h                          ; Msg<br>CODE:00401098         push    [ebp+hWnd]                   ; hWnd<br>CODE:0040109B         call    SendMessageA<br>CODE:004010A0 <br>CODE:004010A0 loc_4010A0:                                  ; CODE XREF: DialogProc+5Fj<br>CODE:004010A0                                              ; DialogProc+65j<br>CODE:004010A0         mov     eax, 1</font></pre>
+      <p><font size="2">On commence par placer dans eax le 3eme argument <b>wParam</b> 
+        on compare ensuite seulement la valeur contenu dans ax - explication : 
+        Ce message est declenché quand on actionne un boutton, ou un element d'un 
+        menu, d'apres le prototype de <b>WM_COMMAND</b> on voit que <b>wParam</b> 
+        contient alors 2 infos :</font></p>
+      <pre><font size="2" face="Courier New, Courier, mono">wNotifyCode = HIWORD(wParam); // notification code 
+wID = LOWORD(wParam); // item, control, or accelerator identifier</font></pre>
+      <p><font size="2">wParam etant un DWORD on peux le diviser en 2 WORD, le 
+        word de partie haute contient le notification code, et le word de la partie 
+        basse l'identifiant du controle, en asm pour separer les parties on va 
+        se servir d'un registre 32 bits comme eax, si l'on place wParam dans eax, 
+        ax de capacité 16 bit ( WORD ) contiendra naturellement le WORD de la 
+        partie basse, et si l'on souhaite acceder au WORD de la partie haute il 
+        suffit de decaler les bits dans eax afin de faire passer ceux qui se trouvait 
+        en partie haute dans la partie basse avce l'instruction shr eax,16, qui 
+        decale de 16 bits (1 WORD) vers la partie basse.</font></p>
+      <p><font size="2">Ici donc on compare l'identificateur d'un controle avce 
+        la valeur <b><font 
+color=#cc3333 face="Courier New, Courier, mono">3EAh</font>, </b>si vous cliqker droit sur cette valeur vous pourrez 
+        voir la valeur exprmié sous d'autre base numerique comme décimal, octal 
+        et binaire. Si l'identifiant n'est pas egal à cette valeur on saute sur 
+        <font 
+color=#cc3333 face="Courier New, Courier, mono"><b>loc_40108C</b></font>. Ou la on retrouve le meme shema de comparaison 
+        de l'identifiant avce la valeur <font 
+color=#cc3333 face="Courier New, Courier, mono"><b>3EBh</b></font> cette fois. Si l'identificateur n'est toujours 
+        pas egal à cette nouvelle valeur on saute sur un nouveau label qui place 
+        1 dans eax et qui se poursuit par la fin de la procédure. On peux renommer 
+        les 2 labels que nous venons de voir le premier nous faisant sauter sur 
+        la comparaison avce une autre valeur (qui represente un autre boutton) 
+        et le 2eme qui nous envoie vers la fin de la procedure. on renomme le 
+        1er en <b>_TestNextId</b> ( pour test next identifiant ) et le 2eme en 
+        <b>_LeaveProc2</b> (un label _LeaveProc existant deja). Analysons maintenant 
+        le cas ou l'identificateur correspond au valeur commencons par la 2eme 
+        ( ouias c pas chronologiquement logique mais c plus simple pour le tut 
+        enfin je pense) </font></p>
+      <pre><font color=#cc0000 size="2" face="Courier New, Courier, mono">CODE:0040108C _TestNextId:                                 ; CODE XREF: DialogProc+55j<br>CODE:0040108C         cmp     ax, 3EBh<br>CODE:00401090         jnz     short _LeaveProc2<br>CODE:00401092         push    0                            ; lParam<br>CODE:00401094         push    0                            ; wParam<br>CODE:00401096         push    10h                          ; Msg<br>CODE:00401098         push    [ebp+hWnd]                   ; hWnd<br>CODE:0040109B         call    SendMessageA</font></pre>
+      <p><font size="2">Si l'identificateur du controle qui à été actionné correspond 
+        à <font 
+color=#cc0000 face="Courier New, Courier, mono"><b>3EBh</b></font>, on va appeler la fonction <font 
+color=#cc0000 face="Courier New, Courier, mono"><b>SendMessageA</b></font>. Cette fonction sert à envoyer un windows 
+        message vers une fenetre, en analysant les argument pushé on peux definir 
+        que le message est destiné à cette mem boite de dialog (hWnd) et que le 
+        message est <b>WM_CLOSE</b> toujours en cliquant droit pour acceder aux 
+        '<b>use standard symbol constant</b>' et en selectionnant un <b>WM_</b>. 
+        Donc la tout deviens clair, si l'identificateur du boutton est <font 
+color=#cc0000 face="Courier New, Courier, mono"><b>3EBh</b></font> a va envoyer le Message <b>WM_CLOSE</b> sur notre 
+        propre boite de dialog ce qui aura pour effet de la fermer. Si on lance 
+        le programme on voit qu'il y un boutton qui permet de fermer le programme, 
+        on comprend dès lors que le code que nous venons de voir est celui qui 
+        est rataché à ce boutton. Comme sur cette fenetre il n'y a que 2 bouttons 
+        on en deduis que l'autre identifiant represente le boutton qui reste : 
+        le boutton '<b>Check</b>', on peux arranger cette partie du code sous 
+        IDA en precisant en commentaire les bouttons qui sont actionnés. Si on 
+        reviens sur le controle de boutton check on voit qu'on va appeler une 
+        nouvelle fonction nommé par defaut <b>sub_4010A9 </b>la on peux en déduire 
+        directement que c'est dans cette nouvelle procedure que va se passer la 
+        verification du serial, puisque nous avons reussis à analyser tout les 
+        traitement des messages et leur evenements, on peux donc renommer aussi 
+        cette nouvelle procedure en <b>_CheckProc </b>ce qui au final nous donne 
+        :</font></p>
+      <pre><font color=#cc0000 size="2" face="Courier New, Courier, mono">CODE:00401079 _Command:                                    ; CODE XREF: DialogProc+1Aj<br>CODE:00401079         mov     eax, [ebp+wParam]<br>CODE:0040107C         cmp     ax, 3EAh                     ; boutton 'Check'<br>CODE:00401080         jnz     short _TestNextId<br>CODE:00401082         push    [ebp+hWnd]                   ; hDlg<br>CODE:00401085         call    _CheckProc                   ; appel procedure de check serial<br>CODE:0040108A         jmp     short _LeaveProc2<br>CODE:0040108C ; ---------------------------------------------------------------------------<br>CODE:0040108C <br>CODE:0040108C _TestNextId:                                 ; CODE XREF: DialogProc+55j<br>CODE:0040108C         cmp     ax, 3EBh                     ; boutton 'Exit'<br>CODE:00401090         jnz     short _LeaveProc2<br>CODE:00401092         push    0                            ; lParam<br>CODE:00401094         push    0                            ; wParam<br>CODE:00401096         push    WM_CLOSE                     ; Msg<br>CODE:00401098         push    [ebp+hWnd]                   ; hWnd<br>CODE:0040109B         call    SendMessageA                 ; envoie le message close pour fermer le prog<br>CODE:004010A0 <br>CODE:004010A0 _LeaveProc2:                                 ; CODE XREF: DialogProc+5Fj<br>CODE:004010A0                                              ; DialogProc+65j<br>CODE:004010A0         mov     eax, 1<br>CODE:004010A5 <br>CODE:004010A5 _LeaveProc:                                  ; CODE XREF: DialogProc+21j<br>CODE:004010A5                                              ; DialogProc+32j ...<br>CODE:004010A5         leave<br>CODE:004010A6         retn    10h<br>CODE:004010A6 DialogProc endp</font>
+</pre>
+      <p><font size="2">On peux passer à présent à l'analyse de la procedure de 
+        check du serial:</font></p>
+      <p><font size="2">Voici la 1ere partie :</font></p>
+      <pre><font color=#0000cc size="2" face="Courier New, Courier, mono">CODE:004010A9 ; int __cdecl CheckProc(HWND hDlg)<br>CODE:004010A9 ; Attributes: bp-based frame<br>CODE:004010A9 <br>CODE:004010A9 _CheckProc proc near                         ; CODE XREF: DialogProc+5Ap<br>CODE:004010A9 <br>CODE:004010A9 hDlg    = dword ptr  8<br>CODE:004010A9 <br>CODE:004010A9         enter   0, 0<br>CODE:004010AD         push    esi<br>CODE:004010AE         push    edi<br>CODE:004010AF         push    edx<br>CODE:004010B0         push    10h                          ; nMaxCount<br>CODE:004010B2         push    offset unk_40200D            ; lpString<br>CODE:004010B7         push    3E8h                         ; nIDDlgItem<br>CODE:004010BC         push    [ebp+hDlg]                   ; hDlg<br>CODE:004010BF         call    GetDlgItemTextA<br>CODE:004010C4         cmp     eax, 5<br>CODE:004010C7         jl      short loc_401142<br>CODE:004010C9         mov     esi, offset unk_40200D<br>CODE:004010CE         push    esi</font></pre>
+      <p><font color=#FFFFFF size="2">Pareil ici on retrouve </font><font 
+color=#0000cc size="2"><b><font face="Courier New, Courier, mono">enter 0, 0</font></b> 
+        <font color=#FFFFFF>qui va nous permettra d'acceder aux argument de cette 
+        fonction via le registre <font color=#000000><b><font color="#FFFFFF">ebp+argument</font></b></font><font color="#FFFFFF">. 
+        On trouve aussi une serie de 3 push de r</font>egistre, généralement on 
+        push des registres en debut de</font><font color=#000000> <font color="#FFFFFF">procedure 
+        lorque celle-ci est succeptible de les modifier alors en les sauvgardant 
+        dans la pile on pourra les restituer</font> <font color="#FFFFFF">en fin 
+        de procedure en les rappelant par des pop.</font></font> </font></p>
+      <p><font color=#FFFFFF size="2">Ensuite on entamme les push de la fonction 
+        </font><font 
+color=#0000cc size="2"><b><font face="Courier New, Courier, mono">GetDlgItemTextA</font></b>.<font color="#FFFFFF"> 
+        (attention de ne pas confondre des simple push avce des push passage d'argument 
+        d'une fonction, pour cela il suffit de regarder le prototype et de compter 
+        le nombre d'argument qu'elle prend et de re-compter en remontant a partir 
+        du call pour determiner quel est le premier push de la fonction), <b>GetDlgItemText</b></font> 
+        <font 
+color=#FFFFFF>permet de recuperer le text d'une fenetre ou d'un controle vers 
+        un buffer (variable de type string). La on apprend pleins de chose en 
+        examinant ses arguments, </font><b><font face="Courier New, Courier, mono">nMaxCount</font><font color="#FFFFFF"> 
+        </font></b><font color=#FFFFFF>specifie le nbr max de Byte à copier dans 
+        le buffer,<font face="Courier New, Courier, mono"> </font></font><font face="Courier New, Courier, mono"><b>lpString</b></font><b><font color="#FFFFFF"> 
+        </font></b><font 
+color=#FFFFFF>pointe vers l'adresse de notre buffer qui recevra le text du controle, 
+        et </font><b><font face="Courier New, Courier, mono">3E8h</font><font color="#FFFFFF"> 
+        </font></b><font 
+color=#FFFFFF>determine la valeur le controle en lui meme. Si on se rappelle plus 
+        tot on s'est servi de <b>SetFocus</b></font><font 
+color=#000000><b> </b><font color="#FFFFFF">en specifiant cette meme valeur on 
+        en deduit que c'est donc le meme controle càd l'edit-box 'Name', on arrange 
+        ca à notre sauce :</font></font></font></p>
+      <pre><font color=#cc0000 size="2" face="Courier New, Courier, mono">CODE:004010A9         enter   0, 0<br>CODE:004010AD         push    esi<br>CODE:004010AE         push    edi<br>CODE:004010AF         push    edx<br>CODE:004010B0         push    10h                          ; nMaxCount = nbr de char à copier<br>CODE:004010B2         push    offset NameBuffer            ; lpString = pointeur vers le buffer qui recupe le Nom<br>CODE:004010B7         push    3E8h                         ; nIDDlgItem = 'Name'<br>CODE:004010BC         push    [ebp+hDlg]                   ; hDlg<br>CODE:004010BF         call    GetDlgItemTextA              ; Recupere texte dans Edit-box 'Name'</font></pre>
+      <p><font color=#FFFFFF size="2">La fonction <b>GetDlgItemTextA</b> retourne 
+        le nbr de char copié dans le buffer</font><font color=#000000 size="2"><font color=#990000>. 
+        Suite du code :</font></font></p>
+      <pre><font color=#0000cc size="2" face="Courier New, Courier, mono">CODE:004010C4         cmp     eax, 5                       <br>CODE:004010C7         jl      short loc_401142             <br>CODE:004010C9         mov     esi, offset NameBuffer       <br>CODE:004010CE         push    esi <font color="#FFFFFF">                         </font></font></pre>
+      <p><font size="2">On compare donc le nbr de char copié dans le buffer avce 
+        5, si c'est moins au saute vers un label ou l'on va appeler la fonction 
+        <b>SetDlgItemTextA</b> et si on regarde dans les argument on voit que 
+        l'on pousse une string declaré comme suit :</font></p>
+      <pre><font color=#0000cc size="2" face="Courier New, Courier, mono">aLeNomDoitCompo db 'LE NOM DOIT COMPORTER 5 LETTRES MINIMUM',0</font>
+</pre>
+      <p><font size="2">On renomme cette variable en '<b>Mess_5char</b>' et le 
+        label qui nous envoie vers cette routine '<b>_5charMin</b>' ce qui donne:</font></p>
+      <pre><font color=#cc0000 size="2" face="Courier New, Courier, mono">CODE:004010C4         cmp     eax, 5                       ; cmp nbr de char copié, 5<br>CODE:004010C7         jl      short _5charMin              ; jump si inferieur<br>CODE:004010C9         mov     esi, offset NameBuffer       ; esi = offset NameBuffer<br>CODE:004010CE         push    esi                          ; sauvgarde esi</font>
+</pre>
+      <p><font size="2">On continue la procedure Check:</font></p>
+      <pre><font color=#0000cc size="2" face="Courier New, Courier, mono">CODE:004010CF loc_4010CF:                                  ; CODE XREF: _CheckProc+32j<br>CODE:004010CF         mov     dl, [esi]<br>CODE:004010D1         test    dl, dl<br>CODE:004010D3         jz      short loc_4010DD<br>CODE:004010D5         add     dl, 2<br>CODE:004010D8         mov     [esi], dl<br>CODE:004010DA         inc     esi<br>CODE:004010DB         jmp     short loc_4010CF<br>CODE:004010DD ; ---------------------------------------------------------------------------<br>CODE:004010DD <br>CODE:004010DD loc_4010DD:                                  ; CODE XREF: _CheckProc+2Aj</font>
+</pre>
+      <p><font size="2">APres analyse de ce bloc on comprend que l'on place dans 
+        dl , le byte qui se touve à l'adresse de esi qui est <font color=#cc0000><b>NameBuffer,<font color="#FFFFFF"> 
+        </font></b><font 
+color=#FFFFFF>donc le 1er caractere du Nom on test si ce byte egal 0 soit la valeur 
+        de fin d'une strings , c'est pas le cas on continue en ajoutant 2 à ce 
+        byte et on remplace l'ancien byte par le nouveau dans la variable </font><font 
+color=#cc0000><b>NameBuffer</b></font> <font color=#FFFFFF>on incremente esi qui 
+        pointe alors sur le caractere suivant et on jump au debut de cette boucle 
+        tant que la chaine n'est pas fini, On commente tout ca :</font></font></font></p>
+      <pre><font color=#cc0000 size="2" face="Courier New, Courier, mono">CODE:004010CF _Boucle1:                                    ; CODE XREF: _CheckProc+32j<br>CODE:004010CF         mov     dl, [esi]                    ; place dans dl, 1er char de 'Name'<br>CODE:004010D1         test    dl, dl                       ; test si le char est le char de fin de string<br>CODE:004010D3         jz      short _endBoucle1            ; aukel cas saute en _endBoucle1<br>CODE:004010D5         add     dl, 2                        ; augment la valeur du byte de 2<br>CODE:004010D8         mov     [esi], dl                    ; ecrase l'ancien byte avce le nouveau<br>CODE:004010DA         inc     esi                          ; char suivant de Name<br>CODE:004010DB         jmp     short _Boucle1               ; boucle1<br>CODE:004010DD ; ---------------------------------------------------------------------------<br>CODE:004010DD <br>CODE:004010DD _endBoucle1:                                 ; CODE XREF: _CheckProc+2Aj</font>
+</pre>
+      <p><font size="2">Et on continue avce le reste de l'algo maintenant que 
+        vous avez compris (j'espere) la technique d'analyse et de renommage petit 
+        à petit des label et des variables:</font></p>
+      <pre><font color=#0000cc size="2" face="Courier New, Courier, mono">CODE:004010DD _endBoucle1:                                 ; CODE XREF: _CheckProc+2Aj<br>CODE:004010DD         push    10h                          ; nMaxCount<br>CODE:004010DF         push    offset unk_40204D            ; lpString<br>CODE:004010E4         push    3E9h                         ; nIDDlgItem<br>CODE:004010E9         push    [ebp+hDlg]                   ; hDlg<br>CODE:004010EC         call    GetDlgItemTextA<br>CODE:004010F1         cmp     eax, 5<br>CODE:004010F4         jl      short loc_401127<br>CODE:004010F6         mov     edi, offset unk_40204D<br>CODE:004010FB         pop     esi<br>CODE:004010FC <br>CODE:004010FC loc_4010FC:                                  ; CODE XREF: _CheckProc+61j<br>CODE:004010FC         mov     dl, [edi]<br>CODE:004010FE         mov     dh, [esi]<br>CODE:00401100         test    dh, dh<br>CODE:00401102         jz      short loc_40110C<br>CODE:00401104         cmp     dh, dl<br>CODE:00401106         jnz     short loc_401127<br>CODE:00401108         inc     esi<br>CODE:00401109         inc     edi<br>CODE:0040110A         jmp     short loc_4010FC<br>CODE:0040110C ; ---------------------------------------------------------------------------<br>CODE:0040110C <br>CODE:0040110C loc_40110C:                                  ; CODE XREF: _CheckProc+59j<br>CODE:0040110C         push    0                            ; uType<br>CODE:0040110E         push    offset aBravoGoodSeria       ; lpCaption<br>CODE:00401113         push    offset aBravoGoodSeria       ; lpText<br>CODE:00401118         push    [ebp+hDlg]                   ; hWnd<br>CODE:0040111B         call    MessageBoxA<br>CODE:00401120         pop     edx<br>CODE:00401121         pop     edi<br>CODE:00401122         pop     esi<br>CODE:00401123         leave<br>CODE:00401124         retn    4<br>CODE:00401127 ; ---------------------------------------------------------------------------<br>CODE:00401127 <br>CODE:00401127 loc_401127:                                  ; CODE XREF: _CheckProc+4Bj<br>CODE:00401127                                              ; _CheckProc+5Dj<br>CODE:00401127         push    0                            ; uType<br>CODE:00401129         push    offset aErrorBadSerial       ; lpCaption<br>CODE:0040112E         push    offset aErrorBadSerial       ; lpText<br>CODE:00401133         push    [ebp+hDlg]                   ; hWnd<br>CODE:00401136         call    MessageBoxA<br>CODE:0040113B         pop     edx<br>CODE:0040113C         pop     edi<br>CODE:0040113D         pop     esi<br>CODE:0040113E         leave<br>CODE:0040113F         retn    4<br>CODE:00401142 ; ---------------------------------------------------------------------------<br>CODE:00401142 <br>CODE:00401142 _5charMin:                                   ; CODE XREF: _CheckProc+1Ej<br>CODE:00401142         push    offset Mess_5char            ; lpString<br>CODE:00401147         push    3E9h                         ; nIDDlgItem<br>CODE:0040114C         push    [ebp+hDlg]                   ; hDlg<br>CODE:0040114F         call    SetDlgItemTextA<br>CODE:00401154         pop     edx<br>CODE:00401155         pop     edi<br>CODE:00401156         pop     esi<br>CODE:00401157         leave<br>CODE:00401158         retn    4<br>CODE:00401158 _CheckProc endp</font>
+</pre>
+      <p><font size="2">Une fois travaillé cette partie on obtient :</font></p>
+      <pre><font color=#cc0000 size="2" face="Courier New, Courier, mono">CODE:004010DD _endBoucle1:                                 ; CODE XREF: _CheckProc+2Aj<br>CODE:004010DD         push    10h                          ; nMaxCount<br>CODE:004010DF         push    offset SerialBuffer          ; lpString<br>CODE:004010E4         push    3E9h                         ; nIDDlgItem = Edit-Box Serial<br>CODE:004010E9         push    [ebp+hDlg]                   ; hDlg<br>CODE:004010EC         call    GetDlgItemTextA              ; Recupere Text de l'edit Serial<br>CODE:004010F1         cmp     eax, 5                       ; compare nbr de char copié avec 5<br>CODE:004010F4         jl      short _BadBoy                ; si inferieur à 5 saute vers messagebox bad boy<br>CODE:004010F6         mov     edi, offset SerialBuffer     ; place dans edi, adresse de SerialBUffer<br>CODE:004010FB         pop     esi                          ; recupere esi =&gt; esi = offset NameBuffer<br>CODE:004010FC <br>CODE:004010FC _Boucle2:                                    ; CODE XREF: _CheckProc+61j<br>CODE:004010FC         mov     dl, [edi]                    ; dl = char de SerialBuffer<br>CODE:004010FE         mov     dh, [esi]                    ; dh = char de NameBuffer<br>CODE:00401100         test    dh, dh                       ; test fin de NameBuffer<br>CODE:00401102         jz      short _GoodBoy               ; saute vers Good boy fin de string (tout bon)<br>CODE:00401104         cmp     dh, dl                       ; cmp les 2 char<br>CODE:00401106         jnz     short _BadBoy                ; si pas egal saute vers badboy<br>CODE:00401108         inc     esi                          ; char suivant de NameBuffer<br>CODE:00401109         inc     edi                          ; char suivant de Serial Buffer<br>CODE:0040110A         jmp     short _Boucle2<br>CODE:0040110C ; ---------------------------------------------------------------------------<br>CODE:0040110C <br>CODE:0040110C _GoodBoy:                                    ; CODE XREF: _CheckProc+59j<br>CODE:0040110C         push    0                            ; uType<br>CODE:0040110E         push    offset aBravoGoodSeria       ; lpCaption<br>CODE:00401113         push    offset aBravoGoodSeria       ; lpText<br>CODE:00401118         push    [ebp+hDlg]                   ; hWnd<br>CODE:0040111B         call    MessageBoxA                  ; Good Boy<br>CODE:00401120         pop     edx<br>CODE:00401121         pop     edi<br>CODE:00401122         pop     esi<br>CODE:00401123         leave<br>CODE:00401124         retn    4<br>CODE:00401127 ; ---------------------------------------------------------------------------<br>CODE:00401127 <br>CODE:00401127 _BadBoy:                                     ; CODE XREF: _CheckProc+4Bj<br>CODE:00401127                                              ; _CheckProc+5Dj<br>CODE:00401127         push    0                            ; uType<br>CODE:00401129         push    offset aErrorBadSerial       ; lpCaption<br>CODE:0040112E         push    offset aErrorBadSerial       ; lpText<br>CODE:00401133         push    [ebp+hDlg]                   ; hWnd<br>CODE:00401136         call    MessageBoxA                  ; Bad Boy<br>CODE:0040113B         pop     edx<br>CODE:0040113C         pop     edi<br>CODE:0040113D         pop     esi<br>CODE:0040113E         leave<br>CODE:0040113F         retn    4<br>CODE:00401142 ; ---------------------------------------------------------------------------<br>CODE:00401142 <br>CODE:00401142 _5charMin:                                   ; CODE XREF: _CheckProc+1Ej<br>CODE:00401142         push    offset Mess_5char            ; lpString<br>CODE:00401147         push    3E9h                         ; nIDDlgItem<br>CODE:0040114C         push    [ebp+hDlg]                   ; hDlg<br>CODE:0040114F         call    SetDlgItemTextA              ; Name Min 5 lettres<br>CODE:00401154         pop     edx<br>CODE:00401155         pop     edi<br>CODE:00401156         pop     esi<br>CODE:00401157         leave<br>CODE:00401158         retn    4<br>CODE:00401158 _CheckProc endp</font>
+</pre>
+      <p><font size="2">Et voila l'analyse complete de ce crackme, l'algo du serial 
+        est on ne peux plus simple il ajoute tout simplement 2 à la valeur de 
+        chaque caractere du Nom et le serial doit correspondre à ce Nom modifié.</font></p>
+      <p><font size="2">Pour ceux que ca interresse ou qui veulent comparer ce 
+        listing de IDA avce la vrai source voici la source complete du crackme 
+        en asm - <b><a 
+href="http://membres.lycos.fr/netixyz/tutos/ida/ida2/source.zip">Download me</a><br>
+        </b>Note: Si le lien ne marche pas, visitez notre site: <a href="http://www.shmeitcorp.tk/">shmeitcorp.tk</a></font></p>
+      <p align="left"><img src="images/netix.jpg" width="96" height="32"></p></td>
+  </tr>
+</table>
+</BODY>
+<!-- Mirrored from frenchezines.free.fr/tries/shmeitcorp/5/Netix/ida2.htm by HTTrack Website Copier/3.x [XR&CO'2007], Thu, 07 Aug 2008 04:41:17 GMT -->
+</HTML>

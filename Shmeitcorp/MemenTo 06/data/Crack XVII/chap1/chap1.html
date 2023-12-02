@@ -1,0 +1,123 @@
+<html>
+<head>
+<title>Manuel Unpacking - chapitre 1</title>
+<link rel="stylesheet" type="text/css" href="../../style.css">
+</head>
+<body>
+<h1>Manuel Unpacking - chapitre 1</h1>
+
+<h2>Introduction et g&eacute;n&eacute;ralit&eacute;s</h2>
+<h3>Qu'est ce que le manual unpacking ?</h3>
+<p>En gros c'est une m&eacute;thode qui va permettre de restaurer un programme tel qu'il 
+  l'&eacute;tait avant qu'il ne soit pack&eacute; par un packer tel que aspack, upx, 
+  armadillo, safedisc etc... L'ex&eacute;cutable obtenu sera non seulement utilisable 
+  mais il sera aussi possible de le d&eacute;sassembler en obtenant le code, les 
+  fonctions import&eacute;es, les datas, les ressources bref tout ce qui &eacute;tait 
+  compress&eacute; en vue d'op&eacute;rations tel que du cracking ou du reverse et c'est 
+  bien &ccedil;a le but final de l'unpacking.</p>
+<p>Bien entendu il existe pour certains packers des tools qui vous feront &ccedil;a automatiquement. 
+  Mais savoir unpacker manuellement est tr&egrave;s instructif, sans compter qu'il existe 
+  des packers qui n'ont pas de tools permettant de les unpacker automatiquement. 
+  De plus si vous &ecirc;tes un peu programmeurs &agrave; vos loisirs vous pourrez mettre 
+  au point votre propre unpacker g&eacute;n&eacute;rique pour le packer de votre choix en automatisant 
+  les m&eacute;thodes manuelles.</p>
+<p>L'unpacking n'est pas tr&egrave;s compliqu&eacute; en soit mais demande un peu de 
+  temps et de travail. Cependant il n&eacute;cessite tout de m&ecirc;me une bonne connaissance 
+  sur la structure d'un fichier PE.</p>
+<p>J'ai donc eu envie de cr&eacute;er une suite de tutorial en examinant le cas de chaque 
+  packer et de donner un exemple concret de son unpacking en manuel. Les packers 
+  fonctionnant toujours &agrave; peu pr&egrave;s pareil, il sera simple de faire r&eacute;f&eacute;rence au 
+  tutorial correspondant au packer pour unpacker de la m&ecirc;me fa&ccedil;on que j'ai proc&eacute;d&eacute; 
+  votre programme pack&eacute;.</p>
+<p>Je vous recommande avant tout de bien vous documenter sur le PE pour une compr&eacute;hension 
+  plus ais&eacute;e. Pour cela voici quelques documents indispensables :</p>
+<ul>
+  <li><a href="http://msdn.microsoft.com/library/default.asp?url=/library/en-us/dndebug/html/msdn_peeringpe.asp" target="_blank">Peering 
+    Inside the PE </a>-</li>
+  <li><a href="http://win32asm.cjb.net" target="_blank">les cours d'Iczelions sur le PE</a> - 
+    version fran&ccedil;aise traduit par Morgatte que nous remercions au passage ;)</li>
+</ul>
+
+<p>Il y a 2 fa&ccedil;ons de voir l'unpacking.</p>
+<ul>
+  <li>La 1&egrave;re &eacute;tant simplement de d&eacute;packer et de corriger le programme pour le 
+    rendre fonctionnel.</li>
+  <li>La 2&egrave;me de reconstruire enti&egrave;rement et proprement l'ex&eacute;cutable en assemblant 
+    chaque section et en supprimant la partie de code utilis&eacute; par le packer.</li>
+</ul>
+<p>Voir aussi un mix des 2 m&eacute;thodes en ne reconstruisant qu'une partie du programme.</p>
+
+<h3>2. Au menu d'un unpacking (g&eacute;n&eacute;ral)</h3>
+<p>Voici d'une vue g&eacute;n&eacute;rale la liste des actions qu'il faudra effectuer pour 
+  unpacker un programme :</p>
+<ol type="a">
+  <li>Dump du programme en m&eacute;moire</li>
+  <li>Recherche de l'original entry-point (OEP)</li>
+  <li>Correction ou reconstruction de la table des imports</li>
+  <li>Correction du PE (entry-point, import table, sections, ...)</li>
+</ol>
+
+<h4>a) Dump du programme en m&eacute;moire</h4>
+<p>Pour cela on se sert d'outils tels que Procdump, LordPe, IceDump etc...</p>
+<p>Un dump est en gros une image du programme qui tourne en m&eacute;moire car 
+  &agrave; ce moment la il sera d&eacute;compress&eacute; ou d&eacute;crypt&eacute; dans 
+  la plupart des cas. Par contre il faudra rectifier quelques infos dans le PE 
+  avant de le rendre ex&eacute;cutable car si vous essayer de lancer le dump il va crasher 
+  lamentablement.</p>
+
+<h4>b) Recherche de l'original entry-point (OEP)</h4>
+<p> L'entry-point actuel du programme a &eacute;t&eacute; redirig&eacute; 
+  par le packer vers une routine, que l'on appelle loader, qui a &eacute;t&eacute; 
+  ajout&eacute; au programme et qui permet &agrave; son lancement de le d&eacute;packer 
+  en m&eacute;moire. A la fin de cette routine, celle ci effectue un saut vers 
+  l'entry-point original pour ex&eacute;cuter le d&eacute;roulement normal du programme.</p>
+<p>
+  Un dump &eacute;tant d&eacute;j&agrave; d&eacute;pack&eacute;, cette routine ne sert plus a rien et nous 
+  pouvons donc la bi-passer en sautant directement sur le d&eacute;roulement normal 
+  du programme c'est &agrave; dire sur l'entry-point original (OEP).</p>
+<p>Sachant qu'&agrave; la fin de la routine de d&eacute;packing celle-ci va sauter 
+  vers l'OEP. Le seul moyen de retrouver l'OEP est de tracer avec un debugger 
+  cette routine jusqu'a ce moment pr&eacute;cis. Chaque packer &agrave; sa petite m&eacute;thode 
+  pour sauter vers l'OEP il n'y a donc pas de r&egrave;gles pr&eacute;cises pour le retrouver. 
+</p>
+<p>Je vous donne la m&eacute;thode que j'utilise et qui pour moi est la plus simple 
+  et la plus rapide :</p>
+<p>J'utilise le debugger Windbg qui fourni un log du code trac&eacute;, Il suffit 
+  de poser un bp sur l'entry-point actuel et de rester appuyer sur le bouton 
+  trace (F10) jusqu'au moment ou le programme se lance, &agrave; ce moment la, 
+  on fait un break dans le debugger et on examine le log en remontant pour trouver 
+  le moment o&ugrave; nous changeons de segment et o&ugrave; ce saut vers l'OEP a 
+  &eacute;t&eacute; effectu&eacute;. On peut aussi commencer le trace &agrave; 
+  partir d'un BPX sur l'api LoadLibrary, qui est souvent appel&eacute; par le 
+  loader d'un packer, plut&ocirc;t que du tout d&eacute;but.</p>
+<p>Bon d'accord c'est une m&eacute;thode bourrin, mais au moins c'est rapide et efficace. 
+  Apres quand on conna&icirc;t bien le packer auquel on &agrave; faire, on peut &eacute;laborer 
+  des strat&eacute;gies plus sp&eacute;cifiques comme retrouver un bout de code qui reviendrais 
+  toujours (signature) pour poser un break-point et trouver l'OEP.</p>
+
+<h4>c) Correction ou reconstruction de la table des imports</h4>
+<p>C'est s&ucirc;rement ici le point le plus d&eacute;licat. Pour certain packer vous n'aurez 
+  rien &agrave; toucher si ce n'est corriger l'adresse de l'Import Table dans le PE. 
+  Par contre pour d'autre et en grande majorit&eacute; il faudra corriger certains 
+  &eacute;l&eacute;ments de cette table, voir en r&eacute;&eacute;crire une compl&egrave;te 
+  ou partielle. Mais rassurez vous c'est relativement simple et amusant une fois 
+  que l'on &agrave; compris son fonctionnement :).</p>
+<p>J'ai jug&eacute; pr&eacute;f&eacute;rable d'&eacute;crire un tutorial complet et sur ce 
+  vaste et d&eacute;licat sujet, ce qui occupera le chapitre 2 de cette s&eacute;rie de tutoriaux.</p>
+
+<h4>d) Correction du PE </h4>
+<p> Une fois que tout est pr&ecirc;t il nous faut faire les finitions et ajuster le 
+  PE-header face aux modifications que l'on y a apport&eacute;, comme :</p>
+<ul>
+  <li> Offset de l'entry-point (on prend la valeur de l'OEP)</li>
+  <li> Offset de la table des Imports et sa taille</li>
+  <li> Caract&eacute;ristiques des sections</li>
+  <li> ...</li>
+</ul>
+<p>Le reste d&eacute;pend directement des changements apport&eacute;s et du packer mais 
+  en r&egrave;gles g&eacute;n&eacute;rales on retrouve ces 3 points.</p>
+
+<p class="image"><img src="../../images/signatures/Netix.gif"></p>
+
+</body>
+</html>

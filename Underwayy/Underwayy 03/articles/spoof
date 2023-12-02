@@ -1,0 +1,917 @@
+/*Voici le premier art. Si l'idee n'est pas nouvelle, j'ai repris certaine notion
+male explique et j'en ai explorer d'autre... Lis le integralement. Sincerement je
+crois que c ce qui a ete fais de mieux sur le BS...*/
+
+Spoofer les UNiXsss.
+
+Je v vous faire une description la plus detaillee possible du spoofing
+ou  ip-spoofing..
+Il y a eu beaucoup de publication sur la technique du spoofing (en anglais 
+et en Francais (en particulier le NBS dans noroute)), mais generalement les
+document francais n'etais pas complet.
+Je reviendrais sur les documents que je joins a cet article a la fin de cet
+article.
+
+1 : degustation :
+"`"`"`"`"`"`"`"`"
+
+1.1 Etude de TCP/IP et UDP :
+@-@-@-@-@-@-@-@-@-@-@-@-@-@-
+
+1.1.1 : encapsulation :
+@-@-@-@-@-@-@-@-@-@-@-@-
+
+L'encapsulation consiste a faire passer les donnees dans les differentes
+couches tcp/ip. Si le modele de communication OSI  possede 7 couches, le
+protocole TCP/IP en possede 4 :
+couche application, couche transport machine a machine, couche internet,
+couche reseau. A chaque passage la couche va ajoute son en tete (ou header)
+pour s'assurer de la bonne livraison des donnees, ce qui donne :
+
+machine qui envoi :
+couche application [donnees]=>
+couche transport[en-tete+donnees]=>
+couche internet[en-tete+en-tete+donnees]=>
+couche reseau[en-tete+en-tete+en-tete+donnees].
+
+machine qui recupere (le travail est inverse):
+couche reseau[en-tete+en-tete+en-tete+donnees].
+couche internet[en-tete+en-tete+donnees]=>
+couche transport[en-tete+donnees]=>
+couche application [donnees]=>
+		
+description des couches :
+couche application :
+Ben, c la couche la plus haute. Selon le protocole utilise (TCP ou UDP)
+on pourra etre sur telnet ou TFTP, par exemple.
+couche de transport :
+C la que ce fait l'encapsulation des informations tcp ou udp (voir d'autre 
+protocoles).
+couche internet :
+encapsulation de Ip et de ICMP.
+couche reseau :
+la couche basse. D'apres l'information donnees par Ip il vas route physique-
+-ment les datagrammes.
+
+1.1.2 : TCP et UDP :
+@-@-@-@-@-@-@-@-@-@-
+
+	1.1.2.a: UDP :
+	``````````````
+	Dans la couche transport on ajoute donc l'en-tete UDP.   
+	voici comment fonctionne UDP :
+		
+			|0 bits		       |16 bits		    |32 bits
+		  ------+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------
+		  en- 	|   Port source	       | Port destination   |1er mots
+		  tete	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------
+		        |   Taille 	       | Somme de controlle |2eme mots
+		  ------+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------
+			|		   Debut des donnees.	    |
+			+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+			
+	
+	Port source : beenn c explicite non ??
+	Port destination : beenn c explicite non ??
+	taille : ca aussi
+	La somme de controlle : la somme de controlle permet de verifier
+	a l'envoyeur si tout a bien ete envoye.
+
+	UDP est dit non fiable, en effet si il y'a une verification du cote 
+	du sender est faite, la destination ne possede aucune verification. 
+	On ne peut donc pas savoir si les donnees ont toutes ete recue par
+	la destination.
+
+	
+	1.1.2.b : TCP :
+	```````````````
+	La encore l'en-tete est rajoute aux donnes sur la couche de transport.
+	
+	
+	a-:buts de TCP :
+	=-=-=-=-=-=-=-=-
+	Si par exemple un file est envoye par une machine, les donnees de ce 
+	file seront "decoupes" par tcp en datagrammes numerotes, de maniere
+	tel que ce fichier passe mieux sur la trame. De plus tcp offre plus
+	de securite qu'UDP.
+	
+	b-: Voici comment fonctionne TCP :
+	=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+	|0b     |4b     |8b     |12b    |16b    |20b    |24b    |28b    |32b      
+  ------+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------
+  en-	|           Port Source         |        Port  Destination      |1er mots
+  tete	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------
+    |   |                        Numero de sequence (SEQ)               |2eme mots
+    |	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------
+    |   |                      Numero d'ackitement  (ACK)               |3eme mots
+    |   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------
+    |   |  Data |           |U|A|P|R|S|F|                               |4eme mots
+    |   | Offset| Reserve   |R|C|S|S|Y|I|            fenetre            |
+    |   |       |           |G|K|H|T|N|N|                               |
+    |   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------
+    |   |        Somme de controle      |         Pointeur Urgent       |5eme mots
+    |   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------
+   \-/  |                   Options 		         |    Bourrage  |6eme mots 
+  ------+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------
+ 	|Donnees...				    		        |
+	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	
+	Je detaille ici le + important a savoir.
+
+	port source : ...
+	port destination : ...
+
+	numero de sequence:
+	chaque datagramme a un numero de sequence.
+	Le numero de sequence est un nombre non signe de 32 bit, comme peut le
+	montrer cette figure. Chaque numero de sequence est initialise à 0 
+	quand celui ci arrive a 2^32-1. Le sequence number contient l'isn 
+	(ou Initial sequence number) plus 1 numero de sequence pour le SYN
+	qui consomme un numero de sequence. Par consequent pour chaque debut de 
+	connexion : SEQ=ISN+SYN=ISN+1
+			ISN=SEQ-SYN=SEQ-1
+
+	numero d'ackitement : 
+	lors d'une connection l'ordinateur qui recois le datagramme prevois le 
+	SEQ du datagramme suivant :
+	ACK=SEQ+1.
+	Le numero d'ackitement est envoye si le cheksum que le receveur a 
+	calcule correspond au checksum contenue dans l'header +1. Si le sender
+	ne recoit pas de ACK pendant un certain temps il renvoie encore une
+	fois les donnees emises precedemment.
+
+	data offset : donne la longueur de l'en tete (header).
+
+	reserve : reservé a l'utilisation future des flags.
+
+	fenetre(window) : ce champs indique la quantite de donnees que l'expe-
+	diteur veut (ou peut recevoir).
+
+	somme de controle (ou checksum): la somme de controlle contient 
+	l'header TCP et les donnees. Ainsi le recepteur peut voir si il y a eu
+	deterioration du datagramme en recalculant les deux facteurs et en le
+	comparant avec le checksum contenu dans l'header. 
+	
+	c-: les flags :
+	=-=-=-=-=-=-=-=-
+	SYN : le flag SYN est utilise pour synchroniser les SEQ pour 
+	initialiser une connection. Celui ci est initaialise a 1 pour chaque connection.
+	ACK : refere au numero d'ackitement. Si le serveur envoie un ACK c que
+	le numero d'ackitement qu'il a prevut etait valide alor le flag ACK=1.
+	Mais il peut arriver des erreurs. Par exemple le serveur envoie des 
+	datagrammes de checksum de 1 à 500 (le client renvoie ACK=1) et puis
+	le serveur envoie les datagrammes de 600 a 1000. Le client vas donc
+	repondre ACK=501 (c'est a dire le numero d'acknoledgment prevue en 
+	voyant arriver le datagrammes 500) pour dire qu'il attend le 
+	datagramme 501.
+	RST : reinitialise la connection du a une erreur
+	FIN : fin d'une connection
+	PSH : fonction push : 'le recepteur doit passer cette donnee a 
+	l'application
+	URG :le pointeur urgent est valide.
+	 	
+	d-: connection entre deux machines avec TCP :
+	=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+	Pour se connecter a un serveur le client (1) envoie un segment TCP/IP dont le
+	checksum contient l'ISN de celui ci plus le flag SYN qui sert a synchroniser les
+	numero de sequence
+	
+	1----[SEQ1/(SYN+ISN1)]---->2
+	   
+	Le serveur 2 vas recevoir cette sequence et vas repondre avec son 
+	propre ISN et un acknowledgment (qui constitue le checksum du dernier octet 
+	envoye +1).
+
+	1<----[SEQ2/(SYN+ISN2); ACK(SEQ1+1)]----2
+
+	Puis le client vas envoyer un autre acknowledgment a l'ISN 2, pour 
+	dire qu'il a recu sa reponse.
+	
+	1----[ACK(SEQ2+1)]---->2
+ 
+	La connection est faite : on appelle cette connection à 3-way 
+	handshake... 
+
+	e-:ISN(initial sequence number) :
+	=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+	Bien souvent l'ISN = 0.
+	Si on valide cette hypothese on a :
+	SEQ=SYN+ISN=0+1=1 //ceci est le premier SEQ.
+		
+	Tout de fois pour des raisons de securite, chaque connection peut 
+	avoir un ISN different. On a donc une variable pour ISN.
+	Cette variable lorsque le systeme est redemarre est initialise a 1,
+	et incremente a chaque demi seconde de 64000(128000/s) et est reinitialise 
+	toutes les 9.1 heures environ. De plus chaque fois qu'une connection 
+	est etablie l'ISN est incremente de 64000.
+	
+1.1.3 : IP et ICMP :
+@-@-@-@-@-@-@-@-@-@-
+	
+	1.1.3.a : IP :
+	``````````````
+	L'header est rajoute aux datgrammes decoupe par TCP et l'header TCP
+	dans la couche internet.
+	
+	a-: a quoi ca sert ???
+	=-=-=-=-=-=-=-=-=-=-=-
+	L'internet protocole sert tout simplement a pouvoir router le fichier.
+	Generalement c ca seule fonction. L'IP vas donc s'occuper de trouver le
+	plus court chemin vers la destination.
+	routage : 
+	IP reconnait 2 machines : les routeurs (qui ne reconnaisse que
+	deux couches (reseau et internet : le fait de reconnaitre les couche 
+	application et transport ne leur serviraient a rien puisque les messages
+	ne leur sont pas destines) et les machines qui elle reconnaissent toutes
+	les couches (l'une est emetrice, l'autre est receptrice : c une 
+	nessecite). 
+	fragmentation de datagramme :
+	il arrive que certains datagramme trops gros (bien que fragmentes par TCP)
+	doivent encore etre fragmente par IP. C'est un K rare mais qui existe en
+	particulier lorsqu'une passerelle est interconnecte a plusieur reseaux
+	physique heterogenes. La taille maximale d'un datagramme est donc definie
+	par MTU ( Maximum Transmission Unit). Cette fragmentation est utilise lorsqu'
+	on change de type de reseaux (d'un reseaux ethernet a un reseau X.25 par 
+	exemple). 
+	Dans noroute 1, kewl avait fait une erreur en disant que IP ne servait 
+	qu'a router les datagrammes. Cette erreur etait d'autant plus grave que
+	il nous donnais le "plan" (prix du rfc 791 comme ceux qui sont present 
+	dans cet article) de l'header IP, comme je vais le faire plus loin. 
+	Rien n'est parfais :)), c pourkoi si vous voyez des errors n'hesitez poa a 
+	me mailler. 
+	
+	b-: comment ca marche ???
+	=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+	|0b     |4b     |8b     |12b    |16b    |20b    |24b    |28b    |32b      
+  ------+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------
+  en-	|Version|  IHL  |Type de Service|          Taille totale        |1er mots
+  tete.	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------
+     |	|         Identification        |Flags|      Fragment Offset    |2eme mots
+     |	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------
+     | 	|  Duree de vie |    Protocole  |       Somme de controle       |3eme mots
+     |	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------
+     |	|                        Adresse Source                         |4eme mots
+     |	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------
+     |	|                      Adresse  destination                     |5eme mots
+     |	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------
+    \-/	|                    Options                      |  Bourrage   |6eme mots
+  ------+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------
+	|				header TCP ou UDP	        |
+	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	|					datagramme              |
+	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+	Je detail ici le plus important a savoir :
+
+	Version : indique le format de l'header.
+	
+	IHL : Internet header Lenght = taille de l'header.
+
+	Type de service : 
+	il existe plusieur service, le type de service est compris dans 8 
+	bits. 
+	entre 0-2 b : priorite ;
+	3 b : 0=delai normal, 1=delai faible;
+	4 b : 0=delai normal, 1= delai eleve;
+	5 b : 0=surete normale, 1=surete eleve;
+	de 6 a 7 b : reserve pour un future usage.
+	
+	taille total : taille du datagramme en octets.
+	
+	identification : valeur affecte par l'expediteur pour faciliter le 
+	montage des datagrammes.
+
+	Flags : different flag peuvent etre ajoute a IP :
+	0 b : reserve
+	1 b : (DF) 0= fragmenter eventuellement, 1=ne pas fragmenter;
+	2 b : (MF) 0=derniers fragment, 1= autre fragments.
+	
+	Duree de vie : indique le temps de duree de vie de l'IP. Ca sert 
+	notemment a pas saturer le reseau de message qui ne trouvent poa leur
+	destinataire...
+
+	Protocole : UDP ou TCP ou... ???
+	
+	somme de controlle ou checksum : la encore c pour verifier si l'header
+	n'as poa eu de dommage pendant le transport.
+	
+	Adresse source : ... 
+	
+	Adresse destination : ...
+
+	1.1.3.b : ICMP (internet control message protocole):
+	`````````````````````````````````````````````````````
+
+	La encore, l'header ICMP est encapsule sur la couche INTERNET.
+	ICMP fait partie de IP et donc de la couche internet. Il utilise le 
+	systeme d'acheminement des datagrammes IP pour envoyer ces messages.	
+	
+	a-: a quoi ca sert ???
+	=-=-=-=-=-=-=-=-=-=-=-=
+	Le protocole ICMP envoie des messages pour controller le flux, signaler
+	des errors et joue un role d'information pour TCP/IP.
+		
+	echo message :
+	Pour voire si un systeme distant est operationnel aux niveaux des protocoles
+	ICMP envoie un "Echo message". PING!!! 
+
+	destination unreachable message :
+	lorsque qu'une machine est injoignable le systeme qui s'en est aperçue 
+	s'empresse d'envoyer un "destination unreachable message". Dans ce K
+	c souvent une passerelle intermediaire. Si c le port qui est injoignable
+	alor c la machine de destination (seule informe du probleme) qui envoie
+	ce message a la source.
+	
+	source quench message :
+	si les datagrammes arrivent trops rapidement pour le destinataire (ou pour 
+	une passerelle), celui ci envoie un source quench message a la source pour 
+	stoper temporairement l'envoie de datagramme.
+	
+	redirect message :
+	ce message est envoyer a la source pour lui dire : "y'a une meilleure passe-
+	-relle, prend celle la!". Ce message ne peut etre envoyer que si la source
+	emetrice de ce message et la source emetrice du datagramme sont sur le meme
+	reseaux.
+
+	b-: comment ca marche ???
+	=-=-=-=-=-=-=-=-=-=-=-=-=-
+	|0b     |4b     |8b     |12b    |16b    |20b    |24b    |28b    |32b      
+  ------+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------	
+  en-	|     Type      |     code      |      somme de controlle       |1er mots
+  tete	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------
+	|    pointeur   |                inutilise                      |2eme mots
+  ------+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+--------
+	|  header IP + 64 b du datagramme initial		        |
+	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	 
+	type : 12
+	
+	Code : 0 indique une erreur
+
+	somme de controlle : complement a 1 sur 16 bit de la somme de tout les
+	complements a 1. Pour calculer cette somme il faut que se champs soit
+	initialise a 0. 
+
+	pointeur : code=0, identifie l'octet où une erreur a ete detecte.
+  
+	
+1.2 :UNiX et commandes r. :
+@-@-@-@-@-@-@-@-@-@-@-@-@-@
+	
+	a-:creer des trust relationships :
+	=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+	Les trust relationship permettent de creer dans un reseaux des 
+	machines equivalentes. Les machines equivalentes sont identifies
+	par leur adresse ip dans un fichier /.rhost ou encore /etc/host.equiv.
+	Ainsi c machines equivalentes n'ont poa besoins de passwd pour ce 
+	connecter aux serveur.  
+	
+	Pour etablir une trust relationship entre deux machine (1&2) tapez :
+	sur la machine 1:
+	$ echo "2 nomd'utilisateur" > /.rhost
+	sur la machine 2:
+	$ echo "1 nomd'utilisateur" > /.rhost
+	
+	Maintenant on peut utiliser entre ces deux machines des commandes 
+	de type r sans avoir besoin d'autentification passwd. Tout ceci
+	est base sur l'adresse IP des machines.
+	(dans certain UNiX on a l'equivalence entre /etc/hosts.equiv et 
+	/.rhost).
+	
+	Voici comment est presente un fichier /etc/host.equiv :
+	[+|-] [nom de machine] [+|-] [nom d'utlilisateur].
+	
+	Si on trouve un signe + qui n'est pas suivie de nom de machine, alor
+	n'importe quelle machine peut penetrer le systeme.
+	Le signe - indique que la machine specifier n'est pas un systeme 
+	equivalent.
+	
+       Je pense que vous commencez a voir venir le spoofing sous UNiX, hehe.
+
+	b-: commande rlogin :
+	=-=-=-=-=-=-=-=-=-=-=-
+	la commande rlogin permet a une machine equivalente a un serveur de
+	ce connecter en etant identifiee par son adresse IP. Ainsi le client
+	n'a pas besoin de passwd pour ce connecter. 
+	
+	c-: commande rcp :
+	=-=-=-=-=-=-=-=-=-=-
+	Cette commande permet a une machine equivalente de copier des fichiers
+	du serveur qui accredite son identite IP.
+
+	d-: commande rsh :
+	=-=-=-=-=-=-=-=-=-=-
+	permet d'executer une commande sur une machine distante a partir d'une
+	machine equivalente.
+
+
+	Ces commandes s'appliquent toutes sur le port 513.	
+	
+
+1.3: Protocoles et ports :
+@-@-@-@-@-@-@-@-@-@-@-@-@-@-
+
+1.3.1 : les protocoles :
+@-@-@-@-@-@-@-@-@-@-@-@-
+Le numero de protocoles sont definis par un octet sur le troisieme mots de
+l'header ip. La valeur donne a cette octet identifie le protocole de la couche
+au dessus d'IP (la couche de trancport, donc). Ainsi lorsqu'IP arrive avec le
+datagramme il sait qu'il doit le "livrer" a un des protocoles au dessus de 
+lui, sur la couche de transport.
+Sur une machine UNiX, on trouve les numeros des protocoles dans le fichier
+/etc/protocols :
+
+#ident	"@(#)protocols 1.2	90/02/03  SMI"	/* SVr4.0 1.1 */
+
+#
+#  Internet (IP) protocols
+#
+ip		0	IP		# internet protocol, pseudo protocol number
+icmp		1	ICMP		# internet control message protocol
+ggp		2	GGP		# gateway-gateway protocol	
+tcp		6	TCP		# transmission control protocol
+egp		8	EGP		# exterior gateway protocol
+pup		12	PUP		# PARC universal packet protocol
+udp		17	UDP		# user datagram protocol
+hmp		20	HMP		# host monotoring protocol
+xns-idp	22	XNS-IDP	# Xeros NS IDP
+rdp		27	RDP		# "reliable datagral" protocol
+
+Les numero de protocole delivre ici ne sont pas exostif.
+
+1.3.2 : les ports :
+@-@-@-@-@-@-@-@-@-@-
+
+Quand IP a refiler le datagramme au protocol adequa, le protocole vas le 
+refiler au port concerne qui se trouve sur la couche application.
+Le numero de port est definie par le premier mots de l'header TCP ou
+UDP.
+Sous UNiX les numeros de protocoles sont sur /etc/services. Ce fichier ressemble
+a /etc/protocols.
+Voici la liste non exostive des ports :
+
+	echo                7/tcp
+	echo                7/udp
+	discard             9/tcp	   
+	discard             9/udp        
+	systat             11/tcp
+	systat             11/tcp        
+	daytime            13/tcp
+	daytime            13/udp
+	netstat            15/tcp
+	qotd               17/tcp        
+	qotd               17/udp        
+	chargen            19/tcp        	
+	chargen            19/udp        
+	ftp-data           20/tcp
+	ftp                21/tcp
+	telnet             23/tcp
+	smtp               25/tcp        
+	time               37/tcp        
+	time               37/udp        
+	rlp                39/udp        
+	name               42/tcp        
+	name               42/udp        
+	whois              43/tcp        
+	domain             53/tcp        
+	domain             53/udp        
+	nameserver         53/tcp        
+	nameserver         53/udp        
+	mtp                57/tcp        
+	bootp              67/udp                          
+	tftp               69/udp
+	rje                77/tcp        
+	finger             79/tcp
+	link               87/tcp        
+	supdup             95/tcp
+	hostnames         101/tcp        
+	iso-tsap          102/tcp
+	dictionary        103/tcp        
+	x400              103/tcp        
+	x400-snd          104/tcp
+	csnet-ns          105/tcp
+	pop               109/tcp        
+	pop2              109/tcp        
+	pop3              110/tcp        
+	portmap           111/tcp
+	portmap           111/udp
+	sunrpc            111/tcp
+	sunrpc            111/udp
+	auth              113/tcp        
+	sftp              115/tcp
+	path              117/tcp
+	uucp-path         117/tcp
+	nntp              119/tcp        
+	ntp               123/udp        
+	nbname            137/udp
+	nbdatagram        138/udp
+	nbsession         139/tcp
+	NeWS              144/tcp        
+	sgmp              153/udp        
+	tcprepo           158/tcp       
+	snmp              161/udp        
+	snmp-trap         162/udp        
+	print-srv         170/tcp
+	vmnet             175/tcp
+	load              315/udp
+	vmnet0            400/tcp
+	sytek             500/udp
+	biff              512/udp 
+	exec              512/tcp
+	login             513/tcp
+	----------------------------> c le port qui nous interresse pour Rlogin...
+	who  	          513/udp    
+	shell             514/tcp        
+	syslog            514/udp
+	printer           515/tcp        
+	talk              517/udp
+	ntalk             518/udp
+	efs               520/tcp        
+	route             520/udp        
+	timed             525/udp        
+	tempo             526/tcp        
+	courier           530/tcp        
+	conference        531/tcp        
+	rvd-control       531/udp        
+	netnews           532/tcp        
+	netwall           533/udp        
+	uucp              540/tcp        
+	klogin            543/tcp        
+	kshell            544/tcp        
+	new-rwho          550/udp        
+	remotefs          556/tcp
+	rmonitor          560/udp
+	monitor           561/udp
+	garcon            600/tcp
+	busboy            602/tcp
+	acctmaster        700/udp
+	acctslave         701/udp
+	acct              702/udp
+	acctlogin         703/udp
+	acctprinter       704/udp
+	elcsd             704/udp 
+	acctinfo          705/udp
+	acctslave2        706/udp
+	acctdisk          707/udp
+	kerberos          750/tcp
+	kerberos          750/udp
+	kerberos_master   751/tcp
+	kerberos_master   751/udp
+	passwd_server     752/udp 
+	userreg_server    753/udp
+	krb_prop          754/tcp
+	erlogin           888/tcp
+	kpop             1109/tcp
+	phone            1167/udp
+	maze             1666/udp
+	nfs              2049/udp
+	knetd            2053/tcp
+	eklogin          2105/tcp
+	rmt              5555/tcp
+	mtb              5556/tcp
+	man              9535/tcp
+	w                9536/tcp
+	bnews           10000/tcp
+	rscs0           10000/udp
+	queue           10001/tcp
+	rscs1           10001/udp
+	poker           10002/tcp
+	rscs2           10002/udp
+	gateway         10003/tcp
+	rscs3           10003/udp
+	remp            10004/tcp
+	rscs4           10004/udp
+	rscs5           10005/udp
+	rscs6           10006/udp
+	rscs7           10007/udp
+	rscs8           10008/udp
+	rscs9           10009/udp
+	rscsa           10010/udp
+	rscsb           10011/udp
+	qmaster         10012/tcp
+	qmaster         10012/udp
+	gds_db           3050/tcp 
+
+2. Les rejouissances :
+"`"`"`"`"`"`"`"`"`"`"`
+
+Apres les rappels de connaissances, en particulier au niveau de TCP/IP,
+on peut commencer à expliquer le spoooffiiinnngggg !!!
+
+2.1.1  : trouver un trusted host :
+@`@`@`@`@`@`@`@`@`@`@`@`@`@`@`@`@`@`
+Trouver un trusted hots reviens à se renseigner sur le reseaux que l'on
+veut hacker. C un travail d'information.
+Comme tout travail d'information on peut utiliser des techniques comme
+le SE ou encore fouiller les poubelles (trashing).
+Nous avons parle des fichiers /.rhost et /etc/host.equiv qui contiennent
+les adresses ip des machines equivalentes. On peut donc essailler des 
+commandes comme showmount -e (pour savoir la liste des files exportes) et
+rpcinfo. Si ca na marche pas et bien on peut toujour se retourner sur
+un brute force qui peut donner des ip clefs.
+
+2.1.2 : SYN FLOODING :
+@`@`@`@`@`@`@`@`@`@`@`
+Le SYN flooding reviens à isoler la machine equivalente pour qu'elle
+ne reponde pas un RST ou encore un FIN lorsque nous attaquerons le 
+serveur qui contient des trusted host. 
+
+Le SYN FLOODING repose sur le BACKLOG. Le Backlog est la limite de connexion
+non aboutie que peut recevoir un serveur. Il varie de 3 a 8 (6 sous LiNUX).
+Si un, sous LiNUX par exemple, six demande de connections ne sont pas aboutie
+le serveur va saturer, et ne repondra plus aux autre demandes...
+Pour etre sur que la trusted host est deconnectee du  reseau, il est preferable,
+de faire 8 requete SYN.
+
+1 fait du SYN flooding a 2 :
+
+1 ere etape :
+~~~~~~~~~~~~~~ 
+Pour commencer il faut se debrouiller pour avoir une adresse IP qui n'existe
+pas au yeux de la machine 2. Par exemple on vas prendre l'adresse d'une machine
+3 qui n'existe pas ou qui en tout K n'est pas joignable.
+Donc 1 vas faire un SYN a 2 avec l'adresse de 3.
+
+1-----[SYN(A=3)]----->2
+
+Faite un minimum de 5 requetes SYN.
+
+2 eme etape:
+~~~~~~~~~~~~~
+2 vas donc envoyer un SYN/ACK a l'adresse indique sur l'header IP.
+
+2-----[SYN/ACK(A=2)]----->3
+
+3 eme etape :
+~~~~~~~~~~~~~~
+Si on s'est poa goure d'adresse, il y aura un message ICMP. Mais 2
+vas ignorer ce message. Il vas croire que ce n'est qu'une erreur 
+temporaire et vas continuer de SYN/ACK 3. 
+Conclusion : 2 vas saturer, et vas donc ignorer les prochains SYN pendant
+un certain temps.
+
+Si on s'est gourer, il vas falloir recommencer !!! En effet, si 3 existe, 
+la machine va envoyer un RST parcequ'elle n'a jamais demande une connection
+avec 2. 2 vas donc ignorer le SYN que nous avons envoye.
+
+2.1.3 : Deviner les SEQ et ACK :
+@`@`@`@`@`@`@`@`@`@`@`@`@`@`@`@`@`
+
+Pour deviner les numero de SEQ et ACK il faut reprendre les connaissances au
+niveau de TCP/IP.
+Dans un premier temps on a besoin des caracteristiques de l'header TCP pour
+calculer l'ISN. Je repete ici les caracteristique de l'isn :
+-a chaque redemarrage de systeme l'isn est initialise a 1.
+-il est incremente de 65000 toutes les 1/2 secondes(120000/secondes). Toutes
+les 9.1 heures environ il est reinitialise. C'est a dire que quand SEQ=2^32-1==>0
+-a chaque connection il est incremente de 65000.
+-a chaque connection SYN  est initialise a 1.
+
+De plus on sait que SEQ=SYN+ISN.
+ce qui donne ISN=SEQ-SYN.
+
+En plus de ces connaissances il faut pouvoir calculer le RTT.
+Qu'est ce que le RTT??? RTT (roun-rip time), un petit shema pour expliquer :
+soit c=client
+soit s=serveur
+   
+c |----[SYN]------>| s |---[SYN/ACK]------->| c
+  |---------------[RTT]-------------------->|
+
+
+Bref RTT correspond au temps mis pour un alle retour (sois un SYN-SYN/ACK).
+On le calcule par la valeur t1 de l'envoie (il faut prendre une heure arrondie
+a la seconde pres voir toutes les 1/2 secondes pres (pour cela vour regardez les
+milisecondes et vous arrondissez)) - la valeur t2 de la reception.
+En fait ce n'est pas RTT qui nous interresse mais RTT/2, ce qui correspond au 
+temps ecoule avant le SYN/ACK du serveur. C pendant ce temps que l'ISN vas changer.
+
+Pour le numero de ack on sait que :
+ACK=SEQ+1
+
+Donc pour revenir a ce qui nous interresse pour deviner le ACK que l'on devra envoyer
+a la victime pour etablir la connection.
+
+Bref on se connecte plusieur fois en sans oublier de sauver le SEQ (servez vous de
+la commande tcpumdp). Puis calculez le rtt qui ne devrais poa changer beaucoup jusqu'a
+l'attaque. A partir de la calculez l'ISN
+
+A present on a trois solution :
+si l'ISN devine<l'ISN reel alor le serveur va envoyer un RST parcequ'il y aura erreur.
+si l'ISN devine>l'ISN reel alor le serveur va croire que le checksum qu'il recoit sera
+pour plus tard et ne le prendra pas vraiment en compte.
+si l'ISN devine=l'ISN reel alor vous etes connecte .
+
+On peut donc dire que pour la prediction de l'ISN mieux vaut viser plus haut
+si on est poa sur...
+
+
+2.1.4 : L'attaque :
+@`@`@`@`@`@`@`@`@`@`
+Bon pour l'attaque voici comment ce se passe :
+on se souvient du SYN flooding de la machine equivalente : elle ne repond plus sur
+le port utilise. Le but est donc de ce connecter en se faisant passer pour elle.
+
+On vas donc prendre son IP et on va envoyer un SYN au serveur (s) :
+nous somme la machine c = client
+serveur = s
+machine equivalente = 2
+
+C-----[SEQ1(SYN+ISNc)/IP2]----->S
+
+S vas donc repondre par un SYN/ACK :
+
+S-----[SEQ2(SYN+ISNs)/ACK(SEQ+1)/IPs]----->C
+
+C'est donc la que tout vas se jouer. Vous avez calculer le rtt, donc vous SAVEZ
+de combien a augmenter l'ISN depuis le depart et donc sa valeur. Maintenant il 
+faut que vous envoyez un flag ACK pour finir la connection or on a :
+ACK=SEQ+1=ISN+SYN+1=ISN+1+1=ISN+2 //on a vu plus tot le SYN prenait un numero 
+de sequence.
+
+C-----[ACK(SEQ2+1)/donnees]----->S
+
+Une fois connecte et pour ne pas recommencer les calculs vous pouver ouvrir
+un back door en tapant :
+	$ cat + + >>~/.rhost
+
+Ce script va ouvrir a n'importe qui une connection root.
+
+2.1.5 : conclusion :
+@`@`@`@`@`@`@`@`@`@`@
+voila pour le blind spoofing. J'espere que vous avez compris. Si tout de fois
+vous trouvez des erreurs dans cette partie n'hesiter pas a me mailler. 
+je vous donnes quand meme un petit exemple de blind spoofing.
+
+On est la machine A=192.12.135.20
+Soit B=192.32.145.122 le serveur qui va etre notre victime
+Soit C=192.123.152.1 la machine equivalente
+
+Premiere chose on se connecte a B :
+
+puis on se renseigne
+$ showmount -e 
+ou 
+$ rpcinfo
+
+On trouve la machine equivalente C.
+
+On va SYN flooder cette machine, si on admet que c'est une Linux on va faire 8 requetes, 
+sous une adresse non existante (prenez un scanner d'IP et regarder les IP qui ne sont pas 
+utilises dans un intervalles, vous aurez moins de chance de vous planter).
+
+Une fois hors service on se reconnecte a A pour etudier son RTT. 
+
+
+voici une commande bien utile dans c cas la : tcpdump (pour l'appliquer faut
+installer le package tcpdump sur votre machine!!!)
+
+$ tcpdump -e -t host 192.32.145.20
+0.0			192.12.135.20 > 192.32.145.122: S 14220120014:14220120014(0)
+								    win 4096 <mss 1024>
+0.001203		192.32.145.122 > 192.12.135.20: S 21255011245:21255011245(0)
+								    ack 14220120015 win 3230
+0.005236		192.12.135.20 > 192.32.145.122: . ack 21255011246 win 4096
+|
+|
+|
+etc.
+
+vous avez d'autre utilitaire comme iptrace ou ipreport....tcpd. Pour plus de renseignement sur
+tcpdump tapez :
+
+$ man tcpdump 
+
+On peut considerer le premier RTT=0.001203 s.
+C'est a dire que avant que le SYN que nous avons envoyer arrive sur B il s'est ecoulé
+0.0006015 s. On peut donc considerer que le SYN ne changera pas (puisque qu'il augmente tout
+les 0.5 secondes).
+
+Vous vous connectez plusieur fois de cette maniere jusqu'a ce que vous ayez un rtt stable.
+
+A partir du moment ou vous trouvez un rtt stable il y'a de forte chance que le rtt ne change
+pas, car on peut considerer que le flux est stabilise. 
+
+Maintenant il faut que vous sauver avec la meme technique un numero de sequence number avec ca
+date (a la 1/2 seconde pres). Ainsi vous pouvez prevoir grace au rtt combien vaudra le numero
+de ack que vous aller envoyez.
+
+exemple : imaginons que le numero SEQ soit = 125630021 soit l'isn = 125630020 a 2h05.2s, 
+imaginons que vous vous donnez 5 minutes pour preparer l'attaque. C'est a dire qu'a 2h10.2s 
+vous vous connecterez sous l'ip de la machine equivalente C que l'on a syn flooder. Premier 
+chose a faire esperer qu'il n'y aura pas d'autre connection durant ses 5 minutes (vous pouvez 
+toujour rajouter 65000, au cas ou (le serveur vas croire que le hack envoyer corrspond a un 
+numero qui viendra plus tard et ne vous envera pas de rst mais vous renvera un SYN/ACK, 
+vous pouvez aussi regarder les horaires habituels de connexion au serveur (cf #h/p/c/l/p 1, 
+UNIX1). Deuxieme chose : calculer combien de temps il vous reste pour avant la reïnitialisaition :
+quand ISN=2^32-1 il est reinitialise a zero.
+Pourkoi les 9.1 heures environ ???
+Calculons : 3600*2*6500*9.1=4258800000 a peu pres egale a 2^32-1=4294967295 (l'ISN est un 
+nombre 31 bit).
+
+Donc l'isn que l'on a est de 125630021 :
+on a donc :
+4294967295-125630020=4156774274
+<===>4156774274/65000=63950.37 demi secondes
+<===>63950.37/2=31975.19 secondes
+<===>31975.19/3600=8.88 heures.
+
+On a donc une marge de 8.88 heures, pour pirater se serveur avant la reinitialisation.
+On peut donc en deduire que ce serveur a ete reinitialise il y a 0.22 heures :
+verification :
+125630020/65000=1932.77 demi secondes
+<===>1932.77/2=966.38 secondes
+<===>966.38/3600=0.268
+
+on a donc a peu pres juste (l'erreur de 0.6 est du aux nombres significatifs).
+Par consequent on a tout notre temps.
+
+Troisieme chose : on va predire l'isn que B aura dans 5mn, apres la demande SYN.
+on a dit que le rtt etait inferieure a 0.5 secondes, on pourra donc le negliger ; 
+ISN = 125630020+5*60*2*65000=164630020 
+on va se connecter a B, donc l'isn va etre incrementer de 65000 :
+164630020+65000=164695020
+
+{NOTE : il arrive que les connections soient dite "demarage lent", ainsi le temps rtt peut
+etre superieur a 0.5 seconde. Il est donc important de calculer le rtt. A noter que si il
+y a demarrage lent et que le rtt > 0.5 s. le temps que mettra votre packet SYN vers B
+ne sera pas forcement = ou > a 0.5s. Pour cela le rtt devra etre = ou > 1s.}
+
+Quatrieme chose : SEQ et ACK :
+SEQ=ISN+1 (SYN est initialise a 1 a chaque connection).
+SEQ=164695020+1=164695021
+
+ACK=SEQ+1 (le flag ACK vaut 1)
+ACK=164695022
+
+FIN :
+N'oubliez pas de creer une backdoor !!! 
+par exemple :
+$ cat + + >>~/.rhost
+ou utilise un trojan...
+
+Comme le rtt est relativement rapide vous pouvez envoyer votre SYN sous l'adresse de C a B a
+2h10mn2s. Ainsi C aura le SYN/ACK de B selon la duree du rtt
+que vous avez calculez (C est hors service il ne repondra pas). Une fois le temps theorique du 
+rtt depasse vous envoyer le flag ACK que vous avez prevu (faites un programme pour cela).
+
+                
+3.0-: documents fournis et/ou recommandes :
+@`@`@`@`@`@`@`@`@`@`@`@`@`@`@`@`@`@`@`@`@`@`
+
+documents fournies :
+
+A short overview of IP spoofing: PART I  par CODER.
+(ceux qui ont la part 2 pauvent me l'envoyer a tbhole@yahoo.com)
+cet article est joins sous le nom de spoofcoder.
+
+Spoofin Overview par kweel.
+cet artile est join sous le nom de spoofkewl . 
+
+
+Documents conseilles :
+
+TCP/IP administration reseau par Craig Hunt aux editions O'Reilly.
+Un tres bon livre.
+
+Les bases de l'administrations systeme par Aeleen Frisch aux editions O'reilly.
+Pour connaitre le systeme UNiX comme sa poche. C une connaissance indispensable
+qu'il faut aquerir.
+
+TCP/IP partie 1 et 2 par W.Richard Stevens aux editions Vuibert.
+Beaucoup plus centre sur le TCP/IP que le precedant (qui traite aussi de l'admini-
+-stration systeme). Tres complet. C vraiment un bouquin  a avoir dans sa bibliotheque.
+
+Il existe d'autre articles underground, je vous en site quelques un :
+
+Project Hades: TCP weaknesses par daemon dans un phreak 49.
+ un bon article                 
+
+IP-Spoofing Demystified par Daemon9 dans phreak 48.
+Un tres bon article. Si celui la ne vous pas suffit sur le blind spoofing foncez dessus, c'est a partir de cet article que j'ais pu faire celui ci.
+
+TCP/IP par kewl dans noroute 1. Cet article a comme nous l'avons vu des errors 
+assez grosses. Mais c'est tout de meme un bon article pour les newbies.
+
+
+
+Cette liste est loin d'etre exostive !!!!
+
+3.1 : Remarque :
+@`@`@`@`@`@`@`@`@
+
+Cette attaque, comme toutes les autres, depend de la capacite de l'administrateur
+systeme a configuerer son reseau. 
+Pour ma part, g essaille cette technique sur un reseau de 3 machines (dont j'avais
+la permission) puisque ct le mien;), trafiquee certe (j'avais foutu un trusted 
+host un peu expres:), mais je peus affirmer que cette technique marche.
+Si vous avez un probleme pour accomplir cette technique (sur un systeme dont vous 
+avez la permission cele va de soit :) c que soit le reseau est bien configurer, soit
+c VOUS le probleme. :))
+  
+The blAck Hole
+
+tblackh@hotmail.com pour toutes remarques.

@@ -1,0 +1,169 @@
+programmation du shell !!!! Derniere partie :)))))
+
+On va commencer par expliquer a quoi ca sert de savoir programmer les UNiX parceque
+je suis certain que pas mal de people crois cet apprentissage debile.
+1-: ca sert a vous rendre moins cons..:)
+2-: dans l'administration systeme on a besoin de programmer certaine commande que l'on pourra
+executer dans le shell plus tard. C'est par consequent directement relie au HACKING par ce
+que a partir de la vous pourrez vous debrouiller pour faire pas mal de truc sur la machine
+piratee...
+
+Un exemple ???
+K, on va commencer par un petit programme pour mieux vous expliquer l'interet du truc.
+Vous verez que si vous connaissez deja les bases de la programmation et que si vous avez 
+bien lu mes dernier articles sur le sujet ce ne sera pas difficile a comprendre : 
+
+
+%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%
+
+#!/bin/sh
+#verification du fichier /etc/passwd et du files /.rhost et /etc/host.equiv
+
+umask 000
+echo "OUAAOUUUU!!! On vas verifier la security sur cette machine !!!! ";echo""
+
+echo " ===>>> protection de fichier passwd <<<==="
+   ls -l /etc/passwd
+echo""
+
+echo " ===>>> comptes sans passwd :) <<<==="
+grep '^[^:]*::' /etc/passwd
+if [ $? -eq 1 ]     #echec de grep
+then echo "aucun :("
+fi
+echo""
+
+echo " ===>>> compte non root avec UID=0 et GID=0 <<<==="
+grep ':00*:' /etc/passwd | \
+   awk -F: 'BEGIN   {n=0}
+            $1!="root"   {print $0 ; n=1}
+            END       {if (n==0) print "aucun:(("}'
+echo""
+
+echo " ===>>> recherche de file /.rhost <<<=== "
+find /  -name .rhost -print
+echo "si aucun chemin d'acces ne sort, il n'existe pas:(((."
+echo ""
+
+echo " ===>>> recherche de file /etc/host.equiv <<<=== "
+find /  -name /etc/ -print
+echo "si aucun chemin d'acces ne sort, il n'existe pas:(((."
+echo ""
+
+%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%
+
+K, bon je vais vous expliquer le programme, mais bon vous etes cense avoir compris...
+
+umask : nous n'avons pas encore vu cette commande (je crois, je se sais plus les commandes
+que j'ais expliquer). C un peu comme chmod, sauf que pour les droits d'acces il faut compter
+a l'envers :
+proprietaires  | groupe | autre|
+	r,w,x  |  r,w,x | r,w,x|
+   400,200,100 |40,20,10| 4,2,1|
+
+bon on a vu que pour chmod on pouvait ajouter les valeur ci dessus pour le droits d'acces
+ex :
+$chmod 777 [nom de file] #acces rwx pour tous
+$chmod 754 [nom de file] #acces rwx pour proprio, acces r-x pour groupe, acces r pour autre
+etc...
+
+Voici comment fonctionne la commande umask :
+pour acces rwx pour tous (777) on fait 777-777=000 d'ou :
+$ umask 000    #protecton merdique !!! :)
+
+pour un acces rwx pour proprio, acces r-x pour groupe, acces r pour autre (754) on a
+777-754=23. D'ou
+$ umask 23
+
+Vous remarquerez qu'apres umask on met pas de fichier, en fait umask e est la protection par
+default de tout les files qui seront creer pas la suite...
+
+echo affiche le texte entre "".
+ls-l etc/passwd affiche les droits d'acces de ce fichier
+grep recherche dans etc/passwd les caracteres entre ''.
+find / -name .rhost -print recherche le fichier qui a pour nom .rhost est affiche l'"adresse" (comment on dit deja ???) de ce files grace a -print.
+
+Awk est une commande bien connu du systeme UNiX, c'est un peu comme grep,
+mais awk est plus generale que grep...
+
+Bon le reste c de la logique je ne pense pas avoir besoin d'expliquer...
+
+Bien executé, ce programme vous donne le resultat suivant (j'ai pris une machine sur
+le reseau mais je me souviens plus de l'adresse, enfin ca n'a pas beaucoup
+d'importance...) :
+
+OUAAOUUUU!!! On vas verifier la security sur cette machine !!!! 
+
+ ===>>> protection de fichier passwd <<<===
+-rw-r--r--   1 root     root          793 avr 13 22:32 /etc/passwd
+
+ ===>>> comptes sans passwd :) <<<===
+aucun :(
+
+ ===>>> compte non root avec UID=0 et GID=0 <<<===  
+sync:*:5:0:sync:/sbin:/bin/sync                   
+shutdown:*:6:0:shutdown:/sbin:/sbin/shutdown
+halt:*:7:0:halt:/sbin:/sbin/halt
+operator:*:11:0:operator:/root:
+
+ ===>>> recherche de file /.rhost <<<=== 
+si aucun chemin d'acces ne sort, il n'existe pas:(((.
+
+ ===>>> recherche de file /etc/host.equiv <<<=== 
+si aucun chemin d'acces ne sort, il n'existe pas:(((.
+
+=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_=
+
+
+
+=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_=
+
+Voici un programme shell en perl... il va vous donner un rapport bien fait des repertoires
+utilisateurs.
+Un tres bon bouquin sur le perl existe dans la collection O'reilly : Programmation en perl par Wall
+ Christiansen & Schwartz.
+Et qu'on aille plus m'emmerder avec vos conneries du style le perle c d la merde !!!
+
+%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%
+
+#!/usr/bin/perl
+#surveillance des comptes utilisateurs
+
+#presentation :
+format TOP = 
+
+Utilisateurs (UID)	Passwd		Repertoires		espace disque		Securite
+-------------------------------------------------------------------------------------------------
+.
+format STDOUT =
+@<<<<<<<<<<<<<<<<<<	@<<<<<<<	@<<<<<<<<<<<	@>>>>>>>>>>>>>		@<<<<<<<<
+$username,		$pass,		$home_dir,	$disk,			$secu,
+
+#def des variables username, pass & home_dir.
+open (PASSWD, "/etc/passwd")  || die "Tu ne peus pas ourvrir le fichier /etc/passwd  : $!\n";
+chop;
+($username, $pass, $uid, $junk, $home_dir, $junk) = split(:/:/); #ca vous rappelle rien ??? :)
+
+#def de la variable secu	
+$secu = ($uid == 0 && $username ne "root") ? ">>UID=0!!!<< (hehe)" : ":("; #UID = 0 pour non root
+$secu = ($pass ne "!" && pass ne "*") ? ">>Crack!!<< (hehe)" : ":(" ; #passwd non shadowed
+
+$username .= "($uid)";
+
+#def de la variable disk
+if (-d $home_dir  && $home_dir ne "/") {
+	$du = `du -s -k $home_dir`; chop($du);
+	($disk,$junk) = split (/\t/, $du) ; $disk .= "K";
+	}
+else { $disk = "home_dir eq "/" ? "skipped" : "deleted";{
+write;
+}
+exit;
+ 
+%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%
+
+Il est cool, isn't it ?
+=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_-=-_=
+
+Voila c fini. J'espere au moins que vous pourrez vous y mettre apres ca !!!
+stealthyx

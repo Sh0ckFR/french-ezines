@@ -1,0 +1,297 @@
+<html>
+<head>
+<title>Packer : Neolite 2.0</title>
+<link rel="stylesheet" type="text/css" href="../../style.css">
+</head>
+<body>
+<h1>Manual Unpacking </h1>
+<h2>Packer : Neolite 2.0</h2>
+<p>Objectif :</p>
+<ul>
+  <li>Reconstruire l'exe original</li>
+  <li>Cr&eacute;er un self-loader dans l'exe pack&eacute;</li>
+</ul>
+<p>Cible : </p>
+<ul>
+  <li>Un crackme pack&eacute; avec Neolite 2.0</li>
+</ul>
+<p>Outils n&eacute;cessaires :</p>
+<ul>
+  <li>WinDbg ou Softice</li>
+  <li>Hex Workshop</li>
+  <li>Lord-PE</li>
+</ul>
+<p>Fichiers joints :</p>
+<ul>
+  <li><a href="crackme.zip">la cible pack&eacute; avec Neolite 2.0</a></li>
+  <li><a href="rebuild.zip">l'exe reconstruit</a></li>
+  <li><a href="cracked.zip">l'exe pack&eacute;, crack&eacute; avec un self-loader</a></li>
+</ul>
+
+<h3>Index</h3>
+<ol>
+  <li><a href="#1">Introduction</a></li>
+  <li><a href="#2">Collecte des infos sur la cible</a></li>
+  <li><a href="#3">Dump full et examen du dump sous un &eacute;diteur hexa</a></li>
+  <li><a href="#4">Recherche de l'original enty-point (OEP)</a></li>
+  <li><a href="#5">Recherche de la table des imports</a></li>
+  <li><a href="#6">Correction du PE et suppression du code de Neolite dans le dump</a></li>
+  <li><a href="#7">Cr&eacute;ation d'un self-loader dans l'exe pack&eacute;</a>
+	<ol type="a">
+    <li><a href="#7a">Patch de l'exe pack&eacute; pour rendre la m&eacute;moire accessible</a></li>
+    <li><a href="#7b">patch du crackme en m&eacute;moire</a></li></ol></li>
+  <li><a href="#8">Infos pratiques sur Neolite 2.0</a></li>
+</ol>
+
+<a name="1"></a><h3>1. Introduction</h3>
+<p>Neolite 2.0 est tr&egrave;s facile &agrave; unpacker. Apres compression, les sections 
+  originales sont gard&eacute;s intactes, et le code de neolite est ins&eacute;r&eacute; 
+  dans une nouvelle section ajout&eacute; &agrave; la suite des autres sous le 
+  nom de &quot;.neolit&quot;. M&ecirc;me la section des imports est nickel, pour obtenir 
+  un dump fonctionnel et d&eacute;sassemblable avec les imports et les datas, nous n'aurons 
+  qu'&agrave; corriger l'OEP et l'offset de l'import-table. Neolite est un shareware et 
+  en version non-enregistr&eacute; il ajoute &agrave; l'exe pack&eacute; un nag-screen 
+  nous indiquant que le programme &agrave; &eacute;t&eacute; pack&eacute; par 
+  une version non-enregistr&eacute; de Neolite. L'unpacker est donc vraiment tr&egrave;s 
+  simple, heureusement pour compliquer un peu la chose, Neolite nous r&eacute;serve un 
+  petit cadeau dans le cas ou nous voudrions faire patch en m&eacute;moire dans 
+  l'exe pack&eacute; puisqu'il prot&egrave;ge en &eacute;criture la m&eacute;moire. Nous verrons 
+  donc dans ce tutorial, comment restituer l'exe original et aussi comment faire 
+  pour contourner la protection d'&eacute;criture en m&eacute;moire.</p>
+
+<a name="2"></a><h3>2. Collecte des infos sur la cible</h3>
+<p>On ouvre la cible avec Lord-PE et on r&eacute;cup&egrave;re les infos suivantes :</p>
+<pre>Entry-point : 000230CC
+Import-Table : RVA = 00023000, size = 00000050
+
+
+Sections Table :
+
+names		Voffset		Vsize		Roffset		Rsize		Flags
+.text		00001000	00003000	00000000	00003000	C0000080
+.rdata		00004000	00001000	00000000	00001000	40000080
+.data		00005000	00001000	00001000	00001000	C0000040
+.rsrc		00006000	0001C8E0	00002000	00001000	40000040
+.neolit		00023000	000070CC	00003000	00001C4C	E0000020</pre>
+<p>L'entry-point et la table des imports actuels, se trouvent bien dans la section 
+  .neolit. </p>
+
+<a name="3"></a><h3>3. Dump full et examen du dump sous un &eacute;diteur hexa</h3>
+<p>On lance le crackme et on clique sur Non au nag-screen de Neolite pour lancer 
+  le programme. Ensuite on dump avec Lord-PE ou un autre process dumper en s'assurant 
+  que ces options soit coch&eacute;s avant de dumper :</p>
+<ul>
+  <li> Full Dump : paste header from disk</li>
+  <li>Full Dump : fix header</li>
+</ul>
+<p>Si on essaye d'ouvrir l'exe avec wdasm, celui-ci nous informera que le programme 
+  contient un PE-file non standard et que toutes les datas r&eacute;f&eacute;rences 
+  seront ignor&eacute;s. Ceci vient du fait du flag de la section .data qu'il 
+  faudra corriger par E0000020 pour r&eacute;soudre ce probl&egrave;me. On met aussi le flag 
+  E0000020 pour la section .text et ou pourra d&eacute;sormais obtenir les datas 
+  strings references.</p>
+
+<a name="4"></a><h3>4. Recherche de l'original enty-point (OEP)</h3>
+<p>On va se servir d'un debugger et tracer en le code pas &agrave; pas et rep&eacute;rer 
+  le moment ou l'on quitte le segment de neolite pour aller dans la section .text 
+  de notre programme, cette section contenant le code du programme.</p>
+<p>Avec WinDbg :</p>
+<ul>
+  <li>on lance l'exe original</li>
+  <li><strong>bp 4230CC</strong> pour poser un break sur l'entry-point</li>
+  <li><strong>F5</strong> pour lancer le programme et arriver sur le break</li>
+  <li><strong>pr</strong> pour ne pas afficher les registres dans le log en tra&ccedil;ant</li>
+  <li><strong>.cls</strong> pour vider la fen&ecirc;tre du log</li>
+  <li><strong>p1000</strong> pour tracer automatiquement 1000 instructions</li>
+  <li>le nag-screen de Neolite appara&icirc;t on clique sur Non</li>
+  <li>le debugger reprend la main et continu de tracer les 1000 instructions</li>
+  <li>le programme se lance</li>
+  <li>on clique sur break pour freezer le programme</li>
+</ul>
+<p>On examine le log et on rep&egrave;re le changement de section ici :</p>
+<pre><strong>00423181</strong> e8ed040000       call    image00400000+0x23673 (00423673)<br>image00400000+23186:<br><strong>00423186</strong> fe0576314200 	inc byte ptr [image00400000+0x23176 (00423176)] ds:0023:00423176=00<br>image00400000+2318c:<br><strong>0042318c ffe0             jmp     eax {image00400000+0x1184 (00401184)}</strong> <strong>=&gt; saute vers l'OEP</strong><br>image00400000+1184:<br><strong>00401184</strong> 55               push    ebp<br>image00400000+1185:<br><strong>00401185</strong> 8bec             mov     ebp,esp<br></pre>
+<p>L'OEP est en <strong>401184</strong> (<strong>offset = 1184</strong>). On retient 
+  aussi l'adresse <strong>0042318c </strong>qui marque la fin du loader de neolite, 
+  on s'en servira pour cr&eacute;er notre memory patch en d&eacute;viant le code depuis cette 
+  adresse.</p>
+
+<a name="5"></a><h3>5. Recherche de la table des imports</h3>
+<p>Si on examine la section des imports (.rdata) on pourra remarquer que celle-ci 
+  est parfaite contenant tous les &eacute;l&eacute;ments n&eacute;cessaires 
+  (les noms de DLL et fonctions, la table des imports, les tableaux point&eacute;s 
+  par les <strong>OriginalFirstThunk</strong> et <strong>FirstThunk</strong>). 
+  Comme les tableaux des <strong>OriginalFirstThunk</strong> sont pr&eacute;sents et que 
+  chaque &eacute;l&eacute;ment pointe bien vers un nom de fonction, nous n'aurons 
+  pas &agrave; corriger les tableaux des <strong>FirstThunk</strong> comme on 
+  le faisait d'habitude. (si vous ne comprenez pas pourquoi il n'est pas n&eacute;cessaire 
+  de reconstruire ces tableaux, aller faire un tour sur mon tutorial &quot;Reconstruction 
+  de la table des imports&quot;).</p>
+<p>L'offset de la table des imports dans notre dump pointe pour l'instant vers 
+  une table utilis&eacute; par le loader de neolite, il faut simplement red&eacute;finir 
+  dans le PE l'offset de la table original pour rendre fonctionnel et obtenir 
+  les imports du programme original.</p>
+<p>Pour retrouver cette table il suffit de chercher visuellement un nom de DLL 
+  dans la partie qui contient les noms des fonctions et des DLL. On va prendre 
+  pour l'exemple <strong>USER32.dll</strong> qui se trouve &agrave; l'offset <strong>000045BC.</strong></p>
+<pre>00004520 E6470000 F2470000 FE470000 0E480000 86480000 00000000 A4450000 .G...G...G...H...H.......E..<br>0000453C 96450000 8E450000 82450000 70450000 B0450000 00000000 34004372 .E...E...E..pE...E......4.Cr<br>00004558 65617465 46696C65 41004B45 524E454C 33322E64 6C6C0000 93004469 eateFileA.KERNEL32.dll....Di<br>00004574 616C6F67 426F7850 6172616D 41000302 52656C65 61736544 4300FD00 alogBoxParamA...ReleaseDC...<br>00004590 47657444 43000201 47657444 6C674974 656D0000 52025365 7454696D GetDC...GetDlgItem..R.SetTim<br>000045AC 65720000 B900456E 64446961 6C6F6700 55534552 33322E64 6C6C0000 er....EndDialog.<strong><font color="red">USER32.dll</font></strong>..<br>000045C8 53004465 6C657465 4F626A65 63740000 05025465 78744F75 74410000 S.DeleteObject....TextOutA..<br>000045E4 F3015365 74546578 74436F6C 6F720000 CE015365 74426B4D 6F646500 ..SetTextColor....SetBkMode.
+
+</pre>
+<p>On sait que cet offset sera sp&eacute;cifi&eacute; dans la table des imports par l'un 
+  des &eacute;l&eacute;ments. On lance une recherche sur la valeur hexa <strong>BC450000</strong>. 
+  On trouve cette r&eacute;f&eacute;rence &agrave; l'offset <strong>00004454</strong>. 
+  L&agrave; on est sur le 4&egrave;me &eacute;l&eacute;ment d'une des structures de la table 
+  des imports. Si on cherche les nom des DLL on n'en trouveras 3 nous aurons donc 
+  3 structures plus une vide dans la table des imports. Il suffit de parcourir 
+  les &eacute;l&eacute;ments alentours de l'offset on l'on est actuellement pour identifier 
+  les 4 structures qui composent cette table :</p>
+<pre>00004408 00000000 00000000 FFFFFFFF 7E334000 82334000 FFFFFFFF 32344000 ............~3@..3@.....24@.<br>00004424 36344000 FFFFFFFF B6354000 BA354000 <font color="#FF0000">A0440000 00000000 00000000</font> 64@......5@..5@..D..........<br>00004440 <font color="#FF0000">62450000 1C400000</font> <font color="#0000FF">38450000 00000000 00000000 <strong>BC450000</strong> B4400000</font> bE...@..8E...........E...@..<br>0000445C <font color="#990033">84440000 00000000 00000000 1E460000 00400000</font> <font color="#009966">00000000 00000000</font> .D...........F...@..........<br>00004478 <font color="#009966">00000000 00000000 00000000</font> 00460000 F4450000 E4450000 D8450000 .............F...E...E...E..<br>00004494 C8450000 10460000 00000000 3E480000 54480000 64480000 74480000 .E...F......&gt;H..TH..dH..tH..<br>000044B0 1C480000 2E480000 54450000 28460000 3C460000 4E460000 60460000 .H...H..TE..(F..&lt;F..NF..`F..<br></pre>
+<p>L'offset de d&eacute;but de la table commence en <strong>00004434 </strong>et s'&eacute;tend 
+  sur<strong> 50h bytes. </strong></p>
+
+<a name="6"></a><h3>6. Correction du PE et suppression du code de 
+  Neolite dans le dump</h3>
+<p>Maintenant qu'on &agrave; tous les renseignement on corrige le PE :</p>
+<ul>
+  <li>Entry-Point : <strong>00001184</strong></li>
+  <li>Import-Table : rva = <strong>00004434</strong>, size = <strong>50</strong></li>
+  <li>Flag de toutes les sections &agrave; <strong>E0000020 </strong></li>
+</ul>
+<p>Notre dump est fonctionnel et d&eacute;sassemblable avec les imports et les 
+  datas. Pour faire plus propre on va supprimer la section .neolite du dump :</p>
+<ul>
+  <li>Avec Lord-PE on ouvre le dump</li>
+  <li>avec l'&eacute;diteur de section on s&eacute;lectionne .neolite et avec un clic droit</li>
+  <li> <strong>Wipe Section header</strong> pour enlever cette section du PE et 
+    corriger la SizeOfImage et le nombre de sections automatiquement</li>
+  <li>Dans le Data directory on met &agrave; 0 la rva pour l'IAT et sa taille 
+    qui pointait dans cette section (sinon le prog va crasher)</li>
+  <li>Avec un &eacute;diteur hexa on ouvre le dump et on supprime le block qui correspondait 
+    &agrave; la section neolite (offset : 23000 , size 70CC)</li>
+</ul>
+<p>Remarquez au passage que le nag de Neolite n'est plus l&agrave;, normal puisqu'il 
+  &eacute;tait affich&eacute; par le loader de neolite.</p>
+
+<a name="7"></a><h3>7. Cr&eacute;ation d'un self-loader dans l'exe pack&eacute;</h3>
+<p>Passons &agrave; la petite subtilit&eacute; de ce packer qui prot&egrave;ge l'acc&egrave;s 
+  en m&eacute;moire en &eacute;criture ce qui est un peu emb&ecirc;tant pour cr&eacute;er un memory 
+  patch. Prenons exemple sur le crackme que je survole tr&egrave;s vite en vous donnant 
+  directement le point de patch : </p>
+<p>Pour &ecirc;tre Registered :<br>
+  ----------------------</p>
+<pre>:00401075 7510		jne 00401087	=&gt; Forcer le saut</pre>
+
+<p>[note de Anubis: le soft teste la présence du fichier vide de nom "#45465f123" pour être en full version]</p>
+
+<a name="7a"></a><h4>a) Patch de l'exe pack&eacute; pour rendre la m&eacute;moire accessible</h4>
+<p>Si on essaye de patcher la m&eacute;moire &agrave; cette adresse on aura une 
+  erreur d'acc&egrave;s d&ucirc;e &agrave; la protection. Cette protection est &eacute;tablie par 
+  le loader de Neolite avec l'api <strong>VirtualProtect </strong>qui &agrave; 
+  pour effet de d&eacute;finir le type d'acc&egrave;s sur un espace m&eacute;moire. Si on pose 
+  un break point sur cette api, voila les diff&eacute;rents break :</p>
+<ul>
+  <li>423B77</li>
+  <li>423B27</li>
+  <li>423B77</li>
+  <li>423B27</li>
+  <li>423B77</li>
+  <li>423B27</li>
+  <li>423B77</li>
+  <li>423C00</li>
+  <li>423CED</li>
+</ul>
+<p>Au total, 4 appels diff&eacute;rents : <strong>423B77</strong>, <strong>423B27</strong>, 
+  <strong>423C00</strong> et <strong>423CED</strong>. On pourrait nopper ces 4 
+  appels pour se d&eacute;barrasser de cette protection, mais on va &ecirc;tre plus judicieux. 
+  Si on examine minutieusement les breaks et les param&egrave;tres pass&eacute;s &agrave; 
+  VirtualProtect &agrave; chaque appel on peux d&eacute;terminer que le 2eme appel va 
+  &agrave; un moment s'occuper de la section 401000 (la section qui contient 
+  l'instruction &agrave; patcher) et lui passer<strong> </strong>la valeur<strong> 
+  20h</strong> pour le param&egrave;tre qui d&eacute;termine le type d'acc&egrave;s, si on regarde 
+  dans les d&eacute;finitions des constantes windows cette valeur correspond &agrave; 
+  <strong>PAGE_EXECUTE_READ </strong>qui donne un acc&egrave;s en lecture et ex&eacute;cution 
+  mais pas en &eacute;criture comme on a pu le remarquer. On va tout simplement changer 
+  cette valeur en <strong>PAGE_EXECUTE_READWRITE</strong> qui correspond &agrave; 
+  la valeur <strong>40h</strong> et qui cette fois donne un acces en ex&eacute;cution, 
+  lecture et &eacute;criture. D&eacute;monstration, on a &ccedil;a :</p>
+<pre>
+00423b1d 50               push    eax<br>00423b1e ff75aa           push dword ptr [ebp-0x56] <strong>=&gt; d&eacute;termine le type d'acc&egrave;s</strong><br>00423b21 ff755e           push    dword ptr [ebp+0x5e] <br>00423b24 ff75ae           push    dword ptr [ebp-0x52]<br>00423b27 ff5576           call    dword ptr [ebp+0x76] [Call VirtualProtect]
+</pre>
+<p>On remplace par :</p>
+<pre>
+00423b1d 50               push    eax<br>00423b1e 6a40             push    0x40	<strong>=&gt; d&eacute;termine le type d'acc&egrave;s</strong> (<strong>PAGE_EXECUTE_READWRITE</strong>)<br>00423b20 90               nop	<strong>	; &eacute;quilibre le code </strong><br>00423b21 ff755e           push    dword ptr [ebp+0x5e]<br>00423b24 ff75ae           push    dword ptr [ebp-0x52]<br>00423b27 ff5576           call    dword ptr [ebp+0x76] [Call VirtualProtect]
+</pre>
+<p>On remplace le <strong>push dword ptr [ebp-0x56]</strong> par<strong> push 
+  40</strong>. Seulement cette derni&egrave;re instruction est cod&eacute;e sur 2 bytes 
+  alors que la pr&eacute;c&eacute;dente l'&eacute;tait sur 3, on rajoute alors un <strong>nop</strong> 
+  pour &eacute;quilibrer le code.</p>
+<p>Sous un &eacute;diteur hexa on patch le crackme pack&eacute; &agrave; l'offset <strong>00003B1E</strong> 
+  en rempla&ccedil;ant : <strong>FF75AA</strong> par <strong>6A4090</strong> et voil&agrave; 
+  plus de probl&egrave;me d'acc&egrave;s m&eacute;moire sur la zone de patch. nous pouvons &agrave; 
+  pr&eacute;sent &eacute;crire notre self-loader qui ira patcher le crackme et le mettre Registered.</p>
+
+<a name="7b"></a><h4>b) patch du crackme en m&eacute;moire</h4>
+<p>Le principe : au moment ou l'on saute vers l'OEP on d&eacute;vie vers un bout de code 
+  que l'on va ajouter, ce bout de code ira modifier les instructions en m&eacute;moire 
+  pour le crack, ensuite on redirige vers l'OEP, o&ugrave; le programme se d&eacute;roule avec 
+  nos instructions modifi&eacute;es.</p>
+<p>Personnellement je commence par faire tout &ccedil;a sous un debugger pour voir d&eacute;j&agrave; 
+  si &ccedil;a plante pas et j'en profite pour relever les valeur hexa des instructions 
+  ensuite j'effectue les modifs avec un &eacute;diteur hexa.</p>
+<p>Avant tout il faut chercher de la place libre dans l'exe pack&eacute; pour 
+  y ins&eacute;rer notre code. On pourrait se placer dans l'ic&ocirc;ne, mais la on vois que 
+  Neolite &agrave; une belle signature bien longue qui fera largement l'affaire 
+  pour y ins&eacute;rer notre code. En <strong>000030E9 </strong>qui correspond &agrave; 
+  l'adresse<strong> </strong>virtuelle<strong> : 4230E9</strong></p>
+<pre>000030E0 004C4C00 008E3142 004E656F 4C697465 .LL...1B.<strong>NeoLite<br>000030F0 20457865 63757461 626C6520 46696C65  Executable File<br>00003100 20436F6D 70726573 736F720D 0A436F70  Compressor..Cop<br>00003110 79726967 68742028 63292031 3939382C yright (c) 1998,<br>00003120 31393939 204E656F 576F7278 20496E63 1999 NeoWorx Inc<br>00003130 0D0A506F 7274696F 6E732043 6F707972 ..Portions Copyr<br>00003140 69676874 20286329 20313939 372D3139 ight (c) 1997-19<br>00003150 3939204C 65652048 61736975 6B0D0A41 99 Lee Hasiuk..A<br>00003160 6C6C2052 69676874 73205265 73657276 ll Rights Reserv<br>00003170 65642E0D 0A00</strong>008B 44240423 05DD3042 ed......D$.#..0B<br></pre>
+<ul>
+  <li>Sous un debugger on pose un break-point &agrave; l'adresse <strong>42318C</strong> 
+    (fin du loader de Neolite avant de sauter vers l'OEP).</li>
+  <li>F5 pour lancer le programme et arriver sur le break-point</li>
+  <li> On remplace le <strong>jmp eax</strong> par <strong>jmp 4230E9</strong> 
+    (vers notre self-loader) et on note la valeur hexa de cette instruction.</li>
+  <li>F10 pour tracer et effectuer le saut</li>
+  <li>on ajoute nos instructions :</li>
+</ul>
+<pre>mov byte ptr [401075], EB <strong>	;(point de patch qui force le saut pour &ecirc;tre registered)</strong>
+jmp eax <strong>		;(eax contient toujours l'adresse de l'OEP on l'on saute)
+</strong></pre>
+<ul>
+  <li>On note les valeurs hexa de ces instructions</li>
+  <li>F5 pour lancer le programme<strong> </strong>et tester, le message &quot;UNREGISTERED&quot; 
+    &agrave; disparu c'est OK!</li>
+</ul>
+<p>On effectue les modifications sous un &eacute;diteur hexa :</p>
+<ul>
+  <li>en <strong>0000318C</strong> (42318C) (fin du loader de Neolite) : on remplace 
+    <strong>FFE0803D76</strong> par <strong>E958FFFFFF</strong> (pour sauter vers 
+    notre memory patch)</li>
+  <li>en <strong>000030E9</strong> (4230E9) (notre memory-patch) : on remplace 
+    <strong>4E656F4C6974652045</strong> par <strong>C60575104000EBFFE0</strong> 
+    (nos instructions)</li>
+</ul>
+<p>Voila nous avons ins&eacute;rer un self-loader dans l'exe pack&eacute; apr&egrave;s avoir 
+  rendu accessible l'&eacute;criture en m&eacute;moire pour effectuer le patch. Si vous 
+  voulez virer le nag de Neolite dans ce crackme :</p>
+<p>Pour virer le nag de Neolite : <br>
+  -----------------------------</p>
+<pre>:00423A30 50                      push eax		=&gt; nopper<br>:00423A31 6A00                    push 00000000	=&gt; nopper<br>:00423A33 FF551A                  call [ebp+1A]	=&gt; nopper
+</pre>
+<p>Offset <strong>00003A30</strong> remplacer : <strong>506A00FF551A</strong> par 
+  <strong>909090909090</strong>.</p>
+
+<a name="8"></a><h3>8. Infos pratiques sur Neolite 2.0</h3>
+<ul>
+  <li>Les sections d'origines sont gard&eacute;s intactes</li>
+  <li>Le loader de Neolite est ajout&eacute; dans une section nomm&eacute;e .neolit</li>
+  <li>Le passage vers l'OEP s'effectue de la fa&ccedil;on suivante :</li>
+</ul>
+<pre>00423181 e8ed040000       call    00423673<br>00423186 fe0576314200 	  inc byte ptr [00423176] <br>0042318c ffe0             jmp     eax  <strong>=&gt; saute vers l'OEP</strong><br>00401184 55               push    ebp<br>00401185 8bec             mov     ebp, esp</pre>
+<ul>
+  <li> L'acc&egrave;s &eacute;criture en m&eacute;moire est prot&eacute;g&eacute; par le loader avec l'api 
+    <strong>VirtualProtect</strong></li>
+</ul>
+
+<p class="image"><img src="../../images/signatures/Netix.gif"> & <img src="../../images/signatures/Crazy_Squirrel.gif"></p>
+
+</body>
+</html>

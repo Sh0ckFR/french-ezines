@@ -1,0 +1,399 @@
+<html>
+<head>
+<title>Packer : FSG 1.31</title>
+<link rel="stylesheet" type="text/css" href="../../style.css">
+</head>
+<body>
+<h1>Manual Unpacking</h1>
+<h2>Packer : FSG 1.31 </h2>
+<p>Objectifs :</p>
+<ul>
+  <li>Obtenir un dump fonctionnel et d&eacute;sassemblable pour obtenir le code, 
+    les datas et les imports</li>
+  <li>Comprendre l'architecture d'un programme pack&eacute; par FSG 1.31</li>
+</ul>
+<p>Cible :</p>
+<ul>
+  <li>Une petite d&eacute;mo pack&eacute;e avec FSG 1.31, r&eacute;alis&eacute; par Thigo 
+    que je remercie de m'avoir autoris&eacute; &agrave; triturer pour ce tutorial.</li>
+</ul>
+<p>Outils n&eacute;cessaires :</p>
+<ul>
+  <li>WinDbg ou SoftIce</li>
+  <li>Hex Workshop</li>
+  <li>Lord-PE</li>
+</ul>
+<p>Fichiers joints :</p>
+<ul>
+  <li><a href="demo.zip">la cible</a> (la d&eacute;mo pack&eacute;e avec FSG 1.31)</li>
+  <li><a href="dumped.zip">le dump reconstruit et fonctionnel</a></li>
+</ul>
+
+<h3>Index</h3>
+<ol>
+  <li><a href="#1">Introduction</a></li>
+  <li><a href="#2">Collecte des infos sur la cible</a></li>
+  <li><a href="#3">Dump du programme</a></li>
+  <li><a href="#4">Recherche de l'original entry-point (OEP)</a></li>
+  <li><a href="#5">Etude du dump sous un &eacute;diteur hexa</a></li>
+  <li><a href="#6">Reconstruction de la table des imports</a></li>
+  <li><a href="#7">Infos pratiques sur l'architecture d'un programme pack&eacute; par FSG 1.31</a></li>
+</ol>
+
+<a name="1"></a><h3>1. Introduction</h3>
+<p>FSG 1.31 est l'un, voir le meilleur packer, pour les petits programmes, il 
+  est parfait pour faire des exe de - 4ko comme pour cette d&eacute;mo par exemple. 
+  A ce jour je crois qu'il n'existe pas d'unpackeur g&eacute;n&eacute;rique pour 
+  cette version de FSG et l'unpacker manuellement reste relativement simple. Voici 
+  donc la m&eacute;thode que j'ai utilis&eacute;e.</p>
+
+<a name="2"></a><h3>2. Collecte des infos sur la cible</h3>
+<p>On ouvre la cible avec Lord-PE et on r&eacute;cup&egrave;re les infos suivantes :</p>
+<pre>Entry-point : 004CD8
+Import-Table : RVA = 00004DC7, size = 00000034
+
+
+Sections Table :
+
+names		Voffset		Vsize		Roffset		Rsize		Flags
+		00001000	00003000	00000000	00000000	C00000E0
+		00004000	00001000	00000200	00000DFB	C00000E0
+</pre>
+<p>On voit ici qu'il n'y a que 2 sections et que celles-ci n'ont pas de nom, ce 
+  qui veux dire que les sections originales du programme (normalement .code .data 
+  .idata et .rscr) ont s&ucirc;rement du &ecirc;tre regroup&eacute;es en ces 2 seules 
+  sections au moment de la compilation du programme ou plus pr&eacute;cisement du link 
+  ou alors lors de la compression par FSG qui est l'une de ces caract&eacute;ristique 
+  mais nous reviendrons la dessus en fin de ce tutorial.</p>
+<p><strong>Note</strong> : Dans le cas de section merged nous avons le code, les 
+  data et les imports s&ucirc;rement m&eacute;lang&eacute;s dans la m&ecirc;me section. Si 
+  nous voulons obtenir un listing d&eacute;sassembl&eacute; sous wdasm avec le 
+  code, les strings datas et les imports il nous faut donc ajuster le flag des 
+  sections et mettre les options, executable, readable, writeable et contain executable 
+  code, contain initialised data ce qui reviens &agrave; placer en flag la valeur 
+  <strong>E00000E0</strong>.</p>
+
+<a name="3"></a><h3>3. Dump du programme</h3>
+<p>Toujours avec Lord-PE on va dumper la cible, assurez-vous que ces options 
+  soit coch&eacute;s avant de dumper :</p>
+<ul>
+  <li>Full Dump : paste header from disk</li>
+  <li>Full Dump : fix header</li>
+</ul>
+<p>Cela &agrave; pour effet de faire correspondre la Rsize et le Roffset des sections 
+  avec leur Voffset et Vsize, en gros d'avoir sur le disque la m&ecirc;me image qu'occupe 
+  le programme en m&eacute;moire et de faire correspondre les adresses et tailles 
+  des sections dans le PE header.</p>
+<p>Ensuite on ajuste les flags des 2 sections sur notre dump et on met la valeur 
+  <strong>E00000E0</strong> comme expliqu&eacute; plus haut. Avec &ccedil;a on pourra 
+  d&eacute;j&agrave; obtenir sous wdasm le code d&eacute;sassembl&eacute; et les strings 
+  datas r&eacute;f&eacute;rence. Il nous reste &agrave; trouver l'OEP et reconstruire 
+  les imports pour rendre ce dump fonctionnel.</p>
+
+  <a name="4"></a><h3>4. Recherche de l'original entry-point (OEP)</h3>
+<p>On va se servir d'un debugger, dans mon cas WinDbg que je vous conseille pour 
+  ce genre de job, pour tracer le code du loader, et rep&eacute;rer le moment ou l'on 
+  quitte le segment du loader pour sauter vers le d&eacute;roulement normal du 
+  programme.</p>
+<p>On lance l'exe <strong>original</strong> avec notre debugger et on s'arrange 
+  pour breaker &agrave; l'entry-point. (Pour windbg, il suffit de lancer l'exe 
+  et de poser un bp sur 404CD8 (image base + offset entry-point)) (Pour softice 
+  lancer l'exe par le symbol loader qui devrait breaker tout seul sur l'entry-point)</p>
+<p>Nous sommes dans le loader qui va servir &agrave; d&eacute;compresser l'exe 
+  en m&eacute;moire. Il suffit de tracer instruction par instruction et d&eacute;terminer 
+  l'adresse o&ugrave; l'on quitte ce loader. Je le reconnais c'est assez long et chiant 
+  &agrave; faire mais c'est le seul moyen quand on ne connaît pas suffisamment 
+  bien le packer pour &eacute;laborer des strat&eacute;gies pour identifier l'OEP plus 
+  simplement.</p>
+<p>On peut aussi commencer &agrave; partir d'un bpx sur l'api <strong>LoadLibraryA</strong> 
+  puisque notre loader va se servir de cette fonction, ce qui nous &eacute;vitera de 
+  tracer depuis le tout d&eacute;but. Voici ma m&eacute;thode avec WinDbg, je crois que y'a 
+  pas plus simple et plus rapide :) :</p>
+<ul>
+  <li>Ouvre l'exe par windbg</li>
+  <li><strong>bp LoadLibraryA</strong> puis <strong>F5</strong></li>
+  <li><strong>bc 0</strong> pour effacer le break sur LoadLibraryA</li>
+  <li><strong>pr</strong> pour emp&ecirc;cher d'afficher les registres dans le log &agrave; 
+    chaque instruction trac&eacute;e</li>
+  <li><strong>p10000 </strong>pour tracer 10000 instructions automatiquement (si 
+    au bout des 10000 l'exe n'est pas encore lanc&eacute; retapez cette commande 
+    ou faire ENTREE)</li>
+  <li>le programme est lanc&eacute; est le debugger n'as plus la main</li>
+  <li>on redonne la main au debugger en appuyant sur le bouton <strong>break 
+    </strong></li>
+</ul>
+<p>Voila &ccedil;a met environ 20 secondes Il ne nous reste plus qu'&agrave; remonter le log 
+  pour trouver le moment o&ugrave; l'on saute du loader vers le programme :</p>
+<p>(on lit du bas vers le haut)</p>
+<pre>00404da2 fe0f             dec     byte ptr [edi]          ds:0023:004021bc=03<br>image00400000+4da4:<br>00404da4 74ef             jz      image00400000+0x4d95 (00404d95)      [br=0]<br>image00400000+4da6:<br>00404da6 fe0f             dec     byte ptr [edi]          ds:0023:004021bc=02<br>image00400000+4da8:<br>00404da8 7506             jnz     image00400000+0x4db0 (00404db0)      [br=1]<br>image00400000+4db0:<br>00404db0 fe0f             dec     byte ptr [edi]          ds:0023:004021bc=01<br>image00400000+4db2:<br>00404db2 0f8427d0ffff     je      image00400000+0x1ddf (00401ddf)      [br=1]<br>image00400000+1ddf:<br>00401ddf 56               push    esi<br>image00400000+1de0:<br>00401de0 33f6             xor     esi,esi<br>image00400000+1de2:<br>00401de2 56               push    esi<br>image00400000+1de3:<br>00401de3 ff1540104000 call dword ptr [image00400000+0x1040 (00401040)]{kernel32!GetModuleHandleA (77e5ad86)} ds:0023:00401040=77e5ad86<br>image00400000+1de9:<br>00401de9 56               push    esi<br>image00400000+1dea:<br>00401dea a3781e4000 mov [image00400000+0x1e78 (00401e78)],eax ds:0023:00401e78=00000000<br>image00400000+1def:<br>*** ERROR: Symbol file could not be found.  Defaulted to export symbols for C:\WINDOWS\system32\GDI32.dll - <br>00401def ff1518104000 call dword ptr [image00400000+0x1018 (00401018)]{GDI32!CreateSolidBrush (77c4217c)} ds:0023:00401018=77c4217c<br>image00400000+1df5:<br>00401df5 56               push    esi<br>image00400000+1df6:<br>00401df6 68811c4000       push    0x401c81<br>image00400000+1dfb:<br>00401dfb 56               push    esi<br>image00400000+1dfc:<br>00401dfc 6a65             push    0x65</pre>
+<p>On se trouvait vers l'adresse <strong>00401dfc</strong> en remontant on s'aper&ccedil;oit 
+  que l'on &agrave; effectu&eacute; un assez long jump en <strong>00404db2</strong> 
+  pour sauter en <strong>00401ddf</strong>. C'est d&eacute;j&agrave; un bon signe qui 
+  pourrait indiquer que l'on a saut&eacute; du loader vers le code du programme. Si 
+  on regarde par rapport aux section on s'aper&ccedil;oit que l'on a donc saut&eacute; 
+  de la 2&egrave;me section vers la 1ere. C'est encore la un signe, car normalement le 
+  code du programme est dans la m&ecirc;me section. Si on examine le code qui suit on 
+  s'aper&ccedil;oit que l'on appelle la fonction <strong>GetModuleHandleA </strong>est 
+  caract&eacute;ristique du d&eacute;but d'un programme.</p>
+<p>On peux, sans craintes, certifier que notre OEP est bien &agrave; l'adresse 
+  <strong>00401ddf </strong>et donc &agrave; l'offset<strong> 1DDF. </strong>On 
+  remplace dans le PE l'offset de l'entry-Point, par celui que nous venons de 
+  trouver et on sauvegarde.</p>
+
+<a name="5"></a><h3>5. Etude du dump sous un &eacute;diteur hexa</h3>
+<p>Comme nous n'avons aucun renseignement sur le contenu des sections, il va falloir 
+  explorer un peu le dump sous un &eacute;diteur hexa.</p>
+<p>On se rend &agrave; l'offset de la 1ere section en 1000h :</p>
+<pre><font color="#FF0000">00001000 31 57 c4 77 d1 36 c4 77 07 36 c4 77 98 1b c4 77  1W.w.6.w.6.w...w<br>00001010 6e 3c c4 77 6f 1d c4 77 7c 21 c4 77 eb 1e c4 77  n&lt;.wo..w|!.w...w<br>00001020 e0 20 c4 77 5f 3a c4 77 1a 1e c4 77 71 4b c4 77  . .w_:.w...wqK.w<br>00001030 c4 5d c4 77 b4 3b c5 77 00 00 00 00 9b a2 e5 77  .].w.;.w.......w<br>00001040 86 ad e5 77 fd 98 e5 77 ea 1b e4 77 e1 60 e5 77  ...w...w...w.`.w<br>00001050 00 00 00 00 87 7e c0 77 50 b2 c1 77 80 52 c0 77  .....~.wP..w.R.w<br>00001060 74 8e c1 77 8d 52 c0 77 10 2f c1 77 a9 7d c0 77  t..w.R.w./.w.}.w<br>00001070 00 00 00 00 1b 2a d2 77 a2 e7 d1 77 f0 0e d2 77  .....*.w...w...w<br>00001080 16 48 d1 77 bc a1 d5 77 b1 7a d1 77 a3 ba d2 77  .H.w...w.z.w...w<br>00001090 1a 16 d3 77 2d 5a d1 77 34 e9 d3 77 78 4d d1 77  ...w-Z.w4..wxM.w<br>000010a0 a4 5f d1 77</font> <font color="white">00 00 00 00 00 00 00 00 00 00 00 00</font>  <font color="#FF0000">._.w</font>............<br><font color="#0000FF">000010b0 38 13 40 00 2c 11 40 00 68 1e 40 00 0c 11 40 00  8.@.,.@.h.@...@.<br>000010c0 e8 10 40 00 d0 10 40 00 cc 10 40 00 2e 2e 2e 00  ..@...@...@.....<br>000010d0 46 69 6e 61 6c 20 53 69 7a 65 20 3a 20 34 30 39  Final Size : 409<br>000010e0 36 20 62 79 74 65 73 00 43 6f 64 65 64 20 66 6f  6 bytes.Coded fo<br>000010f0 72 20 34 4b 42 20 6b 67 20 74 65 6d 70 6c 61 74  r 4KB kg templat<br>00001100 65 20 63 6f 6e 74 65 73 74 00 00 00 54 69 6e 79  e contest...Tiny<br>00001110 20 6b 65 79 67 65 6e 20 74 65 6d 70 6c 61 74 65   keygen template<br>00001120 20 62 79 20 54 68 69 67 6f 00 00 00 48 65 72 65   by Thigo...Here<br>00001130 20 69 73 20 74 68 65 20 66 69 6e 61 6c 20 22 65   is the final &quot;e<br>00001140 66 66 65 63 74 22 2e 2e 2e 0a 53 6f 2c 20 74 68  ffect&quot;....So, th<br>00001150 69 73 20 74 65 6d 70 6c 61 74 65 20 77 61 73 20  is template was <br>00001160 66 75 6c 6c 79 20 63 6f 64 65 64 0a 69 6e 20 43  fully coded.in C
+[.......]</font></pre>
+<p>On voit distinctement 2 parties, la 1&egrave;re partie ressemble 
+  &agrave; des pointeurs vers des adresses de fonctions en m&eacute;moire : comme 
+  <strong>77C45731</strong> en 1000h. &Ccedil;a pourrait bien &ecirc;tre nos tableaux point&eacute;s 
+  par les FirstThunk de la table des imports.</p>
+<p>La 2&egrave;me partie on voit des strings datas, on se dit que 
+  c'est s&ucirc;rement l'endroit o&ugrave; sont stock&eacute; les variables du programme (la 
+  section .data)</p>
+<p>Apres ce qu'on consid&egrave;re comme les datas on trouve du 
+  code hexa, qui ressemble &agrave; la partie du code proprement dite :</p>
+<pre>
+<font color="#0000FF">00001300 6f 74 68 65 72 20 65 66 66 65 63 74 20 69 6e 20  other effect in <br>00001310 74 68 65 20 73 70 61 63 65 20 6c 65 66 74 20 73  the space left s<br>00001320 6f 20 49 20 77 72 69 74 65 20 73 68 69 74 20 3a  o I write shit :<br>00001330 29 0a 42 79 65 20 21 00 45 6e 74 72 79 20 66 6f  ).Bye !.Entry fo<br>00001340 72 20 63 6f 6e 74 65 73 74 73 2e 61 6e 74 69 63  r contests.antic<br>00001350 72 61 63 6b 2e 64 65 0a 62 79 20 54 68 69 67 6f  rack.de.by Thigo<br>00001360 00 00 00 00 54 61 68 6f 6d 61 00 00 25 58 00 00  ....Tahoma..%X..<br>00001370 45 6e 74 65 72 20 79 6f 75 72 20 6e 61 6d 65 20  Enter your name <br>00001380 21</font> 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  !...............<br>00001390 00 00 00 00 00 00 <font color="#009900">59 40 6e 86 1b f0 f9 21 99 3f  ......Y@n....!.?<br>000013a0 55 8b ec 80 7d 10 ff 75 11 0f b6 4d 0c b8 80 00  U...}..u...M....<br>000013b0 00 00 2b c1 0f b6 4d 08 eb 0e 80 7d 10 01 75 10  ..+...M....}..u.<br>000013c0 0f b6 45 08 0f b6 4d 0c 0f af c1 c1 f8 07 eb 03  ..E...M.........<br>000013d0 8a 45 08 5d c2 0c 00 55 8b ec b8 f4 43 01 00 e8  .E.]...U....C...<br>000013e0 4c 0a 00 00 53 56 57 ff 15 3c 10 40 00 50 ff 15  L...SVW..&lt;.@.P..<br>000013f0 5c 10 40 00 33 db 59 89 5d f0 db 45 f0 51 51 dc  \.@.3.Y.]..E.QQ.<br>00001400 0d 98 13 40 00 dd 1c 24 e8 11 0a 00 00 dc 0d 90  ...@...$........<br>00001410 13 40 00 59 59 e8 46 0a 00 00 8b 4d f0 ff 45 f0  .@.YY.F....M..E.<br>00001420 81 7d f0 00 01 00 00 88 84 0d 1c fe ff ff 7c ca  .}............|.<br>00001430 ff 35 74 1e 40 00 ff 15 84 10 40 00 8b 35 20 10  .5t.@.....@..5 .<br>00001440 40 00 8b f8 57 89 7d d0 ff d6 57 89 45 cc ff d6  @...W.}...W.E...<br>00001450 57 89 45 f4 ff d6 6a 68 89 45 c0 ff 35 78 1e 40  W.E...jh.E..5x.@<br>00001460 00 ff 15 74 10 40 00 be 28 01 00 00 6a 4e 56 57  ...t.@..(...jNVW
+[.......]</font>
+
+</pre>
+<p>On trouve ensuite les noms des fonctions import&eacute;s et des dll :</p>
+<pre>
+<font color="white">00001fce 01 3c 10 40 00 4b 45 52 4e 45 4c 33 32 2e 64 6c  .&lt;.@.KERNEL32.dl<br>00001fde 6c 00 47 65 74 54 69 63 6b 43 6f 75 6e 74 00 47  l.GetTickCount.G<br>00001fee 65 74 4d 6f 64 75 6c 65 48 61 6e 64 6c 65 41 00  etModuleHandleA.<br>00001ffe 45 78 69 74 50 72 6f 63 65 73 73 00 53 6c 65 65  ExitProcess.Slee<br>0000200e 70 00 6c 73 74 72 6c 65 6e 41 00 00 74 10 40 00  p.lstrlenA..t.@.<br>0000201e 55 53 45 52 33 32 2e 64 6c 6c 00 4c 6f 61 64 42  USER32.dll.LoadB<br>0000202e 69 74 6d 61 70 41 00 77 73 70 72 69 6e 74 66 41  itmapA.wsprintfA<br>0000203e 00 44 72 61 77 54 65 78 74 41 00 52 65 6c 65 61  .DrawTextA.Relea<br>0000204e 73 65 44 43 00 47 65 74 44 43 00 53 65 74 57 69  seDC.GetDC.SetWi<br>0000205e 6e 64 6f 77 54 65 78 74 41 00 53 65 6e 64 44 6c  ndowTextA.SendDl<br>0000206e 67 49 74 65 6d 4d 65 73 73 61 67 65 41 00 45 6e  gItemMessageA.En<br>0000207e 64 44 69 61 6c 6f 67 00 53 65 6e 64 4d 65 73 73  dDialog.SendMess<br>0000208e 61 67 65 41 00 44 69 61 6c 6f 67 42 6f 78 50 61  ageA.DialogBoxPa<br>0000209e 72 61 6d 41 00 53 65 74 52 65 63 74 00 46 69 6c  ramA.SetRect.Fil<br>000020ae 6c 52 65 63 74 00 00 00 10 40 00 47 44 49 33 32  lRect....@.GDI32<br>000021ae 70 79 00 5f 65 6e 64 74 68 72 65 61 64 00 00 00  py._endthread...
+[.......]</font>
+</pre>
+<p>On voit dans cette partie que l'on a import&eacute; 4 DLL.</p>
+<p>Voila nous avons tout ce qui nous int&eacute;resse pour passer &agrave; l'&eacute;tape suivante.</p>
+
+  <a name="6"></a><h3>6. Reconstruction de la table des imports</h3>
+<p>Comme on n'a pas retrouv&eacute; la table des imports on va en reconstruire 
+  une. On sait qu'il y'a 4 DLL import&eacute;s donc nous aurons 5 &eacute;l&eacute;ments 
+  IMAGE_IMPORT_DESCRIPTOR dans cette table (4 pour les 4 DLL + 1 vide).</p>
+<p>Pour reconstruire cette table nous avons besoins de quelques renseignements 
+  que nous relevons dans la partie ou il y a le nom des dll et des fonctions, 
+  il nous faut simplement l'offset du d&eacute;but du nom des DLL, j'ai aussi compt&eacute; 
+  le nombre de fonctions pour chaque DLL, ce qui n'est pas vraiment n&eacute;cessaire 
+  mais on pourra ce servir de cette info plus tard.</p>
+<table width="70%" border="1">
+  <tr> 
+    <td width="20%" align="center">Nom de la DLL</td>
+    <td width="31%" align="center">Offset du d&eacute;but du Nom</td>
+    <td width="22%" align="center">Nbr de fonctions</td>
+    <td width="27%" align="center">Offset FirstThunk</td>
+  </tr>
+  <tr> 
+    <td align="center">KERNEL32.dll</td>
+    <td align="center">1FD3</td>
+    <td align="center">5</td>
+    <td align="center">?</td>
+  </tr>
+  <tr> 
+    <td align="center">USER32.dll</td>
+    <td align="center">201E</td>
+    <td align="center">12</td>
+    <td align="center">?</td>
+  </tr>
+  <tr> 
+    <td align="center">GDI32.dll</td>
+    <td align="center">20B9</td>
+    <td align="center">14</td>
+    <td align="center">?</td>
+  </tr>
+  <tr> 
+    <td align="center">MSVCRT.dll</td>
+    <td align="center">217D</td>
+    <td align="center">7</td>
+    <td align="center">?</td>
+  </tr>
+</table>
+<p>Il nous manque plus que les offset des tableaux des FirstThunk pour construire 
+  une Import-Table compl&egrave;te.<br>
+  Revenons sur le d&eacute;but de la 1&egrave;re section en 1000h et ce 
+  qui parait &ecirc;tre les tableaux des FirstThunk</p>
+<pre>
+<font color="#FF0000">00001000 31 57 c4 77 d1 36 c4 77 07 36 c4 77 98 1b c4 77  1W.w.6.w.6.w...w<br>00001010 6e 3c c4 77 6f 1d c4 77 7c 21 c4 77 eb 1e c4 77  n&lt;.wo..w|!.w...w<br>00001020 e0 20 c4 77 5f 3a c4 77 1a 1e c4 77 71 4b c4 77  . .w_:.w...wqK.w<br>00001030 c4 5d c4 77 b4 3b c5 77 00 00 00 00 9b a2 e5 77  .].w.;.w.......w<br>00001040 86 ad e5 77 fd 98 e5 77 ea 1b e4 77 e1 60 e5 77  ...w...w...w.`.w<br>00001050 00 00 00 00 87 7e c0 77 50 b2 c1 77 80 52 c0 77  .....~.wP..w.R.w<br>00001060 74 8e c1 77 8d 52 c0 77 10 2f c1 77 a9 7d c0 77  t..w.R.w./.w.}.w<br>00001070 00 00 00 00 1b 2a d2 77 a2 e7 d1 77 f0 0e d2 77  .....*.w...w...w<br>00001080 16 48 d1 77 bc a1 d5 77 b1 7a d1 77 a3 ba d2 77  .H.w...w.z.w...w<br>00001090 1a 16 d3 77 2d 5a d1 77 34 e9 d3 77 78 4d d1 77  ...w-Z.w4..wxM.w<br>000010a0 a4 5f d1 77</font> <font color="white">00 00 00 00 00 00 00 00 00 00 00 00</font>  <font color="#FF0000">._.w<font color="white">............</font> 
+</font></pre>
+<p>Passons en mode DWORD pour une vision plus claire. Et on peut encore diviser en plusieurs parties d&eacute;limit&eacute;es 
+  par les dword 0000000.</p>
+<pre><strong>00000FF8 <font color="white">00000000 00000000</font> <font color="#FF0000">3157C477 D136C477 0736C477 981BC477 6E3CC477 <font color="#CCCCCC">........</font>1W.w.6.w.6.w...wn&lt;.w<br><font color="white">00001014</font> 6F1DC477 7C21C477 EB1EC477 E020C477 5F3AC477 1A1EC477 714BC477 o..w|!.w...w. .w_:.w...wqK.w<br><font color="white">00001030</font> C45DC477 B43BC577</font> <font color="white">00000000</font> <font color="#0000FF">9BA2E577 86ADE577 FD98E577 EA1BE477 .].w.;.w.......w...w...w...w<br><font color="white">0000104C</font> E160E577</font> <font color="white">00000000</font> <font color="#009966">877EC077 50B2C177 8052C077 748EC177 8D52C077 .`.w.....~.wP..w.R.wt..w.R.w<br><font color="white">00001068</font> 102FC177 A97DC077</font> <font color="white">00000000</font> <font color="#FF6600">1B2AD277 A2E7D177 F00ED277 1648D177 ./.w.}.w.....*.w...w...w.H.w<br><font color="white">00001084</font> BCA1D577 B17AD177 A3BAD277 1A16D377 2D5AD177 34E9D377 784DD177 ...w.z.w...w...w-Z.w4..wxM.w<br><font color="white">000010A0</font> A45FD177</font> <font color="#CCCCCC">00000000 00000000 00000000</font>                            <font color="#FF6600">._.w.</font><font color="#CCCCCC">...........</font>     </strong>       <br></pre>
+<p>On peut voir 4 tableaux pour nos 4 DLL import&eacute;s. Et les adresses que 
+  nous voyons sont bien des adresses vers des fonctions API en m&eacute;moire. 
+  Attention de bien inverser les bytes pour lire correctement la valeur de l'adresse 
+  en m&eacute;moire, exemple sur le premier :</p>
+<pre><strong><font color="#FF0000">3157C477</font></strong> se lit =&gt; <strong><font color="#FF0000">77C45731</font></strong></pre>
+<p> Le probl&egrave;me est de savoir &agrave; quelle DLL correspond chaque tableau. Pour 
+  &ccedil;a on peut soit compter le nombre d'&eacute;l&eacute;ment et comparer avec le nombres de fonctions 
+  pour faire la correspondance ou alors se servir de l'API GetProcAdress pour 
+  retrouver l'adresse d'une fonction part son nom, et retrouver cette adresse 
+  dans les tableaux, le tableau dans lequel elle se trouve correspondra &agrave; 
+  la DLL de notre fonction. </p>
+<p>La avec le nombre des fonctions de chaque dll et le nombre d'&eacute;l&eacute;ment des tableaux 
+  &ccedil;a suffit pour s'y retrouver. </p>
+<ul>
+  <li> rouge pour GDI32.dll</li>
+  <li> bleu pour KERNEL32.dll</li>
+  <li>vert pour MSVCRT.dll</li>
+  <li>orange pour USER32.dll</li>
+</ul>
+<p>Il suffit alors de relever l'offset du d&eacute;but de chaque tableau, et nous pouvons 
+  donc compl&eacute;ter nos infos manquantes :</p>
+<table width="70%" border="1">
+  <tr> 
+    <td width="20%" align="center">Nom de la DLL</div></td>
+    <td width="31%" align="center">Offset du d&eacute;but du Nom</div></td>
+    <td width="22%" align="center">Nbr de fonctions</div></td>
+    <td width="27%" align="center">Offset FirstThunk</div></td>
+  </tr>
+  <tr> 
+    <td align="center">KERNEL32.dll</td>
+    <td align="center">1FD3</td>
+    <td align="center">5</td>
+    <td align="center"><font color="#0000FF"><strong>103C</strong></font></td>
+  </tr>
+  <tr> 
+    <td align="center">USER32.dll</td>
+    <td align="center">201E</td>
+    <td align="center">12</td>
+    <td align="center"><font color="#FF6600"><strong>1074</strong></font></td>
+  </tr>
+  <tr> 
+    <td align="center">GDI32.dll</td>
+    <td align="center">20B9</td>
+    <td align="center">14</td>
+    <td align="center"><font color="#FF0000"><strong>1000</strong></font></td>
+  </tr>
+  <tr> 
+    <td align="center">MSVCRT.dll</td>
+    <td align="center">217D</td>
+    <td align="center">7</td>
+    <td align="center"><font color="#009900"><strong>1054</strong></font></td>
+  </tr>
+</table>
+<p>Voila maintenant nous avons tous ce qu'il faut pour construire notre nouvelle 
+  Import-Table et on cherche un endroit libre dans notre dump pour ins&eacute;rer cette 
+  table. (On pourrait aussi cr&eacute;er une nouvelle section)</p>
+
+<p>Pour l'exemple je me place &agrave; l'offset <strong>1F10</strong> dans le 
+  dump, juste avant les noms des fonctions.</p>
+<p>Notre table devra ressembler &agrave; &ccedil;a :</p>
+<table width="69%" border="0">
+  <tr> 
+    <td width="20%" height="40" align="center">OriginalFirstThunk</td>
+    <td width="18%" align="center">TimeDateStamp </td>
+    <td width="18%" align="center">ForwarderChain </td>
+    <td width="15%" align="center">DllName </td>
+    <td width="15%" align="center">FirstThunk </td>
+    <td width="14%" align="center">&nbsp;</td>
+  </tr>
+  <tr> 
+    <td align="center">00000000</td>
+    <td align="center">00000000</td>
+    <td align="center">00000000</td>
+    <td align="center">D31F0000</td>
+    <td align="center">3C100000</td>
+    <td align="center">(Kernel32)</td>
+  </tr>
+  <tr> 
+    <td align="center">00000000</td>
+    <td align="center">00000000</td>
+    <td align="center">00000000</td>
+    <td align="center">1E200000</td>
+    <td align="center">74100000</td>
+    <td align="center">(User32)</td>
+  </tr>
+  <tr> 
+    <td align="center">00000000</td>
+    <td align="center">00000000</td>
+    <td align="center">00000000</td>
+    <td align="center">B9200000</td>
+    <td align="center">00100000</td>
+    <td align="center">(Gdi32)</td>
+  </tr>
+  <tr> 
+    <td align="center">00000000</td>
+    <td align="center">00000000</td>
+    <td align="center">00000000</td>
+    <td align="center">7D210000</td>
+    <td align="center">54100000</td>
+    <td align="center">(Msvcrt)</td>
+  </tr>
+  <tr> 
+    <td align="center">00000000</td>
+    <td align="center">00000000</td>
+    <td align="center">00000000</td>
+    <td align="center">00000000</td>
+    <td align="center">00000000</td>
+    <td align="center">(vide)</td>
+  </tr>
+</table>
+<p><strong><font color="#FF0000">ATTENTION DE BIEN INVERSER L'ORDRE DES BYTES</font></strong></p>
+<p>Je me place &agrave; l'offset 1F10 et je recopie cette table.</p>
+<pre>00001F10 00000000 00000000 00000000 D31F0000 3C100000 00000000 00000000 ................&lt;...........<br>00001F2C 00000000 1E200000 74100000 00000000 00000000 00000000 B9200000 ..... ..t................ ..<br>00001F48 00100000 00000000 00000000 00000000 7D210000 54100000 00000000 ................}!..T.......<br>00001F64 00000000 00000000 00000000 00000000                            ................            <br></pre>
+<p>Voila c'est presque fini, on oublie pas de sauvegarder notre dump. Il nous 
+  reste maintenant &agrave; mettre &agrave; jour dans le PE l'offset de L'import-table 
+  pour que nous puissions rectifier les adresses des tableaux FirstThunk. </p>
+<ul>
+  <li>offset de l'Import-Table : <strong><font color="#FF0000">1F10</font></strong></li>
+  <li>taille de l'Import-Table : <strong><font color="#FF0000">64</font></strong></li>
+</ul>
+<p>Maintenant on va se servir de Lord-PE qui va nous &eacute;viter bien du travail :</p>
+<ul>
+  <li>s'assurer dans les options que <strong>Rebuild Import Table</strong> est 
+    coch&eacute;</li>
+  <li>on clique sur le bouton <strong>Rebuild PE </strong>et on s&eacute;lectionne notre 
+    dump</li>
+  <li>une fen&ecirc;tre de statut s'affiche et nous indique &quot;<em>Rebuild Import 
+    Table....done</em>&quot;</li>
+</ul>
+<p>Voila nous avons &agrave; pr&eacute;sent un dump fonctionnel, et quand nous 
+  le d&eacute;sassemblons nous obtenons bien le code, les datas et les imports.</p>
+<p>On peut regarder ce que Lord-PE &agrave; rebuild :</p>
+<p>avant :</p>
+<pre><strong>00000FF8 <font color="white">00000000 00000000</font> <font color="#FF0000">3157C477 D136C477 0736C477 981BC477 6E3CC477 <font color="#CCCCCC">........</font>1W.w.6.w.6.w...wn&lt;.w<br><font color="white">00001014</font> 6F1DC477 7C21C477 EB1EC477 E020C477 5F3AC477 1A1EC477 714BC477 o..w|!.w...w. .w_:.w...wqK.w<br><font color="white">00001030</font> C45DC477 B43BC577</font> <font color="white">00000000</font> <font color="#0000FF">9BA2E577 86ADE577 FD98E577 EA1BE477 .].w.;.w.......w...w...w...w<br><font color="white">0000104C</font> E160E577</font> <font color="white">00000000</font> <font color="#009966">877EC077 50B2C177 8052C077 748EC177 8D52C077 .`.w.....~.wP..w.R.wt..w.R.w<br><font color="white">00001068</font> 102FC177 A97DC077</font> <font color="white">00000000</font> <font color="#FF6600">1B2AD277 A2E7D177 F00ED277 1648D177 ./.w.}.w.....*.w...w...w.H.w<br><font color="white">00001084</font> BCA1D577 B17AD177 A3BAD277 1A16D377 2D5AD177 34E9D377 784DD177 ...w.z.w...w...w-Z.w4..wxM.w<br><font color="white">000010A0</font> A45FD177</font> <font color="#CCCCCC">00000000 00000000 00000000</font>                            <font color="#FF6600">._.w.</font><font color="#CCCCCC">...........</font>     </strong>       
+
+
+apr&egrave;s :
+
+
+<strong>00000FF8 <font color="white">00000000 00000000</font> <font color="#FF0000">C1200000 CB200000 E2200000 EB200000 F8200000 <font color="#CCCCCC">.........</font> ... ... ... ... ..<br><font color="white">00001014</font> FF200000 0C210000 1D210000 27210000 3A210000 47210000 52210000 . ...!...!..'!..:!..G!..R!..<br><font color="white">00001030</font> 60210000 6A210000</font> <font color="white">00000000</font> <font color="#0000FF">DE1F0000 EB1F0000 FC1F0000 08200000 `!..j!................... ..<br><font color="white">0000104C</font> 0E200000</font> <font color="white">00000000</font> <font color="#009966">86210000 93210000 99210000 9F210000 9A210000 . .......!...!...!...!...!..<br><font color="white">00001068</font> A8210000 AF210000</font> <font color="white">00000000</font> <font color="#FF6600">27200000 33200000 3D200000 47200000 .!...!......' ..3 ..= ..G ..<br><font color="white">00001084</font> 51200000 57200000 66200000 7A200000 84200000 91200000 A1200000 Q ..W ..f ..z ... ... ... ..<br><font color="white">000010A0</font> A9200000 </font><font color="#CCCCCC">00000000 00000000 00000000</font>                            . ...<font color="#CCCCCC">...........</font>       </strong>     <br></pre>
+<p>Ce ne sont plus les adresses des fonctions en m&eacute;moire mais des pointeurs 
+  vers l'index suivi du nom des fonctions dans le dump.</p>
+
+<a name="7"></a><h3>7. Infos pratiques sur l'architecture d'un programme pack&eacute; par FSG 1.31</h3>
+<ul>
+  <li>A l'offset <strong>48h</strong> on retrouve toujours la cha&icirc;ne &quot;<strong>FSG</strong>!&quot;, 
+    qu'on peut apparent&eacute; &agrave; une signature.</li>
+  <li>L'exe obtenu sera compos&eacute; de 2 sections sans nom avec comme caract&eacute;ristique 
+    <strong>C00000E0</strong>.</li>
+  <li>Une partie du code du loader un peu avant de sauter vers l'OEP est toujours 
+    le m&ecirc;me :</li>
+</ul>
+<pre>:00404D95 47                      inc edi<br>:00404D96 8B37                    mov esi, dword ptr [edi]<br>:00404D98 AF                      scasd<br>:00404D99 57                      push edi<br>:00404D9A FF13                    call dword ptr [ebx]<br>:00404D9C 95                      xchg eax,ebp
+:00404D9D 33C0                    xor eax, eax
+:00404D9F AE                      scasb<br>:00404DA0 75FD                    jne 00404D9F<br>:00404DA2 FE0F                    dec byte ptr [edi]<br>:00404DA4 74EF                    je 00404D95<br>:00404DA6 FE0F                    dec byte ptr [edi]<br>:00404DA8 7506                    jne 00404DB0
+</pre>
+<p>On peux donc en relevant la valeur hexa de ce code en faire une belle signature 
+  qui nous permettra de reconna&icirc;tre avec un &eacute;diteur hexa si le programme contient 
+  bien ce bout de code caract&eacute;ris&eacute; par FSG 1.31.</p>
+<pre><font color="red"><strong>478B37AF57FF139533C0AE75FDFE0F74EFFE0F7506</strong></font> =&gt; Signature FSG 1.31 
+
+</pre>
+<ul>
+  <li> On peux se servir aussi de ce bout de code pour rep&eacute;rer l'OEP puisque le 
+    saut s'effectue quelques instructions plus loin sous la forme :</li>
+</ul>
+<pre>
+:00404DAB FF37                    push dword ptr [edi]<br>:00404DAD AF                      scasd<br>:00404DAE EB09                    jmp 00404DB9
+:00404DB0 FE0F                    dec byte ptr [edi]<br>:00404DB2 0F8427D0FFFF            je 00401DDF	==&gt; <strong>saute vers l'OEP</strong></pre>
+<ul>
+  <li>L'import table est d&eacute;truite et les tableaux d'adresses point&eacute;es par 
+    les OriginalFirstThunk sont supprim&eacute;s</li>
+</ul>
+
+<p class="image"><img src="../../images/signatures/Netix.gif"></p>
+
+</body>
+</html>

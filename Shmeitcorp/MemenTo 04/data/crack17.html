@@ -1,0 +1,711 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2//EN">
+<HTML>
+
+<HEAD>
+	<META HTTP-EQUIV="Content-Type" CONTENT="text/html;CHARSET=iso-8859-1">
+	<META NAME="GENERATOR" Content="Visual Page 2.0 for Windows - Trial Version">
+	<TITLE>untitled</TITLE>
+</HEAD>
+
+<BODY TEXT="white" BGCOLOR="black">
+
+<P>
+<TABLE BORDER="0" CELLPADDING="8" CELLSPACING="0" WIDTH="100%">
+	<TR>
+		<TD WIDTH="50%">
+			<P ALIGN="CENTER"><B><FONT SIZE="5" COLOR="#FFFFFF" FACE="Arial Black"><u>API Spy 32 version 2.4</u></FONT></B><BR>
+			<P><BR>
+			<FONT SIZE="2" FACE="Arial">API Spy 32 est un de ces petits programmes tr&egrave;s utile &agrave; notre qu&egrave;te,
+			mais qui malheureusement comprend certains Bugs, dont l'un des moindres est une compression de l'ex&eacute;cutable.</FONT>
+		</TD>
+		<TD WIDTH="50%">
+			<P ALIGN="RIGHT"><IMG SRC="splash.GIF" WIDTH="307" HEIGHT="200" ALIGN="BOTTOM" BORDER="0">
+		</TD>
+	</TR>
+</TABLE>
+<FONT SIZE="2" FACE="Arial">Je n'avais jamais utilis&eacute; GetType jusqu'&agrave; aujourd'hui...<BR>
+Mais c'est qu'il est tr&egrave;s bien cet utilitaire !</FONT><p></P>
+
+<BLOCKQUOTE>
+	<PRE><FONT SIZE="2">Packer: </FONT><B><FONT SIZE="2">Petite 1.2</FONT></B><FONT SIZE="2">
+      Calculated entrypoint: 54272 / 0000D400h  (RVA: 0001A000h)
+        File is executable
+      Objects (object align = 00001000h):
+        Name      Virt size     RVA     Phys size  Phys Ofs
+        .text     0000F000h  00001000h  00003A00h  00000400h
+        .idata    00001000h  00010000h  00000C00h  00003E00h
+        .rsrc     00009000h  00011000h  00008A00h  00004A00h
+        </FONT><FONT SIZE="2" COLOR="#FFCC00">.madmat</FONT><FONT SIZE="2">   0000D268h  0001A000h  0000161Ch  0000D400h</FONT></PRE>
+</BLOCKQUOTE>
+
+<P><FONT SIZE="2" FACE="Arial">Il est capable de reconna&icirc;tre un grand nombre de Packer, mais je le trouve
+un peu l&eacute;ger, au regard de mes &quot;besoins&quot; pour ce qui concerne les caract&eacute;ristiques des
+sections, &eacute;ventuellement l'imageBase (en g&eacute;n&eacute;ral 00400000, mais ce n'est pas une r&egrave;gle
+absolue)<BR>
+L'Entry Point est donc en RVA 0001A000 + les 00400000 de l'ImageBase , soit 0041A000 :</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">:0041A000  669C                PUSHF
+:0041A002  60                  PUSHAD    </FONT><FONT SIZE="2" COLOR="yellow">&gt; sauvegarde des registres</FONT><FONT
+SIZE="2">
+:0041A003  E8CA000000          CALL      0041A0D2
+:0041A008  0300                ADD       EAX,[EAX]</FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">Qui dit Pushad, dit Popad. Il suffit de tracer un peu le programme
+pour le trouver</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">:0041B5CF  61                  POPAD     </FONT><FONT SIZE="2" COLOR="yellow">&gt; restitution des registres</FONT><FONT
+SIZE="2">
+:0041B5D0  669D                POPF
+:0041B5D2  E9E99FFEFF          JMP       004055C0</FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">Et le JMP 004055C0 va nous donner la valeur de l'Original
+Entry Point d'API Spy 32.<BR>
+<BR>
+Reste &agrave; r&eacute;aliser un Dump de cette cible, histoire d'obtenir les String Data References qui vont nous
+aider &agrave; d&eacute;bugger le programme.<BR>
+Il y a diff&eacute;rentes solutions pour y arriver.<BR>
+L'une des plus facile est d'utiliser TRW 2000 :</FONT><FONT SIZE="2"></FONT>
+
+<BLOCKQUOTE>
+	<PRE><FONT SIZE="2"></FONT><FONT SIZE="2" COLOR="#FFCC00">:pedump</FONT><FONT SIZE="2">
+PE dump
+VirtualSize RVA PhysicalSize PhysicalOffset
+----------
+    f000     1000     3a00      400
+    1000    10000      c00     3e00
+    9000    11000     8a00     4a00
+    d268    1a000     161c     d400
+Writing DOS head
+Writing PE head, from 81630554, len f8+a0
+Writing 400218 len 27050</FONT></PRE>
+</BLOCKQUOTE>
+
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">(au passage, vous appr&eacute;cierez la facilit&eacute; d'utilisation
+de la commande </FONT><FONT SIZE="2" COLOR="#FFCC00" FACE="Arial">PeDump</FONT><FONT SIZE="2" FACE="Arial"> de
+TRW 2000, qui se charge de lui m&ecirc;me de nommer un Dump.exe dans le r&eacute;pertoire de l'application/cible).<BR>
+<BR>
+Sur la version de SoftIce que j'utilise, je n'ai pas encore install&eacute; IceDump (bien pratique lui aussi),
+mais il est facile de cr&eacute;er un autre Dump en utilisant le couteau suisse de l'UnPackage : ProcDump<BR>
+<BR>
+</FONT><U><B><FONT SIZE="2" FACE="Arial">Process :</FONT></B></U><FONT SIZE="2" FACE="Arial"><BR>
+<BR>
+- BPX sur l'adresse du passage de relais en 0041B5D2<BR>
+- &quot; a &quot; pour passer en mode assemblage<BR>
+- JMP EIP pour forcer le programme &agrave; boucler sur lui-m&ecirc;me<BR>
+- F5 pour quitter SoftIce<BR>
+- Ouverture de ProcDump, et s&eacute;lection de &quot; </FONT><FONT SIZE="2" COLOR="#FFCC00" FACE="Arial">Rebuilt
+import Table</FONT><FONT SIZE="2" FACE="Arial"> &quot; dans &quot; </FONT><FONT SIZE="2" COLOR="#00CCFF" FACE="Arial">Options</FONT><FONT
+SIZE="2" FACE="Arial"> &quot;<BR>
+- Clic Droit sur la cible dans la fen&ecirc;tre de ProcDump, et s&eacute;lection de &quot; </FONT><FONT SIZE="2"
+COLOR="#FFCC00" FACE="Arial">Dump Full</FONT><FONT SIZE="2" FACE="Arial"> &quot;<BR>
+- Sauvegarde du Dump obtenu, et r&eacute;ouverture de celui ci par &quot; </FONT><FONT SIZE="2" COLOR="#00CCFF"
+FACE="Arial">PE Editor</FONT><FONT SIZE="2" FACE="Arial"> &quot;<BR>
+- Modification du RVA de l'Entry Point qui passe de 01A000 &agrave; 0055C0</FONT><FONT SIZE="2"><BR>
+<BR>
+</FONT><FONT SIZE="2" FACE="Arial">Good ?<BR>
+Le dump obtenu RUN sans probl&egrave;me, et se d&eacute;sassemble sans fr&eacute;mir.<BR>
+<BR>
+Glop ! Glop !<BR>
+<BR>
+Mais que de manipulations pour un malheureux Dump !<BR>
+Et si nous automatisions tout cela, dans la mesure ou le Script de ProcDump ne le permet pas malgr&eacute; une
+option  &quot;Petite &lt; 1.3&quot;?<BR>
+<BR>
+Le probl&egrave;me, bien qu'il soit mineur, est que la signature du passage de relais (</FONT><FONT SIZE="2" COLOR="yellow"
+FACE="Arial">61 66 9D</FONT><FONT SIZE="2" FACE="Arial">)</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">:0041B5CF  </FONT><FONT SIZE="2" COLOR="yellow">61 </FONT><FONT SIZE="2">                 POPAD     
+:0041B5D0  </FONT><FONT SIZE="2" COLOR="yellow">669D</FONT><FONT SIZE="2">                POPF
+:0041B5D2  E9E99FFEFF          JMP       004055C0 </FONT><FONT SIZE="2" COLOR="#FFCC00">&gt; vers OEP</FONT><FONT
+SIZE="2"></FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">n'est pas accessible d&egrave;s l'Entry Point de la cible
+compress&eacute;e.<BR>
+En bloquant la fen&ecirc;tre des Data de SoftIce sur 0041B5CF, les codes qui nous int&eacute;ressent vont appara&icirc;tre
+en tra&ccedil;ant sur les lignes suivantes :</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">:0041A104  800424A1            ADD       BYTE PTR [ESP],A1
+:0041A108  50                  PUSH      EAX
+:0041A109  800424BF            ADD       BYTE PTR [ESP],BF
+:0041A10D  833A00              CMP       DWORD PTR [EDX],00 </FONT><FONT SIZE="2" COLOR="#FFCC00">&gt; ici</FONT><FONT
+SIZE="2"></FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">Le script envisag&eacute; va devoir trouver en premier des
+codes &quot;&eacute;vidents&quot; plac&eacute;s non loin des adresses ci dessus, avant de s'occuper de rechercher
+la signature de pETITE, et du passage de relais.<BR>
+Les lignes qui suivent me semblent faire parfaitement l'affaire :</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">017F:0041A196  </FONT><FONT SIZE="2" COLOR="#FFCC00">F3A4 </FONT><FONT SIZE="2">               REPZ MOVSB
+017F:0041A198  </FONT><FONT SIZE="2" COLOR="#FFCC00">5F</FONT><FONT SIZE="2">                  POP       EDI
+017F:0041A199  </FONT><FONT SIZE="2" COLOR="#FFCC00">5E   </FONT><FONT SIZE="2">               POP       ESI
+017F:0041A19A  </FONT><FONT SIZE="2" COLOR="#FFCC00">C3</FONT><FONT SIZE="2">                  RET  </FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">En recherchant un </FONT><FONT SIZE="2" COLOR="#FFCC00" FACE="Arial">F3
+A4 5F 5E C3</FONT><FONT SIZE="2" FACE="Arial"> (acc&eacute;sible d&egrave;s l'Entry point de pETITE en 0041A000),
+je vais pouvoir rebondir vers la recherche de ma seconde signature (</FONT><FONT SIZE="2" COLOR="#00CCFF" FACE="Arial">61
+66 9D</FONT><FONT SIZE="2" FACE="Arial">). Voici le script que je vous propose :</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">[Petite 1.2]
+L1=LOOK F3,A4,5F,5E,C3            ; 1er signature
+L2=OBJR                           ; nouvelle recherche
+L3=LOOK 61,66,9D                  ; seconde signature
+L4=BP                             ; pose d'un BreakPoint
+L5=STEP                           ; d&eacute;but du tra&ccedil;age
+OPTL1=00000000                    ; les lignes suivantes
+OPTL2=01000001                    ; correspondent aux options
+OPTL3=01010001                    ; que vous pouvez habituellement
+OPTL4=00030000                    ; s&eacute;lectionner dans
+OPTL5=00000000                    ; le menu &quot; OPTIONS &quot; de ProcDump</FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">En r&eacute;utilisant notre couteau suisse, mais cette fois
+ci via le bouton &quot; </FONT><FONT SIZE="2" COLOR="#00CCFF" FACE="Arial">UnPack </FONT><FONT SIZE="2" FACE="Arial">&quot;,
+vous verrez les messages suivant d&eacute;filer :</FONT><FONT SIZE="2"></FONT>
+<CENTER>
+<P><FONT SIZE="2"><IMG SRC="procdump.GIF" WIDTH="609" HEIGHT="299" ALIGN="BOTTOM" BORDER="0"></FONT></P>
+
+<P>
+<TABLE BORDER="0" CELLPADDING="0" CELLSPACING="0" WIDTH="100%">
+	<TR>
+		<TD WIDTH="55%">
+			<PRE><FONT SIZE="2" FACE="Arial">String search in progress .....
+Setting Memory Search Base to 0x0041A000   ; EntryPoint
+String search in progress .....
+Setting breakpoint at 0x0041B5CF        ; second signature trouv&eacute;e
+Breakpoint reached at 0x0041B5CF            
+Step by step analyzis activated ...           ; commence le tracing</FONT></PRE>
+		</TD>
+		<TD WIDTH="45%"><IMG SRC="Image1b.GIF" WIDTH="326" HEIGHT="119" ALIGN="BOTTOM" BORDER="0"></TD>
+	</TR>
+</TABLE>
+<FONT SIZE="2"></FONT>
+</CENTER>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">Glop ! Glop !<BR>
+Ca marche !<BR>
+<BR>
+C'est bien beau, un script, mais il arrive parfois qu'ils ne fonctionnent que pour un programme donn&eacute;, et
+qu'en l'appliquant sur une autre cible, ProcDump n'arrive pas &agrave; retrouver ces petits...<BR>
+Histoire de v&eacute;rifier rapidement si notre script est un peu plus gn&eacute;ral que pour API Spy 32 uniquement,
+le plus simple est de Packer un autre programme avec pETITE 1.2 est v&eacute;rifier ainsi si le script a une chance
+d'&ecirc;tre plus g&eacute;n&eacute;rique.<BR>
+Une fois de plus, c'est Notepad.exe qui va jouer le r&ocirc;le du programme test. A croire qu'on lui en veut, &agrave;
+ce petit truc... j'ai l'impression qu'aucun ex&eacute;cutable n'a &eacute;t&eacute; plus sollicit&eacute; pour
+toutes les bidouilles possibles que ce programme de 56 Ko.</FONT><FONT SIZE="2"></FONT></P>
+<P ALIGN="CENTER"><IMG SRC="Image3b.GIF" WIDTH="572" HEIGHT="359" ALIGN="BOTTOM" BORDER="0"><FONT SIZE="2"></FONT>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">Une fois pack&eacute;, le programme va gagner 9 Ko soit grosso
+modo un gain de 17%. Une fois ProcDump&eacute; le programme va par contre passer &agrave; 116 Ko. La diff&eacute;rence
+est essentiellement due &agrave; la pr&eacute;sence des codes de pETITE qui bien que non utilis&eacute;s restent
+pr&eacute;sent dans le Dump obtenu.<BR>
+<BR>
+A titre de comparaison, API Spy 32.exe fait 59 Ko (admirable !  il existe encore des programme qui ne fassent pas
+obligatoirement 140 Mo...). En utilisant le script, il passe &agrave; 137 Ko. 135 Ko en utilisant la technique
+du JMP EIP/Dump Full de ProcDump, et 157 Ko avec la fonction int&eacute;gr&eacute;e PeDump de TRW 2000.<BR>
+<BR>
+Vainqueur de notre grand test (benchmarck Chr 1s Tal), le Dump Full de ProcDump !<BR>
+<BR>
+Quelle que soit la m&eacute;thode, wdasm va donner les String Data References qui vont nous simplifier la suite
+de la correction des Bugs dont est atteint API Spy 32 :<BR>
+<BR>
+</FONT><B><U><FONT SIZE="2" FACE="Arial">Infections :</FONT></U></B><FONT SIZE="2" FACE="Arial"></FONT></P>
+<CENTER>
+<P>
+<TABLE BORDER="0" CELLPADDING="8" CELLSPACING="0" WIDTH="97%">
+	<TR>
+		<TD WIDTH="43%"><IMG SRC="Image6.GIF" WIDTH="320" HEIGHT="152" ALIGN="BOTTOM" BORDER="0"></TD>
+		<TD WIDTH="57%"><FONT SIZE="2" FACE="Arial">- Splash Screen au lancement de l'application, avec la mention &quot; UNREGISTERED
+			&quot;<BR>
+			- Imm&eacute;diatement derri&egrave;re, une boite de dialogue &quot; this copy is UNREGISTERED &quot; et &quot;Registration
+			info can be found...&quot;<BR>
+			- A nouveau &quot; UNREGISTERED &quot; qui s'affiche dans le bandeau d'&eacute;cran au lancement de la fen&ecirc;tre
+			principale de l'application (la m&ecirc;me cha&icirc;ne de cract&egrave;res est elle utilis&eacute;e pour tous
+			les &quot; UNREGISTERED &quot; ?)</FONT></TD>
+	</TR>
+	<TR>
+		<TD WIDTH="43%"><FONT SIZE="2" FACE="Arial">- Un bouton &quot; Register &quot; dans le bas de cette fen&ecirc;tre qui donne acc&egrave;s
+			&agrave; une boite d'enregistrement &agrave; deux champs (Name et serial), et un message d'erreur &quot; the registration
+			information you provided... &quot;<BR>
+			- Une boite &quot; About &quot; avec une fois de plus le texte &quot; UNREGISTERED &quot; (soit 4 fois cette phrase
+			qui va s'afficher).</FONT></TD>
+		<TD WIDTH="57%"><IMG SRC="bandeau.GIF" WIDTH="378" HEIGHT="93" ALIGN="BOTTOM" BORDER="0"><FONT SIZE="2" FACE="Arial"><BR>
+<BR>
+<IMG SRC="register.GIF" WIDTH="328" HEIGHT="51" ALIGN="BOTTOM" BORDER="0"></FONT></TD>
+	</TR>
+</TABLE>
+<FONT SIZE="2" FACE="Arial"></FONT>
+</CENTER>
+<P><FONT SIZE="2" FACE="Arial">Il y a peut &ecirc;tre encore d'autres infections Sharewares, mais celles ci vont
+&ecirc;tre suffisantes pour le moment.<BR>
+<BR>
+Qu'avons nous comme Strings Data dans Wdasm :</FONT><FONT SIZE="2"></FONT>
+
+<BLOCKQUOTE>
+	<P><FONT SIZE="2"></FONT><FONT SIZE="2" COLOR="white" FACE="Arial">&quot;Registered to &quot;<BR>
+	&quot;Registration info can be found &quot;<BR>
+	&quot;Thanks for Registering APIS32!&quot;<BR>
+	&quot;The registration information you &quot;<BR>
+	&quot;This  copy  of  APIS32  is&quot;<BR>
+	&quot;UNREGISTERED&quot;<BR>
+	&quot;UserKey&quot;<BR>
+	&quot;UserName&quot;</FONT><FONT SIZE="2" FACE="Arial"></FONT>
+</BLOCKQUOTE>
+
+<P><FONT SIZE="2" FACE="Arial">En double-cliquant sur ces Strings, vous trouverez rapidement un point commun li&eacute;
+&agrave; la proc&eacute;dure Contr&ocirc;le/v&eacute;rifications/tests : le Call 004046A0.<BR>
+Voici un &quot;morceau choisi&quot; des routines les plus int&eacute;ressantes :</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2"></FONT><FONT SIZE="2" COLOR="lime">* Possible StringData Ref from Data 0bj -&gt;&quot; - &quot;
+I</FONT><FONT SIZE="2">
+:0040175A 6828934000              push 00409328  </FONT><FONT SIZE="2" COLOR="#FFCC00">&gt; &quot; - &quot;</FONT><FONT
+SIZE="2">
+:0040175F 68EOD14000              push 0040D1EO  </FONT><FONT SIZE="2" COLOR="#FFCC00">&gt; &quot; API Spy 32 &quot;</FONT><FONT
+SIZE="2">
+:00401764 FF15F8024100            call dword ptr [004102F8]
+:0040176A E8312FOOOO              </FONT><FONT SIZE="2" COLOR="#00CCFF">call 004046AO</FONT><FONT SIZE="2">  </FONT><FONT
+SIZE="2" COLOR="#FFCC00">&gt; ? ? ?</FONT><FONT SIZE="2">
+:0040176F A374CE4000              mov dword ptr [0040CE74], eax </FONT><FONT SIZE="2" COLOR="#FFCC00">-&gt; Flag ?</FONT><FONT
+SIZE="2">
+:00401774 EB01                    jmp 00401777
+
+:00401777 0ACO                    or al, al      </FONT><FONT SIZE="2" COLOR="#FFCC00">&gt; en fonction de EAX</FONT><FONT
+SIZE="2">
+:00401779 7402                    je 0040177D    </FONT><FONT SIZE="2" COLOR="#FFCC00">&gt; vous irez en Pas Glop!</FONT><FONT
+SIZE="2">
+:0040177B EB2C                    jmp 004017A9   </FONT><FONT SIZE="2" COLOR="#FFCC00">&gt; ou en Glop! Glop!</FONT><FONT
+SIZE="2"></FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="1" COLOR="lime" FACE="Courier New">* Possible StringData Ref from Data 0bj
+-&gt;&quot;The registration information you provided is incorrect. P1ease&quot;</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">:0040177D BFE8904000              mov edi, 004090E8
+:00401782 BAEOD14000              mov edx, 0040D1EO</FONT></PRE>
+<PRE ALIGN="CENTER"><FONT SIZE="2">------------------------snips---------------------------------</FONT></PRE>
+<PRE><FONT SIZE="2">* Referenced by a (U)nconditional or (C)onditiona1 Jump at Address:
+|:0040177B(U)
+I
+</FONT><FONT SIZE="2" COLOR="#00CC00">* Possible StringData Ref from Data 0bj -&gt;&quot;Registered to &quot;</FONT><FONT
+SIZE="2">
+I
+:004017A9 BF40904000              mov edi, 00409040
+:004017AE BAEOD14000              mov edx, 0040D1EO
+
+</FONT><FONT SIZE="2" COLOR="#00CC00">* Possible StringData Ref from Data 0bj -&gt;&quot;Thanks for Registering APIS32!&quot;</FONT><FONT
+SIZE="2">
+I
+:0040181E BFA8904000              mov edi, 004090A8
+:00401823 BAEOD14000              mov edx, 0040D1EO</FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">Et va inscrire les informations Name et Serial dans la base
+de registre.<BR>
+<BR>
+Une recherche sur une autre String va nous redonner le Call 004046A0 :</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">:004015CC E8CF300000              </FONT><FONT SIZE="2" COLOR="#00CCFF">call 004046A0</FONT><FONT
+SIZE="2"> </FONT><FONT SIZE="2" COLOR="#FFCC00">&gt; Contr&ocirc;le</FONT><FONT SIZE="2">
+:004015D1 EB01                    jmp 004015D4
+
+:004015D4 0ACO                    or al, al     </FONT><FONT SIZE="2" COLOR="#FFCC00">&gt; Registered ?</FONT><FONT
+SIZE="2">
+:004015D6 7402                    je 004015DA   </FONT><FONT SIZE="2" COLOR="#FFCC00">&gt; Pas Glop! pas Glop!</FONT><FONT
+SIZE="2">
+:004015D8 EB35                    jmp 0040160F  </FONT><FONT SIZE="2" COLOR="#FFCC00">&gt; Glop! Glop!
+</FONT><FONT SIZE="2">
+* Referenced by a (U)nconditional or (C)onditiona1 Jump at Address:
+|:004015D6(C)
+</FONT><FONT SIZE="2" COLOR="#FFCC00">
+</FONT><FONT SIZE="2" COLOR="lime">* Possible StringData Ref from Data 0bj -&gt;&quot;UNREGISTERED&quot;</FONT><FONT
+SIZE="2"></FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">Vous retrouverez une fois de plus le m&ecirc;me sch&eacute;ma
+pour la String Data suivante :</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">:004025E6 E8B5200000              </FONT><FONT SIZE="2" COLOR="#00CCFF">call 004046AO</FONT><FONT
+SIZE="2">
+:004025EB A374CE4000              mov dword ptr [0040CE74], eax
+:004025FO EB01                    jmp 004025F3
+
+:004025F3 0ACO                    or al, al
+:004025F5 7402                    je 004025F9
+:004025F7 EB70                    jmp 00402669
+* Referenced by a (U)nconditional or (C)onditiona1 Jump at Address:
+|:004025F5(C)
+I
+</FONT><FONT SIZE="2" COLOR="lime">* Possible StringData Ref from Data 0bj -&gt;&quot;This  copy  of  APIS32  is&quot;</FONT><FONT
+SIZE="2"></FONT></PRE>
+<P><FONT SIZE="2"><BR>
+</FONT><FONT SIZE="2" FACE="Arial">Le or al,al va ex&eacute;cuter un OU logique sur le registre EAX. Si celui ci
+est &eacute;gal &agrave; z&eacute;ro, vous &ecirc;tes Bad Boy.<BR>
+Vous ne pensez pas que le call 004046A0 m&eacute;rite une petite visite ?</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">* Referenced by a CALL at Addresses:
+|:004015CC   , :0040176A   , :00401D1A   , :00401F39   , :004025E6
+I
+:004046AO       push ecx
+:004046A1       push ebx
+:004046A2       push ebp
+:004046A3       push esi
+:004046A4       push edi
+:004046A5       push 00000050
+:004046A7       push 0040C6AO
+
+</FONT><FONT SIZE="2" COLOR="#00CC00">* Possible StringData Ref from Data 0bj -&gt;&quot;UserKey&quot;</FONT><FONT
+SIZE="2">
+I
+:004046AC       push 00409608
+:004046B1       call 004049DO
+:004046B6       add esp, 0000000C
+:004046B9       cmp eax, 00000010  </FONT><FONT SIZE="2" COLOR="#FFCC00">&gt; serial de 17 caract&egrave;res ?</FONT><FONT
+SIZE="2">
+:004046BC       jge 004046C6       </FONT><FONT SIZE="2" COLOR="#FFCC00">&gt; Good Boy continue</FONT><FONT SIZE="2">
+:004046BE       xor eax, eax      </FONT><FONT SIZE="2" COLOR="#FFCC00"> &gt; Bad Boy est Xor&eacute;</FONT><FONT
+SIZE="2"></FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">Pour un crack facile, inutile d'aller beaucoup plus loin.
+En for&ccedil;ant EAX=01 &agrave; la place du Xor, vous quittez la proc&eacute;dure, mais avec la valeur dans EAX
+qui va vous faire passer pour Registered. Il ne restera plus qu'&agrave; patcher le Dump, ou &agrave; utiliser
+un Memory Patcher, comme nous le verrons &agrave; la fin de cette bafouille.<BR>
+<BR>
+Voyons quand m&ecirc;me un peu la suite.<BR>
+Qui dit Userkey, UserName, dit souvent base de registre. Qu'en est-il de ce cot&eacute;, sachant qu'il y a 8 adresses
+qui se rapportent &agrave; ces Strings, ce qui permet d'&eacute;mettre l'hypoth&egrave;se que bon ou mauvais, le
+Name et le serial entr&eacute; sont m&eacute;moris&eacute; quelque part ?</FONT>
+<P ALIGN="CENTER"><FONT SIZE="2" FACE="Arial"><IMG SRC="reg.GIF" WIDTH="364" HEIGHT="142" ALIGN="BOTTOM" BORDER="0"></FONT></P>
+
+<BLOCKQUOTE>
+	<BLOCKQUOTE>
+		<BLOCKQUOTE>
+			<BLOCKQUOTE>
+				<P><FONT SIZE="2" FACE="Arial">[HKEY_LOCAL_MACHINE\Software\APIS32]<BR>
+				&quot;</FONT><FONT SIZE="2" COLOR="#FFCC00" FACE="Arial">UserKey</FONT><FONT SIZE="2" FACE="Arial">&quot;=hex(0):45,30,34,42,31,39,36,44,2d,35,30,37,44,36,43,35,39<BR>
+				&quot;</FONT><FONT SIZE="2" COLOR="#FFCC00" FACE="Arial">UserName</FONT><FONT SIZE="2" FACE="Arial">&quot;=hex(0):63,68,72,69,73,74,61,6c</FONT>
+			</BLOCKQUOTE>
+		</BLOCKQUOTE>
+	</BLOCKQUOTE>
+</BLOCKQUOTE>
+
+<P><FONT SIZE="2" FACE="Arial">Premi&egrave;re info qui va peut &ecirc;tre pouvoir nous aider, le Name et le Serial
+sont sous leurs formes Hexa/Ascii : 63h est la correspondance ASCII du &quot; c &quot;...</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2"></FONT><FONT SIZE="2" COLOR="lime">* Possible StringData Ref from Data 0bj -&gt;&quot;UserName&quot;</FONT><FONT
+SIZE="2">
+I
+:004046CD       push 004095F8
+:004046D2       cal1 004049DO
+:004046D7       add esp, 0000000C
+:004046DA       cmp eax, 00000005     &gt; Name de 5 caract&egrave;res ?
+:004046DD       jge 004046E7          &gt; Good Boy continue
+:004046DF       xor eax, eax          &gt; Bad boy est Xor&eacute;</FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">Vous &ecirc;tes au tout d&eacute;but de la routine de v&eacute;rification
+du serial entr&eacute;. Pour vous &eacute;viter une indigestion de Dead Listing, je ne vais vous donner que les
+lignes les plus repr&eacute;sentatives de cette routine :<BR>
+<BR>
+De 004046E7 &agrave; 00404730 le programme va d&eacute;placer le serial dans un autre espace m&eacute;moire. Vous
+aurez donc le serial entr&eacute; en [0040C6B4] et en [0040C6A0]</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">:0040473A       mov esi, 0040C6A1     &gt; 2d caract&egrave;re du serial
+:0040473F       mov edi, 0040C6B4     &gt; 1er caract&egrave;re du serial
+:00404744       push edi              &gt; serial sauv&eacute; sur la pile
+:00404745       call 00404930         &gt; visite obligatoire</FONT></PRE>
+
+<BLOCKQUOTE>
+	<PRE><FONT SIZE="2">:00404930 mov ecx, dword ptr [esp+04] &gt; pointe sur [0040C6B4]
+:00404934 mov al, byte ptr [ecx]      &gt; 1er caract&egrave;re du serial 
+:00404936 cmp al, 39                  &gt; est-ce un chiffre (&lt;9) ?
+:00404938 jle 0040493E                &gt; si oui, saute    
+:0040493A add al, C9                  &gt; ajoute 201d (conversion)
+:0040493C jmp 00404940                &gt; saute
+:0040493E add al, D0                  &gt; ajoute 208d (conversion)
+:00404940 mov cl, byte ptr [ecx+01]   &gt; second caract&egrave;re du serial
+:00404943 cmp cl, 39                  &gt; est-ce un chiffre (&lt;9) ?
+:00404946 jle 00404951                &gt; si oui, saute
+:00404948 shl al, 04                  &gt; d&eacute;calage d'un octet sur la gauche
+:0040494B sub cl, 30                  &gt; d&eacute;duit 30 &agrave; CL                
+:0040494E or al, cl                   &gt; AH !
+:00404950 ret</FONT></PRE>
+</BLOCKQUOTE>
+
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">Dans ce Call, vous avez une manipulation de votre serial sur
+le 1er (0040C6B4) et le second caract&egrave;re (0040C6A1) de celui ci.<BR>
+Le sous-registre AL va recevoir la valeur hexa/ASCII de [0040C6B4], par exemple &quot; 34 &quot; si votre premier
+caract&egrave;re est un &quot; 4 &quot;. Le Add Al,D0 va rajouter 208d &agrave; cette valeur ASCII &quot; 34 &quot;
+qui va se &quot; convertir &quot; en un &quot; 4 &quot; (le chiffre hexad&eacute;cimal). Le sous-registre CL (la
+partie basse de ECX) va prendre quant &agrave; lui la valeur de [0040C6A1] que le programme va &quot; convertir
+&quot; en l'&eacute;quivalent hexad&eacute;cimal de sa valeur ASCII.<BR>
+<BR>
+AL va &ecirc;tre d&eacute;cal&eacute; d'un octet sur la gauche par le shl al,04 et forcer le registre EAX &agrave;
+prendre la valeur 40.<BR>
+Puis Al va &ecirc;tre OR&eacute; avec CL. On pourrait r&eacute;sumer cette routine par :<BR>
+<BR>
+Al= 1er caract&egrave;re du serial (par exemple 4)<BR>
+Cl= 2d caract&egrave;re du serial (par exemple 8)<BR>
+<BR>
+(Al x 10) OR Cl  Soit (4 x 10) + 8 = 48  </FONT><FONT SIZE="2" FACE="Courier New">-&gt;</FONT><FONT SIZE="2" FACE="Arial">
+le r&eacute;sultat est dans EAX<BR>
+<BR>
+Le OR Al, CL va &ecirc;tre la premi&egrave;re manipulation int&eacute;ressante de notre serial. A la sortie de
+cette routine, CL est remis &agrave; z&eacute;ro par BL qui joue le r&ocirc;le de compteur, puis CL prend la valeur
+50h, et EDI va pointer sur le 3&egrave;me caract&egrave;re du serial entr&eacute;:</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">:0040474A       mov cl, bl
+:0040474C       add esp, 00000004
+:0040474F       add cl, 50
+:00404752       add edi, 00000002</FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">Nouvelle manipulation, le r&eacute;sultat obtenu est XOR&eacute;
+avec 50h :</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">:00404755       xor al, cl                &gt; 50 - 48  -&gt; Al = 18
+:00404757       inc bl                    &gt; le compteur est incr&eacute;ment&eacute;
+:00404759       mov byte ptr [esi-01], al &gt; le r&eacute;sultat est m&eacute;moris&eacute;
+:0040475C       mov byte ptr [esi], 00    &gt; et NULL Terminated
+:0040475F       inc esi                   &gt; pointe sur le caract&egrave;re suivant
+:00404760       cmp bl, 08                &gt; 8 caract&egrave;res ont &eacute;t&eacute; trait&eacute;s ?
+:00404763       jb 00404744               &gt; non -&gt; boucle</FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">Cette op&eacute;ration s'effectue uniquement sur 8 caract&egrave;res,
+ce qui, avec le test d'un serial (en 004046B9) ayant une longueur de 11h caract&egrave;res (17d), laisse &agrave;
+supposer que celui ci est compos&eacute; de deux parties de 8 caract&egrave;res chacune, probablement s&eacute;par&eacute;es
+par un &quot; - &quot;<BR>
+<BR>
+Une fois le serial trait&eacute; une premi&egrave;re fois (vous obtiendrez au final une cha&icirc;ne du type </FONT><FONT
+SIZE="2" COLOR="#FFCC00" FACE="Arial">18 C2 67 83 84 85 86 87</FONT><FONT SIZE="2" FACE="Arial">). Le traitement
+suivant va se faire dans la foul&eacute;e sur la cha&icirc;ne cr&eacute;e, et sur ce principe : <BR>
+<BR>
+EAX vaut 1 &agrave; l'entr&eacute;e de cette routine.</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">:0040498C       mov dl, byte ptr [edi+esi] &gt; 1er chaine cr&eacute;e (</FONT><FONT SIZE="2"
+COLOR="#FFCC00">18 C2 67</FONT><FONT SIZE="2">...)
+:0040498F       mov edi, edx               &gt; EDI =  DL = 1ere valeur
+:00404991       mov edx, edi               &gt; EDX = EDI = par ex:18h
+:00404993       imul eax, edx              &gt; EAX x EDX 
+:00404996       cmp eax, 00008899          &gt; EAX &gt;= 8899h
+:0040499B       jle 004049A7               &gt; Non -&gt; saute
+:0040499D       cdq                        &gt; Oui
+:0040499E       mov ebx, 00008899          &gt; EBX = 8899h
+:004049A3       idiv ebx                   &gt; EAX/8899h reste dans EDX
+:004049A5       mov eax, edx               &gt; EAX = reste de la division
+:004049A7       mov edx, dword ptr [esp+14]&gt; nb de valeurs &agrave; traiter (8)
+:004049AB       dec edx                    &gt; d&eacute;cr&eacute;ment&eacute;e
+:004049AC       mov dword ptr [esp+14],edx &gt; et rem&eacute;moris&eacute;e
+:004049B0       jne 00404991               &gt; si EDX &gt;0 -&gt; loop
+:004049B2       cdq                        &gt; EAX &lt; 8899
+:004049B3       mov edi, 000000BB          &gt; EDI = BBh
+:004049B8       idiv edi                   &gt; EAX/BBh reste dans EDX
+:004049BA       inc ecx                    &gt; incr&eacute;mente compteur 
+:004049BB       cmp ecx, 00000008          &gt; 8 valeurs trait&eacute;es ?
+:004049BE       mov byte ptr [esi], dl     &gt; cr&eacute;e nouvelle cha&icirc;ne (1D B6...)
+:004049C0       mov byte ptr [ecx+ebp], 00 &gt; NULL terminated
+:004049C4       jl 00404976                &gt; loop s'il reste des valeurs
+:004049C6       pop edi
+:004049C7       pop esi
+:004049C8       pop ebp
+:004049C9       pop ebx
+:004049CA       ret</FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">A la sortie de cette routine, une nouvelle cha&icirc;ne a
+&eacute;t&eacute; cr&eacute;e, du type </FONT><FONT SIZE="2" COLOR="#FFCC00" FACE="Arial">1D B6 89 6D 37 17 A1
+98</FONT><FONT SIZE="2" FACE="Arial">.<BR>
+<BR>
+C'est ensuite au tour du Name entr&eacute; d'&ecirc;tre bidouill&eacute; :</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">:00404774       mov edi, 0040CF00         &gt; Name entr&eacute;
+
+:00404797       mov ecx, edx              &gt; ECX = Name+1 (nb caract&egrave;res du Name+1)
+
+:004047AA       dec ecx                   &gt; Nb caract&egrave;re du Name
+:004047AB       cmp cl, 08                &gt; seul 8 premiers caract&egrave;res trait&eacute;s
+|
+:004047EB       mov ecx, 0040C6B4         &gt; ECX = 2d cha&icirc;ne cr&eacute;e
+:004047F0       mov esi, 00000008         &gt; 8 valeurs &agrave; traiter dans cette cha&icirc;ne
+:004047F5       mov al, byte ptr [ecx]    &gt; AL = 1ere valeur de la cha&icirc;ne
+
+:00404802       mov dl, byte ptr [ecx+0A] &gt; DL = 1&egrave;re lettre du Name
+
+:00404813       xor edx, eax              &gt; DL XOR AL
+:00404815       add ebp, edx              &gt; r&eacute;sultat m&eacute;moris&eacute; dans EBP</FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">C'est en 00404813 que tout ce joue. Les caract&egrave;res
+du Name et les valeurs de la seconde cha&icirc;ne sont manipul&eacute;s par le XOR. Il faut, pour que votre serial
+soit valide, que les valeurs de la seconde cha&icirc;ne g&eacute;n&eacute;r&eacute;e soient identiques aux caract&egrave;res
+composant votre Name (ce qui peut para&icirc;tre surprenant dans la mesure ou le Name doit comprendre au moins
+5 caract&egrave;res). Bref, la seconde cha&icirc;ne recr&eacute;e votre Name !<BR>
+EBP re&ccedil;oit le r&eacute;sultat du Xor entre les caract&egrave;res composant le Name et la seconde cha&icirc;ne
+qui a &eacute;t&eacute; cr&eacute;e &agrave; partir de la premi&egrave;re, elle-m&ecirc;me cr&eacute;e &agrave;
+partir du serial entr&eacute;. EBP est donc sens&eacute; &ecirc;tre &eacute;gal &agrave; z&eacute;ro si votre serial
+est valide. Le TEST EBP,EBP va alors modifier le Z&eacute;ro Flag qui par le SETE AL suivant va placer la valeur
+01 dans le registre EAX.</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">:0040481E       test ebp, ebp
+:00404820       pop esi
+:00404821       pop ebp
+:00404822       sete al
+:00404825       pop ebx
+:00404826       pop ecx
+:00404827       ret</FONT></PRE>
+
+<PRE><FONT SIZE="2"></FONT></PRE>
+<P><B><U><FONT COLOR="#FFCC00" FACE="Arial">KeyGener API Spy 32:</FONT></U></B><FONT SIZE="2" FACE="Arial"></FONT></P>
+
+<P><FONT SIZE="2" FACE="Arial"><BR>
+Un keyMaker pourrait avoir cette allure :</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">;========================================================================= 
+;                            KeyGenerator 
+;        la bonne cl&eacute; se trouve dans EDX &agrave; la fin de la routine   
+;=========================================================================  	
+pushad
+        mov     [Key], 0                      ; mise &agrave; 0 de Key pour serials multiples
+        mov     dword ptr [Name_Length],eax   ; lg Name r&eacute;cup&eacute;r&eacute;e par GetDlgItemtext
+        mov     edx, offset Name_Length       ; mis dans edx
+        movzx   ebx, byte ptr [edx+1]         ; ebx = Name+1
+        cmp     eax, 05                       ; 5 caract&egrave;res mini pour le name
+        jl      Trop_court                    ; affichage &quot;Name trop court&quot;
+        cmp     ebx, 8                        ; Name+1 &gt; 8 ?
+        jnl     no_movsb                      ; pas de d&eacute;placement
+        lea     edi, Key                      ; charge adresse Key
+        lea     esi, _Name                    ; charge adresse Name
+        mov     ecx, 8                        ; ecx = taille du cache
+        sub     ecx, ebx                      ; ecx = ecx - ebx (name+1)
+        rep     movsb                         ; d&eacute;place Name -&gt;Key de ECX caract&egrave;res
+        mov     dword ptr [edi],0             ; et termine la chaine par des 0000
+        mov     dword ptr [edi+4],0           ; pour permettre serials multiples
+        
+no_movsb:
+        xor     ecx, ecx                      ; compteur nb de caract&egrave;re                  
+
+loop1:
+        call    generator                     ; Key2 va recevoir une valeur de la cha&icirc;ne
+        inc     ecx                           ; caract&egrave;re suivant
+        cmp     ecx, 8                        ; tous trait&eacute;s?
+        jl      loop1                         ; non -&gt; loop
+        lea     edi, Key2                     ; oui -&gt; charge adresse cha&icirc;ne g&eacute;n&eacute;r&eacute;
+        xor     ebx,ebx                       ; compteur caract&egrave;res du serial &agrave; cr&eacute;er 
+loop2:
+        movzx   eax, byte ptr [edi+ebx]       ; 1 valeur de la cha&icirc;ne dans EAX
+        mov     cl, bl                        ; compteur dans CL
+        add     cl, 50h                       ; ajoute 50h
+        xor     al, cl                        ; valeur cha&icirc;ne XOR cl
+        mov     [edi+ebx], al                 ; stock&eacute; dans Key2
+        call    ALtoAX                        ; et converti en chiffre
+        shl     bx, 1                         
+        mov     word ptr [ebx+Serial], ax     ; puis stock&eacute; dans @ Serial   
+        shr     bx, 1
+        inc     bl                            ; incr&eacute;mente compteur
+        cmp     bl, 8                         ; les 8 caract&egrave;res sont g&eacute;n&eacute;r&eacute;s?
+        jb      loop2
+        lea     edi, Key2                     ; EDI = @ o&ugrave; va &ecirc;tre plac&eacute; le serial 
+        lea     esi, Serial+8                 ; ESI pointe sur adresse serial+8
+        mov     cx, 8                         ; nb de caract&egrave;res &agrave; d&eacute;placer
+        rep     movsb                         ; d&eacute;placement
+        lea     esi, Key2                     ; ESI = @ o&ugrave; va &ecirc;tre plac&eacute; le serial 
+        lea     edi, Serial+9                 ; EDI pointe sur adresse serial+9
+        mov     cx, 8                         ; 8 caract&egrave;res &agrave; d&eacute;placer
+        rep     movsb                         ; d&eacute;placement
+        mov     byte ptr [Serial+8], 2dh      ; rajoute le tiret (-)
+        mov     byte ptr [Serial+11h], 0      ; NULL Terminated String
+  
+        mov     edx, offset Serial            ; r&eacute;cup&egrave;re le serial dans EDX
+
+jmp 	Affiche 
+
+; ----------------------------------------------------------------------------
+; Le programme va tourner jusqu'&agrave; ce qu'une valeur corresponde 
+; au caract&egrave;re du Name en cours et la m&eacute;moriser dans Key2
+; ----------------------------------------------------------------------------
+
+generator proc
+loop3:
+        lea     esi, [Key2]           ; Key2 = Cha&icirc;ne &agrave; cr&eacute;er
+        xor     edx, edx              ; coef = 0
+        mov     eax, 1                ; m&eacute;moire = 1
+        mov     byte ptr counter, 7   ; compteur = 7
+        mov     dl, [ecx+esi]         ; ECX = nb caract&egrave;res
+        mov     edi, edx              ; sauve coef dans EDI
+
+loop5:
+        mov     edx, edi              ; r&eacute;cup&egrave;re coef
+        imul    eax, edx              ; m&eacute;moire x coef
+        cmp     eax, 8899h            ; le r&eacute;sultat d&eacute;passe 8899?
+        jle     loop4                 ; va en caract&egrave;re suivant
+        cdq                           ; sinon
+        mov     ebx, 8899h            ; ebx = 8899
+        idiv    ebx                   ; m&eacute;moire/coef
+        mov     eax, edx              ; reste dans EAX
+
+loop4:
+        dec     counter               ; les 8 boucles sont pass&eacute;s? 
+        jnz     loop5                 ; non -&gt; loop
+        cdq
+        mov     edi, 0BBh             ; EDI = BB
+        idiv    edi                   ; EAX/EDI 
+        cmp     byte ptr [ecx+Key],dl ; compare si le reste = caract&egrave;re du Name
+        jz      exit_proc             ; si egale alors c'est Good -&gt; bye bye
+        inc     byte ptr [Key2+ecx]   ; caract&egrave;re suivant. Incr&eacute;mente cha&icirc;ne &agrave; cr&eacute;er
+        jmp     loop3
+
+exit_proc:
+                 ret
+generator endp</FONT></PRE>
+<P><FONT SIZE="2"><BR>
+</FONT><B><U><FONT COLOR="#FFCC00" FACE="Arial">Patcher pETITE 1.2:</FONT></U></B><FONT SIZE="2" FACE="Arial"><BR>
+<BR>
+Du plus simple au plus compliqu&eacute;, commen&ccedil;ons avec un Memory Patcher.<BR>
+R!SC Process Patcher, via un script, va permettre de cr&eacute;er un petit loader qui se chargera de lancer l'application,
+et de chercher les adresses &agrave; modifier. Comme la cible est compress&eacute;e, il faudra lui laisser un peu
+de temps pour qu'il puisse effectuer la modification attendue :</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">T=30000:                  ; 30000 milisecondes
+F=apis32.exe:             ; nom du programme &agrave; lancer  
+P=4046BE/33,C0/B0,01:     ; modification &agrave; apporter &agrave; l'adresse 004046BE
+$                         ; fin du script</FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">Un peu plus compliqu&eacute;, il y a le Hard Patching de l'application.<BR>
+Dans la mesure o&ugrave; le passage de relais de pETITE n'est pas lisible d&egrave;s l'EntryPoint, il va falloir
+agir en deux temps :<BR>
+<BR>
+- Coincer une adresse &quot; clean &quot; d&egrave;s l'Entry Point, un peu apr&egrave;s que le passage de relais
+sera devenu accessible &agrave; son tour (donc apr&egrave;s l'adresse 0041A10D). Les codes &agrave; cette adresse
+devront pouvoir &ecirc;tre remplac&eacute;s par les 5 octets n&eacute;cessaires &agrave; un JMP long sans perturber
+le programme. Ce JUMP devra permettre de se rendre &agrave; l'adresse d'un premier patch.<BR>
+<BR>
+- Modifier avec le patch1 le JMP OEP, avant que pETITE ne passe le relais &agrave; API Spy 32, pour forcer pETITE
+&agrave; se rendre &agrave; un Patch2 qui modifiera API Spy &agrave; l'adresse souhait&eacute;e (et d&eacute;sormais
+d&eacute;compress&eacute;e).<BR>
+<BR>
+</FONT><U><B><FONT SIZE="2" FACE="Arial">1- Trouver une adresse </FONT></B></U><FONT SIZE="2" FACE="Arial"><BR>
+<BR>
+En partant de 0041A10D, et en tra&ccedil;ant un peu, vous verrez un test dword ptr [EDX], 80000000 qui devrait
+parfaitement convenir :</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">.0041A10D: 833A00                       cmp       d,[edx],000 
+.0041A110: 0F84A7140000                 je       .00041B5BD   
+.0041A116: F70200000080                 </FONT><FONT SIZE="2" COLOR="#00CCFF">test      d,[edx],080000000</FONT><FONT
+SIZE="2"> 
+.0041A11C: 741B                         je       .00041A139   </FONT></PRE>
+<P><FONT SIZE="2"><BR>
+</FONT><U><B><FONT SIZE="2" FACE="Arial">2- Trouver de la place pour les Patchs</FONT></B></U><FONT SIZE="2" FACE="Arial"><BR>
+<BR>
+Il existe de nombreuses variantes pour trouver de la place. L'une d'entre elles consiste &agrave; squatter un espace
+en fin d'une section, l&agrave; o&ugrave; pour une question d'alignement sur un multiple du CODE, le compilateur
+a compl&eacute;t&eacute; cette section par du PADDING. Le probl&egrave;me avec un (bon) compresseur, c'est qu'il
+va justement chercher &agrave; supprimer au maximum les 0000 qui ne servent &agrave; rien.<BR>
+<BR>
+Une autre solution consiste &agrave; prendre le risque de modifier la section .rsrc, l&agrave; o&ugrave; le programme
+va stocker ses ic&ocirc;nes. Dans la mesure ou nos patchs vont &ecirc;tre tout petit, l'alt&eacute;ration &eacute;ventuelle
+de ces ic&ocirc;nes est en g&eacute;n&eacute;ral invisible. Il faudra par contre s'assurer que la d&eacute;compression
+du programme ne viendra pas interf&eacute;rer avec notre patch. Un BPR W (Write) sur les adresses convoit&eacute;es
+permettra de s'assurer que rien ne viendra &eacute;craser les zolis codes que l'on va y placer. <BR>
+<BR>
+Good ! je vais m'installer en 00411F90.<BR>
+<BR>
+</FONT><U><B><FONT SIZE="2" FACE="Arial">3- D&eacute;tourner pETITE vers le patch 1</FONT></B></U><FONT SIZE="2"><BR>
+</FONT>
+<PRE><FONT SIZE="2">.0041A116: E9757EFFFF                 jmp 00411F90   &gt; aiguillage
+.0041A11B: 90                         nop            &gt; &eacute;quilibrage</FONT></PRE>
+<P><FONT SIZE="2" FACE="Arial"></FONT><U><B><FONT SIZE="2" FACE="Arial">4- 1er patch</FONT></B></U><FONT SIZE="2"
+FACE="Arial"><BR>
+<BR>
+Notre cible est celle ci :</FONT>
+<PRE><FONT SIZE="2">:0041B5CF  61           POPAD     
+:0041B5D0  669D         POPF
+:0041B5D2  E9E99FFEFF   JMP       004055C0           &gt; devra renvoyer vers patch 2</FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">Et pour cela notre patch 1 va modifier le JMP en 0041B5D2.
+Je vous rappelle que les octets doivent s'&eacute;crire &agrave; l'envers.</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">:00411F90  C705D3B54100D569FFFF MOV       DWORD PTR [0041B5D3],</FONT><FONT SIZE="2" COLOR="#FFCC00">FFFF69D5</FONT><FONT
+SIZE="2">
+:00411F9A  C605D2B54100E9       MOV       BYTE PTR [0041B5D2],</FONT><FONT SIZE="2" COLOR="#FFCC00">E9</FONT><FONT
+SIZE="2">
+:00411FA1  F70200000080         TEST      DWORD PTR [EDX],80000000
+:00411FA7  E96F810000           JMP       0041A11B</FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">Le programme va remplacer le JMP 004055C0 par un JMP 00411FAC,
+soit remplacer E9E99FFEFF par </FONT><FONT SIZE="2" COLOR="#FFCC00" FACE="Arial">E9D569FFFF</FONT><FONT SIZE="2"
+FACE="Arial"> <BR>
+Puis les codes que notre JMP Aiguillage a &eacute;cras&eacute; (en 0041A116) vont &ecirc;tre r&eacute;&eacute;crit
+avant de renvoyer le programme continuer sa route comme si de rien n'&eacute;tait.</FONT><FONT SIZE="2"><BR>
+<BR>
+</FONT><U><B><FONT SIZE="2" FACE="Arial">5- 2&egrave;me Patch</FONT></B></U><FONT SIZE="2" FACE="Arial"><BR>
+<BR>
+pETITE va donc continuer &agrave; d&eacute;compresser API Spy 32, et arriv&eacute; en 0041B5D2, il va se rendre
+&agrave; l'adresse du Patch 2 :</FONT><FONT SIZE="2"></FONT>
+<PRE><FONT SIZE="2">:00411FAC  66C705BE464000B001  MOV       WORD PTR [004046BE],</FONT><FONT SIZE="2" COLOR="#FFCC00">01B0</FONT><FONT
+SIZE="2">
+:00411FB5  E90636FFFF          JMP       004055C0</FONT></PRE>
+<P><FONT SIZE="2"></FONT><FONT SIZE="2" FACE="Arial">Qui va modifier le Xor Eax,Eax en 004046BE, pour le transformer
+en un </FONT><FONT SIZE="2" COLOR="#FFCC00" FACE="Arial">Mov AL,01</FONT><FONT SIZE="2" FACE="Arial"> avant de
+se rendre &agrave; l'Original Entry Point de la cible.</FONT></P>
+
+<P><FONT SIZE="2" FACE="Arial"><BR>
+It's Cracked !</FONT></P>
+
+<p>&nbsp;</p>
+
+<p align="center">&nbsp;</p>
+
+<p>&nbsp;</p>
+
+
+</BODY>
+
+</HTML>

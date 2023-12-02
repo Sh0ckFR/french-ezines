@@ -1,0 +1,277 @@
+<html>
+<head>
+<title>Comment toujours gagner au démineur ?</title>
+<link rel="stylesheet" type="text/css" href="../../style.css">
+</head>
+<body>
+
+<h1>Comment toujours gagner au démineur?</h1>
+
+<p><i>(Source: Version livrée avec windows2000; j'avais commencé à faire les schémas sous 98, alors ne vous étonnez pas hein!)</i></p>
+
+<p>Dernier volet de la série des 4 jeux de kro$oft (Démineur, Dame de pique, Solitaire, Freecell): le démineur. Je ne sais pas si je traiterai le Solitaire. En passant, dans le code de Solitaire version windows 98, on trouve ça :</p>
+
+<pre>
+:0002.0618 680002                 push 0200
+:0002.061B 0E                     push cs
+:0002.061C E883FE                 call 04A2
+:0002.061F CB                     retf
+
+* Possible StringData Ref from Data Seg 011 -><font color="red">"Not Yet Implemented"</font>
+|
+:0002.0620 685600                 push 0056
+:0002.0623 0E                     push cs
+:0002.0624 E87BFE                 call 04A2
+:0002.0627 CB                     retf
+</pre>
+
+<p>Si c'est pas malheureux ça ! Non seulement kro$oft nous file des programmes 16-bits dans un OS 32-bits, mais en plus ils ne sont même pas finis... On aura tout vu !</p>
+
+<p>Le démineur est probablement le plus simple et le plus sympa de tous les jeux fournis en accessoires par kro$. J'y ai passé des heures dessus et je suis devenu un joueur redoutable. C'est dire! On peut même faire des parties complètes en 0 secondes de temps écoulé en modifiant le fichier .ini ou à l'aide d'une combinaison de touches ;o). Bon je ne vais pas présenter ce jeu que tout le monde connaît, mais je vais seulement dire que si c'est le plus simple au niveau fonctionnement, au niveau cracking/reverse ce n'est pas le cas, car passant directement par le traitement des WM_messages, l'endroit à patcher n'est pas si évident à trouver.</p>
+
+<h2>Idée de base</h2>
+
+<p>Avec le temps et les nombreuses parties accumulées, une certaine lassitude et habitude se sont emparées de moi et je n'ai plus la même attention quand je joue. Il arrive ainsi parfois que je clique sur une case où il y a une mine, alors que je ne voulais pas cliquer dessus. C'est particulièrement énervant, surtout lorsqu'on est à 90% ou 95% du jeu fini. Ma souris en sait quelque chose avec les nombreux coups qu'elle s'est prise sur ma table :). Donc, l'idée de base est (lorsqu'on clique sur une mine) d'afficher une msgbox disant "Mine!" et de faire en sorte que l'utilisateur puisse continuer. Le joueur verra qu'il s'est trompé et pourra pour autant quand même finir sa partie.</p>
+
+<p>Parfois aussi, on arrive à des cas où malgré les infos des nombres adjacents aux cases non révélées, on *ne peut pas* deviner où se trouve la/les mine(s), en particulier dans les figures "carrées" comme le montre les images ci-dessous (en général, c'est tout à la fin du jeu que ça se produit, quand il reste encore une ou deux mines). Dans ce cas là, on pourra trouver la mine en toute sécurité et ne pas perdre la partie - à juste titre !</p>
+
+<table align="center">
+<tr><td><p class="image"><img src="piege.bmp"></p></td>
+<td></td>
+<td><p class="image"><img src="piege2.bmp"></p></td></tr>
+</table>
+
+
+<p>On peut donc résumer notre intervention en 2 points :
+<ol type="1"><li>Recherche du branchement pour dévier le code vers notre messagebox</li>
+<li>Insertion de notre code avec la messagebox</li></ol></p>
+
+
+<h2>1 - Recherche du branchement pour dévier le code vers notre messagebox</h2>
+
+<p>La première chose à faire est de trouver l'endroit dans le code où poser notre Msgbox. Pour cela, il faut bien comprendre comment marche le jeu :
+<ul><li>on clique sur une case (qu'on va supposer contenant une mine)</li>
+<li>windows envoie le message de la souris "click" au soft, i.e. les coordonnées de la case cliquée sur le plan de jeu</li>
+<li>le soft enlève la case grise non cliquée, et reste en mode "case grise cliquée" sans rien afficher (voir les codes des cases plus loin)</li>
+<li>le soft va voir dans sa table du jeu en cours (en mémoire) à quelle case cela correspond</li>
+<li>comme on a cliqué sur une mine, le soft renvoie un booléen FALSE (genre eax=FFFFFFFF)</li>
+<li>et puis l'action correspondante est exécutée suite à un saut conditionnel, à savoir 1/ faire apparaître la case de la mine, 2/ idem pour les autres mines non découvertes.</li></ul></p>
+
+<p>Comme d'habitude, pour trouver l'endroit on désassemble le soft et on regarde ses éléments (strings data refs, imports...). Et cette fois-ci, bien que j'aie longuement cherché je dois avouer que je n'ai rien trouvé qui m'ait fait tilt. N'ayant donc rien en main, je me suis décidé à la solution ultime qui est de tracer TOUT le code asm depuis le début. Pour un soft "normal" c'est une idée absurde, car un code devient très vite TRES long, mais le démineur n'étant pas très gros, je me suis dit que ça ne pouvait faire que du bien :)</p>
+
+<p>Donc à chaque fois ou je trouve un endroit intéressant d'après les API utilisées et les jne... je pose un "bpx cs:offset_du_code_intéressant" via le loader. Après de nombreux tests, on arrive sur ça :</p>
+
+
+<pre>
+* Referenced by a CALL at Address:
+|:0100380D   
+|
+:01003144 8B442408                mov eax, dword ptr [esp+08]
+:01003148 53                      push ebx
+:01003149 55                      push ebp
+:0100314A 8BC8                    mov ecx, eax
+:0100314C 56                      push esi
+:0100314D 8B742410                mov esi, dword ptr [esp+10]
+:01003151 C1E105                  shl ecx, 05
+:01003154 F684310057000180        test byte ptr [ecx+esi+01005700], 80 <font color="red">; c'est ici que le tri se fait!</font>
+:0100315C 8D943100570001          lea edx, dword ptr [ecx+esi+01005700]
+:01003163 57                      push edi
+:01003164 746B                    je 010031D1            <font color="red">; on saute ici ou non suivant s'il y a mine ou pas</font>
+:01003166 833DF456000100          cmp dword ptr [010056F4], 00000000
+:0100316D 7555                    jne 010031C4    <font color="red">; on saute ici s'il y a une mine (quel jeu de mots...)</font>
+:0100316F 8B2D685A0001            mov ebp, dword ptr [01005A68] 
+</pre>
+
+
+<p>En 0x01003154, le soft regarde dans sa table en mémoire en ds:[ecx+esi+01005700] les coordonnées de la case qu'on a cliqué. Cette case est codée par abscisse (=esi) et ordonnée (=ecx) de la manière suivante :</p>
+
+<p class="image"><img src="table.bmp"></p>
+
+<p>On retient donc le point qu'on cherchait :</p>
+<pre>
++++++++++++++++++++++++++++++++++++++++++
+mine : no jump depuis 0x01003154
+pas de mine : jump depuis 0x01003154
++++++++++++++++++++++++++++++++++++++++++
+</pre>
+
+<p>Et c'est ici que l'on va se brancher! Voilà pour la 1ère partie :o)</p>
+
+<h2>2 - Insertion de notre code avec la messagebox</h2>
+
+<p>Prenons d'abord le temps de comprendre la structure et le fonctionnement de la table de jeu du démineur. En examinant la table en mémoire sous SI avec différentes valeurs de ecx et esi, on obtient cela :</p>
+
+<p class="image"><img src="tableau.bmp"></p>
+
+<p>A gauche, il y a le jeu tel qu'on le connaît avec une partie en cours. Il est découpé en bandes horizontales (au milieu) dont la correspondance en mémoire est affichée (à droite) avec un signe égal. Entre chaque ligne de la table, il y a une ligne de <font color="#e622e6"><b>0F</b></font> pour séparer deux lignes consécutives de la table. Celle-ci est délimitée en haut et en bas par une ligne de <font color="#804040"><b>10</b></font>. Quand une case est vide (c-à-d a la valeur 0) ou contient un chiffre, celle-ci est codée par son équivalent en hexadécimal. Les cases non découvertes sont codées par <b>8F</b> (s'il y a une mine!) ou <b>0F</b> (s'il n'y a rien...) en noir. J'ai entouré en vert fluo les cases non découvertes qui ont des mines, et j'ai mis leur correspondance dans le jeu de démineur par un point vert fluo. Enfin, quand j'ai fait la capture d'écran, j'ai cliqué exprès sur une case comportant une mine (on le voit à la tronche du smiley qui fait un "Ooooh!"). C'est celle coloriée en rouge qui affiche <b>80</b>, et sur laquelle j'ai mis une croix rouge sur le rond vert fluo. S'il n'y avait pas eu de mine sous cette case, au lieu de <b>80</b>, on aurait eu un <b>00</b>.</p>
+
+<p>On peut continuer l'exploration des codes, et on trouve le tableau ci-dessous :</p>
+
+<p class="image"><img src="legende.bmp"></p>
+
+<p>Dans tout cela, la chose importante à retenir est qu'avant de cliquer sur une case où il y a une mine, la valeur vaut <b>8F</b> et pendant le clic la valeur vaut <b>80</b>. S'il n'y a pas de mine, alors la valeur lors du clic vaut <b>00</b>. Ainsi fonctionne le teste en 0x01003154!</p>
+
+
+<p>On passe maintenant au code de notre sécurité-anti-défaite-au-démineur!! :o)</p>
+
+<p>Tout d'abord un petit coup d'oeil à la section .text :</p>
+<pre>
+ Name            VOffset        VSize          ROffset        RSize           Flags
+.text            00001000       00003970       00000600       00003A00        60000020
+.data            00005000       00000BF4       00004000       00000200        C0000040
+.rsrc            00006000       00014000       00004200       00013600        40000040
+</pre>
+
+<p>On a donc un joli padding de 0x3F70 à 0x4000, soit 90 bytes, ce qui devrait suffire pour notre routine!</p>
+
+<p>Pour avoir une idée du code à écrire, jetons un oeil à la structure du programme quand on est dans le cas "clique sur une mine" et dans le cas "clique sur autre chose" à partir du check dans le tableau en mémoire. Si on trace les 2 éventualités sous SI en posant sous le loader un "bpx cs:01003154", on obtient :</p>
+
+<p class="image"><img src="schema.bmp"></p>
+
+<p>Et là, ça devient évident de brancher notre Msgbox! On met notre jump sauvage à la place du push 4C en 0x010031C4 et on saute à notre padding où l'on met notre messagebox. Après l'avoir affiché, on resaute en 31EC sur le "pop edi" en évitant le call qui affiche la mine cliquée et les autres mines. Ca nous fait continuer tout normalement :o) !</p>
+
+<p>Concrètement, voilà le code tant attendu ;o) :</p>
+
+<p>En 0x010031C4... :</p>
+
+<pre>
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:0100316D(C)
+|
+:010031C4 6A4C                    push 0000004C
+:010031C6 50                      push eax
+:010031C7 56                      push esi
+:010031C8 E853FCFFFF              call 01002E20
+:010031CD 6A00                    push 00000000
+:010031CF EB16                    jmp 010031E7
+</pre>
+
+<p>...on branche notre jump sauvage vers notre padding en 0x01004980 et on noppe proprement le reste (facultatif) :</p>
+
+<pre>
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:0100316D(C)
+|
+:010031C4 E9B7170000              jmp 01004980
+:010031C9 90                      nop
+:010031CA 90                      nop
+:010031CB 90                      nop
+:010031CC 90                      nop
+:010031CD 6A00                    push 00000000
+:010031CF EB16                    jmp 010031E7
+</pre>
+
+<p>En 0x01004980 (le code est évident, je ne l'explique pas) :</p>
+
+<pre>
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:010031C4(U)
+|
+:01004980 6A00                    push 00000000
+:01004982 689A490001              push 0100499A
+:01004987 68A6490001              push 010049A6
+:0100498C 6A00                    push 00000000
+
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:0100494B(C)
+|
+
+* Reference To: USER32.MessageBoxW, Ord:01C8h
+|
+:0100498E FF1570110001            Call dword ptr [01001170]
+:01004994 E953E8FFFF              jmp 010031EC   <font color="red">;retour au "pop edi" en 0x010031EC</font>
+:01004999 90                      nop
+</pre>
+
+<p>Après le nop, vient les strings de la msgbox. Attention! On est en 32-bits, il faut donc les écrire avec un 00 entre chaque caractère. Ca donne sous un hexediteur :</p>
+
+<pre>
+00003F60 DF01 4C6F 6164 4C69 6272 6172 7941 0000 ..LoadLibraryA..
+00003F70 0000 0000 0000 0000 0000 0000 0000 0000 ................
+00003F80 6A00 689A 4900 0168 A649 0001 6A00 FF15 j.h.I..h.I..j... |Notre code
+00003F90 7011 0001 E953 E8FF FF90 4D00 6900 6E00 p....S....M.i.n. |
+00003FA0 6500 2100 0000 5600 6F00 7500 7300 2000 e.!...V.o.u.s. . }Nos strings
+00003FB0 7600 6500 6E00 6500 7A00 2000 6400 6500 v.e.n.e.z. .d.e. }
+00003FC0 2000 6300 6C00 6900 7100 7500 6500 7200  .c.l.i.q.u.e.r. }
+00003FD0 2000 7300 7500 7200 2000 7500 6E00 6500  .s.u.r. .u.n.e. }
+00003FE0 2000 6D00 6900 6E00 6500 2E00 0000 0000  .m.i.n.e....... }
+00003FF0 0000 0000 0000 0000 0000 0000 0000 0000 ................
+00004000 0000 0000 0000 0000 0000 0000 0000 0000 ................ |Début section .idata
+</pre>
+
+<p>Et en 4000 commence la 2ème section (.idata). Et c'est tout ce qu'il y a à changer. Ainsi, si on clique sur une mine, la msgbox apparaît :</p>
+
+<p class="image"><img src="boom.bmp"></p>
+
+<p>La case de la mine cliquée reste enfoncée à moins que l'on appuie sur le bouton droit de la souris, ce qui permet de visualiser nos erreurs. A la fin de la partie, toutes les mines sont montrées par le petit drapeau rouge !</p>
+
+<h2>3 - Divers</h2>
+
+<p><b>1/</b> Il y a une astuce dans le démineur qui permet de ne pas perdre et qui est connue depuis longtemps. C'est la fameuse manip avec "XYZZY". Elle permet de voir s'il y a une mine ou pas dans la case sous le pointeur de la souris. La voici décrite rapidement :
+<ul><li>appuyer sur shift et taper XYZZY sans lâcher la touche</li>
+<li>lâcher la touche shift</li>
+<li>appuyer sur shift et enter sans lâcher la touche shift</li></ul></p>
+
+<p>Cela fait apparaître un pixel blanc dans le coin supérieur gauche de l'écran qui tourne au noir si on passe sur une case contenant une mine. Cette manip ne marche pas sous tous les OS. Bon, mais quelle différence avec notre routine dans ce tut? Simplement que par le coup du pixel, on triche car on regarde auparavant chaque fois s'il y a une mine ou pas, tandis qu'avec ma routine on joue tranquillement, et si on a manqué d'inattention ou qu'on se retrouve dans un cas impossible et qu'on clique sur une mine, on est prévenu et sauvé par la routine. Elle agit après le choix du joueur, pas avant ;o).</p>
+
+<p>Quelques mots sur l'analyse de la combine XYZZY. On la trouve au début de la section .idata clairement affichée, mais elle n'apparaît pas dans les stringsdatarefs :</p>
+
+<pre>
+00004030 0900 0000 2800 0000 1000 0000 1000 0000 ....(...........
+00004040 6300 0000 1000 0000 1E00 0000 0000 0000 c...............
+00004050 5800 5900 5A00 5A00 5900 0000 0000 0000 X.Y.Z.Z.Y.......
+00004060 8D00 0000 E803 0000 8E00 0000 E903 0000 ................
+00004070 8F00 0000 EA03 0000 7000 0000 E803 0000 ........p.......
+</pre>
+
+<p>Son déclenchement dans le code est une suite de sauts conditionnels provenant du tri des WM_Messages via un filtre de type "cmp eax, 00000111". L'affichage du pixel est conduit par ce snippet et repose sur l'API SetPixel qui ne figure qu'une fois dans le code désassemblé :</p>
+
+<pre>
+* Reference To: USER32.GetDC, Ord:0100h
+                                  |
+:01001CCF FF1520110001            Call dword ptr [01001120]  <font color="red">;fonction qui renvoie le handle du bureau en eax</font>
+:01001CD5 8B0D38510001            mov ecx, dword ptr [01005138]
+:01001CDB 8BF0                    mov esi, eax   <font color="red">;le handle passe dans esi</font>   
+:01001CDD A13C510001              mov eax, dword ptr [0100513C]
+:01001CE2 C1E005                  shl eax, 05
+:01001CE5 8A840800570001          mov al, byte ptr [eax+ecx+01005700]   <font color="red">;ici on retrouve le tableau avec les mines, al prend la valeur du message (8F si mine, sinon 80)</font>
+:01001CEC 2480                    and al, 80   <font color="red">;s'il y a une mine, on a 80, sinon on a 0</font>
+:01001CEE F6D8                    neg al
+:01001CF0 1BC0                    sbb eax, eax
+:01001CF2 25010000FF              and eax, FF000001
+:01001CF7 05FFFFFF00              add eax, 00FFFFFF    <font color="red">;mine, eax=00000000 (valeur hexa du noir); pas mine, eax=00FFFFFF (valeur hexa du blanc)</font>
+:01001CFC 50                      push eax   <font color="red">;valeur de la couleur du pixel</font>
+:01001CFD 57                      push edi   <font color="red">;coordonnée Y (=1)</font>
+:01001CFE 57                      push edi   <font color="red">;coordonnée X (=1)</font>
+:01001CFF 56                      push esi   <font color="red">;handle du bureau</font>
+
+* Reference To: GDI32.<font color="red">SetPixel</font>, Ord:01EFh
+                                  |
+:01001D00 FF1554100001            Call dword ptr [01001054]   <font color="red">;on affiche le pixel...</font>
+:01001D06 56                      push esi
+:01001D07 57                      push edi
+
+* Reference To: USER32.ReleaseDC, Ord:0207h
+                                  |
+:01001D08 FF151C110001            Call dword ptr [0100111C]   <font color="red">;...et on release le DC (device context)</font>
+:01001D0E EB3C                    jmp 01001D4C   <font color="red">;on resaute au call DefWindoProcW</font>
+</pre>
+
+<p>Il y a encore d'autres options qui permettent de virer le menu de l'interface du jeu ou de jouer un son quand on a gagné une partie mais c'est sans intérêt ici...</p>
+
+<p><b>2/</b> Une autre astuce ou chose pratique est d'appuyer sur les 2 boutons de la souris en même temps pour afficher toutes les cases n'ayant pas de mine aux alentours de celle où on vient de mettre un drapeau. Dans ce cas, si le drapeau n'est pas bien placé et que cette routine venait à afficher une mine, on perdrait la partie et notre messagebox ne serait pas affichée. Cela vient du fait que l'évènement "appuie sur les 2 boutons de la souris en même temps" conduit à un autre endroit dans le code et que nous ne l'avons pas traité. Mais la logique est la même et on peut très bien calquer notre messagebox sur ce code-là aussi!</p>
+
+
+<h2>Fin</h2>
+
+<p>On aurait pu faire certaines parties de ce tut plus cours, mais j'ai voulu aussi montré comment fonctionnait le code du démineur. Et pour finir, le plus important 8o) :</p>
+
+
+<p class="image"><img src="succes.bmp"></p>
+
+<p>Le démineur modifié est <a href="winmine.zip">ici</a>.</p>
+
+<p class="image"><img src="../../images/signatures/Anubis.gif"></p>
+
+</body>
+</html>

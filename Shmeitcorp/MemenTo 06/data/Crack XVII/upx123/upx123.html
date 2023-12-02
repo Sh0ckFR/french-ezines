@@ -1,0 +1,382 @@
+<html>
+<head>
+<title>Packer : UPX 1.23</title>
+<link rel="stylesheet" type="text/css" href="../../style.css">
+</head>
+<body>
+<h1>Manual Unpacking</h1>
+<h2>Packer : UPX 1.23</h2>
+<p>Objectif :</p>
+<ul>
+  <li>Reconstruire l'exe original manuellement</li>
+</ul>
+<p>Cible : </p>
+<ul>
+  <li>Un crackme pack&eacute; avec UPX 1.23</li>
+</ul>
+<p>Outils n&eacute;cessaires :</p>
+<ul>
+  <li>Hex Workshop</li>
+  <li>Lord-PE</li>
+</ul>
+<p>Fichiers joints :</p>
+<ul>
+  <li><a href="crackme.zip">la cible pack&eacute; avec UPX 1.23</a></li>
+  <li><a href="rebuild.zip">l'exe reconstruit</a></li>
+  <li><a href="GPA.zip">GPA - un petit tool qui permet de retrouver l'adresse 
+    d'une fonction import&eacute; dans une dll system de windows</a></li>
+</ul>
+
+<h3>Index</h3>
+<ol>
+  <li><a href="#1">Introduction</a></li>
+  <li><a href="#2">Collecte des infos sur la cible</a></li>
+  <li><a href="#3">Dump full et examen du dump sous un &eacute;diteur hexa</a></li>
+  <li><a href="#4">Reconstruction de l'exe original</a>
+    <ol type="a">
+	<li><a href="#4a">MZ header</a></li>
+    <li><a href="#4b">PE header + table des sections</a></li>
+    <li><a href="#4c">Assemblage des sections</a></li></ol></li>
+  <li><a href="#5">Correction de la section des imports</a></li>
+  <li><a href="#6">Correction des ressources</a></li>
+  <li><a href="#7">Infos pratiques sur UPX 1.23</a></li>
+</ol>
+
+<a name="1"></a><h3>1. Introduction</h3>
+<p>UPX est tr&egrave;s facile &agrave; unpacker manuellement afin de restituer l'exe 
+  tel qu'il l'&eacute;tait &agrave; l'origine. Le seul petit hic se trouvant au niveau 
+  des imports comme &agrave; l'habitude des programmes pack&eacute;s, mais rien 
+  de bien m&eacute;chant rassurez vous. Il n'y a pas besoin d'unpackeur g&eacute;n&eacute;rique 
+  pour UPX puisque UPX lui m&ecirc;me fourni une option de d&eacute;compression (-d), 
+  &agrave; ce sujet certains tools appel&eacute;s upx Scrambler permettent d'emp&ecirc;cher 
+  cette d&eacute;compression mais tout ce qui est dans ce tut sera r&eacute;alisable 
+  sur des programme pack&eacute; par upx et qui ont &eacute;t&eacute; &quot;scrambl&eacute;s&quot;. 
+  Ce tutorial vous permettra de d&eacute;couvrir comment fonctionne UPX et vous permettra 
+  de reconstituer l'exe original avant la compression. C'est aussi une bonne introduction 
+  pour s'entra&icirc;ner &agrave; reconstruire un exe en entier ce qui nous servira 
+  pour d'autres packers.</p>
+
+<a name="2"></a><h3>2. Collecte des infos sur la cible</h3>
+<p>On ouvre la cible avec Lord-PE et on r&eacute;cup&egrave;re les infos suivantes :</p>
+<pre>Entry-point : 000080E0
+Import-Table : RVA = 00009058, size = 000000A4
+
+
+Sections Table :
+
+names		Voffset		Vsize		Roffset		Rsize		Flags
+UPX0		00001000	00005000	00000400	00000000	E0000080
+UPX1		00006000	00003000	00000400	00002400	E0000040
+.rsrc		00009000	00001000	00002800	00000200	C0000040</pre>
+<p>Premi&egrave;re constatation, on voit deux section portant les noms UPX0 et UPX1 (attention 
+  ne pas se fier aux noms des sections pour identifier un packer, en effet le 
+  nom n'a pas grand int&eacute;r&ecirc;t et on peux tr&egrave;s bien mettre n'importe quoi &agrave; 
+  la place, &ccedil;a ne changerait rien). Si on examine plus attentivement on remarque 
+  que ces 2 sections commencent au m&ecirc;me offset sur le disque (Roffset) et que la 
+  taille de UPX0 est de 0 (Rsize), ce qui signifie que UPX0 n'existe pas sur le 
+  disque mais seulement en m&eacute;moire. L'entry-point se situe dans UPX1 et la 
+  table des imports actuelle dans la section .rsrc.</p>
+
+<a name="3"></a><h3>3. Dump full et examen du dump sous un &eacute;diteur hexa</h3>
+<p>On dump la cible avec Lord-PE ou un autre process dumper en s'assurant que 
+  ces options soit coch&eacute;s avant de dumper :</p>
+<ul>
+  <li> Full Dump : paste header from disk</li>
+  <li>Full Dump : fix header</li>
+</ul>
+<p>A pr&eacute;sent on va &eacute;tudier le dump sous un &eacute;diteur hexa o&ugrave; l'on va d&eacute;couvrir 
+  des choses tr&egrave;s int&eacute;ressantes.</p>
+<p>Apres avoir &eacute;tudi&eacute; UPX j'ai remarqu&eacute; qu'il gardait intact le 
+  PE-header d'origine et qu'il le &quot;cachait&quot; quelques part dans la section 
+  UPX1. Si nous retrouvons le PE header d'origine apr&egrave;s &ccedil;a va &ecirc;tre du g&acirc;teau pour 
+  reconstituer l'exe tel qu'il l'&eacute;tait avant la compression. Pour le trouver, 
+  rien de plus simple, on lance une recherche hexa sur le dword <strong>5045 </strong>qui 
+  caract&eacute;rise les lettres ascii PE, repr&eacute;sentant ce qu'on appelle le d&eacute;but du PE-header. 
+  Si nous trouvons plusieurs r&eacute;f&eacute;rences s'assurer que la suite 
+  ressemble &agrave; un PE-header valide.</p>
+<p>Sur la cible on trouvera 4 r&eacute;f&eacute;rences aux offsets :</p>
+<ul>
+  <li><strong>000000D8</strong> - le PE 'normal' de l'exe</li>
+  <li><strong>000000E9</strong> - &quot;Lord<strong>PE</strong>&quot; : la signature 
+    &agrave; &eacute;t&eacute; ins&eacute;r&eacute; lors du dump par LordPE :)</li>
+  <li><font color="#FF0000"><strong>000072A6</strong></font> <font color="#FF0000">- 
+    Celui-ci ressemble &agrave; un vrai PE (on voit le nom de section un peu plus 
+    bas ce qui nous le confirme)</font></li>
+  <li><strong>00008045</strong> - une r&eacute;f&eacute;rence inconnue et sans importance pour 
+    nous</li>
+</ul>
+<p>J'estime que vous avez un minimum de connaissances sur le PE ou sinon je vous 
+  invite &agrave; lire une doc afin de mieux comprendre comment se rep&eacute;rer dans 
+  le PE.</p>
+<p>Dans ce PE est contenu toutes les informations sur la structure de l'exe original. 
+  Ce qui nous int&eacute;resse le plus c'est la table des sections qui nous montre comment 
+  &eacute;taient structur&eacute;es les sections avec leur offset et taille d'origine. Pour 
+  retrouver la table des sections, il faut partir de l'offset du PE qui nous servira 
+  de base :</p>
+<ul>
+  <li>en <strong>PE+14</strong> bytes on trouve un <strong>word</strong> qui repr&eacute;sente 
+    la taille de l'optional header que l'on appellera <strong>OptionalHeaderSize</strong></li>
+  <li><strong>PE+18+OptionalHeaderSize </strong>commence la table des sections</li>
+</ul>
+<p>Ici, pour l'OptionalHeaderSize on lit : <strong>E000 </strong>qui se traduit 
+  en<strong> 00E0. </strong>Donc notre table des sections commence en<strong> 
+  18+E0 </strong>&agrave; partir du PE que nous avons trouv&eacute;. Ici c'est 
+  facile de trouver le d&eacute;but de cette table visuellement , puisqu'il suffit de 
+  regarder les noms des sections et de prendre comme base le d&eacute;but du nom de la 
+  1ere section (&quot;.text&quot;) qui marquera le d&eacute;but de notre table des sections. 
+  Mais je vous ai donn&eacute; la m&eacute;thode au cas o&ugrave; les noms des sections soient 
+  vides.</p>
+<p>Examinons cette table des sections maintenant o&ugrave; j'ai colori&eacute; de couleur 
+  diff&eacute;rente chaque section :</p>
+<pre>0000724C 73707269 6E746641 00014765 74446C67 4974656D 54657874 4100014D sprintfA..GetDlgItemTextA..M<br>00007268 65737361 6765426F 78410001 53656E64 4D657373 61676541 00014465 essageBoxA..SendMessageA..De<br>00007284 7374726F 7957696E 646F7700 01446961 6C6F6742 6F785061 72616D41 stroyWindow..DialogBoxParamA<br>000072A0 00000000 0000<strong><font color="red">5045</font></strong> 00004C01 04004228 673C0000 00000000 0000E000 ......<font color="red"><strong>PE</strong></font>..L...B(g&lt;..........<br>000072BC 0F010B01 06000030 00000030 00000000 0000B011 00000010 00000040 .......0...0...............@<br>000072D8 00000000 40000010 00000010 00000400 00000000 00000400 00000000 ....@.......................<br>000072F4 00000070 00000010 00000000 00000200 00000000 10000010 00000000 ...p........................<br>00007310 10000010 00000000 00001000 00000000 00000000 00001444 00003C00 .......................D..&lt;.<br>0000732C 00000060 0000A801 00000000 00000000 00000000 00000000 00000000 ...`........................<br>00007348 00000000 00000000 00000000 00000000 00000000 00000000 00000000 ............................<br>00007364 00000000 00000000 00000000 00000000 00000000 00000000 00000040 ...........................@<br>00007380 0000B000 00000000 00000000 00000000 00000000 00000000 00000000 ............................<br>0000739C 0000<strong><font color="#FF0000">2E74 65787400 00002E2A 00000010 00000030 00000010 00000000</font></strong> ..<strong><font color="#FF0000">.text....*.......0........</font></strong><br>000073B8 <font color="#FF0000"><strong>00000000 00000000 00002000 0060</strong></font><strong><font color="#0000FF">2E72 64617461 0000E807 00000040</font></strong> <strong><font color="#FF0000">.......... ..`</font><font color="#0000FF">.rdata.......@</font></strong><br>000073D4 <font color="#0000FF"><strong>00000010 00000040 00000000 00000000 00000000 00004000 0040</strong></font><strong><font color="#009933">2E64</font></strong> <font color="#0000FF"><strong>.......@..............@..@</strong></font><strong><font color="#009933">.d</font></strong><br>000073F0 <strong><font color="#009933">61746100 0000DC0A 00000050 00000010 00000050 00000000 00000000</font></strong> <font color="#009933"><strong>ata........P.......P........</strong></font><br>0000740C <font color="#009933"><strong>00000000 00004000 00C02</strong></font><strong><font color="#FF00FF">E72 73726300 0000A801 00000060 00000010</font></strong> <font color="#009933"><strong>......@...</strong></font><strong><font color="#FF00FF">.rsrc........`....</font></strong><br>00007428 <font color="#FF00FF"><strong>00000060 00000000 00000000 00000000 00004000 0040</strong></font>0060 00000045 <font color="#FF00FF"><strong>...`..............@..@</strong></font>.`...E<br>00007444 00000000 A6620000 E7220AC0 7A04F800 95CF6DAE 4DAF7A08 90849434 .....b...&quot;..z.....m.M.z....4<br>00007460 A900526B DB7CF142 0CA522C2 2ADD2CCB 6406FE0B 7D29C4B1 CD355899 ..Rk.|.B..&quot;.*.,.d...})...5X.</pre>
+<p>Voici la structure d'une section :</p>
+<pre>BYTE[8]	Name<br>DWORD		Virtual Size (Vsize)<br>DWORD		Virtual Adresse (Voffset)<br>DWORD		Size of raw data (Rsize)<br>DWORD		Pointer to raw data (Roffset)<br>DWORD		PointerToRelocation<br>DWORD		PointerToLinenumbers<br>WORD		NumberOfRelocation<br>WORD		NumberOfLinenumbers<br>DWORD		Caracteristiques (Flags)
+</pre>
+<p>La taille de cette structure est de 28h bytes. En relevant les valeurs de chaque 
+  sections on peut dresser la table des sections tels que :</p>
+<pre>
+Sections Table :
+
+names		Voffset		Vsize		Roffset		Rsize		Flags
+.text		00001000	00002A2E	00001000	00003000	60000020
+.rdata		00004000	000007E8	00004000	00001000	40000040
+.data		00005000	00000ADC	00005000	00001000	C0000040
+.rsrc		00006000	000001A8	00006000	00001000	40000040
+
+</pre>
+<p>On va pour reconstruire l'exe original d'apr&egrave;s ce format en respectant les 
+  colonnes Roffset et Rsize.</p>
+
+<a name="4"></a><h3>4. Reconstruction de l'exe original</h3>
+<p>Sous hex WorkShop on cr&eacute;er un nouveau fichier, celui-ci est vierge et on va 
+  y ins&eacute;rer tous les &eacute;l&eacute;ments de notre exe. On ouvre aussi le dump o&ugrave; 
+  on l'on ira d&eacute;couper nos morceaux.</p>
+
+<a name="4a"></a><h4>a) MZ header</h4>
+<p>Cette 1ere partie est en gros l'en-t&ecirc;te d'un exe (toute la partie avant le 
+  rep&egrave;re <strong>PE)</strong>. Celui du Dump fera tr&egrave;s bien l'affaire. Normalement 
+  il faut regarder en <strong>0000003C </strong>et relever le dword, celui-ci 
+  nous donne l'offset o&ugrave; commence le PE header. Ici c'est en <strong>000000D8.</strong></p>
+<p>dans le dump :</p>
+<p><strong>d&eacute;but : 00000000<br>
+  fin : 000000D8<br>
+  taille = D8h</strong></p>
+<p>On copie ce bloc du dump et on le colle dans le nouveau fichier.</p>
+
+<a name="4b"></a><h4>b) PE header + Table des sections</h4>
+<p>Le PE original du programme. La partie qu'on a trouv&eacute;e tout &agrave; 
+  l'heure, qui donne toutes les infos sur l'exe, et qui s'&eacute;tend jusqu'&agrave; la fin 
+  de la table des sections.</p>
+<p>dans le dump :</p>
+<p><strong>d&eacute;but : 000072A6<br>
+  fin : 0000743E<br>
+  taille = 198h bytes</strong></p>
+<p>On copie ce bloc et on le colle &agrave; la suite dans le nouveau fichier. 
+  A pr&eacute;sent on &agrave; l'en-t&ecirc;te et le PE enti&egrave;rement reconstitu&eacute;s, il 
+  ne nous reste qu'&agrave; assembler les diff&eacute;rentes sections. On sait que la 
+  premi&egrave;re section (&quot;.text&quot;) commence &agrave; l'offset 1000h on va 
+  donc compl&eacute;ter la suite du PE avec des 0 jusqu'a l'offset 1000. Pour l'instant 
+  la taille total de notre fichier occupe 270h bytes il nous faut donc un bloc 
+  de 1000h - 270h = D90h bytes de 00. Sous Hex Workshop on se place &agrave; la 
+  fin de notre nouveau fichier on clique droit et on fais <strong>Insert</strong> 
+  on met une valeur <strong>D90h</strong> rempli avec 00 en hex byte, puis OK.</p>
+
+<a name="4c"></a><h4>c) Assemblage des sections</h4>
+<p>On se place dans le dump et on d&eacute;coupe nos sections selon notre table des sections, 
+  il suffit de copier les blocs suivants et de les coller dans le nouveau fichier 
+  les un &agrave; la suite des autres.</p>
+<pre>Name		Roffset		Rsize
+
+.text		00001000	00003000
+.rdata		00004000	00001000
+.data		00005000	00001000
+.rsrc		00006000	00001000</pre>
+<p>Sous Hex WorkShop pour s&eacute;lectionner un bloc il faut aller dans le menu EDIT 
+  / Select block. On se place au d&eacute;but de la section et on s&eacute;lectionne un block 
+  correspondant &agrave; sa taille.</p>
+<p>Une fois cela fait, sauvegarder le tout sous un nom genre rebuild.exe et si 
+  vous avez bien bosser le nouveau fichier devrait ressembler quasiment &agrave; 
+  ce qu'&eacute;tait l'exe avant d'&ecirc;tre pack&eacute; par UPX. Celui-ci n'est pas fonctionnel 
+  encore car il faut reconstruire les imports que notre dump a modifi&eacute;s 
+  et qu'UPX a détruits en partie. Mais on peut d&eacute;j&agrave; d&eacute;sassembler 
+  l'exe sous wdasm et obtenir le code et les datas. On peut aussi l'ouvrir avec 
+  un &eacute;diteur de PE afin de l'examiner plus amplement.</p>
+
+<a name="5"></a><h3>5. Correction de la section des imports</h3>
+<p>Passons &agrave; la partie la plus d&eacute;licate de ce tutorial car jusque l&agrave;, 
+  ce n'&eacute;tait que du d&eacute;coupage. En effet il nous faut reconstruire les imports 
+  car si UPX n'a pas touch&eacute; aux autres sections, on ne peut pas en dire 
+  autant de la section qui concerne les import &agrave; savoir ici .rdata.</p>
+<p>Si nous Examinons dans notre exe reconstruit ce que nous avons dans cette section 
+  on pourra voir 2 parties bien distinctes :</p>
+<pre>00003FFC 00000000 <font color="#0000FF"><strong>94E4E577 C8E0E577 54C9E477 7EDEE577 31A0E577 FCA7E577 .......w...wT..w~..w1..w...w<br>00004018 61D9E577 86ADE577 7E17E477 58E3E577 42D1E577 FD98E577 B816E477 a..w...w~..wX..wB..w...w...w<br>00004034 B9E6E577 C030E777 A9ADE577 4275E777 95E5E577 49A9E577 F294E477 ...w.0.w...wBu.w...wI..w...w<br>00004050 85E5E577 51E3E577 FBE3E577 1689E577 D2E2E577 CB15E677 6B15F477 ...wQ..w...w...w...w...wk..w<br>0000406C 440CF577 3AF1E577 5EE3E577 8BB0E577 9725E577 A116F477 72ACE577 D..w:..w^..w...w.%.w...wr..w<br>00004088 5F8CF477 32B3E577 00000000 A2E7D177 F678D577 B211D377 2D5AD177 _..w2..w.......w.x.w...w-Z.w<br>000040A4 74C4D177 34E9D377 00000000</strong></font> <font color="#FF0000"><strong>FFFFFFFF 87124000 9B124000 72756E74 t..w4..w..........@...@.runt<br>000040C0 696D6520 6572726F 72200000 0D0A0000 544C4F53 53206572 726F720D ime error ......TLOSS error.<br>000040DC 0A000000 53494E47 20657272 6F720D0A 00000000 444F4D41 494E2065 ....SING error......DOMAIN e<br>000040F8 72726F72 0D0A0000 52363032 380D0A2D 20756E61 626C6520 746F2069 rror....R6028..- unable to i<br>00004114 6E697469 616C697A 65206865 61700D0A 00000000 52363032 370D0A2D nitialize heap......R6027..-<br>00004130 206E6F74 20656E6F 75676820 73706163 6520666F 72206C6F 77696F20  not enough space for lowio <br>0000414C 696E6974 69616C69 7A617469 6F6E0D0A 00000000 52363032 360D0A2D initialization......R6026..-<br>00004168 206E6F74 20656E6F 75676820 73706163 6520666F 72207374 64696F20  not enough space for stdio <br>00004184 696E6974 69616C69 7A617469 6F6E0D0A 00000000 52363032 350D0A2D initialization......R6025..-<br>000041A0 20707572 65207669 72747561 6C206675 6E637469 6F6E2063 616C6C0D  pure virtual function call.<br>000041BC 0A000000 52363032 340D0A2D 206E6F74 20656E6F 75676820 73706163 ....R6024..- not enough spac<br>000041D8 6520666F 72205F6F 6E657869 742F6174 65786974 20746162 6C650D0A e for _onexit/atexit table..<br>000041F4 00000000 52363031 390D0A2D 20756E61 626C6520 746F206F 70656E20 ....R6019..- unable to open <br>00004210 636F6E73 6F6C6520 64657669 63650D0A 00000000 52363031 380D0A2D console device......R6018..-<br>0000422C 20756E65 78706563 74656420 68656170 20657272 6F720D0A 00000000  unexpected heap error......<br>00004248 52363031 370D0A2D 20756E65 78706563 74656420 6D756C74 69746872 R6017..- unexpected multithr<br>00004264 65616420 6C6F636B 20657272 6F720D0A 00000000 52363031 360D0A2D ead lock error......R6016..-<br>00004280 206E6F74 20656E6F 75676820 73706163 6520666F 72207468 72656164  not enough space for thread<br>0000429C 20646174 610D0A00 0D0A6162 6E6F726D 616C2070 726F6772 616D2074  data.....abnormal program t<br>000042B8 65726D69 6E617469 6F6E0D0A 00000000 52363030 390D0A2D 206E6F74 ermination......R6009..- not<br>000042D4 20656E6F 75676820 73706163 6520666F 7220656E 7669726F 6E6D656E  enough space for environmen<br>000042F0 740D0A00 52363030 380D0A2D 206E6F74 20656E6F 75676820 73706163 t...R6008..- not enough spac<br>0000430C 6520666F 72206172 67756D65 6E74730D 0A000000 52363030 320D0A2D e for arguments.....R6002..-<br>00004328 20666C6F 6174696E 6720706F 696E7420 6E6F7420 6C6F6164 65640D0A  floating point not loaded..<br>00004344 00000000 4D696372 6F736F66 74205669 7375616C 20432B2B 2052756E ....Microsoft Visual C++ Run<br>00004360 74696D65 204C6962 72617279 00000000 0A0A0000 52756E74 696D6520 time Library........Runtime <br>0000437C 4572726F 72210A0A 50726F67 72616D3A 20000000 2E2E2E00 3C70726F Error!..Program: .......&lt;pro<br>00004398 6772616D 206E616D 6520756E 6B6E6F77 6E3E0000 4765744C 61737441 gram name unknown&gt;..GetLastA<br>000043B4 63746976 65506F70 75700000 47657441 63746976 6557696E 646F7700 ctivePopup..GetActiveWindow.<br>000043D0 4D657373 61676542 6F784100 75736572 33322E64 6C6C0000 00000000 MessageBoxA.user32.dll......<br>000043EC 00000000 FFFFFFFF AE334000 B2334000 FFFFFFFF 62344000 66344000 .........3@..3@.....b4@.f4@.<br>00004408 FFFFFFFF E6354000 EA354000</strong></font> 00000000 00000000 00000000 00000000 <font color="#FF0000"><strong>.....5@..5@</strong></font>.................<br>00004424 00000000 00000000 00000000 00000000 00000000 00000000 00000000 ............................<br></pre>
+<p>(La suite de la section ne contient que des 00)</p>
+<p>La partie rouge n'est pas vraiment int&eacute;ressante, &agrave; vrai dire elle ne 
+  nous sert a rien, c'est une partie qui &agrave; &eacute;t&eacute; ajout&eacute; 
+  par le compilateur &agrave; not&eacute; ici Microsoft visual studio C++ comme 
+  indiqu&eacute;.</p>
+<p>En bleu, c'est les tableaux des IAT (Import Address Table) point&eacute;s par 
+  les membres FirstThunk de la table des imports et reconnaissables avec les adresses 
+  des fonctions comme : <font color="#0000FF"><strong>94E4E577</strong></font> 
+  qui se lit : <strong>77E5E494. </strong>et que l'on peut aussi s&eacute;parer en 2 
+  parties (pour les 2 dll import&eacute;s). La fin d'un tableau est marqu&eacute;e 
+  par un DWORD 00000000.</p>
+<pre>00003FFC 00000000 <font color="#0000FF"><strong><font color="#006633">94E4E577 C8E0E577 54C9E477 7EDEE577 31A0E577 FCA7E577 .......w...wT..w~..w1..w...w<br>00004018 61D9E577 86ADE577 7E17E477 58E3E577 42D1E577 FD98E577 B816E477 a..w...w~..wX..wB..w...w...w<br>00004034 B9E6E577 C030E777 A9ADE577 4275E777 95E5E577 49A9E577 F294E477 ...w.0.w...wBu.w...wI..w...w<br>00004050 85E5E577 51E3E577 FBE3E577 1689E577 D2E2E577 CB15E677 6B15F477 ...wQ..w...w...w...w...wk..w<br>0000406C 440CF577 3AF1E577 5EE3E577 8BB0E577 9725E577 A116F477 72ACE577 D..w:..w^..w...w.%.w...wr..w<br>00004088 5F8CF477 32B3E577 00000000</font> <font color="#FF00FF">A2E7D177 F678D577 B211D377 2D5AD177 _..w2..w.......w.x.w...w-Z.w<br>000040A4 74C4D177 34E9D377 00000000</font></strong></font></pre>
+<p>On note ici que le 1er tableau commence en <strong>000040000</strong> 
+  et contient 36 &eacute;l&eacute;ments + 1 vide et le 2eme tableau commence en 
+  <strong>00004094</strong> et contient 6 &eacute;l&eacute;ments + 1 vide. 
+  Le nombre d'&eacute;l&eacute;ment d'un tableau d&eacute;termine le nombre de fonctions import&eacute;es 
+  par DLL.</p>
+<p>Il nous manque 2 &eacute;l&eacute;ments pour compl&eacute;ter cette section des imports 
+  :</p>
+<ul><li>Les noms des DLL et des fonctions import&eacute;s.</li>
+  <li>La table des Imports.</li></ul>
+<p>Pour trouver les noms des fonctions il faut retourner dans le dump et on les 
+  trouvera qui d&eacute;butent tr&egrave;s clairement &agrave; l'offset : <strong>00007007. 
+  </strong>On remarque au passage qu'il n'y a pas les noms des DLL alors qu'habituellement 
+  ceux ci s'y trouvent m&ecirc;l&eacute;s. Pour trouver les noms des DLL il suffit 
+  de regarder dans le dump &agrave; l'adresse de l'import-table (00009058). En 
+  effet UPX regroupe les noms des dll du programme &agrave; la suite la table 
+  des imports de l'exe pack&eacute;.</p>
+<p>Ici on voit qu'il 'y a 2 dll import&eacute;es : <strong>KERNEL32.dll </strong>et 
+  <strong>USER32.dll</strong>. On retient ces 2 noms que nous ajouterons &agrave; 
+  notre exe reconstruit.</p>
+<p>Quand &agrave; la table des imports original du programme, il va falloir la 
+  construire nous m&ecirc;me car celle-ci est introuvable dans le dump. Si on ouvre 
+  avec un &eacute;diteur de PE notre exe reconstruit on verra que la table des imports 
+  devait normalement se trouver &agrave; l'offset <strong>00004414</strong> et 
+  de taille <strong>3C</strong>. Tr&egrave;s bien, nous la reconstruirons &agrave; cet 
+  endroit.</p>
+<p>On ouvre notre exe reconstruit on va &agrave; l'offset <strong>00004414 </strong>et 
+  on laisse une place de <strong>3C</strong>.</p>
+<p>A la suite on va &eacute;crire le nom des 2 DLL import&eacute;s, dans la partie Ascii 
+  de notre &eacute;diteur. En n'oubliant pas de terminer le nom de chaque DLL par un byte 
+  00. (le byte 00 doit être dans la partie hexa). l'ordre n'a pas d'importance, 
+  puisque nous l'indiquerons au moment o&ugrave; l'on &eacute;crira la table des imports.</p>
+<p>On retourne dans le dump &agrave; l'offset <strong>00007007</strong> (d&eacute;but 
+  des noms des fonctions (oublier pas l'index avant le nom d'une fonction, c'est 
+  pour &ccedil;a qu'on ne commence pas directement sur le nom de la premi&egrave;re fonction 
+  mais 1 word plut&ocirc;t)) On s&eacute;lectionne tout le bloc qui contient des noms de fonction 
+  et on Copie (on regarde la taille de ce bloc en m&ecirc;me temps) et dans l'exe reconstruit, 
+  &agrave; la suite des nom de DLL (apr&egrave;s le byte 00 marquant le fin de nom de 
+  la dll), on s&eacute;lectionne un bloc &eacute;gal &agrave; la taille du bloc que nous venons 
+  de copier et on le supprime. Ensuite on colle celui du dump &agrave; la place.</p>
+<p>Retournons &agrave; l'offset de la table des imports (<strong>00004414</strong>) 
+  et &eacute;crivons notre table. Pour cela il nous faut relev&eacute;s 2 &eacute;l&eacute;ments 
+  n&eacute;cessaires que sont les offsets des noms des DLL et les offset 
+  des 2 tableaux IAT relev&eacute;s un peu plus t&ocirc;t :</p>
+<ul>
+  <li>KERNEL32.dll commence &agrave; l'offset <strong>00004450</strong></li>
+  <li>USER32.dll commence &agrave; l'offset <strong>0000445D</strong></li>
+  <li>le premier tableau commence en <strong>00004000</strong></li>
+  <li>le deuxi&egrave;me en <strong>00004094</strong></li>
+</ul>
+<p>Comment savoir &agrave; quelle DLL appartiennent les tableaux ? Il suffit de 
+  prendre le nom d'une fonction dans celles list&eacute;s et de regarder avec 
+  une doc &agrave; quelle DLL elle appartient (le MSDN ou win32.hlp font tr&egrave;s 
+  bien l'affaire) ensuite on recherche avec les API LoadLibrary et GetProcAddress 
+  l'adresse relative de cette fonction. L'adresse obtenue est forcement dans l'un 
+  des tableaux d'IAT de notre exe, il suffit de faire une recherche hexa sur cette 
+  adresse et nous tomberont dans le tableau correspondant &agrave; la DLL. (n'oubliez 
+  pas d'inverser l'ordre des bytes de l'adresse retourn&eacute; pour la trouver 
+  dans le fichier)</p>
+<p>Je vous ai facilit&eacute; les chose avec un petit tools que j'ai cod&eacute; 
+  pour &ccedil;a que vous pourrez trouver dans les fichiers joins &agrave; ce tutorial. 
+  Pour s'en servir, il suffit d'entrer un nom de DLL et un nom de fonction et 
+  le programme nous retournera son adresse. (attention de bien respecter la syntaxe 
+  des noms des dll et des fonctions ainsi que les majuscules et les minuscules, 
+  exemple correct : USER32.dll et MessageBoxA)</p>
+<p>J'ai maintenant identifi&eacute; que le premier tableau correspond aux import 
+  de KERNEL32.dll et le deuxi&egrave;me &agrave; USER32.dll je peux &agrave; pr&eacute;sent 
+  &eacute;crire ma table des imports :</p>
+<table width="83%" border="0" bgcolor="#FFFFFF">
+  <tr bgcolor="#000000"> 
+    <td width="17%" align="center"><font color="#FFFFFF">OriginalFirstThunk</font></td>
+    <td width="18%" align="center"><font color="#FFFFFF">TimeDateStamp </font></td>
+    <td width="19%" align="center"><font color="#FFFFFF">ForwarderChain 
+        </font></div></td>
+    <td width="15%" align="center"><font color="#FFFFFF">DllName</font></td>
+    <td width="16%" align="center"><font color="#FFFFFF">FirstThunk</div></td>
+    <td width="15%" align="center"><font color="#FFFFFF"></font></td>
+  </tr>
+  <tr bgcolor="#CCCCCC"> 
+    <td align="center"><font color="black">00000000</font></td>
+    <td align="center"><font color="black">00000000</font></td>
+    <td align="center"><font color="black">00000000</font></td>
+    <td align="center"><font color="black">50440000</font></td>
+    <td align="center"><font color="black">00400000</font></td>
+    <td align="center"><font color="black">(Kernel32.dll)</font></td>
+  </tr>
+  <tr bgcolor="#CCCCCC"> 
+    <td align="center"><font color="black">000000000</font></td>
+    <td align="center"><font color="black">00000000</font></td>
+    <td align="center"><font color="black">00000000</font></td>
+    <td align="center"><font color="black">5D440000</font></td>
+    <td align="center"><font color="black">94400000</font></td>
+    <td align="center"><font color="black">(user32.dll)</font></td>
+  </tr>
+  <tr bgcolor="#CCCCCC"> 
+    <td align="center"><font color="black">000000000</font></td>
+    <td align="center"><font color="black">000000000</font></td>
+    <td align="center"><font color="black">000000000</font></td>
+    <td align="center"><font color="black">000000000</font></td>
+    <td align="center"><font color="black">000000000</font></td>
+    <td align="center"><font color="black">(vide)</font></td>
+  </tr>
+</table>
+<p>On se place &agrave; l'offset de notre table des import en <strong>00004414</strong> 
+  et on &eacute;crit notre table ce qui donne vu sous un &eacute;diteur hexa :</p>
+<pre>0000004368 72617279 00000000 0A0A0000 52756E74 696D6520 4572726F rary........Runtime Erro<br>0000004380 72210A0A 50726F67 72616D3A 20000000 2E2E2E00 3C70726F r!..Program: .......&lt;pro<br>0000004398 6772616D 206E616D 6520756E 6B6E6F77 6E3E0000 4765744C gram name unknown&gt;..GetL<br>00000043B0 61737441 63746976 65506F70 75700000 47657441 63746976 astActivePopup..GetActiv<br>00000043C8 6557696E 646F7700 4D657373 61676542 6F784100 75736572 eWindow.MessageBoxA.user<br>00000043E0 33322E64 6C6C0000 00000000 00000000 FFFFFFFF AE334000 32.dll...............3@.<br>00000043F8 B2334000 FFFFFFFF 62344000 66344000 FFFFFFFF E6354000 .3@.....b4@.f4@......5@.<br>0000004410 EA354000 <strong><font color="#0000FF">00000000 00000000 00000000 50440000 00400000</font></strong> .5@.............PD...@..<br>0000004428 <strong><font color="#0000FF">00000000 00000000 00000000 5D440000 94400000 00000000</font></strong> ............]D...@......<br>0000004440 <strong><font color="#0000FF">00000000 00000000 00000000 00000000</font></strong> 4B45524E 454C3332 ................KERNEL32<br>0000004458 2E646C6C 00555345 5233322E 646C6C00 00014765 74537464 .dll.USER32.dll...GetStd<br>0000004470 48616E64 6C650001 47657453 7472696E 67547970 65570001 Handle..GetStringTypeW..<br>0000004488 47657453 7472696E 67547970 65410001 4C434D61 70537472 GetStringTypeA..LCMapStr<br>00000044A0 696E6757 00014C43 4D617053 7472696E 67410001 4D756C74 ingW..LCMapStringA..Mult<br>00000044B8 69427974 65546F57 69646543 68617200 014C6F61 644C6962 iByteToWideChar..LoadLib<br></pre>
+<p>Voila notre job est presque fini, il faut juste corriger les IAT pour pointer 
+  non pas vers les adresses des fonctions en m&eacute;moire mais vers le nom des 
+  fonctions dans notre fichier. Pour &ccedil;a on va utiliser la fonction <strong>Rebuild 
+  Import Table</strong> de LordPE qui nous &eacute;vitera un travail manuel laborieux.</p>
+<ul>
+  <li>On lance Lord-PE</li>
+  <li>On va dans options et on s'assure que <strong>Rebuild Import Table</strong> 
+    est coch&eacute;</li>
+  <li>On va ensuite dans Rebuild PE</li>
+  <li>Et on ouvre l'exe que nous avons reconstruit.</li>
+  <li>Lord-PE nous affiche : Rebuild Import Table....done</li>
+</ul>
+<p>Notre section des import est &agrave; pr&eacute;sent valide et nous pouvons d&eacute;sassembler 
+  l'exe sous wdasm en obtenant les imports, les datas et le code, Par contre si 
+  on essaye de lancer l'exe il ne se passe rien, il nous reste un dernier point 
+  &agrave; corriger : les ressources.</p>
+
+<a name="6"></a><h3>6. Correction des ressources</h3>
+<p>Notre dump a bien dump&eacute; les ressources mais l'index qui permet 
+  au programme d'identifier les ressources est manquant. On retourne dans le dump 
+  on regarde &agrave; quelle offset se situe les ressources avec un &eacute;diteur de 
+  PE et on rel&egrave;ve dans le PE directory info :</p>
+<p>Ressource : offset = 00009000 , size = 58</p>
+<ul>
+  <li>On se rend &agrave; cet offset dans notre dump et on copie ce block de taille 
+    58h.</li>
+  <li>On ouvre notre exe reconstruit avec un &eacute;diteur de PE et on rel&egrave;ve l'offset 
+    des ressources (00006000)</li>
+  <li>On se rend &agrave; cet offset avec un &eacute;diteur hexa et on s&eacute;lectionne un 
+    block de 58h</li>
+  <li>On le supprime et on colle &agrave; la place celui qu'on avait copi&eacute;.</li>
+  <li>On n'oublie pas de sauvegarder</li>
+</ul>
+<p>Maintenant notre exe se lance bien et est enti&egrave;rement reconstruit quasiment 
+  comme &agrave; son origine.</p>
+
+<a name="7"></a><h3>7. Infos pratiques sur UPX 1.23</h3>
+<ul>
+  <li>Trouver L'OEP est tr&egrave;s simple, il suffit d'ouvrir le dump avec wdasm et 
+    de regarder la derni&egrave;re ligne de code qui se situe en fin de la section UPX1 
+    et qui est toujours l'endroit ou le loader saute vers l'OEP, sous cette forme 
+    la :</li>
+</ul>
+<pre>:0040822E 61                      popad<br>:0040822F E97C8FFFFF              jmp 004011B0	<strong>(OEP)</strong><br>:00408234 00000000000000000000    BYTE 10 DUP(0)<br>:0040823E 00000000000000000000    BYTE 10 DUP(0)<br>:00408248 00000000000000000000    BYTE 10 DUP(0)<br>:00408252 00000000000000000000    BYTE 10 DUP(0)<br>:0040825C 00000000000000000000    BYTE 10 DUP(0)<br>:00408266 00000000000000000000    BYTE 10 DUP(0)<br>:00408270 00000000000000000000    BYTE 10 DUP(0)</pre>
+<ul>
+  <li>Pour d&eacute;compresser un exe pack&eacute; par upx, il faut utiliser upx avec 
+    la commande <strong>-d</strong>.</li>
+</ul>
+
+<p class="image"><img src="../../images/signatures/Netix.gif"></p>
+
+</body>
+</html>

@@ -93,6 +93,23 @@ Some articles are also sensitive and may mention, for example, the creation of h
 * Seven Synkop
 * Pirage
 * Row
+* Sleazy Wind
+* Snapscan
+* The Last Click
+* The Ultimate
+* Total Control
+* Tradefr
+* T-S63
+* UnderDark
+* Underhack
+* Underwayy
+* USN
+* WWA
+* X-H
+* XIII
+* Zone 51
+* Secu-info
+* Shmeitcorp
 
 # How to deploy it
 

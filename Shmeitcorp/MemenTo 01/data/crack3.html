@@ -1,0 +1,83 @@
+<HTML><HEAD><TITLE>MemenTo</TITLE>
+
+<meta name="Author" content="[Shmeit Corp]--">
+<META content="text/html; charset=iso-8859-1" http-equiv=Content-Type>
+<meta http-equiv="content-language" content="fr">
+</HEAD>
+<body  background="stars.jpg" bgcolor="#000000" link="#FFFFFF" vlink="#FFFFFF" alink="#00E0FF">
+<font color=#EEEEEE face=arial, verdana, courier size=2>
+<center><h1>Cours de Crack <br><font size="-2">(3eme Partie)</font></h1><br></center>
+Dans le second cours, nous avons aborde une erreur bien commune a tous les debutants...
+Maintenant, je vais tenter de vous expliquer comment trouver d'autres endroits "interessant"
+dans un listing...<br><br>
+Voyons d'abord les differences entre une version shareware et une version enregistr&eacute;e.<br>
+<b>Voici ce qui est susceptible d'appparaitre dans un Shareware :</b><br><br>
+<list>
+<li>Un vilain NAG-SCREEN apparrait a chaque fois qu'on lance ou qu'on sort du programme...
+</li><li>
+Dans la barre de titre ou dans la barre d'&eacute;tat du programme, il y a marqu&eacute; UNREGISTERED...
+</li><li>
+Dans la fenetre "About", il y a marquer UNREGISTERED USER, ou quelquechose comme ca...
+</li><li>
+Dans les menus, il y a un bouton "Register" qui nous permet d'entrer un code pour s'enregistrer...
+</li><li>
+Au bout de 30 jours, le programme nous lance un nag screen qui nous dit qu'on doit s'enregistrer...
+</li></list>
+<br><br>
+Tout ca n'apparait plus dans la version "REGISTERED"...logique :)<br><br>
+En fait, le programme doit chercher si on est enregistr&eacute; ou non <b>a chaque lancement</b>...<br>
+<i><b>Mais comment le prog sait si on s'est enregistrer ??</b></i><br>
+Eh bien, lorsqu'on s'enregistre correctement (avec un vrai code...),
+le programme inscrit les informations d'enregistrement dans un fichier annexe, ou dans la base
+de registre de Windows...<br>
+<br>
+<b>Maintenant, un peu de pratique</b>... On va reprendre notre bon vieux STARTCLEAN... ;)<br>
+Comme on l'a vu precedemment, il nous met un mechant NAG SCREEN a chaque demarrage...
+Si vous le cracker comme dans la 1ere partie du cours, vous pourrez vous enregistrer avec n'importe quel code...<br>
+A partir du moment ou vous serez enregistr&eacute;, StartClean va inscrire un truc dans la base de registre.
+Ce "truc" en question, c'est ce qui va permettre a StartClean de se "souvenir" que vous
+vous etes enregistr&eacute;...<br>Jusque la, j'espere que vous suivez :)<br><br>
+<b>Essayons donc d'analyser la logique du programe lorsqu'on le lance</b>:<br>
+1) le programme va acceder a la base de registre de Windows.<br>
+2) si le prog ne trouve aucune information d'enregistrement, vous etes considerez comme UNREGISTERED :(<br>
+3) si le prog trouve les informations d'enregistrement, vous etes considerer comme REGISTERED ;)<br>
+<br>
+Pas compliqu&eacute;, n'est-ce pas ? Il suffit de retrouver ce saut conditionnel...<br>
+Comment ?...humhum...voyons ca etape par etape....<br><br>
+Lancer StartClean...essayer de vous enregistrer...la vous devez indiquez une valeur "Name" et une valeur "Code".
+Retenez le nom des deux valeurs : "name" pour le nom, "code" pour le serial...<br><br>
+<font color="Aqua">Lancer WDasm et decompiler une copie de StartClean.exe</font>...<br>
+<font color="Aqua">Placer vous au debut du code (code start) et faites une recherche sur le mot "Name"...</font><br>
+La, vous devriez tombez a la ligne 175...
+En regardant un peu au dessus et un peu au dessous, ca donne ca :<br><br>
+<center><img src="allcode2.gif"></center><br><br>
+L&agrave;, vous pouvez voir 2 trucs interressant : <font color="Teal">RegOpenKey</font> et <font color="Teal">RegQueryValue</font>.<br>
+Ces fonctions permettent au programme de prendre des informations contenues dans 
+la base de registre...<br>
+Elles sont suivis de <font color="Teal">LstrLenA</font> et <font color="Teal">LstrCmpA</font>, qui permette de verifiez la longueur d'une chaine de caracteres
+et d'effectuer des comparaisons...
+On peut etre quasiment sûr que c'est le moment decisif ou le programme va determinez si vous etes enregistr&eacute;!<br><br>
+Dans chacune des fonction <i>LstrxxxA</i>, il y a un <font color="Yellow">"Test eax, eax"</font> suivi d'un saut vers l'adresse 00401140...<br>
+Essayons de "nopper" (cf cour 1) ces deux sauts...<br><bR>
+<b><i>Pourquoi les deux ?</i></b> Parceque si on &eacute;limine que le premier, on va sauter quand on va arriver au deuxieme...
+Et si on noppe que le deuxieme, on aura meme pas le temp d'y arriver puisqu'on aura deja sauter au premier !<br><br>
+<font color="Aqua">Lancer l'editeur Hexadecimal</font> et <font color="Aqua">faites une recherche sur <font color="Purple">85C0<font color="Fuchsia">742E</font>8D84</font></font> (cf cour 2).
+Remplacer le <font color="Fuchsia">742E</font> par un <font color="Fuchsia">9090</font>...Ensuite, faites une nouvelle recherche sur 
+<font color="Purple">85C0<font color="Fuchsia">7505</font>BB01</font> et remplacer le <font color="Fuchsia">7505</font> par un <font color="Fuchsia">9090</font>...<br><br>
+L'heure est venu de savoir si on a bien raisonner ou non...<br>
+<font color="Aqua">Lancer votre StartClean ainsi modifi&eacute;</font>...CA MARCHE !!<br>
+Meme pas besoin de s'enregistrer, le programme pense qu'il l'est deja :)<br><br>
+Le principe est donc assez simple :<br>
+Le programme va cherchez les informations d'enregistrement dans la base de registre,
+mais qu'il les trouve ou non, quelles soient bonnes ou non, le programme agira comme si tout etait OK !<br>
+<b><i>Pourquoi ?</i> </b>Parcequ'on a enlevez les sauts qui s'effectuaient si une des conditions n'etaient pas remplies...<br><br>
+Je pense que maintenant vous avez assimilez le principe du saut conditionnel...<br>
+A travers le petit programme qu'est StartClean, vous avez meme pu vous exercez un peu...<br>
+Vous avez egalement appris a evitez un petit piege dans le 2eme cours...<br>
+Cependant, le cours n'est pas tout a fait fini, et il est necessaire de vous approtez encore quelques precisions sur certains point que 
+nous n'avons pas encore trait&eacute;...<br>
+<br><br>
+<center>
+</center>
+</font></body>
+</HTML>

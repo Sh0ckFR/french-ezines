@@ -1,0 +1,163 @@
+<html>
+<head>
+<title>Manual Unpacking - Chapitre 2 </title>
+<link rel="stylesheet" type="text/css" href="../../style.css">
+</head>
+<body>
+<h1>Manual Unpacking - Chapitre 2 </h1>
+
+<h2>Reconstruction des Imports</h2>
+<p>Dans ce chapitre je vais tacher d'expliquer en gros comment fonctionnent les 
+  imports dans le PE et les probl&egrave;mes que nous rencontrons lors d'un dump. Je 
+  ne donne donc pas une m&eacute;thode pour reconstruire les imports mais plut&ocirc;t une 
+  approche de comment les reconstruire. Selon le packer utilis&eacute;, il y aura 
+  diff&eacute;rentes m&eacute;thodes plus ou moins complexe et &agrave; chaque fois diff&eacute;rentes 
+  m&ecirc;me si le principe reste le m&ecirc;me.</p>
+<h3>1. Les fonctions Import&eacute;s</h3>
+<p>Les imports sont des fonctions que notre programme appelle depuis des dll syst&egrave;mes 
+  de windows tels que USER32.dll, KERNEL32.dll, GDI32.dll etc... Ces fonctions 
+  ne sont pas directement dans notre programme on dit qu'elles sont import&eacute;s. 
+  Notre programme a besoin de quelques informations sur ces fonctions<br>
+  pour pouvoir y faire r&eacute;f&eacute;rence. Entre autres il a besoin de savoir le nom de 
+  la dll o&ugrave; la fonction se situe et le nom de la fonction que l'on appelle. 
+  Normalement ces infos sont plac&eacute;s dans une section du programme qui porte 
+  le nom .idata ou encore .rdata. C'est facilement rep&eacute;rable visuellement 
+  avec un &eacute;diteur hexa, du fait des noms des fonctions et des dll. Exemple :</p>
+<pre>00404590  f5 00 47 65 74 43 75 72-72 65 6e 74 44 69 72 65  ..GetCurrentDire<br>004045a0  63 74 6f 72 79 41 00 00-b0 02 55 6e 6d 61 70 56  ctoryA....UnmapV<br>004045b0  69 65 77 4f 66 46 69 6c-65 00 1b 00 43 6c 6f 73  iewOfFile...Clos<br>004045c0  65 48 61 6e 64 6c 65 00-5d 02 53 65 74 43 75 72  eHandle.].SetCur<br>004045d0  72 65 6e 74 44 69 72 65-63 74 6f 72 79 41 00 00  rentDirectoryA..<br>004045e0  12 01 47 65 74 46 69 6c-65 53 69 7a 65 00 d6 01  ..GetFileSize...<br>004045f0  4d 61 70 56 69 65 77 4f-66 46 69 6c 65 00 35 00  MapViewOfFile.5.<br>00404600  43 72 65 61 74 65 46 69-6c 65 4d 61 70 70 69 6e  CreateFileMappin
+
+</pre>
+
+<h3>2. La table des imports </h3>
+<p>La table des imports est une sorte d'index qui va indiquer les DLL et les fonctions 
+  qui sont import&eacute;s.</p>
+<p>La table des imports est un tableau ou chaque &eacute;l&eacute;ment est une 
+  structure IMAGE_IMPORT_DESCRIPTOR. Il y a autant d'&eacute;l&eacute;ment dans ce tableau que 
+  de DLL import&eacute;es plus en dernier un &eacute;l&eacute;ment vide pour d&eacute;limiter 
+  la fin de l'Import-Table. Donc en th&eacute;orie on peux calculer la taille de L'import 
+  table comme suit :</p>
+<p>( nbr de dll * 5 dword) + 5 dword.</p>
+<p>Note : L'offset et la taille de l'import-table sont accessible depuis le PE 
+  et donc avec un &eacute;diteur de PE. Si l'offset est indispensable la taille n'est 
+  pas vraiment n&eacute;cessaire et d'apr&egrave;s ce que j'ai remarqu&eacute; 
+  on peux mettre un peu n'importe quoi &ccedil;a ne change rien, par contre si l'on 
+  met une taille de 0, le programme se lancera quand m&ecirc;me mais wdasm n'affichera 
+  aucune fonction import&eacute;.</p>
+<p>Une structure IMAGE_IMPORT_DESCRIPTOR est compos&eacute;e des 5 DWORD suivants 
+  : </p>
+<pre>   
+IMAGE_IMPORT_DESCRIPTOR struct
+   OriginalFirstThunk 		dd 0 	;RVA vers un tableau original IAT (Import Adress Table)    
+   TimeDateStamp 		dd 0 	;non utilis&eacute; ici
+   ForwarderChain 		dd 0 	;non utilis&eacute; ici
+   DllName 			dd 0 	;RVA vers le nom de la DLL
+   FirstThunk 			dd 0 	;RVA vers un 2eme tableau IAT (Import Adress Table) 
+IMAGE_IMPORT_DESCRIPTOR ends</pre>
+<p>Le 1er &eacute;l&eacute;ment (OriginalFirstThunk) est aussi appel&eacute; Characteristics.</p>
+<p>Certains &eacute;l&eacute;ments de cette structure ne nous sont pas n&eacute;cessaire 
+  ici, il faut en retenir simplement que cette structure pointe vers un nom de 
+  DLL, et vers 2 tableaux d'adresse (IAT) (1er et 5&egrave;me &eacute;l&eacute;ment), ces 2 tableaux 
+  contiennent des pointeurs vers l'index suivi du nom de la fonction import&eacute;s 
+  depuis la dll sp&eacute;cifi&eacute;e par le 4eme &eacute;l&eacute;ment.</p>
+<p>Voici un sch&eacute;ma plus explicite</p>
+<p class="image"><img src="peeringpe3.gif" width="548" height="352"></p>
+<p>Le 1er membre de l'IMAGE_IMPORT_DESCRIPTOR (OriginalFirstThunk ou Characteristics) 
+  pointe vers un tableau ou chaque &eacute;l&eacute;ments pointe lui m&ecirc;me vers 
+  une structure IMAGE_IMPORT_BY_NAME qui contient elle 2 &eacute;l&eacute;ments 
+  :</p>
+<pre>IMAGE_IMPORT_BY_NAME struct
+   WORD Hint; 		; index de la fonction dans la dll
+   BYTE Name[?]; 	; Nom de la fonction
+IMAGE_IMPORT_BY_NAME ends</pre>
+<p>La valeur de Hint n'est pas vraiment n&eacute;cessaire pour nous et seul le 
+  2&egrave;me &eacute;l&eacute;ment Name est indispensable et pointe vers une cha&icirc;ne de caract&egrave;res 
+  portant le nom de la fonction.</p>
+<p>Le 5&egrave;me &eacute;l&eacute;ment FirstThunk est aussi un pointeur vers un tableau contenant 
+  des IMAGE_IMPORT_BY_NAME o&ugrave; chaque &eacute;l&eacute;ment pointe vers l'index 
+  et nom de la fonction import&eacute;, exactement comme le 1er &eacute;l&eacute;ment OriginalFirstThunk</p>
+
+<h4>Mais pourquoi y'a t'il 2 tableaux parall&egrave;les contenant les infos des fonctions 
+  ?<br>
+  -------------------------------------------------------------------------------------------------------</h4>
+<p>En r&eacute;alit&eacute; le 1er tableau n'est pas indispensable et nous pouvons 
+  nous en passer.</p>
+<p>Au moment o&ugrave; le programme est charg&eacute; en m&eacute;moire le PE 
+  loader va chercher ( si il existe ) le 1er tableau (OriginalFirstThunk) pour 
+  retrouver les noms des fonctions import&eacute;s. Ensuite &agrave; l'aide des 
+  API LoadLibrary et GetProcAdress il va retrouver les adresses r&eacute;elles 
+  des fonctions correspondantes au nom des fonctions et ira &eacute;craser le 
+  2&egrave;me tableau en rempla&ccedil;ant chaque &eacute;l&eacute;ment avec les adresses des fonction en 
+  m&eacute;moire. </p>
+<p>Dans le cas ou le 1er tableau n'existe pas, on se sert du 2eme tableau (FirstThunk) 
+  pour lire le nom de la fonction et rechercher, toujours via GetProcAdress, son 
+  adresse, ensuite on &eacute;crase chaque &eacute;l&eacute;ments du 2eme tableau 
+  par l'adresse en m&eacute;moire de la fonction plut&ocirc;t que son nom.</p>
+<p>C'est pour cela lors d'un dump que ce 2&egrave;me tableau contient les adresses r&eacute;elles 
+  des fonctions au lieu de pointer vers leurs noms, car en m&eacute;moire ce tableau 
+  a &eacute;t&eacute; modifi&eacute;. </p>
+<p>L&agrave; o&ugrave; &ccedil;a se g&acirc;te dans notre dump c'est si ce 1er tableau n'existe 
+  pas, au lancement du programme, le PE-loader ne trouvant pas le 1er tableau 
+  ira alors aller chercher dans le 2eme tableau un pointeur vers un nom de fonction 
+  pour en obtenir l'adresse. Mais comme nous avons &agrave; la place d&eacute;j&agrave; l'adresse, 
+  le programme va planter. Le probl&egrave;me ne se poserait pas si le 1er tableau existait, 
+  le PE loader au chargement du programme se servirait du 1er tableau pour initialiser 
+  le 2eme.</p>
+<p>Et le grand probl&egrave;me est que la plupart des packers efface ce 1er tableau, 
+  celui-ci n'&eacute;tant pas indispensable, pour r&eacute;cup&eacute;rer un peu plus de place. Lors 
+  de notre dump nous obtiendrons alors un tableau de FirstThunk fauss&eacute; 
+  qui ne pourra se rectifier automatiquement au chargement puisque le 1er tableau 
+  est manquant. Nous devrons donc reconstruire ce 2eme tableau ou du moins corriger 
+  les pointeurs pour pointer vers les noms des fonctions et non pas sur les adresses 
+  r&eacute;elles en m&eacute;moire.</p>
+<p>Mais rassurez vous il y'a des programmes qui font &ccedil;a admirablement et dont 
+  la plupart des dumper sont &eacute;quip&eacute;s (procdump, lordpe etc....), le faire 
+  &agrave; la main serait vraiment une perte de temps et une source d'erreurs. 
+  Mais je vous explique quand m&ecirc;me comment &ccedil;a marche. </p>
+<p>On se sert de l'API GetProcAdress qui nous retourne l'adresse de la fonction 
+  en m&eacute;moire d'apr&egrave;s son nom. Voici en gros la d&eacute;marche &agrave; suivre 
+  :</p>
+<ul>
+  <li>on regarde dans IMAGE_IMPORT_DESCRIPTOR le 4&egrave;me &eacute;l&eacute;ment qui nous indique 
+    de quel DLL il s'agit</li>
+  <li>on regarde avec le 5eme &eacute;l&eacute;ment l'adresse du tableau (IAT) 
+    correspondant</li>
+  <li>pour chaque nom de fonction (de la dll correspondante) on r&eacute;cup&egrave;re son adresse 
+    en m&eacute;moire (avec GetProcAdress)</li>
+  <li>on compare l'adresse contenue dans chaque &eacute;l&eacute;ment de l'IAT avec celle que 
+    nous avons r&eacute;cup&eacute;r&eacute;e par le nom de la fonction.</li>
+  <li>si l'adresse correspond on remplace l'&eacute;l&eacute;ment de l'IAT par un pointeur dans 
+    notre fichier vers le nom de la fonction - 2 bytes (-2 car rappelons nous 
+    que l'on pointe pas directement sur le nom de la fonction mais d'abord sur 
+    son Hint qui occupe 1 word (2 bytes))</li>
+  <li>Une fois tout le tableau de la 1ere DLL corrig&eacute;, on passe au tableau 
+    de la DLL suivante</li>
+</ul>
+
+<h3>3. La table des import dans un programme pack&eacute; et dump&eacute;</h3>
+<p>Si nous regardons l'adresse de l'Import-Table dans le PE d'un dump qui &agrave; 
+  &eacute;t&eacute; effectuer sur un programme pack&eacute;, nous verrons que 
+  celle-ci pointe sur une table des imports propre au loader qui a servi 
+  &agrave; depacker le programme en m&eacute;moire et non pas vers la table des 
+  imports du programme. Il faudra alors rectifier cette adresse vers l'import-table 
+  originale. Le probl&egrave;me est l&agrave; encore que certain packer garde celle-ci intacte 
+  et d'autre la d&eacute;truise.</p>
+<p> Dans le cas o&ugrave; celle-ci est d&eacute;truite il faudra la reconstruire, 
+  ce qui est la relativement simple et rapide :</p>
+<p>Il suffit de cr&eacute;er un IMAGE_IMPORT_DESCRIPTOR pour chaque DLL, et nous nous 
+  occuperont juste des 2 derniers &eacute;l&eacute;ments (DllName et FistThunk) 
+  que nous faisons pointer respectivement vers le nom de la DLL et vers le tableau 
+  de pointeur pointant vers les noms de fonction. On oublie pas d'ajouter la place 
+  d'une structure vide (5 dword) et on corrige le PE en mettant l'offset de l'import-table 
+  sur le 1er IMAGE_IMPORT_DESCRIPTOR que nous venons de cr&eacute;er, on peux aussi remplir 
+  le champ pour la taille de l'Import-Table, mais ne pas laisser la valeur 0 comme 
+  pr&eacute;c&eacute;demment expliquer.</p>
+
+<h3>4. Conclusion</h3>
+<p>J'esp&egrave;re que vous aurez une vue d'ensemble du fonctionnement de la table des 
+  import un peu plus pr&eacute;cise avec ce tutorial. Dans les tutoriaux suivant nous 
+  verrons des cas concrets avec des exemples pr&eacute;cis pour diff&eacute;rents packers o&ugrave; 
+  vous verrez que chaque cas sera diff&eacute;rent.</p>
+
+<p class="image"><img src="../../images/signatures/Netix.gif"></p>
+
+</body>
+</html>

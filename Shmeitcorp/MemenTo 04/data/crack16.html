@@ -1,0 +1,383 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2//EN">
+<HTML>
+
+<HEAD>
+	<META HTTP-EQUIV="Content-Type" CONTENT="text/html;CHARSET=iso-8859-1">
+	<META NAME="GENERATOR" Content="Visual Page 2.0 for Windows - Trial Version">
+	<TITLE>untitled</TITLE>
+</HEAD>
+
+<BODY TEXT="white" BGCOLOR="black">
+
+<P><B><FONT SIZE="5" FACE="Comic Sans MS">ASDSEE version 3.0 Mod&egrave;le 103 FR</FONT></B><BR>
+<BR>
+En voulant d&eacute;sassembler ce soft, Wdasm ne va pas reconna&icirc;tre, dans le PE Header, la signature d'un
+ex&eacute;cutable valable, et le Symbol Loader de SoftIce va lancer l'application  sans s'arr&ecirc;ter sur la
+case d&eacute;part...<BR>
+<BR>
+Un petit tour par ProcDump s'impose, pour jeter un coup d'œil sur les caract&eacute;ristiques des sections :
+<P ALIGN="CENTER"><IMG SRC="Image1.GIF" WIDTH="584" HEIGHT="168" ALIGN="BOTTOM" BORDER="0">
+<P>Vous aurez sans doute devin&eacute; que le packer d'ACDSEE est ASPack...<BR>
+Et vous aurez probablement remarqu&eacute; que dans cet exemple, toutes les sections ont <FONT COLOR="yellow">C0000040</FONT>
+comme caract&eacute;ristique (c'est une constante, car il faut que la section soit <FONT COLOR="red">Readable</FONT>,
+<FONT COLOR="red">Writeable</FONT> et <FONT COLOR="red">Data</FONT>). Ainsi, le programme peut lire le code compress&eacute;,
+et le d&eacute;compresser dans la m&ecirc;me section sans provoquer d'erreur fatale dans Windows), ce qui, normalement,
+vous emp&ecirc;che de d&eacute;sassembler l'ex&eacute;cutable, ou d'obtenir un break en passant par le Symbol Loader
+de SoftIce.<BR>
+En modifiant la premi&egrave;re section (.text), et en rempla&ccedil;ant C0000040 par <FONT COLOR="yellow">E0000020</FONT>
+&agrave; l'aide de ProcDump, vous pourrez reprendre la main avec SoftIce, et obtenir un listing, sans les ressources
+(Strings Data...) dans Wdasm.<BR>
+<BR>
+<B><FONT SIZE="2" FACE="Verdana">Petit rappel sur les attributs des sections :</FONT></B><BR>
+0x20...... : signifie eXecutable<BR>
+0x40...... : signifie Readable<BR>
+<FONT COLOR="yellow">0x60...... : signifie eXecutable + Readable</FONT><BR>
+0x80...... : signifie Writeable <BR>
+0xC0...... : signifie Readable + Writeable<BR>
+<FONT COLOR="yellow">0xE0...... : signifie Readable + Writeable + eXecutable</FONT><BR>
+<BR>
+<FONT COLOR="yellow">0x......20 : signifie contains Code</FONT><BR>
+0x......40 : signifie Initialized data<BR>
+0x......80 : signifie Unitialized data<BR>
+<BR>
+Un attribut &eacute;gal &agrave; E000020 va pr&eacute;ciser au programme qu'il contient du code eXecutable, Readable
+et Writeable. Le &quot; Toutes Options &quot; Koa !<BR>
+ <BR>
+<U><B>Voici comment vous y prendre pour modifier les caract&eacute;ristiques des sections:</B></U><BR>
+Dans ProcDump, en cliquant sur le bouton PE EDITOR, vous allez obtenir des informations sur le Soft compress&eacute;
+:<BR>
+L'image Base qui semble toujours &ecirc;tre 400000 et la valeur de l'Entry point.<BR>
+En cliquant sur le bouton &quot; Sections &quot;, vous obtiendrez l'&eacute;cran suivant : 
+<P ALIGN="CENTER"><IMG SRC="Image2.GIF" WIDTH="360" HEIGHT="150" ALIGN="BOTTOM" BORDER="0">
+<P>Pour rappel : tout programme est divis&eacute; en sections, et chaque section poss&egrave;de une entr&eacute;e
+dans le PE Header, ce qui veut dire que le loader poss&egrave;de lui aussi une section dans le PE Header. ProcDump
+va nous permettre de conna&icirc;tre les d&eacute;tails de celle ci ( celle contenant l'Entry Point):
+
+<BLOCKQUOTE>
+	<BLOCKQUOTE>
+		<PRE><FONT COLOR="#0066FF" FACE="Courier New">Name     Virtual Size   Virtual Offset   Raw Size     Raw Offset</FONT><FONT
+		FACE="Courier New">
+</FONT><FONT COLOR="yellow" FACE="Courier New">.aspack    0001B000       0015A000       0001A200      00085400   </FONT></PRE>
+	</BLOCKQUOTE>
+</BLOCKQUOTE>
+
+<P>La Virtual size de la section est <FONT COLOR="yellow">1B000</FONT>, ce qui veut dire que la m&eacute;moire
+qui sera allou&eacute;e pour cette section sera de 1B000 bytes. Le Virtual Offset de la section, et donc du code
+appartenant au loader, est de <FONT COLOR="yellow">0015A000</FONT>, additionn&eacute; &agrave; l'Image base qui
+vaut <FONT COLOR="yellow">00400000</FONT>, ce qui nous donne une adresse virtuelle de <FONT COLOR="yellow">0055A000</FONT>.<BR>
+<BR>
+Une fois modifi&eacute; les caract&eacute;ristiques de la premi&egrave;re section (.text), le Symbol loader de
+softIce va nous faire breaker sur l'EntryPoint de notre cible : <BR>
+<BR>
+<U>Entry Point</U>
+<PRE><FONT FACE="Courier New">:</FONT><FONT COLOR="yellow" FACE="Courier New">0055A001</FONT><FONT FACE="Courier New">    PUSHAD                   </FONT><FONT
+COLOR="red" FACE="Courier New">; sauve les registres sur la pile</FONT><FONT FACE="Courier New">
+:0055A002    CALL      0055A577       </FONT><FONT COLOR="red" FACE="Courier New">; va r&eacute;cup&eacute;rer la valeur de EBP</FONT><FONT
+FACE="Courier New">
+:0055A007    JMP       0055A055       </FONT><FONT COLOR="red" FACE="Courier New">; et continue...</FONT><FONT
+FACE="Courier New">
+:0055A009    ADD       [EAX],AL</FONT></PRE>
+<P><FONT FACE="Courier New"></FONT><U><FONT FACE="Times New Roman">R&eacute;cup&eacute;ration de l'adresse en cours</FONT></U><FONT
+FACE="Courier New"></FONT>
+<PRE><FONT FACE="Courier New">:0055A577    MOV       EBP,[ESP]      </FONT><FONT COLOR="red" FACE="Courier New">; r&eacute;cup&egrave;re l'adresse de retour du call</FONT><FONT
+FACE="Courier New">
+:0055A57A    SUB       EBP,004439AB   </FONT><FONT COLOR="red" FACE="Courier New">; la soustrait &agrave; l'adresse d'ASPack</FONT><FONT
+FACE="Courier New">
+:0055A580    RET</FONT></PRE>
+<P><U><B>Quelques explications :</B></U><BR>
+ASPack provoque un call. Le processeur va placer l'adresse de retour sur la pile et dans ESP. Le Mov EBP,[ESP]
+va r&eacute;cup&eacute;rer cette adresse dans EBP. <BR>
+Lors de la compilation d'ASPack, le programme s'est vu attribu&eacute; une adresse d'origine (004439AB ).<BR>
+Un sub EBP,004439AB, ou  EBP contient l'EIP de retour, va placer la diff&eacute;rence entre les offsets de la compilation
+d'origine et ceux de la nouvelle implantation au sein d'un programme h&ocirc;te. Ainsi, un LEA  EAX,[EBP+00443B72]
+va &quot;corriger&quot; la diff&eacute;rence entre l'adresse o&ugrave; se trouvaient les adresses vis&eacute;es
+par ASPack dans sa version d'origine (00443B72) et celle ou elles se trouveront apr&egrave;s avoir pack&eacute;
+une cible (diff&eacute;rence contenue dans EBP + adresse d'origine). Dans le cas d'ACDSee, EBP vaut 11665Ch.<BR>
+<BR>
+ASPack d&eacute;compresse les applications en plusieurs passes. Voici un exemple de passage de relais entre la
+premi&egrave;re passe de d&eacute;compression et la suivante :<BR>
+<BR>
+<U><B>1er passage de relais</B></U>
+<PRE><FONT FACE="Courier New">:0055A0AC    MOV       [EBP+004439E5],EAX </FONT><FONT COLOR="red" FACE="Courier New">; sauvegarde l'adresse contenue dans EAX</FONT><FONT
+FACE="Courier New">
+:0055A0B2    LEA       EAX,[EBP+00443B72] </FONT><FONT COLOR="red" FACE="Courier New">; r&eacute;cup&egrave;re l'adresse de destination </FONT><FONT
+FACE="Courier New">
+:0055A0B8    JMP       EAX                </FONT><FONT COLOR="red" FACE="Courier New">; saute &agrave; cette adresse</FONT><FONT
+FACE="Courier New">
+:0055A0BA    ADD       [EAX],AL           </FONT><FONT COLOR="red" FACE="Courier New">; octets NULL</FONT></PRE>
+<P><U><B>Mais le passage de relais &agrave; trouver est celui ci :</B></U>
+<PRE><FONT FACE="Courier New">:0055A4DB    MOV       EAX,[EBP+00443A76] 
+:0055A4E1    PUSH      EAX
+:0055A4E2    ADD       EAX,[EBP+00444804]
+:0055A4E8    POP       ECX
+:0055A4E9    OR        ECX,ECX
+:0055A4EB    MOV       [EBP+00443EA1],EAX
+:0055A4F1   </FONT><FONT COLOR="yellow" FACE="Courier New"> POPAD</FONT><FONT FACE="Courier New">
+:0055A4F2    JNZ       0055A4FC
+:0055A4F4    MOV       EAX,00000001
+:0055A4F9    RET       000C
+:0055A4F9    RET       000C
+:0055A4FC    PUSH      00000000
+:0055A501   </FONT><FONT COLOR="yellow" FACE="Courier New"> RET</FONT><FONT COLOR="yellow"></FONT></PRE>
+<P>Il est facile &agrave; trouver. Pour y arriver, il suffit, juste apr&egrave;s que le programme ait marqu&eacute;
+un break sur l'Entry Point, de rechercher un POPAD, suivie d'un ou  plusieurs RET, en utilisant l'ascenseur de
+la fen&ecirc;tre des codes.<BR>
+<BR>
+<U><B>Commentons un peu ces lignes :</B></U>
+<PRE><FONT FACE="Courier New">:0055A4DB    MOV       EAX,[</FONT><FONT COLOR="lime" FACE="Courier New">EBP+00443A76</FONT><FONT
+FACE="Courier New">] </FONT><FONT COLOR="red" FACE="Courier New">; charge 0A2AAF dans EAX</FONT></PRE>
+<P>Le MOV EAX,[EBP+00443A76] va r&eacute;cup&eacute;rer une partie de l'adresse (0A2AAF) de l'Entry Point du programme
+d'origine. Cette adresse est stock&eacute;e en clair dans les codes d'ACDSee en :
+<PRE><FONT FACE="Courier New">.00510C60:  BE 16 65 0F-04 0E E1 FD-24 CF 8B FA-26 </FONT><FONT COLOR="yellow" FACE="Courier New">AF 2A 0A</FONT><FONT
+FACE="Courier New">  
+.00510C70:  AD 9F B0 FE-B6 F9 E6 2B-27 29 D3 70-0A E7 6F B4 </FONT></PRE>
+<P>et en ([<FONT COLOR="lime">11665C+00443A76</FONT>] = 0055A0D0) : 
+<PRE><FONT FACE="Courier New">.0055A0D0:  0E 00 </FONT><FONT COLOR="yellow" FACE="Courier New">AF 2A-0A</FONT><FONT
+FACE="Courier New"> 00 00 00-00 00 00 00-00 00 00 10
+.0055A0E0:  00 00 00 E0-0C 00 00 F0-0C 00 00 50-01 00 00 00</FONT></PRE>
+<P>La premi&egrave;re adresse de stockage est utilis&eacute;e par l'application en :
+<PRE><FONT FACE="Courier New">:0055A879    MOV       DL,[ECX]     </FONT><FONT COLOR="red" FACE="Courier New">; prend un bit de l'@ 510C6D</FONT><FONT
+FACE="Courier New">
+:0055A87B    INC       ECX         </FONT><FONT COLOR="red" FACE="Courier New"> ; passe au bit suivant</FONT><FONT
+FACE="Courier New">
+:0055A87C    MOV       [ESP+0C],DL  </FONT><FONT COLOR="red" FACE="Courier New">; stock le bit dans ESP+0C</FONT></PRE>
+<P>Probablement &agrave; des fins de contr&ocirc;les &agrave; ce qui m'a sembl&eacute;, et la seconde adresse juste
+avant le passage final du relais. Ces bouts d'adresses se trouveront toujours plac&eacute; aux m&ecirc;mes endroits,
+quelques soit le programme compress&eacute; par cette version d'ASPack.
+<PRE><FONT FACE="Courier New">:0055A4E1    PUSH      EAX                 </FONT><FONT COLOR="red" FACE="Courier New">; pousse 0A2AAF</FONT><FONT
+FACE="Courier New">
+:0055A4E2    ADD       EAX,[EBP+00444804]  </FONT><FONT COLOR="red" FACE="Courier New">; ajoute ImageBase stock&eacute;e en EBP+00444804
+</FONT><FONT FACE="Courier New">:0055A4E8    POP       ECX                 </FONT><FONT COLOR="red" FACE="Courier New">; r&eacute;cup&egrave;re 0A2AAF dans ECX</FONT><FONT
+FACE="Courier New">
+:0055A4E9    OR        ECX,ECX             </FONT><FONT COLOR="red" FACE="Courier New">; v&eacute;rifie qu'ECX n'est pas NULL</FONT><FONT
+FACE="Courier New">
+:0055A4EB    MOV       [EBP+00443EA1],EAX  </FONT><FONT COLOR="red" FACE="Courier New">; PATCH le programme</FONT><FONT
+FACE="Courier New">
+:0055A4F1    POPAD                         </FONT><FONT COLOR="red" FACE="Courier New">; restitue les registres</FONT><FONT
+FACE="Courier New">
+:0055A4F2    JNZ       0055A4FC            </FONT><FONT COLOR="red" FACE="Courier New">; va vers Entry Point2 si ECX non NULL</FONT><FONT
+FACE="Courier New">
+:0055A4F4    MOV       EAX,00000001     </FONT><FONT COLOR="red" FACE="Courier New">   ; EAX = 1 (Flag)</FONT><FONT
+FACE="Courier New">
+:0055A4F9    RET       000C                </FONT><FONT COLOR="red" FACE="Courier New">; retourne &agrave; ASPack</FONT><FONT
+FACE="Courier New">
+:0055A4F9    RET       000C
+:0055A4FC    PUSH      </FONT><FONT COLOR="yellow" FACE="Courier New">00000000</FONT><FONT FACE="Courier New">            </FONT><FONT
+COLOR="red" FACE="Courier New">; Adresse du PATCH ASPack</FONT><FONT FACE="Courier New">
+:0055A501    RET                           </FONT><FONT COLOR="red" FACE="Courier New">; Goto Entry Point d'ACDSee</FONT><FONT
+COLOR="red"></FONT></PRE>
+<P>Le contenu de ces adresses est visible par un U CS:55A4DB d&egrave;s le break sur l'Entry Point, le loader ASPack
+d'ACDSee n'&eacute;tant pas, lui m&ecirc;me, compress&eacute; comme ce sera le cas dans d'autres versions.<BR>
+<BR>
+En posant un BPX 0055A4F1, vous verrez les effets du patch qu'ASPack s'inflige :
+<PRE><FONT FACE="Courier New">:0055A4F1    POPAD
+:0055A4F2    JMP       0055BFBF
+:0055A4F7    ADD       [EAX],AL
+:0055A4F9    RET       000C
+:0055A4FC    PUSH      </FONT><FONT COLOR="yellow" FACE="Courier New">004A2AAF</FONT><FONT FACE="Courier New">           </FONT><FONT
+COLOR="red" FACE="Courier New"> ; Entry Point du programme cible</FONT><FONT FACE="Courier New">
+:0055A501    RET</FONT></PRE>
+<P><U><B>Dumper le programme en m&eacute;moire:</B></U><BR>
+<BR>
+Lancez le programme/cible via le Symbol Loader de Softice . De cette fa&ccedil;on SoftIce pourra prendre la main.
+<BR>
+Posez un bpx sur le second RET  (en 0055A501) et faites [F5] pour relancer le programme. Au break, passez en mode
+assemblage, et changez le RET par un JMP EIP. Ainsi, vous obligerez le programme &agrave; boucler sur lui-m&ecirc;me.<BR>
+Rouvrez ProcDump, et cliquez sur &quot; <FONT COLOR="yellow">Options</FONT> &quot; pour choisir &quot; <FONT COLOR="yellow">Rebuilt
+Import Table</FONT> &quot;, puis s&eacute;lectionnez l'application dans la liste des taches actives de la fen&ecirc;tre
+de ProcDump. Apr&egrave;s quelques instants, vous pourrez sauver un joli dump du nouvel ex&eacute;cutable pr&ecirc;t
+a &ecirc;tre patch&eacute; si l'envie vous en prend, avec du beau code tout clean.
+<P ALIGN="CENTER"><IMG SRC="Image3.GIF" WIDTH="608" HEIGHT="298" ALIGN="BOTTOM" BORDER="0">
+<P><U><B>Rendre le fichier obtenu ex&eacute;cutable:</B></U><BR>
+<BR>
+Le zoli ex&eacute;cutable obtenu ne va pas pour autant fonctionner. Il faut encore lui indiquer quel va &ecirc;tre
+son nouvel Entry Point. C'est encore ProcDump qui va nous permettre de r&eacute;aliser facilement cette modification.
+<BR>
+Ouvrez ProcDump, et choisissez &quot;<FONT COLOR="yellow">PE EDITOR</FONT>&quot;
+<P ALIGN="CENTER"><IMG SRC="Image4.GIF" WIDTH="404" HEIGHT="132" ALIGN="BOTTOM" BORDER="0">
+<P>L'Entry Point dont vous aurez relev&eacute; l'adresse dans SoftIce (le contenu de EAX, soit 0A2AAF) va venir
+remplacer le pr&eacute;c&egrave;dent Entry Point (15A001).<BR>
+Relancez le programme...<BR>
+Ca marche !<BR>
+Tout ceci n'aura pris que quelques minutes...<BR>
+Passons &agrave; la suite.<BR>
+<BR>
+<U><B>D&eacute;sassemblez le Dump obtenu</B></U>, vous obtiendrez les String Data Ref&eacute;rences.<BR>
+<BR>
+Je me suis int&eacute;ress&eacute; &agrave; celles qui me paraissaient les plus repr&eacute;sentatives d'une version
+Shareware :
+<PRE><FONT COLOR="#00CC00" FACE="Courier New">&quot;Version d'&eacute;valuation&quot;                  </FONT><FONT
+COLOR="red" FACE="Courier New"> ; deux adresses</FONT><FONT COLOR="#00CC00" FACE="Courier New">
+&quot;Votre p&eacute;riode d'essai est termin&eacute;e&quot;    </FONT><FONT COLOR="red" FACE="Courier New"> ; une adresse</FONT><FONT
+COLOR="#00CC00" FACE="Courier New"></FONT></PRE>
+<P>En regardant &agrave; ces trois adresses, un call/test/jump a tout de suite attir&eacute; mon attention :</P>
+<CENTER>
+<P>
+<TABLE BORDER="1" CELLPADDING="8" CELLSPACING="0" WIDTH="80%">
+	<TR>
+		<TD WIDTH="100%">
+			<PRE><FONT FACE="Courier New">:00414EEO       mov ecx, 004E9F98
+:00414EE5       </FONT><FONT COLOR="yellow" FACE="Courier New">call 00498A90</FONT><FONT FACE="Courier New">
+:00414EEA       test eax, eax
+:00414EEC       jne 00414F17
+:00414EEE       lea ecx, dword ptr [esp+00000114]
+:00414EF5       push 00000050
+:00414EF7       push ecx
+:00414EF8       call dword ptr [004CF29C]
+:00414EFE       lea edx, dword ptr [esp+eax+00000118]
+:00414F05       mov eax, dword ptr [004E9FD0]
+:00414FOA       push edx
+
+</FONT><FONT COLOR="#00CC00" FACE="Courier New">* Possible Reference to String Resource ID=00195: &quot;Version d'&eacute;valuation&quot;</FONT><FONT
+			FACE="Courier New">
+I
+:00414FOB       push 000000C3</FONT></PRE>
+		</TD>
+	</TR>
+</TABLE>
+
+</CENTER>
+<P>la seconde String Data &quot;Version d'&eacute;valuation&quot; est le coup&eacute;/coll&eacute; de la premi&egrave;re
+:</P>
+<CENTER>
+<P>
+<TABLE BORDER="1" CELLPADDING="8" CELLSPACING="0" WIDTH="80%">
+	<TR>
+		<TD WIDTH="100%">
+			<PRE><FONT FACE="Courier New">:00429CEB      </FONT><FONT COLOR="yellow" FACE="Courier New"> call 00498A90</FONT><FONT
+			FACE="Courier New">
+:00429CF0       test eax, eax
+:00429CF2       jne 00429D14
+:00429CF4       lea eax, dword ptr [esp+08]
+:00429CF8       push 00000050
+:00429CFA       push eax
+:00429CFB       call esi
+:00429CFD       mov edx, dword ptr [004E9FD0]
+:00429D03       lea ecx, dword ptr [esp+eax+0C]
+:00429D07       push ecx
+
+</FONT><FONT COLOR="#00CC00" FACE="Courier New">* Possible Reference to String Resource ID=00195: &quot;Version d'&eacute;valuation&quot;</FONT><FONT
+			FACE="Courier New">
+I
+:00429D08       push 000000C3</FONT></PRE>
+		</TD>
+	</TR>
+</TABLE>
+<p></P>
+</CENTER>
+<P>pour la troisi&egrave;me adresse, il ne faut pas h&eacute;siter &agrave; remonter un peu dans le Dead Listing
+:
+<CENTER>
+<P>
+<TABLE BORDER="1" CELLPADDING="8" CELLSPACING="0" WIDTH="80%">
+	<TR>
+		<TD WIDTH="100%">
+			<PRE><FONT FACE="Courier New">:0043CEF5       </FONT><FONT COLOR="yellow" FACE="Courier New">call 00498A90</FONT><FONT
+			FACE="Courier New">
+:0043CEFA       test eax, eax
+:0043CEFC       jne 0043CFBF
+:0043CF02       push ebp
+:0043CF03       mov ecx, 004E9F98
+:0043CF08       call 004991AO
+:0043CFOD       mov ebp, dword ptr [004CF664]
+:0043CF13       mov edi, eax
+:0043CF15       test edi, edi
+:0043CF17       jg 0043CF3A
+:0043CF19       mov edx, dword ptr [004E9FD0]
+:0043CF1F       lea ecx, dword ptr [esp+00000098]
+
+</FONT><FONT COLOR="#00CC00" FACE="Courier New">* Possible Reference to String Resource ID=00150: &quot;&amp;Arr&ecirc;ter&quot;</FONT><FONT
+			FACE="Courier New">
+I
+:0043CF26       push 00000096
+:0043CF2B       push ecx
+
+</FONT><FONT COLOR="#00CC00" FACE="Courier New">* Possible Reference : &quot;Votre p&eacute;riode d'essai est termin&eacute;e&quot;</FONT><FONT
+			FACE="Courier New">
+I
+:0043CF2C       push 00000253
+</FONT></PRE>
+		</TD>
+	</TR>
+</TABLE>
+
+</CENTER>
+<P>Allons jeter un coup d'œil &agrave; ce call :
+<PRE><FONT COLOR="#00CC00" FACE="Courier New">* Referenced by a CALL at Addresses:</FONT><FONT FACE="Courier New">
+|:00401C11   , :00407C33   , :00407E54   , :00414EE5   , :0041FD24
+|:00420E09   , :00429CEB   , :0043CD85   , :0043CEF5   , :00497884
+|:00497C1A
+I
+:00498A90       xor eax, eax
+:00498A92       ret</FONT></PRE>
+<P>En regardant &agrave; quoi pouvaient bien mener ces 11 adresses, j'ai pu constater que ce call &eacute;tait
+syst&eacute;matiquement li&eacute; &agrave; de m&eacute;chantes choses sharewares...<BR>
+<BR>
+Mieux! A la sortie de ce call, le test qui le suivait  &eacute;tait toujours du type JNE (Jump if Not Equal). Il
+suffit donc qu'EAX soit &eacute;gal &agrave; autre chose que 00 pour que le bug soit corrig&eacute; ?<BR>
+<BR>
+En v&eacute;rifiant avec SoftIce, j'ai pu observer qu'EAX pouvait avoir des valeurs tr&egrave;s variables, mais
+qu'en emp&ecirc;chant la mise &agrave; z&eacute;ro de ce registre, le programme fonctionnait tr&egrave;s bien.<BR>
+<BR>
+Il suffit alors de remplacer le XOR EAX,EAX par un NOP INC EAX, ou un NOP DEC EAX, voir par deux NOP...<BR>
+<BR>
+<U><B>Patcher le programme compress&eacute; :</B></U><BR>
+<BR>
+Pour rajouter le code &agrave; la fin du code du programme compress&eacute;, vous devrez trouver une place disponible
+qui ne sera pas utilis&eacute;e par ASPack lors de la d&eacute;compression du programme d'origine.<BR>
+Dans la mesure ou il y a toujours un peu de Padding &agrave; la fin de chaque section (des 0000 qui viennent compl&eacute;ter
+la taille de celle ci pour s'aligner sur un multiple du CODE), c'est en partant de la fin de la section dans laquelle
+on envisage de placer notre patch qu'il va falloir trouver une petite place pour se glisser :<BR>
+<BR>
+Derni&egrave;re section :
+
+<BLOCKQUOTE>
+	<BLOCKQUOTE>
+		<PRE><FONT COLOR="#0066FF" FACE="Courier New">Name        Virtual Size   Virtual Offset   Raw Size       Raw Offset    </FONT><FONT
+		FACE="Courier New">
+</FONT><FONT COLOR="yellow" FACE="Courier New">.rsrc         0001000         00175000      00000000        0009F600</FONT></PRE>
+	</BLOCKQUOTE>
+</BLOCKQUOTE>
+
+<P>le virtual offset de la derni&egrave;re section est  00175000, ce qui veut dire que la fin de la section .aspack
+se trouvera juste avant 0055A000 + 00175000  = 00575000<BR>
+<BR>
+En partant de l'adresse trouv&eacute;e, il suffit de remonter jusqu'&agrave; trouver des bytes sur lesquels il
+sera possible d'&eacute;crire (ce qui n'est en g&eacute;n&eacute;ral pas le cas des INVALID, &agrave; moins de
+modifier les caract&eacute;ristiques de la section, combin&eacute; avec l'utilisation d'un hexEditeur).
+<PRE><FONT FACE="Courier New">:0055BFF7  0000                ADD       [EAX],AL
+:0055BFF9  0000                ADD       [EAX],AL
+:0055BFFB  0000                ADD       [EAX],AL
+:0055BFFD  0000                ADD       [EAX],AL
+:0055BFFF  00FF                ADD       BH,BH
+:0055C001  FFFF                INVALID
+:0055C003  FFFF                INVALID
+:0055C005  FFFF                INVALID
+:0055C007  FFFF                INVALID</FONT></PRE>
+<P>Le patch que j'envisage de cr&eacute;er aura une taille de 15d octets. Il serait donc possible de s'installer
+en 0055BFF0. Par s&eacute;curit&eacute;, et apr&egrave;s avoir test&eacute; &agrave; l'aide d'un BPR 0055BFBF 0055BFFF
+RW que la place &agrave; squatter ne sera pas utilis&eacute;e, je vais m'installer en 0055BFBF. <BR>
+<BR>
+<U>Patch</U>
+<PRE><FONT FACE="Courier New">:0055BFBF  66C705908A49009048  MOV       WORD PTR [00498A90],4890
+:0055BFC8  68AF2A4A00          PUSH      004A2AAF
+:0055BFCD  C3                  RET
+:0055BFCE  000A                ADD       [EDX],CL</FONT></PRE>
+<P>Dans la mesure ou le loader n'est pas compress&eacute;, cette seule modification va suffire &agrave; d&eacute;tourner
+la protection et corriger le bug dont le programme &eacute;tait afflig&eacute;.</P>
+
+<P><BR>
+Derni&egrave;re petite chose, si vous souhaitez modifier les information apparaisant dans la boite ABOUT, vous
+pouvez aller dans la base de registre en:<BR>
+[HKEY_LOCAL_MACHINE\Software\ACD Systems\ACDSeeF]</P>
+
+<P>Et bidouiller &agrave; votre guise...<BR>
+<p>&nbsp;</p>
+
+<p align="center">&nbsp;</p>
+
+<p>&nbsp;</p>
+
+</BODY>
+
+</HTML>

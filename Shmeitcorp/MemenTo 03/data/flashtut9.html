@@ -1,0 +1,409 @@
+<html>
+<head>
+<title>GOODIZ</title>
+<meta name="Author" content="[Shmeit Corp]--Smeita">
+<meta http-equiv="content-language" content="fr">
+<meta name="robot" content="index,follow">
+<style type="text/css">
+   <!-- 
+A{text-decoration:none} 
+A:hover {color: rgb(255,255,255)}
+   -->
+
+</style>
+</head>
+<body bgcolor="#000000" link="yellow" vlink="yellow">
+<font color=#EEEEEE face="arial, verdana, courier" size=2>
+<h1><font color="EEEEEE">Dico Langues</font></h1>
+On va essayer maintenant de cracker un programme en VB, et ceci en utilisant W32dasm, puis softice...
+Le patch est à appliquer sur la version 8.93 de W32dasm, de plus je vous conseille d'utiliser deux 
+versions de W32dasm 8.93 ; l'une patchée l'autre non. Car j'ai remarqué (je ne suis pas le seul d'ailleur) 
+que la version patchée n'affiche pas toutes les Strings avec certains programmes.
+<br><br><br><br>
+<b><font size="+1">Lets Go ...</font></b>
+<br><br>
+Premiere constations concernant le programme :<br>
+ - <font color="Red">Messagebox</font> au lancement du programme du programme<br>
+ - L option <font color="Red">"rechercher" nous est interdite</font><br>
+<br><br>
+On fait une copie de sauvegarde de Dico Langues et on la desassemble avec la version de Wdasm patchée,
+evidemment :)
+<br><br>
+On regarde les Strings et on trouve de nombreuses choses interessantes : <br>
+- <font color="Lime">"Version compl"</font><br>
+- <font color="Lime">"Version complete"</font> <br>
+- <font color="Lime">"Version Shareware"</font><br>
+- <font color="Lime">"Attention Version shareware"</font><br>
+... + quelques trucs dans le meme genre et "\VB40bex.dat" (nous verrons cela plus tard)
+<br><br><br><br>
+<b><font size="+1">1ere approche</font></b><br><br>
+Bon puisque l'on sait que la version complète est présente (cf DataString..), on va essayer de partir de ce que
+l'on a quand on lance le programme. Si vous vous êtes debrouillez normalement quand vous lancez
+le programme une boite de dialogue vous informe de notre misérable situation : "Attention Version Shareware"
+<br><br>
+On recherche donc ceci dans W32dasm et effectivement on le trouve, ce message y est d'ailleur présent une seule fois...(en 561C93)
+Nous allons maintenant "remonter" dans le listing pour voir s'il existe un test ou quelque chose qui détermine si oui
+ou non ce message doit s afficher. Un petit peu avant, en 516BFF on trouve " - Version Shareware", on continue a remonter puis on tombe sur "\Vb40bex.dat" bizarre, qu est ce que cela fait ici ??
+Ca ressemble à une Dll pour Visual Basic, mais de toute évidence cela n'est pas le cas ... (c un ".dat")
+<br><br>
+Pour en avoir le coeur net je fais une recherche de ce fichier sur mon disque dur, et je le trouve dans .\Windows\System
+Je l'éxamine il fait 3 octets => Ou la c'est léger tout ca, et ca confirme que ce fichier ne sert
+certainement pas au programme de facon "directe" ... il se pourrait bien que ce soir une keyfiles 
+c'est a dire un fichier qui permet de determiner si oui ou non l utilisateur est enregistre.
+On édite le fichier avec Notepad et je vois un seul caractère à savoir : 1
+Là, je pense tout de suite à une seule chose, (et vous aussi) ; changez le 1 en 0, on le fais,
+on enregistre la modification.. On relance le programme et Bingo ca marche on est enregistré... 
+Vraiment pas dur non ??
+<br><br><br>
+
+
+<br><br><br><br>
+<b><font size="+1">2eme approche</font></b><br><br>
+Bon on pourrait aussi patcher le programme ;  attention c est vraiment beaucoups plus dur :)<br>
+Tout d abord la boite de message qui apparait au lancement :<br>
+Avant dans les Strings nous avions trouve
+<font color="Lime">" - Version Shareware"</font>,
+il suffit de remonter un peu pour voir s'il n'y a pas de test / saut conditionnel.<br><br>
+On en trouve un particulièrement intéressant ici : <br><br>
+
+<pre>
+<font color="#247BDB">* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:00516BBC(U)
+|</font>
+:00516BC0 F7D8                    neg eax
+:00516BC2 8D4D98                  lea ecx, dword ptr [ebp-68]
+:00516BC5 66A350905100            mov word ptr [00519050], ax
+
+<font color="#BFDBD7">* Reference To: MSVBVM50.__vbaFreeStr, Ord:0000h</font>
+                                  |
+:00516BCB FF1564035200            Call dword ptr [00520364]
+:00516BD1 66391D50905100          cmp word ptr [00519050], bx
+:00516BD8 0F843E010000            je 00516D1C                   <font color="Yellow">=> tiens tiens, mais ou est ce que cela nous amène</font>
+:00516BDE 8B37                    mov esi, dword ptr [edi]
+:00516BE0 8D4598                  lea eax, dword ptr [ebp-68]
+:00516BE3 50                      push eax
+:00516BE4 57                      push edi
+:00516BE5 FF5650                  call [esi+50]
+:00516BE8 3BC3                    cmp eax, ebx
+:00516BEA 7D0F                    jge 00516BFB
+:00516BEC 6A50                    push 00000050
+:00516BEE 6858714C00              push 004C7158
+:00516BF3 57                      push edi
+:00516BF4 50                      push eax
+
+<font color="#BFDBD7">* Reference To: MSVBVM50.__vbaHresultCheckObj, Ord:0000h</font>
+                                  |
+:00516BF5 FF1510025200            Call dword ptr [00520210]
+
+<font color="#3194CE">* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:00516BEA(C)
+|</font>
+:00516BFB 8B4D98                  mov ecx, dword ptr [ebp-68]
+:00516BFE 51                      push ecx
+
+<font color="Lime">* Possible StringData Ref from Code Obj ->" - Version Shareware"</font>
+                                  |
+:00516BFF 68A87C4C00              push 004C7CA8
+
+<font color="#BFDBD7">* Reference To: MSVBVM50.__vbaStrCat, Ord:0000h</font>
+                                  |
+:00516C04 FF1504025200            Call dword ptr [00520204]
+:00516C0A 8BD0                    mov edx, eax
+:00516C0C 8D4D94                  lea ecx, dword ptr [ebp-6C]
+
+<font color="#BFDBD7">* Reference To: MSVBVM50.__vbaStrMove, Ord:0000h</font>
+                                  |
+:00516C0F FF1544035200            Call dword ptr [00520344]
+:00516C15 50                      push eax
+:00516C16 57                      push edi
+:00516C17 FF5654                  call [esi+54]
+:00516C1A 3BC3                    cmp eax, ebx
+:00516C1C 7D0F                    jge 00516C2D
+:00516C1E 6A54                    push 00000054
+:00516C20 6858714C00              push 004C7158
+:00516C25 57                      push edi
+:00516C26 50                      push eax
+
+<font color="#BFDBD7">* Reference To: MSVBVM50.__vbaHresultCheckObj, Ord:0000h</font>
+                                  |
+:00516C27 FF1510025200            Call dword ptr [00520210]
+
+<font color="#3194CE">* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:00516C1C(C)
+|</font>
+:00516C2D 8D5594                  lea edx, dword ptr [ebp-6C]
+:00516C30 8D4598                  lea eax, dword ptr [ebp-68]
+:00516C33 52                      push edx
+:00516C34 50                      push eax
+:00516C35 6A02                    push 00000002
+
+<font color="#BFDBD7">* Reference To: MSVBVM50.__vbaFreeStrList, Ord:0000h</font>
+                                  |
+:00516C37 FF1504035200            Call dword ptr [00520304]
+
+<font color="#BFDBD7">* Reference To: MSVBVM50.__vbaVarCopy, Ord:0000h</font>
+                                  |
+:00516C3D 8B3D38035200            mov edi, dword ptr [00520338]
+:00516C43 83C40C                  add esp, 0000000C
+:00516C46 8D9560FFFFFF            lea edx, dword ptr [ebp+FFFFFF60]
+:00516C4C 8D4D9C                  lea ecx, dword ptr [ebp-64]
+
+<font color="Lime">* Possible StringData Ref from Code Obj ->"Vous n'avez que la version shareware "</font>	<font color="Yellow">=> plus pour longtemps !</font>
+                                        <font color="Lime">->"car vous ne vous "</font>
+                                  |
+:00516C4F C78568FFFFFF6C7D4C00    mov dword ptr [ebp+FFFFFF68], 004C7D6C
+:00516C59 C78560FFFFFF08000000    mov dword ptr [ebp+FFFFFF60], 00000008
+:00516C63 FFD7                    call edi
+
+<font color="#BFDBD7">* Reference To: MSVBVM50.__vbaVarMove, Ord:0000h</font>
+                                  |
+:00516C65 8B35DC015200            mov esi, dword ptr [005201DC]
+:00516C6B 8D9560FFFFFF            lea edx, dword ptr [ebp+FFFFFF60]
+:00516C71 8D4DBC                  lea ecx, dword ptr [ebp-44]
+:00516C74 C78568FFFFFF30000000    mov dword ptr [ebp+FFFFFF68], 00000030
+:00516C7E C78560FFFFFF03000000    mov dword ptr [ebp+FFFFFF60], 00000003
+:00516C88 FFD6                    call esi
+:00516C8A 8D9560FFFFFF            lea edx, dword ptr [ebp+FFFFFF60]
+:00516C90 8D4DDC                  lea ecx, dword ptr [ebp-24]
+
+<font color="Lime">* Possible StringData Ref from Code Obj ->"Attention Version shareware"</font> 	<font color="Yellow">=> Oh non!</font>
+                                  |
+:00516C93 C78568FFFFFF247E4C00    mov dword ptr [ebp+FFFFFF68], 004C7E24
+:00516C9D C78560FFFFFF08000000    mov dword ptr [ebp+FFFFFF60], 00000008
+:00516CA7 FFD7                    call edi
+:00516CA9 B904000280              mov ecx, 80020004
+:00516CAE B80A000000              mov eax, 0000000A
+:00516CB3 898D78FFFFFF            mov dword ptr [ebp+FFFFFF78], ecx
+:00516CB9 894D88                  mov dword ptr [ebp-78], ecx
+:00516CBC 8D8D70FFFFFF            lea ecx, dword ptr [ebp+FFFFFF70]
+:00516CC2 898570FFFFFF            mov dword ptr [ebp+FFFFFF70], eax
+:00516CC8 894580                  mov dword ptr [ebp-80], eax
+:00516CCB 8D5580                  lea edx, dword ptr [ebp-80]
+:00516CCE 51                      push ecx
+:00516CCF 8D45DC                  lea eax, dword ptr [ebp-24]
+:00516CD2 52                      push edx
+:00516CD3 8D4DBC                  lea ecx, dword ptr [ebp-44]
+:00516CD6 50                      push eax
+:00516CD7 51                      push ecx
+
+<font color="#BFDBD7">* Reference To: MSVBVM50.__vbaI4Var, Ord:0000h</font>
+                                  |
+:00516CD8 FF151C035200            Call dword ptr [0052031C]
+:00516CDE 8D559C                  lea edx, dword ptr [ebp-64]
+:00516CE1 50                      push eax
+:00516CE2 52                      push edx
+
+<font color="#BFDBD7">* Reference To: MSVBVM50.rtcMsgBox, Ord:0253h</font>
+                                  |
+:00516CE3 FF1534025200            Call dword ptr [00520234]
+:00516CE9 8D9540FFFFFF            lea edx, dword ptr [ebp+FFFFFF40]
+:00516CEF 8D4DCC                  lea ecx, dword ptr [ebp-34]
+:00516CF2 898548FFFFFF            mov dword ptr [ebp+FFFFFF48], eax
+:00516CF8 C78540FFFFFF03000000    mov dword ptr [ebp+FFFFFF40], 00000003
+:00516D02 FFD6                    call esi
+:00516D04 8D8570FFFFFF            lea eax, dword ptr [ebp+FFFFFF70]
+:00516D0A 8D4D80                  lea ecx, dword ptr [ebp-80]
+:00516D0D 50                      push eax
+:00516D0E 51                      push ecx
+:00516D0F 6A02                    push 00000002
+
+<font color="#BFDBD7">* Reference To: MSVBVM50.__vbaFreeVarList, Ord:0000h</font>
+                                  |
+:00516D11 FF15F0015200            Call dword ptr [005201F0]
+:00516D17 E998000000              jmp 00516DB4
+
+<font color="#3194CE">* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:00516BD8(C)
+|</font>
+:00516D1C 8B07                    mov eax, dword ptr [edi]
+:00516D1E 57                      push edi
+:00516D1F FF9028030000            call dword ptr [eax+00000328]
+:00516D25 8D5590                  lea edx, dword ptr [ebp-70]
+:00516D28 50                      push eax
+:00516D29 52                      push edx
+
+<font color="#BFDBD7">* Reference To: MSVBVM50.__vbaObjSet, Ord:0000h</font>
+                                  |
+:00516D2A FF1530025200            Call dword ptr [00520230]		=> ben ca nous amène ici
+:00516D30 8BF0                    mov esi, eax
+:00516D32 53                      push ebx
+:00516D33 56                      push esi
+:00516D34 8B06                    mov eax, dword ptr [esi]
+:00516D36 FF505C                  call [eax+5C]
+:00516D39 3BC3                    cmp eax, ebx
+:00516D3B 7D0F                    jge 00516D4C
+:00516D3D 6A5C                    push 0000005C
+:00516D3F 685C7E4C00              push 004C7E5C
+:00516D44 56                      push esi
+:00516D45 50                      push eax
+
+<font color="#BFDBD7">* Reference To: MSVBVM50.__vbaHresultCheckObj, Ord:0000h</font>
+                                  |
+:00516D46 FF1510025200            Call dword ptr [00520210]
+
+<font color="#3194CE">* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:00516D3B(C)
+|</font>
+:00516D4C 8D4D90                  lea ecx, dword ptr [ebp-70]
+
+<font color="#BFDBD7">* Reference To: MSVBVM50.__vbaFreeObj, Ord:0000h</font>
+                                  |
+:00516D4F FF1560035200            Call dword ptr [00520360]
+:00516D55 8B37                    mov esi, dword ptr [edi]
+:00516D57 8D4D98                  lea ecx, dword ptr [ebp-68]
+:00516D5A 51                      push ecx
+:00516D5B 57                      push edi
+:00516D5C FF5650                  call [esi+50]
+:00516D5F 3BC3                    cmp eax, ebx
+:00516D61 7D0F                    jge 00516D72
+:00516D63 6A50                    push 00000050
+:00516D65 6858714C00              push 004C7158
+:00516D6A 57                      push edi
+:00516D6B 50                      push eax
+
+<font color="#BFDBD7">* Reference To: MSVBVM50.__vbaHresultCheckObj, Ord:0000h</font>
+                                  |
+:00516D6C FF1510025200            Call dword ptr [00520210]
+
+<font color="#3194CE">* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:00516D61(C)
+|</font>
+:00516D72 8B5598                  mov edx, dword ptr [ebp-68]
+:00516D75 52                      push edx
+
+<font color="Lime">* Possible StringData Ref from Code Obj ->" - Version complete"</font>	<font color="Yellow">	=> Oh oh!</font>
+                                  |
+:00516D76 68707E4C00              push 004C7E70
+
+<font color="#BFDBD7">* Reference To: MSVBVM50.__vbaStrCat, Ord:0000h</font>
+                                  |
+:00516D7B FF1504025200            Call dword ptr [00520204]
+:00516D81 8BD0                    mov edx, eax
+:00516D83 8D4D94                  lea ecx, dword ptr [ebp-6C]
+
+<font color="#BFDBD7">* Reference To: MSVBVM50.__vbaStrMove, Ord:0000h</font>
+                                  |
+:00516D86 FF1544035200            Call dword ptr [00520344]
+:00516D8C 50                      push eax
+:00516D8D 57                      push edi
+:00516D8E FF5654                  call [esi+54]
+:00516D91 3BC3                    cmp eax, ebx
+:00516D93 7D0F                    jge 00516DA4
+:00516D95 6A54                    push 00000054
+:00516D97 6858714C00              push 004C7158
+:00516D9C 57                      push edi
+:00516D9D 50                      push eax
+
+
+</pre>
+<br><br>
+Donc, maintenant il suffit de remplacer le je 00516D1C que l'on trouve en 00516BD8 par un jne 00516D1C
+En héxa la modification est la suivante : 0F843E010000 devient 0F853E010000
+<br><br>
+Puis, pour le message qui nous interdit l'utilisation de la fonction recherche nous allons procéder différement,
+on va un peu se servir de Softice (faut poa l oublier celui là :).<br><br>
+En temps normal le BPX à poser serait messageboxa ou messageboxexa mais avec le VB
+rien ne fonctionne de la même facon. Ici le message est appellé à l'aide de MSVBVM50.dll
+<br><br>
+Donc dans le répertoire ou vous avez installez SoftIce, éditez le fichier winace.dat et rajoutez cette ligne : 
+EXP=c:\windows\system\msvbvm50.dll
+<br><br>
+<font color="Yellow">En Visual Basic, l'Api appellée pour crrer une boite de dialogue (msgbox en VB) est rtcmsgbox</font>
+Maintenant dans SoftIce tapez BPX msvbvm50!rtcmsgbox (s'il s'agissait d'un programme programmé en VB6
+il faudrait poser le BPX suivant : BPX msvbvm60!rtcmsgbox)
+donc on pose ce BPX puis on inscrit n'importe quelle lettre dans la fonction recherche, est Softice break,
+on fait une fois F12 est on arrive ici : <br><br>
+
+<pre>
+
+015F:0050FEEC  FF1534025200         CALL    [MSVBVM50!rtcMsgBox] => le message annoncant que cette option nous est interdite
+015F:0050FEF2  8D9540FFFFFF         LEA     EDX,[EBP-00C0]
+015F:0050FEF8  8D4DCC               LEA     ECX,[EBP-34]
+015F:0050FEFB  898548FFFFFF         MOV     [EBP-00B8],EAX
+015F:0050FF01  C78540FFFFFF03000000 MOV     DWORD PTR [EBP-00C0],00000003
+015F:0050FF0B  FFD7                 CALL    EDI
+
+</pre>
+
+
+Cherchons maintenant ou le test déterminant si on a accès à cette fontion est situé
+
+<pre>
+
+015F:0050FDF6  899D40FFFFFF         MOV     [EBP-00C0],EBX
+015F:0050FDFC  899D3CFFFFFF         MOV     [EBP-00C4],EBX
+015F:0050FE02  0F8420010000         JZ      0050FF28                  => avec ce saut on évite le message
+015F:0050FE08  57                   PUSH    EDI
+015F:0050FE09  FF9604030000         CALL    [ESI+00000304]
+015F:0050FE0F  8D4D94               LEA     ECX,[EBP-6C]
+015F:0050FE12  50                   PUSH    EAX
+015F:0050FE13  51                   PUSH    ECX
+015F:0050FE14  FF1530025200         CALL    [MSVBVM50!__vbaObjSet]
+015F:0050FE1A  8BF0                 MOV     ESI,EAX
+015F:0050FE1C  6844704C00           PUSH    004C7044
+015F:0050FE21  56                   PUSH    ESI
+015F:0050FE22  8B16                 MOV     EDX,[ESI]
+015F:0050FE24  FF92A4000000         CALL    [EDX+000000A4]
+015F:0050FE2A  3BC3                 CMP     EAX,EBX
+015F:0050FE2C  7D12                 JGE     0050FE40
+015F:0050FE2E  68A4000000           PUSH    000000A4
+015F:0050FE33  6848704C00           PUSH    004C7048
+015F:0050FE38  56                   PUSH    ESI
+015F:0050FE39  50                   PUSH    EAX
+015F:0050FE3A  FF1510025200         CALL    [MSVBVM50!__vbaHresultCheckObj]
+015F:0050FE40  8D4D94               LEA     ECX,[EBP-6C]
+015F:0050FE43  FF1560035200         CALL    [MSVBVM50!__vbaFreeObj]
+015F:0050FE49  8B3538035200         MOV     ESI,[MSVBVM50!__vbaVarCopy]
+015F:0050FE4F  8D9560FFFFFF         LEA     EDX,[EBP-00A0]
+015F:0050FE55  8D4DA4               LEA     ECX,[EBP-5C]
+015F:0050FE58  C78568FFFFFF04734C00 MOV     DWORD PTR [EBP-0098],004C7304
+015F:0050FE62  C78560FFFFFF08000000 MOV     DWORD PTR [EBP-00A0],00000008
+015F:0050FE6C  FFD6                 CALL    ESI
+015F:0050FE6E  8B3DDC015200         MOV     EDI,[MSVBVM50!__vbaVarMove]
+015F:0050FE74  8D9560FFFFFF         LEA     EDX,[EBP-00A0]
+015F:0050FE7A  8D4DBC               LEA     ECX,[EBP-44]
+015F:0050FE7D  C78568FFFFFF30000000 MOV     DWORD PTR [EBP-0098],00000030
+015F:0050FE87  C78560FFFFFF03000000 MOV     DWORD PTR [EBP-00A0],00000003
+015F:0050FE91  FFD7                 CALL    EDI
+015F:0050FE93  8D9560FFFFFF         LEA     EDX,[EBP-00A0]
+015F:0050FE99  8D4DDC               LEA     ECX,[EBP-24]
+015F:0050FE9C  C78568FFFFFFA0734C00 MOV     DWORD PTR [EBP-0098],004C73A0
+015F:0050FEA6  C78560FFFFFF08000000 MOV     DWORD PTR [EBP-00A0],00000008
+015F:0050FEB0  FFD6                 CALL    ESI
+015F:0050FEB2  B80A000000           MOV     EAX,0000000A
+015F:0050FEB7  B904000280           MOV     ECX,80020004
+015F:0050FEBC  898570FFFFFF         MOV     [EBP-0090],EAX
+015F:0050FEC2  894580               MOV     [EBP-80],EAX
+015F:0050FEC5  898D78FFFFFF         MOV     [EBP-0088],ECX
+015F:0050FECB  894D88               MOV     [EBP-78],ECX
+015F:0050FECE  8D8570FFFFFF         LEA     EAX,[EBP-0090]
+015F:0050FED4  8D4D80               LEA     ECX,[EBP-80]
+015F:0050FED7  50                   PUSH    EAX
+015F:0050FED8  8D55DC               LEA     EDX,[EBP-24]
+015F:0050FEDB  51                   PUSH    ECX
+015F:0050FEDC  8D45BC               LEA     EAX,[EBP-44]
+015F:0050FEDF  52                   PUSH    EDX
+015F:0050FEE0  50                   PUSH    EAX
+015F:0050FEE1  FF151C035200         CALL    [MSVBVM50!__vbaI4Var]
+015F:0050FEE7  8D4DA4               LEA     ECX,[EBP-5C]
+015F:0050FEEA  50                   PUSH    EAX
+015F:0050FEEB  51                   PUSH    ECX
+015F:0050FEEC  FF1534025200         CALL    [MSVBVM50!rtcMsgBox]	=> le message
+015F:0050FEF2  8D9540FFFFFF         LEA     EDX,[EBP-00C0]
+015F:0050FEF8  8D4DCC               LEA     ECX,[EBP-34]
+015F:0050FEFB  898548FFFFFF         MOV     [EBP-00B8],EAX
+015F:0050FF01  C78540FFFFFF03000000 MOV     DWORD PTR [EBP-00C0],00000003
+015F:0050FF0B  FFD7                 CALL    EDI
+ 
+</pre>
+
+
+Ici non plus rien de bien compliqué, le "JZ 0050FF28" devient "JNZ 0050FF28" 
+En héxa : 0F8420010000 devient 0F8520010000
+
+
+
+<p><font size="3"></font>&nbsp;</p>
+
+<p align="center">&nbsp;</p>
+</font>

@@ -1,0 +1,172 @@
+<html>
+
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+<meta name="GENERATOR" content="Microsoft FrontPage 4.0">
+<meta name="ProgId" content="FrontPage.Editor.Document">
+<title>CyberCrack_Be</title>
+</head>
+
+<body bgcolor="#000000" text="#FFFFFF">
+<h2>UPX</h2>
+<pre>
+Bon, je vais essayer de montrer avec ce petit tut comment realiser 
+des Dumps fonctionnels de programmes compressés avec UPX.
+
+Tout d abord il faut Softice et ProcDump ...
+
+Cible : <a href="matrix2.zip">mon patch pour Matrix2</a> (fait avec le patcheur du groupe et compressé avec UPX) 
+Taille : 6 ko
+
+
+Manual Unpacking : 
+ProcDump peut réaliser des Dumps de facon automatique,
+mais cela se revèle quelque fois imparfait...et de toute facon il 
+vaut mieux savoir le faire seul :)
+
+I) Approche
+
+Tout d'abord, on constate que la plupart des programmes compressés 
+avec UPX, Aspack, PEcompact...refusent de breaker avec le Symbol Loader,
+et cela ne donne rien quand on essaye de les desassembler avec W32dasm.
+Cela s'explique par le fait que les sections du programmes ont étaient modifiées.
+
+Par exemple si on prends Procdump qu on fait 'PE-Editor' et qu'on ouvre Matrix2.exe 
+et qu on regarde dans sections, on voit qu il y a UPX0, UPX1 et .rsrc
+Nous ce qui nous intérresse c'est les characteristics, en effet c'est celles ci qui 
+déterminent si les sections sont librement Writable, Readable ...
+
+C0000040 = que dalle, pas lu, pas d ecriture => c pour cela que Symbol Loader ne break pas.
+
+
+
+II) Attaque
+
+UPX0 a ca comme characteristic : 
+E0000080 = je ne sais pas ce que c'est exactement mais comme ca break pas il faut la modifier. 
+Et pour permettre l'écriture, la lecture d'une section il faut remplacer la caracteristique de
+la 1ère section (uniquement la 1ere ca suffit) par E0000020
+
+On opère donc les changements sur Matrix2.exe on le charge avec le Symbol Loader et maintenant
+c'est bon, il break à l entry point :) Les programmes compressés ont souvent les même 
+caracteristiques ils commencent par un pushad
+..
+..
+et la fin de la routine de decompression est signalée par un 
+popad
+
+On trace donc un peu et on le cherche, en fait meme pas obliger de tracer car Upx affiche directement
+toute la routine de decompression il suffit juste de "scroller" vers le bas a la recherche d un popad.
+On en trouve un en 408C29 mais ce n est pas celui qui marque la fin de la decompression ...
+Pourkoi, car on peut continuer de tracer dans UPX et il faut trouver un popad suivit de quelque chose 
+qui fasse la transition entre la routine de décompression et le programme (matrix2 dans ce cas)
+On regarde quelques lignes en dessous et on voit en 408C5C
+Popad
+JMP 40115F => JMP VERS L ENTRY POINT DU PROGRAMME
+
+UPX fait le passage de la routine de decompression au prog par un JMP,
+Aspack par exemple fait : 
+
+POPAD
+PUSH ENTRY_POINT
+RET
+
+
+Dans notre cas on pose un BPX en 408C5C (sur le popad)
+Puis dans Softice on tape 'a' (sans les ') C'est à dire assemble, 
+(il faut être en 408C5C pour faire cette commande !! Sinon il faut faire : 'a 408C5C' Enter 'JMP EIP' Enter )<= fin de la parenthese
+
+et on fait JMP EIP (ce qui revient à faire une boucle infinie)
+Donc le programme est decompressé en memoire ...
+On fait Ctrl-D pour quitter SoftIce on prend ProcDump et on fait un DUMP Full de MAtrix2.exe 
+(auparavant il faut cocher Rebuild New Import Table dans les options)
+Ceci fait on fait un 'kill task' de Matrix2 car il encore en memoire ..
+
+On regarde un peu notre Dump, il fait maintenant 31.5 ko, mais si on le lance ca va merder, et c'est normal
+car c'est encore l' entry point du programme compressé qui est présente ...
+Mais comment keskon connait l entry point du prog decompresse ?? (C vrai ca bordel tu vas cracher le 
+morceau ou je te defonce la gueule à coups de lattes ...)
+
+C'est bon je vais tous avouer (sauf pour le string rose, je jure que c t pas moa :))
+
+Ben c'est simple, vous vous souvenez de ca : 
+
+Popad
+JMP 40115F => ca c'est notre entry point
+
+Il faut juste faire 40115F - 400000 = 115F
+On prend ProcDump on choisit notre Dump on fait Pe-Editor, 
+pour l'instant l'entry point est  : 00008AE0 on la change par 0000115F ... 
+Ok on va maintenant essayer notre éxecutable ... et il marche cool.
+On peut maintenant le désassembler dans problème
+
+
+III) Le patch
+
+On va attaquer à present la partie la plus intéressante du crack de progs compressés le patch ..
+Mais comme je suis crevé, je vais me coucher ou glander dans un coin, 
+z avez ka bosser un peu "'Tain de jeunesse"
+
+
+**** FiN De La PoSE Et Du CoUP De GuEULE ****
+
+Bon en fait pour le patch il faut le placer à la fin de la routine de decompression car comme 
+ca les offsets que l'on veut modifier sont en mémoires ...
+Et pour UPX on nous facilite le boulot, car apres le JMP 40115F on voit un max de 00000000
+c'est donc parfait pour notre patch :)
+
+Il suffit donc de faire une 1ère fois le patch en mémoire avec Softice et de se servir de la 
+commande 'a' (assemble) pour connaitre les correspondances en héxa ..
+Car forcément on ne va pas patcher de maniere "conventionnelle" puisque cela à lieu en memoire ..
+Le patch ressemblera a : 
+MOV byte [adresse du patch], Patch
+
+Petit rappel pour ceux qui auraient oublier : 
+Byte => 1 offset patche ; ex : 90
+Word => 2 offsets patches ; ex : 9090
+DWord => 4 offsets patches ; ex : 90909090
+
+Il faut garder cela en memoire sinon ca foire systématiquement...
+
+Mais bon pas de stress on va maintenant mettre ca en pratique en modifiant un peu le patch
+(faut bien se faire la main)
+
+On va simplement faire en sorte que lorsque l on clique sur 'Infos' rien ne se passe.
+Le saut conditionnel qui amene a la messagebox se trouve en 401204 (Listing du fichier DUMP)
+
+Donc on prends Softice, on load le fichier original, on pose un BPX sur le popad, on fait 
+une fois F8 pour être sur la ligne ou on a JMP 40115F et on fait 'a' ;  On tape
+Mov word ptr [00401204], 9090 => c notre patch
+maintenant il faut également lancer le programme, c'est pour cela qu'on remet 
+simplement le JMP 40115F à la fin du patch ...
+
+Il suffit de noter les correspondances en hexa, puis on peut patcher 'réelement'
+le fichier (pas en mémoire)
+
+Petite recap : 
+
+Avant 
+
+00408C5C	61			popad
+00408C5D	E9FD84FFFF		JMP 40115F
+00408C62	0000			add [eax],al
+
+Apres
+
+00408C5C	61			popad
+00408C5D	66C705041240009090	Mov word ptr [00401204], 9090
+00408C66	E9F484FFFF		JMP 40115F
+00408C6B	0000			add [eax],al
+
+Bon là c'est un exemple simple, laissez libre votre imagination pour faire des trucs de fou ...
+
+Voili c'est tout, z avez tout capte ?
+Sinon mail me ...
+
+<p>&nbsp;</p>
+
+<p align="center">&nbsp;</p><p>&nbsp;</p>
+
+</pre>
+</body>
+</html>

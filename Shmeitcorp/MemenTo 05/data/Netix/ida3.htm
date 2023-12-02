@@ -1,0 +1,191 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<!-- saved from url=(0055)http://membres.lycos.fr/netixyz/tutos/ida/ida3/ida3.htm -->
+<HTML>
+<!-- Mirrored from frenchezines.free.fr/tries/shmeitcorp/5/Netix/ida3.htm by HTTrack Website Copier/3.x [XR&CO'2007], Thu, 07 Aug 2008 04:41:17 GMT -->
+<HEAD><TITLE>ida - part 3</TITLE>
+<META http-equiv=Content-Type content="text/html; charset=iso-8859-1">
+<META content="MSHTML 6.00.2600.0" name=GENERATOR></HEAD>
+<BODY bgColor=#000000 text=#FFFFFF link="#FFFFFF" vlink="#FFFFFF" alink="#FFFFFF" leftmargin="0" topmargin="0" marginwidth="0" marginheight="0">
+<table width="670" border="0">
+  <tr>
+    <td><p><b><font size="2" face="Arial, Helvetica, sans-serif">IDA - The Interactive 
+        Disassembler - part 3</font></b></p>
+      <p><font size="2" face="Arial, Helvetica, sans-serif">Dans cette 3eme partie 
+        nous allons voir l'export de notre travail. Il est possible à IDA de produire 
+        un fichier .asm à partir du menu / produce / Asm File. Le fichier obtenu, 
+        n'est pas directement compilable il faut arranger quelques détails, et 
+        selon la complexité du programme il est fort probable pour que ca ne soit 
+        pas du tout compilable, mais il peux toujours etre interressant d'extraire 
+        des parties, ou des fonctions que l'on recopiera dans une autre source.</font></p>
+      <p><font size="2" face="Arial, Helvetica, sans-serif">En reprenant le listing 
+        du code du crackme etudié dans la 2eme partie, nous allons pouvoir admirer 
+        le beau boulot que fait IDA, puisque nous allons pouvoir recompiler ce 
+        listing en un vrai programmme, tel que l'original.<br>
+        Bien sur ce programme est très simple donc la ca sera assez facile mais 
+        pour des programmes plus complexe c'est beaucoup plus dur voire impossible 
+        (quoique).</font></p>
+      <p><font size="2" face="Arial, Helvetica, sans-serif"><strong>Avant tout</strong><br>
+        U n petit détail que je n'ai pas preciser pour faire un peu plus propre 
+        dans la d&eacute;claration des variables du listing. Les 2 buffers pour 
+        le serial et le name sont declaré comme suit :</font></p>
+      <font color=#FF0000 size="2" face="Courier New, Courier, mono">SerialBuffer 
+      db 0 ; ; DATA XREF: _CheckProc+36o<br>
+      ; _CheckProc+4Do<br>
+      db 0 ; <br>
+      db 0 ; <br>
+      db 0 ; <br>
+      etc... selon le nbr de char</font><br>
+      <p><font size="2" face="Arial, Helvetica, sans-serif">Il est &eacute;vident 
+        que c'est un tableau de caract&egrave;res, donc pour faire plus propre 
+        on se place sur le nom de la variable et on clique sur le boutton de la 
+        barre d'outil avec une &eacute;toile qui permet de transformer en tableau.<br>
+        Laissez les options par d&eacute;faut. Vous obtenez :</font></p>
+      <font color=#FF0000 size="2" face="Courier New, Courier, mono">DATA:0040200D 
+      NameBuffer db 40h dup(0) ; DATA XREF: _CheckProc+9o<br>
+      DATA:0040200D ; _CheckProc+20o</font><br> <font size="2" face="Arial, Helvetica, sans-serif">Ce 
+      qui est beaucoup plus lisible :)<br>
+      <br>
+      </font><font size="2" face="Arial, Helvetica, sans-serif"><b>Export en .asm 
+      et extraction d'une ressource</b></font><font size="2" face="Arial, Helvetica, sans-serif"><br>
+      Il n'y rien de special à retoucher sous IDA, nous ferons les modifs sur 
+      le fichier .asm et on peux donc exporter le fichier avce le Menu / produce 
+      / asm file. Bien sur il fodra que les modifications que vous y avez apportés 
+      respectent les valeurs originelles. Nous obtenons, le code dans un fichier 
+      .asm, Maintenant si le programme comporte des ressources comme dans cet 
+      exemple il va falloir les dumper du programme original vers un fichier .<b>RES</b> 
+      que nous pourrons linker avce le code, ce qui me semble la solution la plus 
+      simple. Pour extraire une ressource d'un programme on peux utiliser un extracteur 
+      de resource et l'exporter dans un fomat .RC ou .RES (le .RC necessitera 
+      une manipulation supplementaire afin de produire un fichier .RES lequel 
+      nous pouvons linker) moi j'utilise <b>Resources Hacker </b>un excellent 
+      petit outil qui permet directement d'étraire au format .res. Une fois le 
+      fichier .asm et .res obtenu on peux passer à l'étape suivante.</font><font size="2" face="Arial, Helvetica, sans-serif"><b><br>
+      <br>
+      Arrangement et compilation sous Tasm</b></font><font size="2" face="Arial, Helvetica, sans-serif"><br>
+      <br>
+      Maintenant, on peux essayer de compiler notre source afin de voir les erreurs 
+      que nous indique le compilateur et tenter de les corriger.</font><font size="2" face="Arial, Helvetica, sans-serif">Voyons 
+      les erreurs du crackme, qui sont trés simple à éliminer. Il nous manque 
+      la directive specifiant le type d'instructions du processeur, il suffit 
+      de rajouter<b> .386 </b>tout en debut. Il se peux que vous obteniez en debut 
+      tout une liste de definitions de constantes windows, vous pouvez pour eclaircir 
+      la source les effacer et remplacer par l'inclusion du fichier qui contient 
+      ces definissions de constante :</font> <p><font size="2"><b><font color=#FF0000 face="Courier New, Courier, mono">include 
+        WINDOWS.INC</font></b></font></p>
+      <p><font size="2" face="Arial, Helvetica, sans-serif">Ensuite les problemes 
+        qui surviennent proviennent tous d'erreurs de déclaration de fonctions 
+        comme par exemple <b>Undefined symbol: SetDlgItemTextA</b></font></p>
+      <p><font size="2" face="Arial, Helvetica, sans-serif">Pour corriger ca on 
+        va lister toutes les API utilisés et les déclarer en debut de source comme 
+        suit</font></p>
+      <font color=#FF0000 size="2" face="Courier New, Courier, mono">global GetModuleHandleA 
+      :PROC<br>
+      global DialogBoxParamA :PROC<br>
+      global ExitProcess :PROC<br>
+      global GetDlgItem :PROC<br>
+      global SetFocus :PROC<br>
+      global SendMessageA :PROC<br>
+      global EndDialog :PROC<br>
+      global GetDlgItemTextA :PROC<br>
+      global MessageBoxA :PROC<br>
+      global SetDlgItemTextA :PROC</font> <p><font size="2" face="Arial, Helvetica, sans-serif">Voila 
+        tout est près on peux compiler avec Tasm et linker avce la ressource, 
+        je n'ai pas essay&eacute; sous Masm mais c'est surement possible, peut 
+        &ecirc;tre avec quelques modifs supplementaires...<br>
+        <br>
+        Voici mon exemple qui contient le fichier .asm produit par IDA, le fichier 
+        .res dumpé du programme original et le batch pour la compilation. <b><a 
+href="http://membres.lycos.fr/netixyz/tutos/ida/ida3/recompile.zip">Download me</a></b> 
+        </font></p>
+      <p><font size="2" face="Arial, Helvetica, sans-serif">Je tiens à r&eacute;p&eacute;ter 
+        que <strong>cela n'est pas aussi simple sur d'autres programmes</strong>, 
+        voir surement impossible. Mais si vous arrivez à recompiler le prog je 
+        vous laisse imaginer les possibilitées qui s'ouvre à vous. Notamment un 
+        petit truc interressant : la compilation en mode debugging, qui aura pour 
+        effet d'ajouter quelques info dans l'exe<br>
+        <font size="1">(NDOracle: Cf. Tutorial d'Anubis sur la structure du PE)</font> 
+        qui pourront &ecirc;tre lues par un debugger comme Soft-Ice o&ugrave; 
+        vous pourrez alors switcher du code asm à la source qui s'affichera sous 
+        Soft-Ice avec les commentaires, variables, fonctions, etc...</font></p>
+      <p><font size="2" face="Arial, Helvetica, sans-serif"><strong>Juste pour 
+        le fun voici comment faire:</strong></font></p>
+      <p><font size="2" face="Arial, Helvetica, sans-serif">- on recompile le 
+        programme avec les options de debugging, pour ca il suffit d'ajouter la 
+        commande<b> /zi</b> pour tasm32 et <b>/v</b> pour tlink32 ,comme par exemple:<br>
+        <font color="#FF0000" face="Courier New, Courier, mono"><br>
+        </font> </font><font color=#FF0000 size="2" face="Courier New, Courier, mono">tasm32 
+        /ml /m3 /zi idaa.asm &gt;&gt; debug.txt<br>
+        tlink32 -x /Tpe /aa /c /V4.0 /o /v idaa.obj,Crackme1.exe,,c:\tasm\lib\import32.lib,,ress.res 
+        &gt;&gt; debug.txt</font></p>
+      <p><font color=#FFFFFF size="2" face="Arial, Helvetica, sans-serif">- On 
+        lance le symbol loader de Softice</font></p>
+      <p><font color=#FFFFFF size="2" face="Arial, Helvetica, sans-serif">Par 
+        le menu / File / open module on ouvre le programme que l'on vient de compiler. 
+        <strong>En s'assurrant que la source qui nous à servit à le compiler se 
+        situe dans le m&ecirc;me r&eacute;pertoire</strong>, sinon Softice nous 
+        dira qu'il ne peux pas la trouver et proposera soit d'effectuer une recherche 
+        manuelle soit de ne pas y preter attention. </font></p>
+      <p><font color=#FFFFFF size="2" face="Arial, Helvetica, sans-serif">Et on 
+        charge le programme, avec l'icone représenté par un rouage mecanique. 
+        Le loader va s'occuper de g&eacute;n&eacute;rer un fichier .NMS et de 
+        charger la source dont le nom a été specifié lors de la compilation et 
+        l'ajout des debugs infos. <br>
+        <br>
+        <strong> Et hop nous voila sous Softice dans la source asm :</strong></font></p>
+      <table width="66%" height=744 border=0 align="center" bgcolor=#000000>
+        <tbody>
+          <tr> 
+            <td bgcolor=#000000 height=754><pre><font color=#dddddd>EAX=00401000   EBX=00000000   ECX=81985AD4   EDX=81985B14   ESI=81985AB4        <br>EDI=00000000   EBP=0063FF78   ESP=0063FE3C   EIP=00401000   O d I S z a P c     <br>CS=01B7   DS=01BF   SS=01BF   ES=01BF   FS=12D7   GS=0000                       <br><font color=#006600>--------------------------------------------------------------------------------</font><br>* ES:DI  void * = 0x00000000                                                  <br>                                                                               <br>                                                                             <br></font><font color=#e4e4e4><font color=#006600>--------------------------------------------------byte--------------------------</font></font><font color=#dddddd><br>0030:00000000 00 00 00 00 65 04 70 00-16 00 CD 09 65 04 70 00  ....e.p.....e.p.<br>0030:00000010 65 04 70 00 54 FF 00 F0-79 EA 00 F0 21 EA 00 F0  e.p.T...y...!...<br>0030:00000020 00 00 00 D0 D2 08 A6 0A-3A 00 CD 09 52 00 CD 09  ........:...R... <br>0030:00000030 6A 00 CD 09 82 00 CD 09-9A 00 CD 09 65 04 70 00  j...........e.p. <br>0030:00000040 07 00 70 D0 4D F8 00 F0-41 F8 00 F0 E2 24 60 FD  ..p.M...A....$`. <br>0030:00000050 39 E7 00 F0 40 02 B6 06-2D 04 70 00 28 0A B9 07  9...@...-.p.(... <br>0030:00000060 00 E0 00 F0 2F 00 8F 0A-6E FE 00 F0 04 06 B9 07  ..../...n....... <br>0030:00000070 1D 00 00 D0 A4 F0 00 F0-22 05 00 00 12 22 53 04  ........"...."S. <br>0030:00000080 A8 0F CA 00 45 04 CC 0F-F2 2F AF FC B2 22 83 FD  ....E..../..."..<br>0030:00000090 03 00 D9 10 BC 0F CA 00-82 24 66 FD D0 0F CA 00  .........$f.....<br><font color=#006600>----idaa.asm--------------------------------------------------------------------</font><br>00047:                                                                         <br>00048:    public start                                                         <br>00049:start   proc near                                                         <br>00050:    push    0                ; lpModuleName                               <br>00051:    call    GetModuleHandleA                                              <br>00052:    mov ds:hInstance, eax                                                 <br>00053:    push    0                ; dwInitParam                                <br>00054:    push    offset DialogProc        ; lpDialogFunc                       <br>00055:    push    0                ; hWndParent                                 <br>00056:    push    offset aMydialog         ; lpTemplateName                     <br>00057:    push    ds:hInstance             ; hInstance                          <br>00058:    call    DialogBoxParamA                                               <br>00059:    push    eax              ; uExitCode                                  <br>00060:    call    ExitProcess                                                   <br>00061:start   endp                                                              <br>00062:                                                                          <br>00063:                                                                          <br>00064:; ÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛ S U B R O U T I N E ÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛ<br>00065:                                                                          <br>00066:                                                                          <br>00067:; BOOL DialogProc(HWND hWnd,UINT uMsg,WPARAM wParam,LPARAM lParam)        <br>00068:; Attributes: bp-based frame                                              <br>00069:                                                                          <br>00070:DialogProc proc near                 ; DATA XREF: start+Eo              <br>00071:                                                                       <br><font color=#006600>------------------------------------Crackme1------------------------------------</font><br>:!screendump </font><font color=#e4e4e4>scd1.txt</font></pre></td>
+          </tr>
+        </tbody>
+      </table>
+      <p><font size="2" face="Arial, Helvetica, sans-serif">C'est y pas beau &ccedil;a 
+        mon gars ;)... On dispose des commentaires, des noms de variables, des 
+        nom de proc&eacute;dures, les noms des labels etc... </font><font size="2" face="Arial, Helvetica, sans-serif">Et 
+        bien s&ucirc;r il est possible de tracer le code ainsi que de poser des 
+        BP sur ces labels et fonctions et de consulter ces variables avec les 
+        commandes habituelles de SI ;)<br>
+        <br>
+        Allez un ptit screen sur la fonction <b>DialogProc</b> :</font> </p>
+      <table width="66%" border=0 align="center" bgcolor=#000000>
+        <tbody>
+          <tr> 
+            <td><pre><font color=#e4e4e4>EAX=00000000   EBX=0063FBE2   ECX=00000000   EDX=00008C22   ESI=00008C06        <br>EDI=0063FB98   EBP=0063FBB0   ESP=0063FB94   EIP=0040102B   o d I s z a P c     <br>CS=01B7   DS=01BF   SS=01BF   ES=01BF   FS=12D7   GS=1237                       <br><font color=#006600>--------------------------------------------------------------------------------</font><br>* ES:DI  void * = 0x54415000                                                    <br><font color=#006600>--------------------------------------------------byte--------------------------</font><br>0030:00000000 00 00 00 00 65 04 70 00-16 00 CD 09 65 04 70 00  ....e.p.....e.p.<br>0030:00000010 65 04 70 00 54 FF 00 F0-79 EA 00 F0 21 EA 00 F0  e.p.T...y...!...<br>0030:00000020 00 00 00 D0 D2 08 A6 0A-3A 00 CD 09 52 00 CD 09  ........:...R... <br>0030:00000030 6A 00 CD 09 82 00 CD 09-9A 00 CD 09 65 04 70 00  j...........e.p. <br>0030:00000040 07 00 70 D0 4D F8 00 F0-41 F8 00 F0 E2 24 60 FD  ..p.M...A....$`. <br>0030:00000050 39 E7 00 F0 40 02 B6 06-2D 04 70 00 28 0A B9 07  9...@...-.p.(...<br>0030:00000060 00 E0 00 F0 2F 00 8F 0A-6E FE 00 F0 04 06 B9 07  ..../...n.......<br><font color=#006600>-----idaa.asm-------------------------------------------------------------------</font><br>00063:                                                                         <br>00064:; ÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛ S U B R O U T I N E ÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛ<br>00065:                                                                          <br>00066:                                                                          <br>00067:; BOOL DialogProc(HWND hWnd,UINT uMsg,WPARAM wParam,LPARAM lParam)        <br>00068:; Attributes: bp-based frame                                              <br>00069:                                                                          <br>00070:DialogProc proc near                 ; DATA XREF: start+Eo               <br>00071:                                                                          <br>00072:hWnd    = dword ptr  8                                                    <br>00073:uMsg    = dword ptr  0Ch                                                  <br>00074:wParam  = dword ptr  10h                                                  <br>00075:lParam  = dword ptr  14h                                                  <br>00076:                                                                          <br>00077:    enter   0, 0                                                          <br>00078:    cmp [ebp+uMsg], WM_CLOSE                                              <br>00079:    jz  short _CloseDlg          ; Ferme le dialog                        <br>00080:    cmp [ebp+uMsg], WM_INITDIALOG                                         <br>00081:    jz  short _InitDlg           ; Initialisation du dialog               <br>00082:    cmp [ebp+uMsg], WM_COMMAND                                            <br>00083:    jz  short _Command           ; Command actionn, sur le dialog         <br>00084:    mov eax, 0                                                            <br>00085:    jmp short _LeaveProc                                                  <br>00086:; ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ<br>00087:                                                                          <br>00088:_CloseDlg:                   ; CODE XREF: DialogProc+8j                  <br>00089:    push    0                ; nResult                                    <br>00090:    push    [ebp+hWnd]           ; hDlg                                   <br>00091:    call    EndDialog                                                     <br>00092:    mov eax, 1                                                            <br>00093:    jmp short _LeaveProc                                                 <br><font color=#006600>------------------------------------Crackme1------------------------------------</font><br>:!screendump scd2.txt                                                           </font></pre></td>
+          </tr>
+        </tbody>
+      </table>
+      <p><font size="2" face="Arial, Helvetica, sans-serif">On peux switcher entre 3 types 
+        de sources : la source depuis le fichier .asm, un melange de celle-ci 
+        et du code asm classique, ou alors le code asm classique avce tout de 
+        meme les noms des labels. Pour changer de vue on tape <b>src </b>et on 
+        peux les faires défiler avce F3.</font></p>
+      <p><font size="2" face="Arial, Helvetica, sans-serif"><strong>Screen mode 
+        de vue source asm et code classique mélangé:</strong></font></p>
+      <table width="66%" border=0 align="center" bgcolor=#000000>
+        <tbody>
+          <tr> 
+            <td><pre><font color=#e5e5e5>EAX=00000000   EBX=0063FBE2   ECX=00000000   EDX=00008C22   ESI=00008C06        <br>EDI=0063FB98   EBP=0063FB90   ESP=0063FB90   EIP=0040103C   o d I S z a p C     <br>CS=01B7   DS=01BF   SS=01BF   ES=01BF   FS=12D7   GS=1237                       <br><font color=#006600>--------------------------------------------------------------------------------</font><br>* ES:DI  void * = 0x54415000                                                    <br><font color=#006600>--------------------------------------------------byte--------------------------</font><br>0030:00000000 00 00 00 00 65 04 70 00-16 00 CD 09 65 04 70 00  ....e.p.....e.p.<br>0030:00000010 65 04 70 00 54 FF 00 F0-79 EA 00 F0 21 EA 00 F0  e.p.T...y...!...<br>0030:00000020 00 00 00 D0 D2 08 A6 0A-3A 00 CD 09 52 00 CD 09  ........:...R... <br>0030:00000030 6A 00 CD 09 82 00 CD 09-9A 00 CD 09 65 04 70 00  j...........e.p. <br>0030:00000040 07 00 70 D0 4D F8 00 F0-41 F8 00 F0 E2 24 60 FD  ..p.M...A....$`. <br>0030:00000050 39 E7 00 F0 40 02 B6 06-2D 04 70 00 28 0A B9 07  9...@...-.p.(...<br>0030:00000060 00 E0 00 F0 2F 00 8F 0A-6E FE 00 F0 04 06 B9 07  ..../...n.......<br><font color=#006600>-----DialogProc+000-------------------------------------------------------------</font><br>00080   cmp     [ebp+uMsg], WM_INITDIALOG                                      <br>01B7:00401035  817D0C10010000      CMP       DWORD PTR [EBP+0C],00000110       <br>00081   jz      short _InitDlg               ; Initialisation du dialog         <br>01B7:0040103C  7421                JZ        _InitDlg                (NO JUMP)  <br>00082   cmp     [ebp+uMsg], WM_COMMAND                                          <br>01B7:0040103E  817D0C11010000      CMP       DWORD PTR [EBP+0C],00000111        <br>00083   jz      short _Command               ; Command actionn, sur le dialog   <br>01B7:00401045  7432                JZ        _Command                           <br>00084   mov     eax, 0                                                          <br>01B7:00401047  B800000000          MOV       EAX,00000000                       <br>00085   jmp     short _LeaveProc                                                <br>01B7:0040104C  EB57                JMP       _LeaveProc                         <br>_CloseDlg                                                                       <br>00089   push    0                            ; nResult                          <br>01B7:0040104E  6A00                PUSH      00                                 <br>00090   push    [ebp+hWnd]                   ; hDlg                             <br>01B7:00401050  FF7508              PUSH      DWORD PTR [EBP+08]                 <br>00091   call    EndDialog                                                       <br>01B7:00401053  E8A20F0000          CALL      USER32!EndDialog                   <br>00092   mov     eax, 1                                                          <br>01B7:00401058  B801000000          MOV       EAX,00000001                       <br>00093   jmp     short _LeaveProc                                                <br>01B7:0040105D  EB46                JMP       _LeaveProc                         <br>_InitDlg                                                                        <br>00097   push    3E8h                         ; Edit-box Name                    <br>01B7:0040105F  68E8030000          PUSH      000003E8                           <br>00098   push    [ebp+hWnd]                   ; hDlg                             <br>01B7:00401064  FF7508              PUSH      DWORD PTR [EBP+08]                 <br>00099   call    GetDlgItem                                                      <br>01B7:00401067  E86A0F0000          CALL      USER32!GetDlgItem                  <br>00100   push    eax                          ; hWnd                            <br>01B7:0040106C  50                  PUSH      EAX                             <br></font><font color=#006600>------------------------------------CRACKME1!CODE+0035--------------------------</font><font color=#e5e5e5><br>:!screendump scd3.txt                                           </font></pre></td>
+          </tr>
+        </tbody>
+      </table>
+      <font size="2" face="Arial, Helvetica, sans-serif"><br>
+      Et code classique avec nom des labels</font> <br>
+      <br>
+      <table width="66%" border=0 align="center" bgcolor=#000000>
+        <tbody>
+          <tr> 
+            <td><pre><font color=#e8e8e8>EAX=00000000   EBX=0063FBE2   ECX=00000000   EDX=00008C22   ESI=00008C06        <br>EDI=0063FB98   EBP=0063FB90   ESP=0063FB90   EIP=0040103C   o d I S z a p C     <br>CS=01B7   DS=01BF   SS=01BF   ES=01BF   FS=12D7   GS=1237                       <br><font color=#006600>--------------------------------------------------------------------------------</font><br>* ES:DI  void * = 0x54415000                                                    <br><font color=#006600>--------------------------------------------------byte--------------------------</font><br>0030:00000000 00 00 00 00 65 04 70 00-16 00 CD 09 65 04 70 00  ....e.p.....e.p.<br>0030:00000010 65 04 70 00 54 FF 00 F0-79 EA 00 F0 21 EA 00 F0  e.p.T...y...!...<br>0030:00000020 00 00 00 D0 D2 08 A6 0A-3A 00 CD 09 52 00 CD 09  ........:...R... <br>0030:00000030 6A 00 CD 09 82 00 CD 09-9A 00 CD 09 65 04 70 00  j...........e.p. <br>0030:00000040 07 00 70 D0 4D F8 00 F0-41 F8 00 F0 E2 24 60 FD  ..p.M...A....$`. <br>0030:00000050 39 E7 00 F0 40 02 B6 06-2D 04 70 00 28 0A B9 07  9...@...-.p.(...<br>0030:00000060 00 E0 00 F0 2F 00 8F 0A-6E FE 00 F0 04 06 B9 07  ..../...n.......<br><font color=#006600>-----DialogProc+000-------------------------------------------------------------</font><br>01B7:00401035  817D0C10010000      CMP       DWORD PTR [EBP+0C],00000110       <br>01B7:0040103C  7421                JZ        _InitDlg                (NO JUMP) <br>01B7:0040103E  817D0C11010000      CMP       DWORD PTR [EBP+0C],00000111        <br>01B7:00401045  7432                JZ        _Command                           <br>01B7:00401047  B800000000          MOV       EAX,00000000                       <br>01B7:0040104C  EB57                JMP       _LeaveProc                         <br>_CloseDlg                                                                       <br>01B7:0040104E  6A00                PUSH      00                                 <br>01B7:00401050  FF7508              PUSH      DWORD PTR [EBP+08]                 <br>01B7:00401053  E8A20F0000          CALL      USER32!EndDialog                   <br>01B7:00401058  B801000000          MOV       EAX,00000001                       <br>01B7:0040105D  EB46                JMP       _LeaveProc                         <br>_InitDlg                                                                        <br>01B7:0040105F  68E8030000          PUSH      000003E8                           <br>01B7:00401064  FF7508              PUSH      DWORD PTR [EBP+08]                 <br>01B7:00401067  E86A0F0000          CALL      USER32!GetDlgItem                  <br>01B7:0040106C  50                  PUSH      EAX                                <br>01B7:0040106D  E8820F0000          CALL      USER32!SetFocus                    <br>01B7:00401072  B800000000          MOV       EAX,00000000                       <br>01B7:00401077  EB2C                JMP       _LeaveProc                         <br>_Command                                                                        <br>01B7:00401079  8B4510              MOV       EAX,[EBP+10]                       <br>01B7:0040107C  663DEA03            CMP       AX,03EA                            <br>01B7:00401080  750A                JNZ       _TestNextId                        <br>01B7:00401082  FF7508              PUSH      DWORD PTR [EBP+08]                 <br>01B7:00401085  E81F000000          CALL      _CheckProc                         <br>01B7:0040108A  EB14                JMP       _LeaveProc2                        <br>_TestNextId                                                                     <br>01B7:0040108C  663DEB03            CMP       AX,03EB                            <br>01B7:00401090  750E                JNZ       _LeaveProc2                        <br>01B7:00401092  6A00                PUSH      00                                <br>01B7:00401094  6A00                PUSH      00                              <br><font color=#006600>------------------------------------CRACKME1!CODE+0035--------------------------</font><br>:!screendump scd4.txt                                </font></pre></td>
+          </tr>
+        </tbody>
+      </table>
+      <font size="2" face="Arial, Helvetica, sans-serif"><br>
+      Pour continuer dans l'export nous verrons dans la 4eme et derniere partie, 
+      à defaut de ne pouvoir recompiler la source, comment exporter tout de meme 
+      le listing de IDA vers Softice à l'aide des fichiers .MAP et du fabuleux 
+      plug-in <b>'ida2sice'.</b></font> <p align="left"><img src="images/netix.jpg" width="96" height="32"></p>
+</td>
+  </tr>
+</table>
+</BODY>
+<!-- Mirrored from frenchezines.free.fr/tries/shmeitcorp/5/Netix/ida3.htm by HTTrack Website Copier/3.x [XR&CO'2007], Thu, 07 Aug 2008 04:41:17 GMT -->
+</HTML>
