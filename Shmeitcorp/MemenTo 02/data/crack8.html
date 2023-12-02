@@ -1,0 +1,87 @@
+<HTML><HEAD><TITLE>MemenTo</TITLE>
+
+<meta name="Author" content="[Shmeit Corp]--">
+<META content="text/html; charset=iso-8859-1" http-equiv=Content-Type>
+<meta http-equiv="content-language" content="fr">
+</HEAD>
+<body  background="stars.jpg" bgcolor="#000000" link="#FFFFFF" vlink="#FFFFFF" alink="#00E0FF">
+<font color=#EEEEEE face=arial, verdana, courier size=2>
+<center><h1>Cours de Crack <br><font size="-2">(8eme Partie)</font></h1><br></center>
+<br>
+<font color=#EEEEEE face=arial, verdana, courier size=2><p><b><h3>Comment choper un serial pour Winzip 7.0</h3></b>
+<br>
+<b><u>Mat&eacute;riel n&eacute;c&eacute;ssaire :</u></b> SoftIce
+<br><br>
+Dans ce cours nous allons expliquer comment cracker Winzip 7.0, programme de compression tr&egrave;s utilis&eacute; et quasi indispensable surtout sur le net.
+Nous allons utiliser dans ce cours la m&eacute;thode qui permet de trouver un serial qui corresponde &agrave; notre nom.<br><br>
+<br><br>
+
+<h3>Commencons !</h3>
+
+
+Lancez Winzip et tout de suite si vous avez une version shareware, un beau nag-screen s'affiche avec les boutons <i>"Quit", "I Agree", "Ordering Info", "View Evaluation Licence" et "Enter Registration Code"</i>...<br>
+Il s'agit du dernier qui nous int&eacute;resse, quand vous cliquez dessus la boite de dialogue permettant de s'enregistrer s'affiche.
+Il y a deux champs , l'un pour le nom et l'autre pour le code.<br>
+Mettez votre nom, pour moi ThE CrAzY SquirreL et un serial bidon, 12345 et cliquez sur OK et une boite de dialogue s'affiche avec le message 'Incomplete or incorrect information'. Donc le programme a compar&eacute; notre code par rapport au bon code et nous informe que 12345 n'est pas le bon code pour notre nom. Nous allons donc essayer de choper le bon serial en interrompant l'&eacute;x&eacute;cution du programme lorsqu'il lit notre nom/serial.<br><br>
+
+Pour cela il faut poser un breakpoint sous SoftIce, les deux fonctions les plus couramment utilis&eacute;es dans la lecture d'un champs sont <font color="Teal">GetWindowTextA</font> et <font color="Teal">GetDlgItemTextA</font>.<br>
+Donc allez sous SoftIce (&agrave; l'aide de <font color="Aqua">Ctrl-D</font>) tapez <font color="Aqua">bpx GetDlgItemTextA</font> puis <font color="Aqua">bpx GetWindowTextA</font>.<br>
+Quittez SoftIce toujours avec <font color="Aqua">Ctrl-D</font>, et mettez un nom (ThE CrAzY SquirreL) et un serial bidon (12345).<br>
+Ensuite appuyez sur Ok, et l&agrave; on se retrouve imm&eacute;diatement sous SoftIce.<br><br>
+
+Faites <font color="Aqua">F12</font> pour sortir de la fonction pour voir si Winzip lit notre nom et effectivement on voit <font color="Fuchsia">EAX=12</font>.<br>
+Mais qu'est que ca pourrais bien être ? Il faut savoir que les valeur des registres sont h&eacute;xad&eacute;cimales et non d&eacute;cimals, donc 12=18 en d&eacute;cimal...
+Et il se trouve que 18 est longueur de mon nom!<br>
+Et la ligne sur laquelle nous em&egrave;ne SoftIce est <font color="Teal">PUSH EBX</font>...<br>
+Faites donc "<font color="Aqua">d EBX</font>" et dans la fenêtre Data on apercoit notre nom !<br><br>
+
+Faites <font color="Aqua">F12</font> pour que SoftIce continue son &eacute;x&eacute;cution et lise notre serial <i>(car pour l'instant, on est dans
+la routine qui lit la zone de saisie contenant notre nom...)</i>.<br>
+L&agrave;, <font color="Fuchsia">EAX=5</font> c'est &agrave; dire la longueur de notre code.<br>
+Et la ligne sur laquelle on se trouve est <font color="Teal">PUSH ESI</font>...<br>
+Ainsi, comme precedemment, faites "<font color="Aqua">d esi</font>" et on voit notre serial bidon.<br><br>
+
+<i><b>Et maintenant qu'est qu'on fait ?</b></i>...On peut supposer que Winzip va g&eacute;n&eacute;rer le serial valide et le comparer au notre et s'il sont diff&eacute;rents nous envoie la boite de dialogue <i>'Incomplete or ...'</i><br>
+On peut donc supposer qu'il va comparer &agrave; un moment ou &agrave; un autre notre serial (12345) au bon...<br>
+
+On va donc poser un <font color="Teal">bpm</font> (arrêt sur une zone de la m&eacute;moire) sur 12345.<br>
+Pour cela il nous faut l'adresse &agrave; laquelle se trouve le serial, donc quand Winzip lit notre serial et que vous faites <font color="Aqua">d esi</font> notez l'adresse &agrave; laquelle il se trouve.
+<i>[ndSmeita: je rappelle que pour trouver l'adresse, il suffit de regarder sur la meme ligne que 12345, mais tout a gauche...(la ou il y a xxx:xxxxx sur mon beau dessin :))...]</i><br>
+Dans mon cas, j'ai 47D958.
+La commande &agrave; taper est donc <font color="Aqua">bpm 47D958</font> (notez que cette adresse n'est pas forcement la meme chez vous !!).<br><br>
+
+Ensuite faites <font color="Aqua">F5</font> (pareil que Ctrl+D...) pour que Winzip continue son &eacute;x&eacute;cution jusqu'&agrave; ce qu'il &eacute;x&eacute;cute notre bpm.
+<b>Winzip fais plusieurs fois r&eacute;f&eacute;rence &agrave; cette zone de la m&eacute;moire</b>, en effet il est entrain de cr&eacute;er le bon serial par rapport &agrave; notre nom.
+On fait plusieurs fois <font color="Aqua">F5</font> (ou Ctrl+D...), cinq fois &eacute;xactement et l&agrave; nous arrivons sur des lignes de code interressantes...:<br><br>
+ 
+	<font color="Teal">MOV AL, [ESI]</font> => met ESI dans AL<br>
+	<font color="Teal">INC ESI</font><br>
+	<font color="Teal">MOV AH, [EDI]</font> => met EDI dans AH <br>
+	<font color="Teal">INC EDI</font> <br>
+	<font color="Teal">CMP AH,AL</font> => compare AL et AH...(c'est pour ca que c'est interressant...)<br><br><br>
+
+Faites <font color="Aqua">d esi</font> et vous on voit notre serial bidon dans la fenetre des donn&eacute;es.<br>
+On peut donc supposer que EDI contient le bon serial, faites <font color="Aqua">d edi</font> et vous voyez A24A388C :))<br><br>
+On peut constater que si on continue &agrave; faire <font color="Aqua">F5</font> (ou Ctrl+D, c'est pareil...), on tombe de nouveau sur 
+les mêmes lignes que pr&eacute;c&eacute;demment mais que le serial est diff&eacute;rent mais &eacute;galement valide. Peut être 
+qu'il d'agit d'un s&eacute;rial d'une version ant&eacute;rieur...(on obtient 21645132)<br><br>
+
+Donc pour ThE CrAzY SquirreL le serial est A24A388C ou 21645132 !!<br>
+Quittez SoftIce en enlevant d'abord les breakpoints (en faisant <font color="Aqua">bc *</font> puis <font color="Aqua">F5</font>)
+et rentrez les informations obtenues (c'est a dire le serial...) dans Winzip...
+<b>Maintenant Winzip est enregistr&eacute; !</b><br><br><br><br>
+<font size="-2" color="Silver">[interlude de Smeita...]</font><br>
+Bon, zavez vu ?? C'est pas si dur !!<br>
+En plus, ce qu'est cool avec SoftIce, c'est qu'y a pas de modif' en hexa ! ;)<br>
+Maintenant, entrainez vous un peu avec des sharewares a deux balles, et puis vous deviendrez vite un virtuose de
+SoftIce :))...Quand aux prochains cours (les 'Flash Tuts'), il vont reprendre notre bon vieux WinDASM, histoire de completer
+vos connaissances...Il sera peut etre plus difficile de les mettre en pratique, car vous ne disposerez pas des logiciels
+sous la main...mais bon, lisez les quand meme, il finiront peut-etre de vous eclaircir sur l'utilisation
+de WinDASm :)<br>
+<i>PS: Au fait, pour ceux qu'on toujours pas compris, Ctrl+D c'est pareil que F5 :)</i><br>
+<font size="-2" color="Silver">[...Fin d'interlude...]</font><br><br>
+<center>
+<br>
+<br>
+</center>
+</font></font></body></html>

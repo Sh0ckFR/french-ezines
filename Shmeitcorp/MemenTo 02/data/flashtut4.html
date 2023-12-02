@@ -1,0 +1,186 @@
+<HTML><HEAD><TITLE>MemenTo</TITLE>
+
+<meta name="Author" content="[Shmeit Corp]--">
+<META content="text/html; charset=iso-8859-1" http-equiv=Content-Type>
+<meta http-equiv="content-language" content="fr">
+</HEAD>
+<body  background="stars.jpg" bgcolor="#000000" link="#FFFFFF" vlink="#FFFFFF" alink="#00E0FF">
+<font color=#EEEEEE face=arial, verdana, courier size=2>
+<center><h1>Flash Tut<br><font size="-2">(n°4)</font></h1><br></center>
+<br>
+<font color=#EEEEEE face=arial, verdana, courier size=2><p><b><h3>Comment cracker un 'CD-CHECk'</h3></b>
+<br>
+<i><b>Exemple : Myth II</b></i><br><br>
+<u><b>Mat&eacute;riel n&eacute;cessaire :</b></u><br>
+Wdasm32<br>
+Un &eacute;diteur h&eacute;xad&eacute;cimal (Hex WorkShop ou Hedit par exemple)<br><br>
+
+<u><b>Mise en situation...</b></u><br>
+
+Quand vous lancez le jeu sans le CD, une image vous demande de l'inserer !<br>
+Il n'y a pas de MessageBox, donc il faut proceder autrement que d'habitude...<br>
+Pas de probleme, on va le cracker. <font color="Aqua">Faites deux copies de MythII.exe</font>.<br>
+Appellez la premiere 'WDASMyth2.exe' et l'autre 'BAKUP.EXE'...<br>
+<br>
+Maintenant <font color="Aqua">lancez W32DASM</font> et <font color="Aqua">desassemblez 'WDASMyth2.exe'</font>.<br>
+Quand le fichier est decompil&eacute; <font color="Aqua">cliquez sur le bouton 'Imports Functions'</font>.<br>
+<br>
+<i><b>Pourquoi 'Imports Funtions' and pas 'String Data reference' comme d'hab ?</b></i><br>
+Parceque le message d'erreur n'est pas sous forme de MessageBox,<br>
+mais est integr&eacute; dans le jeu sous forme d'image.<br><br>
+
+Dans les 'Imports functions', <font color="Aqua">double-cliquez sur 'KERNEL32.GetDriveTypeA'</font>.<br>
+Cette fonction determine si un support est un CD-Rom ou un Disque Dur,<br>
+et permet donc de realiser un '<b>Cd-CHECk</b>' (en sus, ya d'aure infos du style<br>
+Nom_du_volume, taille_du_disque...) C'est donc cette fonction qui va nous interresser !<br>
+<br>
+Au premier 'double-clique', vous tombez sur un petit bout de code...
+Ce n'est pas l'endroit qui nous interesse.<br>
+<b><i>Pourquoi ?</i></b> Eh ben, sachez que la fonction <b>GetDriveTypeA</b> differencie le type<br>
+de support suivant un code (de 1 a 7 je crois..) et le CD-Rom a le code '5'.<br>
+Regardez donc en <font color="Fuchsia">4870D6</font>...Si vous voyer une ligne comme ca a cot&eacute; d'un GetDriveTypeA,<br>
+vous pouvez etre quasi sur que c'est la routine du CD-Check !<br>
+<br>
+<font color="Aqua">Recliquez donc sur 'KERNEL32.GetDriveTypeA'</font> afin d'atterir sur cette partie du code :<br><pre>
+
+
+<hr>
+
+<font color="Silver">* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:00487170(C)
+|</font>
+
+<font color="Lime">* Possible Reference to String Resource ID=00001: "Myth II"</font>
+                                  |
+:004870B2 BA01000000              mov edx, 00000001
+:004870B7 8ACB                    mov cl, bl
+:004870B9 D3E2                    shl edx, cl
+:004870BB 8AC3                    mov al, bl
+:004870BD 0441                    add al, 41
+:004870BF 88442410                mov byte ptr [esp+10], al
+:004870C3 85D5                    test ebp, edx
+:004870C5 0F84A0000000            je 0048716B       <-- jump vers le debut du CD-CHECK
+:004870CB 8D442410                lea eax, dword ptr [esp+10]
+:004870CF 50                      push eax
+
+
+<font color="#0E91F1">* Reference To: KERNEL32.GetDriveTypeA, Ord:00DFh</font>
+                                  |
+:004870D0 FF1520495B00            Call dword ptr [005B4920]
+:004870D6 83F805                  cmp eax, 00000005  <-- Verifie qu'il y a le CD.
+:004870D9 0F858C000000            jne 0048716B       <-- Si non, jump au debut du 'CD-Check'
+:004870DF 8A0D103E5500            mov cl, byte ptr [00553E10]
+:004870E5 33C0                    xor eax, eax       <-- Le test 'Cd-Check' a &eacute;chou&eacute;
+:004870E7 884C2418                mov byte ptr [esp+18], cl
+:004870EB B93F000000              mov ecx, 0000003F
+:004870F0 8D7C2419                lea edi, dword ptr [esp+19]
+:004870F4 6A00                    push 00000000
+:004870F6 F3                      repz
+:004870F7 AB                      stosd
+:004870F8 66AB                    stosw
+:004870FA 6A00                    push 00000000
+:004870FC 6A00                    push 00000000
+:004870FE 6A00                    push 00000000
+:00487100 6A00                    push 00000000
+:00487102 AA                      stosb
+:00487103 8D54242C                lea edx, dword ptr [esp+2C]
+:00487107 68FF000000              push 000000FF
+:0048710C 8D442428                lea eax, dword ptr [esp+28]
+:00487110 52                      push edx
+:00487111 50                      push eax
+.
+..
+...
+....
+
+Un peu plus loin dans le listing, vers la fin de la routine du 'CD-Check'...
+
+<font color="Silver">* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:00487156(U)
+|</font>
+:0048715D 85C0                    test eax, eax    <-- Test si eax=0
+:0048715F 741B                    je 0048717C      <-- jump si vous avez le CD (eax=0)
+:00487161 EB08                    jmp 0048716B     <-- Jump vers le 'CD-CHECk' (eax<>0)
+
+
+
+<font color="Silver">* Referenced by a (U)nconditional or (C)onditional Jump at Addresses:
+|:004870C5(C), :004870D9(C), :00487161(U)
+|</font>
+:0048716B 43                      inc ebx       <- ici, ebx est increment&eacute; a chaque passage
+:0048716C 6683FB19                cmp ebx, 0019 <- au bout de 20 passage on quitte le Cd Check
+:00487170 0F8E3CFFFFFF            jle 004870B2  <- Appelle GetDriveTypeA
+:00487176 8B442414                mov eax, dword ptr [esp+14]
+:0048717A EB05                    jmp 00487181  <-- Le 'CD-check' a &eacute;chou&eacute;.
+
+
+
+<font color="Silver">* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:0048715F(C)
+|</font>
+
+<font color="Lime">* Possible Reference to String Resource ID=00001: "Myth II"
+</font>                                  |
+:0048717C B801000000              mov eax, 00000001             <-- Ok, le Cd est reconnu !
+
+<font color="Silver">
+* Referenced by a (U)nconditional or (C)onditional Jump at Address:
+|:0048717A(U)
+|</font>
+:........ ...........             ................... => vers la suite du listing...
+
+
+<hr>
+</pre><br><br>
+
+
+Bon, maintenant je vous explique...C'est assez simple : l'histoire commence en <font color="Fuchsia">487170</font>....<br>
+On arrive d'on-ne-sais-ou et voici donc que le programme va se demandez si oui<br>
+ou non vous avez le CD...Alors en <font color="Fuchsia">4870C5</font> il y a un jump vers la boucle du 'Cd-Check'.<br>
+Une boucle ?? Ben oui, a chaque passage on incremente 'ebx', et au bout de 20 fois, on rend le<br>
+'verdict' :) Ne me demandez pas pourquoi ca se passe comme ca, c'est pas important de toute facon...<br>
+Donc, apres avoir increment&eacute; 'ebx', s'il est inferieur a 19 on repart en <font color="Fuchsia">487170</font>.<br>
+<br>
+Sauf que cette fois, le saut en 4870C5 ne se fera pas car 'ebp' n'est plus egale a 'edx'<br>
+<i>(si vous regardez bien, on peut supposer que c'est 'ebp' qui change pendant la routine<br>
+du CD-Check puisque 'edx' est initialis&eacute; a 1 des le debut de 487170...'ebp' doit etre modifier<br>
+dans les lignes que je vous ai coup&eacute;, de toute facon c'est pas important)</i>.<br>
+<br>
+Donc comme on saute pas ce coup si, on passe a GetDriveTypeA...<br>
+Arriv&eacute; la, la fonction regarde s'il y a un CD ou non...Et donc on va se taper le saut car on a pas de CD !<br>
+Il faudra donc penser a remplacer ce <font color="Fuchsia">0F85</font> (jne) par un <font color="Fuchsia">0F84</font> (je) qui annulera ce saut...<br>
+<br>
+<br>
+Imaginons qu'on est annul&eacute; ce saut: on continue notre epop&eacute;e et arriv&eacute; a un moment de<br>
+la routine (dans les lignes que j'ai coup&eacute;), le programme determine si le support correspond<br>
+a un CD original de Myth 2 (voir <font color="Fuchsia">48715D</font>).<br>
+On voit qu'il saute de facon inconditionnel en <font color="Fuchsia">48716B</font> si le premier saut n'est pas<br>
+execut&eacute;. Or <font color="Fuchsia">48716B</font> c'est la 'boucle des 20 passages', la ou il faut pas aller !!<br>
+On en deduit donc que le saut en <font color="Fuchsia">48715F</font>, c'est la ou il faut aller :)<br>
+<br>
+Alors la, c'est simple, il suffit de forcer le <font color="Fuchsia">741B</font> (JE) en <font color="Fuchsia">EB1B</font> (JMP) (cf <font color="Fuchsia">48715F</font>)<br>
+Bon, ben voila si on recapitule, il faut d'abord annuler le saut en 4870D9 puis forcer le saut en 48715F...<br>
+<br>
+Voulez-vous une autre methode pour niquer le CD-Check ?? (ouiiiiiii)<br>
+Mmm...mais alors c'est parceque c'est vous :)<br>
+Bon, sans rire, regard&eacute; la difference entre le saut de <font color="Fuchsia">48715F</font> et celui qui est<br>
+en <font color="Fuchsia">48717A</font>, a la fin du 'CD-Check'...Ben la seule difference c'est qu'avec le premier<br>
+vous passez par une ligne supplementaire :<br>
+
+<pre>:0048717C B801000000              mov eax, 00000001</pre>
+
+
+Donc, en fait, on pourrait tout simplement nopper le saut en <font color="Fuchsia">48717A</font> et on irai<br>
+toujours sur ce '<i>mov eax, 00000001</i>'...valavalou :))<br>
+Il suffirait alors de mettre un <font color="Fuchsia">9090</font> a la place du <font color="Fuchsia">EB05</font> (cf 48717A) et le jeu serait<br>
+crack&eacute;...Cool non ?? (Au fait, cette methode marche avec toutes les versions de Myth 2.)<br>
+<br>
+Bon, alors la vous venez d'apprendre a cracker un jeu commercial d'une grosse boite...<br>
+Vous voyez, c'est pas si dur :)) En tout cas, soyez sur que c'est pas toujours aussi simple.<br>
+Ceci dit, vous pouvez cracker pas mal de jeu comme ca :)<br>
+Bon, je vous laisse !! Happy New Year a tous !!<br>
+<center>
+<br>
+<br><br>
+</center>
+</font></font>

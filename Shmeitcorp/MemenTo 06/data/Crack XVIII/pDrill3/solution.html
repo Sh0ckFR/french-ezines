@@ -1,0 +1,359 @@
+<html>
+<head>
+<title>pDriLl's Crypto Keygenme 3</title>
+<link rel="stylesheet" type="text/css" href="../../style.css">
+</head>
+<body>
+<h2 align="center"><font face="Lucida Console"><b>pDriLl's Crypto Keygenme 3</b></font></h2>
+
+<p><b>Type de protection :</b> name / 2 serials<br>
+<b>Outils utilisés :</b>
+<ul><li>OllyDbg v1.09d</li>
+<li><a href="http://www.alpertron.com.ar/DILOG.HTM" target="_blank">Discrete logarithm calculator</a></li>
+<li>lcc avec la librairie MIRACL</li></ul>
+<b>R&eacute;f&eacute;rences :</b>
+<ul><li><a href="http://www.cacr.math.uwaterloo.ca/hac/" target="_blank">Handbook of Applied Cryptography</a></li>
+<li><a href="http://indigo.ie/~mscott/" target="_blank">Documentation MIRACL</a></li></ul>
+<b>Fichiers joints :</b>
+<ul><li><a href="pDrKeygenme3.exe">KeygenMe</a></li>
+<li><a href="keygen.zip">keygen + source</a></li>
+<li><a href="miracl.zip">Librairie Miracl</a></li></ul></p>
+
+<p>Ce keygenme utilise ElGamal signature scheme. Il a été codé avec la librairie MIRACL, ce qui le rend plus facile
+à comprendre, étant donné qu'elle est très documentée.<br>
+Le programme n'est ni packé, ni crypté.</p>
+
+<p>On ouvre le keygenme avec Olly, et on regarde rapidement le listing.<br>
+La routine qui récupère le nom et les deux serials se trouve facilement :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">00401053   . 8B7C24 28      MOV EDI,DWORD PTR SS:[ESP+28]            ;  Case 3EB of switch 00401041
+00401057   . 8B1D B4B04000  MOV EBX,DWORD PTR DS:[&lt;&USER32.GetDlgIte&gt;;  USER32.GetDlgItemTextA
+0040105D   . 6A 1F          PUSH 1F                                  ; /<font color="#808080">Count =</font> 1F (31.)
+0040105F   . 68 20D74000    PUSH pDrKeyge.0040D720                   ; |<font color="#808080">Buffer =</font> pDrKeyge.0040D720
+00401064   . 68 E8030000    PUSH 3E8                                 ; |<font color="#808080">ControlID =</font> 3E8 (1000.)
+00401069   . 57             PUSH EDI                                 ; |<font color="#808080">hWnd</font>
+0040106A   . FFD3           CALL EBX                                 ; \<font color="#FF0000">GetDlgItemTextA</font>
+0040106C   . 8BF0           MOV ESI,EAX                              ; esi &lt;-- taille du nom
+0040106E   . 83FE 01        CMP ESI,1
+00401071   . 7D 1F          JGE SHORT pDrKeyge.00401092
+00401073   . 6A 00          PUSH 0                                   ; /<font color="#808080">Style =</font> MB_OK|MB_APPLMODAL
+00401075   . 68 B4C14000    PUSH pDrKeyge.0040C1B4                   ; |<font color="#808080">Title =</font> "input error"
+0040107A   . 68 98C14000    PUSH pDrKeyge.0040C198                   ; |<font color="#808080">Text =</font> "You have to type in a name"
+0040107F   . 57             PUSH EDI                                 ; |<font color="#808080">hOwner</font>
+00401080   . FF15 ACB04000  CALL DWORD PTR DS:[&lt;&USER32.MessageBoxA&gt;&gt;; \<font color="#FF0000">MessageBoxA</font></pre></td></tr>
+</table>
+
+<p>Le même schéma est utilisé pour récupérer les deux serials.<br>
+Une fois que tout est récupéré, on se trouve ici :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">004010F8   &gt; 83FE 1E        CMP ESI,1E
+004010FB   . 8BC6           MOV EAX,ESI
+004010FD   . 7D 25          JGE SHORT pDrKeyge.00401124</font></pre></td></tr>
+</table>
+
+<p>Le programme compare la longueur du nom entré à 0x1E.<br>
+On pose un bpx en .4010F8 et on lance le programme (F9).</p>
+
+<p>On entre un nom ( jB ) et deux serials bidons ( 1122334455 et 5544332211 ), puis on clique sur Check.<br>
+Olly break, et on arrive ici :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">004010F8   &gt; 83FE 1E        CMP ESI,1E
+004010FB   . 8BC6           MOV EAX,ESI
+004010FD   . 7D 25          JGE SHORT pDrKeyge.00401124
+004010FF   . BA 1E000000    MOV EDX,1E
+00401104   . 8DBE 20D74000  LEA EDI,DWORD PTR DS:[ESI+40D720]
+0040110A   . 2BD6           SUB EDX,ESI
+0040110C   . B8 2A2A2A2A    MOV EAX,2A2A2A2A
+00401111   . 8BCA           MOV ECX,EDX
+00401113   . 8BD9           MOV EBX,ECX
+00401115   . C1E9 02        SHR ECX,2
+00401118   . F3:AB          REP STOS DWORD PTR ES:[EDI]
+0040111A   . 8BCB           MOV ECX,EBX
+0040111C   . 83E1 03        AND ECX,3
+0040111F   . F3:AA          REP STOS BYTE PTR ES:[EDI]
+00401121   . 8D0432         LEA EAX,DWORD PTR DS:[EDX+ESI]
+00401124   &gt; C680 20D74000 &gt;MOV BYTE PTR DS:[EAX+40D720],0
+0040112B   . BF 20D74000    MOV EDI,pDrKeyge.0040D720                ;  ASCII "jB****************************"</font></pre></td></tr>
+</table>
+
+<p>Cette routine ajoute des * à la fin du nom entré, jusqu'à obtenir 0x1E = 30 caractères pour le nom.<br>
+Le code est classique, il n'y a pas grand chose à dire de plus.</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">0040113A   . 50             PUSH EAX
+0040113B   . 894C24 20      MOV DWORD PTR SS:[ESP+20],ECX
+0040113F   . C785 38020000 >MOV DWORD PTR SS:[EBP+238],3C
+00401149   . E8 02070000    CALL pDrKeyge.00401850
+0040114E   . 6A 00          PUSH 0
+00401150   . 894424 28      MOV DWORD PTR SS:[ESP+28],EAX
+00401154   . E8 F7060000    CALL pDrKeyge.00401850
+00401159   . 6A 00          PUSH 0
+0040115B   . 894424 20      MOV DWORD PTR SS:[ESP+20],EAX
+0040115F   . E8 EC060000    CALL pDrKeyge.00401850
+00401164   . 6A 00          PUSH 0
+00401166   . 8BF0           MOV ESI,EAX
+00401168   . E8 E3060000    CALL pDrKeyge.00401850
+0040116D   . 6A 00          PUSH 0
+0040116F   . 8BD8           MOV EBX,EAX
+00401171   . E8 DA060000    CALL pDrKeyge.00401850
+00401176   . 6A 00          PUSH 0
+00401178   . 894424 28      MOV DWORD PTR SS:[ESP+28],EAX
+0040117C   . E8 CF060000    CALL pDrKeyge.00401850
+00401181   . 6A 00          PUSH 0
+00401183   . 894424 4C      MOV DWORD PTR SS:[ESP+4C],EAX
+00401187   . E8 C4060000    CALL pDrKeyge.00401850
+0040118C   . 6A 00          PUSH 0
+0040118E   . 8BE8           MOV EBP,EAX
+00401190   . E8 BB060000    CALL pDrKeyge.00401850
+00401195   . 894424 4C      MOV DWORD PTR SS:[ESP+4C],EAX</font></pre></td></tr>
+</table>
+
+<p>Cela ressemble à des initialisations de bignums.<br>
+La partie intéressante commence...</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">00401199   . BF 20D84000    MOV EDI,pDrKeyge.0040D820                ;  ASCII "1122334455"
+0040119E   . 83C9 FF        OR ECX,FFFFFFFF
+004011A1   . 33C0           XOR EAX,EAX
+004011A3   . 83C4 20        ADD ESP,20
+004011A6   . 33D2           XOR EDX,EDX
+004011A8   . F2:AE          REPNE SCAS BYTE PTR ES:[EDI]
+004011AA   . F7D1           NOT ECX
+004011AC   . 49             DEC ECX
+004011AD   . 85C9           TEST ECX,ECX
+004011AF   . 7E 32          JLE SHORT pDrKeyge.004011E3
+004011B1   &gt; 8A82 20D84000  MOV AL,BYTE PTR DS:[EDX+40D820]
+004011B7   . 3C 41          CMP AL,41                                ;  serial[i] &lt; 'A'?
+004011B9   . 7C 04          JL SHORT pDrKeyge.004011BF
+004011BB   . 3C 5A          CMP AL,5A                                ;  serial[i] &gt; 'Z'?
+004011BD   . 7E 10          JLE SHORT pDrKeyge.004011CF
+004011BF   &gt; 3C 61          CMP AL,61                                ;  serial[i] &lt; 'a'?
+004011C1   . 7C 04          JL SHORT pDrKeyge.004011C7
+004011C3   . 3C 7A          CMP AL,7A                                ;  serial[i] &gt; 'z'?
+004011C5   . 7E 08          JLE SHORT pDrKeyge.004011CF
+004011C7   &gt; 3C 30          CMP AL,30                                ;  serial[i] &lt; '0'?
+004011C9   . 7C 61          JL SHORT pDrKeyge.0040122C
+004011CB   . 3C 39          CMP AL,39                                ;  serial[i] &gt; '9'?
+004011CD   . 7F 5D          JG SHORT pDrKeyge.0040122C
+004011CF   &gt; BF 20D84000    MOV EDI,pDrKeyge.0040D820                ;  ASCII "1122334455"
+004011D4   . 83C9 FF        OR ECX,FFFFFFFF
+004011D7   . 33C0           XOR EAX,EAX
+004011D9   . 42             INC EDX
+004011DA   . F2:AE          REPNE SCAS BYTE PTR ES:[EDI]
+004011DC   . F7D1           NOT ECX
+004011DE   . 49             DEC ECX
+004011DF   . 3BD1           CMP EDX,ECX
+004011E1   .^7C CE          JL SHORT pDrKeyge.004011B1</font></pre></td></tr>
+</table>
+
+<p>Le programme vérifie le format du 1er serial entré. Les caractères autorisés sont les chiffres, les majuscules et les minuscules.<br>
+Même procédure pour le 2e serial entré, de .4011E3 à .401228.<br>
+Puis il y a un saut vers .401272 si le format des deux serials est correct :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">00401272   &gt; 68 20D84000    PUSH pDrKeyge.0040D820                   ;  ASCII "1122334455"
+00401277   . 55             PUSH EBP
+00401278   . E8 A32F0000    CALL pDrKeyge.00404220</font></pre></td></tr>
+</table>
+
+<p>On passe deux arguments à la procédure, dont le premier serial.<br>
+A la sortie de la procédure, on regarde à l'offset ebp :</p>
+
+<pre>02ABACA0  02 00 00 00 AC AC AB 02 00 00 00 00 71 FF B2 E2  ............q...
+02ABACB0  8C 6B 24 00 00 00 00 00 00 00 00 00 00 00 00 00  .k$.............</pre>
+
+<p>On obtient donc un bignum au format utilisé par MIRACL :<br>
+02 00 00 00 : nombre de dwords qu'occupe le bignum<br>
+AC AC AB 02 : offset où commence le bignum<br>
+00 00 00 00<br>
+71 FF B2 E2 8C 6B 24 : valeur du bignum (il faut lire de droite à gauche: 246B8CE2B2FF71).</p>
+
+<p>La procédure semble donc être instr (lire la doc MIRACL pour plus d'informations là dessus).<br>
+On renomme donc la procédure avec Olly. En .404220, on tape : puis instr<br>
+Reste à trouver la base à partir de laquelle est converti ce nombre. On remarque plus haut :</p>
+
+<pre>0040113F   . C785 38020000 &gt;MOV DWORD PTR SS:[EBP+238],3C            ;  mip-&gt;IOBASE=60;</pre>
+
+<p>Le premier serial à entrer est donc en base 60.</p>
+
+<p>Le deuxième serial est récupéré de la même façon.<br>
+On obtient une fois converti : B60A36616BEADD</p>
+
+<p>On arrive là :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">0040128C   . 8B4424 28      MOV EAX,DWORD PTR SS:[ESP+28]
+00401290   . 8B4C24 2C      MOV ECX,DWORD PTR SS:[ESP+2C]
+00401294   . 53             PUSH EBX
+00401295   . 68 20D74000    PUSH pDrKeyge.0040D720                   ;  ASCII "jB****************************"
+0040129A   . 51             PUSH ECX                                 ;  0x1E, longueur du nom
+0040129B   . C780 38020000 &gt;MOV DWORD PTR DS:[EAX+238],10            ;  mip-&gt;IOBASE=16;
+004012A5   . E8 062E0000    CALL pDrKeyge.004040B0</font></pre></td></tr>
+</table>
+
+<p>On remarque un changement de la base d'entrée des nombres: on passe maintenant en base 16 (hexadécimal).<br>
+Trois arguments sont passés à la procédure: le nom auquel le programme a ajouté les *, sa longueur (0x1E=30), et ebx.<br>
+A la sortie de la procédure on a, à l'adresse pointée par ebx :</p>
+
+<pre>02AE2040  08 00 00 00 4C 20 AE 02 00 00 00 00 2A 2A 2A 2A  ....L ......****
+02AE2050  2A 2A 2A 2A 2A 2A 2A 2A 2A 2A 2A 2A 2A 2A 2A 2A  ****************
+02AE2060  2A 2A 2A 2A 2A 2A 2A 2A 42 6A 00 00 00 00 00 00  ********Bj......</pre>
+
+<p>On reconnaît donc la fonction bytes_to_big.<br>
+On renomme dans Olly cette fonction.</p>
+
+<p>Puis on est ici :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">004012AA   . 68 18C14000    PUSH pDrKeyge.0040C118                   ;  ASCII "AC2DB4FEC8C62992DB4F"
+004012AF   . 56             PUSH ESI
+004012B0   . E8 6B2F0000    CALL &lt;pDrKeyge.instr&gt;
+004012B5   . 53             PUSH EBX
+004012B6   . 56             PUSH ESI
+004012B7   . 6A 02          PUSH 2
+004012B9   . 53             PUSH EBX
+004012BA   . E8 F1260000    CALL pDrKeyge.004039B0</font></pre></td></tr>
+</table>
+
+<p>instr va convertir AC2DB4FEC8C62992DB4F en bignum.<br>
+Une procédure intéressante ensuite, avec 4 arguments :
+<ul><li>le nom converti en bignum</li>
+<li>2</li>
+<li>AC2DB4FEC8C62992DB4F</li>
+<li>encore le nom converti en bignum</li></ul></p>
+
+<p>Pas de doute, c'est power (la seule procédure miracl avec ce prototype).<br>
+La fonction calcule donc :<br>
+nom ^ 2 mod AC2DB4FEC8C62992DB4F et retourne le résultat à l'adresse pointée par ebx.<br>
+On obtient : 2FDFBF53DF73D87E870</p>
+
+<p>Ensuite trois chaînes sont converties en bignums :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">004012BF   . 68 00C14000    PUSH pDrKeyge.0040C100                   ;  ASCII "B54F430648C6B2A10FFB"
+004012C4   . 56             PUSH ESI
+004012C5   . E8 562F0000    CALL &lt;pDrKeyge.instr&gt;
+004012CA   . 8B5424 50      MOV EDX,DWORD PTR SS:[ESP+50]
+004012CE   . 68 E8C04000    PUSH pDrKeyge.0040C0E8                   ;  ASCII "2E0C2DB4FEC8C6299A0C"
+004012D3   . 52             PUSH EDX
+004012D4   . E8 472F0000    CALL &lt;pDrKeyge.instr&gt;
+004012D9   . 8B7C24 64      MOV EDI,DWORD PTR SS:[ESP+64]
+004012DD   . 83C4 44        ADD ESP,44
+004012E0   . 68 D0C04000    PUSH pDrKeyge.0040C0D0                   ;  ASCII "4E0F2ACAD51C4CCDFB51"
+004012E5   . 57             PUSH EDI
+004012E6   . E8 352F0000    CALL &lt;pDrKeyge.instr&gt;</font></pre></td></tr>
+</table>
+
+<p>Puis on arrive à un autre endroit intéressant :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">004012F3   . 50             PUSH EAX                                 ;  0
+004012F4   . 56             PUSH ESI                                 ;  B54F430648C6B2A10FFB
+004012F5   . 53             PUSH EBX                                 ;  2FDFBF53DF73D87E870
+004012F6   . 51             PUSH ECX                                 ;  2E0C2DB4FEC8C6299A0C
+004012F7   . E8 54220000    CALL pDrKeyge.00403550</font></pre></td></tr>
+</table>
+
+<p>La procédure prend 4 bignums en arguments.<br>
+On obtient en sortie, à l'offset pointé par eax auparavant: 81E3FB6D45348B21495E</p>
+
+<p>La fonction semble être un powmod (comme power, mais l'exposant est un big et pas un int).<br>
+Du moins c'est ce qui parait le plus probable en regardant les procédures prenant en entrée 4 bignums.<br>
+Après une vérification, on s'aperçoit que c'est bien powmod qui est effectué.<br>
+2E0C2DB4FEC8C6299A0C ^ 2FDFBF53DF73D87E870 mod B54F430648C6B2A10FFB</p>
+
+<p>Ensuite vient une autre procédure :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">00401304   . 52             PUSH EDX                                 ;  0
+00401305   . 56             PUSH ESI                                 ;  B54F430648C6B2A10FFB
+00401306   . 50             PUSH EAX                                 ;  B60A36616BEADD (serial2)
+00401307   . 55             PUSH EBP                                 ;  246B8Ce2B2FF71 (serial1)
+00401308   . 55             PUSH EBP                                 ;  246B8Ce2B2FF71 (serial1)
+00401309   . 57             PUSH EDI                                 ;  4E0F2ACAD51C4CCDFB51
+0040130A   . E8 A1210000    CALL pDrKeyge.004034B0</font></pre></td></tr>
+</table>
+
+<p>Elle prend 5 bignums en entrée.<br>
+C'est donc soit mad, soit power2.<br>
+Vus les argument passés (cf la doc sur mad), on se doute que ce n'est pas mad. Donc c'est très certainement power2.<br>
+Donc ça calcule : (4E0F2ACAD51C4CCDFB51 ^ serial1) * (serial1 ^ serial2) mod B54F430648C6B2A10FFB<br>
+On obtient : 1C53CB4C2720A0755483</p>
+
+<p>On a alors :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">0040130F   . 8B4C24 60      MOV ECX,DWORD PTR SS:[ESP+60]
+00401313   . 8B5424 40      MOV EDX,DWORD PTR SS:[ESP+40]
+00401317   . 51             PUSH ECX                                 ;  1C53CB4C2720A0755483
+00401318   . 52             PUSH EDX                                 ;  81E3FB6D45348B21495E
+00401319   . E8 D2120000    CALL pDrKeyge.004025F0
+0040131E   . 83C4 38        ADD ESP,38
+00401321   . 85C0           TEST EAX,EAX
+00401323   . 6A 00          PUSH 0
+00401325   . 75 11          JNZ SHORT pDrKeyge.00401338
+00401327   . 8B4424 2C      MOV EAX,DWORD PTR SS:[ESP+2C]
+0040132B   . 68 C4C04000    PUSH pDrKeyge.0040C0C4                   ;  ASCII "GOOOD!!!"
+00401330   . 68 B0C04000    PUSH pDrKeyge.0040C0B0                   ;  ASCII "Your key is good."
+00401335   . 50             PUSH EAX
+00401336   . EB 0F          JMP SHORT pDrKeyge.00401347
+00401338   &gt; 8B4C24 2C      MOV ECX,DWORD PTR SS:[ESP+2C]            ; |
+0040133C   . 68 A8C04000    PUSH pDrKeyge.0040C0A8                   ; |<font color="#808080">Title =</font> "Faild"
+00401341   . 68 88C04000    PUSH pDrKeyge.0040C088                   ; |<font color="#808080">Text =</font> ".... Better luck next time .."
+00401346   . 51             PUSH ECX                                 ; |<font color="#808080">hOwner</font>
+00401347   &gt; FF15 ACB04000  CALL DWORD PTR DS:[&lt;&USER32.MessageBoxA&gt;&gt;; \<font color="#FF0000">MessageBoxA</font></font></pre></td></tr>
+</table>
+
+<p>On se doute que la procédure appelée en .401319 est compare.<br>
+Les deux nombres passés comme arguments à compare doivent être égaux.</p>
+
+<p>Il faut donc :<br>
+(4E0F2ACAD51C4CCDFB51 ^ serial1) * (serial1 ^ serial2) mod B54F430648C6B2A10FFB = 2E0C2DB4FEC8C6299A0C ^ (nom ^ 2 mod AC2DB4FEC8C62992DB4F) mod B54F430648C6B2A10FFB</p>
+
+<p>On note :<br>
+y = 4E0F2ACAD51C4CCDFB51<br>
+p = B54F430648C6B2A10FFB<br>
+alpha = 2E0C2DB4FEC8C6299A0C<br>
+M = nom<br>
+h(M) = nom ^ 2 mod AC2DB4FEC8C62992DB4F</p>
+
+<p>On doit alors avoir :<br>
+(y ^ serial1) * (serial1 ^ serial2) mod p = alpha^h(M) mod p</p>
+
+<p>On reconnaît alors la procédure de vérification de la signature ElGamal.<br>
+Pour plus d'informations sur cet algorithme, lisez Handbook of Applied Cryptography.<br>
+C'est traité page 454.</p>
+
+<p>Il faut donc résoudre le logarithme discret :<br>
+y = alpha^x mod p</p>
+
+<p>Pour cela j'ai utilisé une applet java disponible <a href="http://www.alpertron.com.ar/DILOG.HTM" target="_blank">ici</a></p>
+
+<p>Le calcul se fait en une trentaine de secondes.<br>
+On obtient :<br>
+x = 299376145767585197811667 = 3F6536A02CD18F3B67D3 en hexa</p>
+
+<p>Pour simplifier les calculs, on prend k= 1 (en suivant les notations de HoAC).<br>
+Pour le keygen j'ai fait varier k, afin d'obtenir plusieurs solutions pour chaque nom.<br>
+Alors :<br>
+serial1= alpha^k mod p = alpha<br>
+serial2= k^(-1)*(h(M) - x * alpha) mod (p-1) = h(M) - x * alpha mod (p-1)</p>
+
+<p>Soit :<br>
+serial1= 2E0C2DB4FEC8C6299A0C<br>
+serial2= 9845EA6D772B57E80138</p>
+
+<p>On convertit en base 60 :<br>
+(le charset utilisé pour la base 60 par miracl est: 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx)<br>
+Serial 1: 1drmL9dBJgRSLW<br>
+Serial 2: 3oJxWxsfhojWQS</p>
+
+<p>Et c'est terminé</p>
+
+<p class="image"><img src="../../images/signatures/Jb.gif"></p>
+
+</body>
+</html>

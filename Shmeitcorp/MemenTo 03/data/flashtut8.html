@@ -1,0 +1,233 @@
+<html>
+<head>
+<title>GOODIZ</title>
+<meta name="Author" content="[Shmeit Corp]--Smeita">
+<meta http-equiv="content-language" content="fr">
+<meta name="robot" content="index,follow">
+<style type="text/css">
+   <!-- 
+A{text-decoration:none} 
+A:hover {color: rgb(255,255,255)}
+   -->
+
+</style>
+</head>
+<body bgcolor="#000000" link="yellow" vlink="yellow">
+<font color=#EEEEEE face=arial, verdana, courier size=2>
+<h1><font color="EEEEEE">EditPlus 2.01</font>
+</h1>
+<br>
+Bin vala c mon premier tutorial, alors scusez moi si c pas tropclair mais normalement ca devrait etre bon ;)
+Ce tutz s'adresse auw newbies, je vais essayer d'expliquer tout bien comme il faut...
+<br>
+<br>
+<b><font size="+2">Les outils :</font></b>
+<br>
+-windasm<br>
+-Hexworkshop<br>
+-un cerveau et 2-3 neurones dedans<br>
+-savoir utiliser les outils<br>
+-le prog (<a href="www.download.com" target="_blank">www.download.com</a> ou <a href="www.editplus.com" target="_blank">www.editplus.com</a>)<br>
+<br><br>
+Si vous zavez pas ces outils hop dans la partie progz de notre site !<br>
+En cas de problemes pour configurer softice allez voir le memento 2 sur le site<br><br><br>
+<font size="+2"><b>1.Observation</b></font><br>
+<br><br>
+Apres l'install lancez le progzi, hop un vilain nagscreen qui nous dit qu'on 
+est unregistered et qu' a 30 jours pour l'évaluer, et dans le menu about il y
+a "Unregistered copy, for evaluation"
+<br><br>
+Points a analyser :<br>
+	-time limit<br>
+			-nag screen<br>
+			-ce ki a ecrit dans about<br>
+<br><br><br>
+
+<font size="+2"><b>2.Time limit</b></font><br>
+<br><br>
+Copie de sauvegarde de editplus.exe, et zou decompile
+avec windasm et on va observer la bete !
+<br><br>
+Dans les strings data references on voit "30-days evalution period has expired"<br>
+ok, on clique et on observe le code autour:<br><br>
+
+<pre>
+:0045046D C744241000000000  mov [esp+10], 00000000
+:00450475 85C0              test eax, eax
+:00450477 7419              je 00450492
+:00450479 83BEAC0000001E    cmp dword ptr [esi+000000AC], 0000001E ---------- héhé ca c intéressant
+:00450480 7F10              jg 00450492
+
+<font color="Blue">* Possible Reference to String Resource ID 097:</font> <font color="Lime">"30-day evaluation period has been expired."</font>
+</pre>
+<br>
+Alors  ici le progz regarde si il vous reste moins de 30 jours de
+trial avec le "cmp dword ptr [...] 0000001E", parce que 1E en hexa0 
+(regardez avec la calculatrice de windows en mode scientifique).Ok ?
+<br><br>
+On va faire un truc facile, on modifie le test de sorte qu'au lieu de tester
+si le temps ecoule est superieur a 30, il teste si le temps est strictement inferieur a 0 !
+Comme le temps ecoule de la "trial period" ne sera jamais strictement inferieur a 0 ce sera 
+toujours bon , ok ? ;)
+<br><br><br>
+
+
+<font size="+2"><b>Modifier le test</b></font><br>
+<br>
+<pre>
+:00462691 83BEE80000001E    cmp dword ptr [esi+000000E8], 0000001E ---test  temps par rapport a 30
+:00462698 7F10              jg 004626AA	-- si superieur va en 004626AA			
+
+<font color="Blue">* Possible Reference to String Resource ID 097:</font> <font color="Lime">"30-day evaluation period has been expired."</font>
+</pre>
+<br>
+
+Pourquoi si superieur ? parce que jg = jump if greater = saute si superieur
+Donc si  c superieur, on va en 004626AA et la il y a la routine "votre trial period est expiree"
+et le prog demarre plus :-( On va modifier ca pour que ce soit toujours bon comme ca le prog ira
+jamais la bas !
+<br><br>
+
+On pourrait faire simple en "noppant" le jg comme ca le prog fait jamais le test, mais c pas comme ca que vous allez progresser !
+on va faire legeremnt plus elabore pour que vous saissisiez un peu le principe du test, ok ?
+<br><br>
+La on mofifie pour qu'il teste si trial period inferieur a 0, ca donne ca :<br><br>
+
+<pre>
+:00462691 83BEE800000000    cmp dword ptr [esi+000000E8], 00000000 ---test  temps par rapport a 30
+:00462698 7C10              jl 004626AA ----si inferieur (jamais !) va en 004626AA
+</pre>
+<br>
+JG peut s'annuler par JL  (jl=jump if less= saute si inferieur)<br>
+Maintenant on repere les offsets des lignes concernees (en bas de la fenetre dans windasm)
+<br><br>
+<pre>
+:00462691 83BEE80000001E          cmp dword ptr [esi+000000E8], 0000001E    OFFSET 62691
+:00462698 7F10                    jg 004626AA                               OFFSET 62698
+</pre>
+<br>
+Ca donne :<br>
+<font size="1">OFFSET 62691  	83BEE80000001E		==> 83BEE800000000<br>
+OFFSET 62698  	7F10			==> 7C10<br></font>
+<br>
+Il vous reste plus qu'a prendre votre editeur hexa et a allez aux offsets concernes :)<br><br>
+
+
+<font size="+2"><b>3.Nag screen</b></font>
+<br><br>
+
+Bon d'abord on regarde le titre du nag, la c UNREGISTERED COPY<br>
+On ouvre l'exe avec un editeur hexa (la j'ai pris hexworkshop) et on 
+cherche la string "UNREGISTERED COPY" (note : avec hexworkshop cochez la case "unicode string" hop
+on tombe a l'offset 102EDA.(c n'est pas la seul occurence)
+Et la on va utiliser une methode bien pratique pour virer le nag :
+Si vous me demandez d'ou viens cette méthode, reportez vous au Memento 2, cours de
+crack IX<br><br>
+<pre>
+<font color="Teal">//**\\ //**\\ //**\\ //**\\ //**\\ //**\\ METHODE  //**\\ //**\\ //**\\ //**\\ //**\\
+
+Par exemple vous voulez virer une fenetre dont le titre est "shareware", ouvrez l'exe 
+avec un editeur hexa, faites une recherche sur "shareware" et quand vous le trouvez,
+vérifiez en mode hexa que devant la chaine de caractere il y a FFFF FFFF 8200, 
+quand vous avez trouvé cela, il suffit de nopper le 82 ce qui donne
+
+FFFF FFFF 8200 .....    ==>	FFFF FFFF 9000 .....
+
+Et maintenant la fenetre a normalement disparue ;)
+
+//oo\\ //oo\\ //oo\\ //oo\\ //oo\\ //oo\\ NOTE  //oo\\ //oo\\ //oo\\ //oo\\ //oo\\ //oo\\</font>
+</pre><br>
+
+RAPPEL : <br>
+le nop est une instruction en assembleur (en hexa 90) qui ne fait RIEN
+(eh oui) donc quand je dit que je vais nopper une valeur je la remplace par 90 
+autant de fois pour qu'elle est la meme taille<br><br>
+exemple:<br>
+<font color="Yellow">83BEE80000001E</font>		on la "nop" et ca donne  <font color="Yellow">90909090909090</font><br>
+<font color="Yellow">75</font> on la "nop" et ca donne  <font color="Yellow">90</font><br>
+<font color="Yellow">0F87 </font>on la "nop" et ca donne <font color="Yellow">9090</font><br>
+<br><br>
+<br>
+-Apres avoir localise le titre de la fenetre a virer, faut chercher FFFF FFFF 8200 avant
+<br>
+On a lancé  une premiere recherche, et
+la on est pas sur le bon offset (pas de FFFF FFFF 8200 devant...)
+hop on cherche le prochain...(on relance un recherche, F3 le plus souvent dans les editeurs hexa)
+<br><br>
+-La on tombe en 102EDA, pas de FFFF FFFF on continue de chercher<br>
+-105BA6 toujours pas on continue...<br>
+-105D48 ah !! ca y est on FFFF FFFF 8200 avant<br>
+<br>
+Maintenant pour virer la fenetre faut noper le 82 ce qui donne :<br>
+....FFFF FFFF 9000 5500 6E00 ......
+<br><br>
+Vala on est a 95 % la, le reste c plus que pour faire beau :)<br>
+<br><br>
+
+<font size="+2"><b>4.Ce ki a ecrit dans about</b></font>
+<br><br>
+En fait c juste pour faire bien, car le programme fonctionne tres bien now ;)
+Bon il reste  le "Unregistered Copy for evaluation only" quand on va dans le about....Allez on nettoie ;)
+On lance une recherche sur "for evaluation", on tombe dessus en offset 103136, et on change le :<br>
+<br>
+"F.o.r. .E.v.a.l.u.a.t.i.o.n" en ca par exmple "c.r.a.c.k.e.d. .b.y. .A.n.T.h.r.O.X."
+<br><br><br>
+<pre><font color="Teal">
+//oo\\ //oo\\ //oo\\ //oo\\ //oo\\ //oo\\ NOTE  //oo\\ //oo\\ //oo\\ //oo\\ //oo\\ //oo\\
+
+laissez les points !!
+
+Si vous avez pris Hexworkshop comme editeur hexadecimal il y a 2 fenetres,
+celle a droite est en hexadecimal, celle a gauche en ascii, 
+aussi il est TRES important de respecter la synthaxe !
+
+Dans la fenetre de droite :	un point - une lettre - un point - une lettre -.....
+Par exemple si on veut remplacer U.n.r.e.g.i.s.t.e.r.e.d
+Il faut tapez autre chose en laissant les points, ex :
+
+c.r.a.c.k.e.d	==> bon :)
+cracked         ==>pas bon :( le prog demarre plus ou il fait des erreurs
+
+IMPORTANT :veuillez a ne pas dépassez la longueur de la chaine initiale, 
+par exemple "unregistered" fait 12 lettres vous ne devez pas le remplacer 
+par quelque chose qui fait plus de 12 lettres.Si vous le remplacez par quelque 
+chose de moins long vous pouvez effacer les caractere restants par des espaces 
+(dans la fenetre en ascii bien sur) tout en laisssant les points ! 
+(je sais je suis chiant mais sinon le prog va merder ou afficher des caracteres bizarres)
+
+ex : remplacer "u.n.r.e.g.i.s.t.e.r.e.d" par "cracked", faudra taper : c.r.a.c.k.e.d. . . . .
+
+//oo\\ //oo\\ //oo\\ //oo\\ //oo\\ //oo\\ NOTE  //oo\\ //oo\\ //oo\\ //oo\\ //oo\\ //oo\\</font>
+</pre>
+<br><br>
+
+Hop on lance le prog, on look dans about...<br>
+Mais beuh ca marche pas ! oho pas de panik vous vous etes pas plantes !<br>
+<br><br>
+Il y a plusieurs "for evaluation" et "unregistered copy" dans le prog,
+passke il est affiché a plusieurs endroits, il suffit de trouver le bon ! :)
+<br><br>
+Pour modifier  "for evaluation" la chaine  commence a l'offset 103136
+Pour modifier  "unregistered copy" la chaine  commence a l'offset 102EDA
+<br><br>
+Vala craked completed ! :)
+<br><br><br>
+
+<font size="+2"><b>5.Au final </b></font>
+<br><br>
+Virer time limit 30 jours<br>
+<font color="Fuchsia">OFFSET 	62691</font>  :	83BEE80000001E      ==> 83BEE800000000<br>
+<font color="Fuchsia">OFFSET 	62698 </font> :	7F10                ==> 7C10<br>
+<br>
+Virer nag-screen	<br>
+<font color="Fuchsia">OFFSET 05D48 :</font> 82 ==> 90<br>
+<br>
+Modif txt dans about		<br>
+<font color="Fuchsia">OFFSET  103136</font>	: remplacer "for evaluation"par ce que vous voulez...<br>
+<font color="Fuchsia">OFFSET  102EDA </font> :  remplacer "unregistered copy"par ce que vous voulez...<br><br><br>
+
+
+<p><font size="3"></font>&nbsp;</p>
+
+<p align="center">&nbsp;</p>
+</font>

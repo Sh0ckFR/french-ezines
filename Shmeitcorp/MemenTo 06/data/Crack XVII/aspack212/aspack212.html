@@ -1,0 +1,265 @@
+<html>
+<head>
+<title>Packer : ASPACK 2.12</title>
+<link rel="stylesheet" type="text/css" href="../../style.css">
+</head>
+<body>
+<h1>Manual Unpacking</h1>
+<h2>Packer : ASPACK 2.12</h2>
+<p>Objectif :</p>
+<ul>
+  <li>Obtenir un exe fonctionnel et d&eacute;sassemblable avec le code, les datas, 
+    les imports</li>
+</ul>
+<p>Cible : </p>
+<ul>
+  <li>Un crackme de SynApsus que j'ai pack&eacute; avec aspack 2.12 pour l'occasion</li>
+</ul>
+<p>Outils n&eacute;cessaires :</p>
+<ul>
+  <li>WinDbg ou SoftIce</li>
+  <li>Hex Workshop</li>
+  <li>Lord-PE</li>
+</ul>
+<p>Fichiers joints :</p>
+<ul>
+  <li><a href="files.zip">la cible (le crackme pack&eacute; avec aspack 2.12)</a></li>
+  <li><a href="files.zip">le dump reconstruit</a></li>
+  <li><a href="files.zip">la section .rdata dump&eacute;e</a></li>
+  <li><a href="files.zip">script pour windbg pour dumper automatiquement la section 
+    .rdata decompress&eacute;e</a></li>
+</ul>
+
+<h3>Index</h3>
+<ol>
+  <li><a href="#1">Introduction</a></li>
+  <li><a href="#2">Collecte des infos sur la cible</a></li>
+  <li><a href="#3">Dump de la section .rdata</a></li>
+  <li><a href="#4">Recherche de l'original entry-point (OEP)</a></li>
+  <li><a href="#5">Dump Full du programme</a></li>
+  <li><a href="#6">Insertion de la section .rdata dans le dump</a></li>
+  <li><a href="#7">Recherche de la table des imports</a></li>
+  <li><a href="#8">Mise &agrave; jour du PE</a></li>
+  <li><a href="#9">Infos pratiques relev&eacute;s sur Aspack 2.12</a></li>
+  <li><a href="#10">Script pour WinDbg pour dumper auto la section .rdata</a></li>
+</ol>
+
+<a name="1"></a><h3>1. Introduction</h3>
+<p>Voila un petit packer qui fait souvent peur aux newbies, alors que c'est l'un 
+  des plus simple &agrave; unpacker. Il existe des tools g&eacute;n&eacute;riques pour unpacker 
+  aspack 2.12 mais la technique d&eacute;crite ici pour l'unpacker manuellement est int&eacute;ressante 
+  surtout en ce qui concerne la reconstruction des imports et m&eacute;rite, je pense, 
+  qu'on s'y attarde un peu.</p>
+
+<a name="2"></a><h3>2. Collecte des infos sur la cible</h3>
+<p>On ouvre la cible avec Lord-PE et on r&eacute;cup&egrave;re les infos suivantes :</p>
+<pre>Entry-point : 00006001
+Import-Table : RVA = 00006FAC, size = 00000064
+
+
+Sections Table :
+
+names		Voffset		Vsize		Roffset		Rsize		Flags
+.text		00001000	00001000	00000400	00000200	C0000040
+.rdata		00002000	00001000	00000600	00000200	C0000040
+.data		00003000	00001000	00000800	00000200	C0000040
+.rsrc		00004000	00002000	00000A00	00000200	C0000040
+.aspack		00006000	00002000	00000C00	00002000	C0000040
+.adata		00008000	00001000	00002C00	00000000	C0000040
+
+</pre>
+<p>On voit qu'apparemment aspack garde la structure d'un exe avec les sections 
+  d'origines et ajoute 2 sections &agrave; la fin ( .aspack et .adata ). Si on 
+  regarde l'entry-point on voit qu'il pointe dans la section .aspack qui contiendra 
+  s&ucirc;rement le code du loader pour la d&eacute;compression. L'offset de la derni&egrave;re section 
+  .adata est point&eacute; sur la fin du fichier et on voit d'apr&egrave;s sa Rsize qu'elle 
+  n'existe pas sur le disque en fait, par contre en m&eacute;moire elle occupera 
+  une taille de 1000h bytes. J'en d&eacute;duis que &ccedil;a pourrait &ecirc;tre une sorte de zone 
+  tampon utile au loader pour d&eacute;compresser des donn&eacute;es.</p>
+<p>Les sections ont aussi un flag qui ne nous permettra pas d&eacute;sassembler 
+  sous wdasm, il faudra mettre la valeur E0000020.</p>
+
+<a name="3"></a><h3>3. Dump de la section .rdata</h3>
+<p>Nous savons que la section .rdata est la section des imports, celle-ci est 
+  pour l'instant compress&eacute; par aspack. Le loader &agrave; un moment ou 
+  un autre ira d&eacute;compresser cette section. Notre approche ici sera de poser un 
+  break-point en acc&egrave;s lecture ou &eacute;criture sur la m&eacute;moire &agrave; l'adresse 
+  virtuel de cette section, ainsi nous saurons quand le loader s'occupera de cette 
+  section et nous pourrons tracer un peu et attendre sa d&eacute;compression pour la 
+  dumper.</p>
+<p>Car &agrave; ce moment l&agrave;, la section .rdata sera claire, si nous ne 
+  dumpons pas &agrave; ce moment, les tableaux des OriginalFirstThunk et FirstThunk 
+  seront modifi&eacute;s en m&eacute;moire par aspack et aussi par le PE loader 
+  afin de pointer vers les adresses r&eacute;elles des fonctions import&eacute;es 
+  (voir tutorial sur la reconstruction de la table des imports si cela n'est pas 
+  clair).</p>
+<p>On prend notre debugger, moi Windbg et on pose notre pi&egrave;ge :</p>
+<ul>
+  <li>On lance l'exe par windbg</li>
+  <li><strong>bp 406001 </strong>puis <strong>F5</strong> (break sur l'entry-point 
+    avant de poser le bp sur la m&eacute;moire)</li>
+  <li><strong>ba r1 402000</strong> puis <strong>F5</strong> - pose un break point 
+    en acc&egrave;s lecture et &eacute;criture sur la m&eacute;moire &agrave; l'adresse de notre section 
+    .rdata</li>
+  <li>1er break on examine la m&eacute;moire en 402000 avec <strong>d 402000 </strong>ou 
+    la fen&ecirc;tre memory, c'est encore compress&eacute; alors on refait un <strong>F5</strong></li>
+  <li>2eme break on examine le code et on voit une routine typique d'une copie 
+    de m&eacute;moire (avec rep movsb)</li>
+  <li>on trace 4 fois avec <strong>F10</strong> pour passer les 2 rep movsb avant 
+    d'examiner la m&eacute;moire</li>
+  <li><strong>d 40200 L1000 </strong>pour examiner la m&eacute;moire sur 1000 bytes (taille 
+    virtuel de la section d'apr&egrave;s le PE)</li>
+  <li>notre section &agrave; tout l'air d'&ecirc;tre maintenant d&eacute;compress&eacute;, 
+    on va pouvoir la dumper</li>
+  <li><strong>.writemem c:\rdata.dmp 402000 L1000 </strong>cette commande copie 
+    la m&eacute;moire sp&eacute;cifi&eacute;e dans un fichier (notre dump)</li>
+</ul>
+<p>Si vous utiliser SoftIce, le principe reste le m&ecirc;me seule le nom des commandes 
+  change un peu.</p>
+<p>Voila la moiti&eacute; du boulot &agrave; &eacute;t&eacute; fait. Habituez 
+  vous avec les imports pour arriver &agrave; rep&eacute;rer visuellement les imports.<br>
+  Vous pouvez aussi utiliser le script pour windbg que je vous ai concoct&eacute; 
+  pour dump&eacute; cette section .rdata.</p>
+
+<a name="4"></a><h3>4. Recherche de l'original entry-point (OEP)</h3>
+<p>On en profite &agrave; ce point puisque nous sommes plus tr&egrave;s loin de la fin 
+  du loader d'aspack pour tracer la fin du code et trouver l'OEP. (On repart de la 
+  ou on &eacute;tait pour extraire .rdata c-&agrave;-d apr&egrave;s les 2 break en acc&egrave;s m&eacute;moire 
+  sur 402000)</p>
+<ul>
+  <li><strong>pr</strong> pour emp&ecirc;cher d'afficher les registres dans le log de 
+    windbg</li>
+  <li><strong>p50000</strong> pour tracer auto 50000 instructions</li>
+  <li>on attend que le programme se lance et on retape <strong>p50000</strong> 
+    (ou juste appuy&eacute; sur ENTRE pour r&eacute;p&eacute;ter la commande) tant qu'il 
+    ne l'est pas</li>
+  <li>le programme est lanc&eacute; on redonne la main au debugger en appuyant 
+    sur le bouton break</li>
+  <li>on examine le log:</li>
+</ul>
+<pre>004063a6 59               pop     ecx<br>image00400000+63a7:<br>004063a7 0bc9             or      ecx,ecx<br>image00400000+63a9:<br>004063a9 8985a8030000     mov     [ebp+0x3a8],eax   ss:0023:004063bb=00000000<br>image00400000+63af:<br>004063af 61               popad<br>image00400000+63b0:<br>004063b0 7508             jnz     image00400000+0x63ba (004063ba)      [br=1]<br>image00400000+63ba:<br>004063ba 6800104000       push    0x401000	<strong><font color="red">&lt;= Tr&egrave;s int&eacute;ressant</font> </strong><br>image00400000+63bf:<br>004063bf c3               ret<br>image00400000+1000:<br>00401000 6a00             push    0x0<br>image00400000+1002:<br>00401002 e893020000       call    image00400000+0x129a (0040129a)<br>Breakpoint 1 hit<br>kernel32!GetModuleHandleA:<br>77e5ad86 837c240400     cmp dword ptr [esp+0x4],0x0 ss:0023:0012ffc0=00000000<br>0:000&gt; <br>kernel32!GetModuleHandleA+5:<br>77e5ad8b 0f8437010000  je kernel32!GetModuleFileNameA+0x11f (77e5aec8) [br=1]<br>kernel32!GetModuleFileNameA+11f:<br>77e5aec8 64a118000000     mov     eax,fs:[00000018] fs:0038:00000018=7ffde000<br>kernel32!GetModuleFileNameA+125:<br>77e5aece 8b4030           mov     eax,[eax+0x30]    ds:0023:7ffde030=7ffdf000<br>kernel32!GetModuleFileNameA+128:<br>77e5aed1 8b4008 mov eax,[eax+0x8]{image00400000 (00400000)} ds:0023:7ffdf008=00400000<br>kernel32!GetModuleFileNameA+12b:<br>77e5aed4 e9cdfeffff       jmp     kernel32!GetModuleHandleA+0x20 (77e5ada6)<br>kernel32!GetModuleHandleA+20:<br>77e5ada6 c20400           ret     0x4<br>image00400000+1007:<br>00401007 a314304000 mov [image00400000+0x3014 (00403014)],eax ds:0023:00403014=00000000<br>image00400000+100c:<br>0040100c 6a00             push    0x0<br>image00400000+100e:<br>0040100e 682b104000       push    0x40102b<br>image00400000+1013:<br>00401013 6a00             push    0x0<br>image00400000+1015:<br>00401015 6814314000       push    0x403114<br>image00400000+101a:<br>0040101a ff3514304000 push dword ptr [image00400000+0x3014 (00403014)]{image00400000 (00400000)} ds:0023:00403014=00400000<br>image00400000+1020:<br>00401020 e845020000       call    image00400000+0x126a (0040126a)</pre>
+<p>On voit &agrave; l'adresse 004063ba que l'on saute en 401000 juste apr&egrave;s un 
+  popad. C'est la technique classique d'aspack. De plus on change carr&eacute;ment de 
+  section avec ce jump on se trouvait dans la section .aspack pour aller dans 
+  .text. Pas de doutes c'est l'OEP</p>
+<p>offset OEP = 1000h</p>
+<p>Qui nous servira pour rectifier l'entry-point de notre dump que nous pouvons 
+  maintenant effectuer</p>
+
+<a name="5"></a><h3>5. Dump Full du programme</h3>
+<p>Avec un dumper genre Lord-PE on va dumper la cible, assurez-vous que ces options 
+  soit coch&eacute;s avant de dumper :</p>
+<ul>
+  <li> Full Dump : paste header from disk</li>
+  <li>Full Dump : fix header</li>
+</ul>
+<p>Cela &agrave; pour effet de faire correspondre la Rsize et le Roffset des sections 
+  avec leur Voffset et Vsize, en gros d'avoir sur le disque la m&ecirc;me image qu'occupe 
+  le programme en m&eacute;moire et de faire correspondre les adresses et tailles 
+  des sections dans le PE header. Voil&agrave; rien de tr&egrave;s compliqu&eacute; dans cette 
+  partie.</p>
+
+<a name="6"></a><h3>6. Insertion de la section .rdata dans le dump</h3>
+<p>Maintenant nous allons faire un peu de d&eacute;coupage et de 
+  collage avec notre dump et notre section .rdata dump&eacute;. Pour &ccedil;a on prend 
+  un &eacute;diteur hexa comme Hex Workshop. Le but est de placer la section .rdata dump&eacute; 
+  au m&ecirc;me endroit que celle contenue dans le dump mais qui est fauss&eacute;e.</p>
+<ul>
+  <li>on ouvre le dump avec hex workshop</li>
+  <li>on ouvre la section .rdata</li>
+  <li>on se rend &agrave; l'offset 2000h de notre dump (d&eacute;but 
+    de la section .rdata)</li>
+  <li>on va dans le menu edit / select block et on s&eacute;lectionne 
+    1000h byte (taille de la section)</li>
+  <li>on fait supprime pour l'effacer</li>
+  <li>on va maintenant dans le fichier de la section .rdata 
+    dump&eacute; et on s&eacute;lectionne le tout puis copier</li>
+  <li>on retourne dans le full dump, toujours &agrave; l'offset 
+    2000h on fais coller</li>
+  <li>on sauvegarde</li>
+</ul>
+<p>Notre dump contient &agrave; pr&eacute;sent sa section .rdata d'origine.</p>
+
+<a name="7"></a><h3>7. Recherche de la table des imports</h3>
+<p>Maintenant que nous avons la bonne section rdata dans le dump et que les offset 
+  correspondent, on va pouvoir rechercher le d&eacute;but de la table des imports pour 
+  pouvoir ajuster son offset dans le PE sinon le programme ne marchera pas. Cette 
+  recherche ce fait dans cette optique :</p>
+<p>Une table des imports est compos&eacute;e de plusieurs &eacute;l&eacute;ments IMAGE_IMPORT_DESCRIPTOR 
+  pour chaque DLL import&eacute;e. Une IMAGE_IMPORT_DESCRIPTOR est une structure 
+  de 5 &eacute;l&eacute;ments occupant 1 DWORD chacun donc 5 dword au total. On sait que le 
+  4&egrave;me &eacute;l&eacute;ment d'une structure IMAGE_IMPORT_DESCRIPTOR est un pointeur vers un 
+  nom de DLL. </p>
+<p>Il suffit de rechercher un nom de DLL et de regarder son offset et de lancer 
+  une recherche dans le fichier hexa qui fait r&eacute;f&eacute;rence &agrave; 
+  cette offset. On tombera alors sur le 4eme &eacute;l&eacute;ment de IMAGE_IMPORT_DESCRIPTOR. 
+  on aura plus qu'a parcourir les &eacute;l&eacute;ments jusqu'a 5 dword de 0 
+  qui caract&eacute;rise une structure IMAGE_IMPORT_DESCRIPTOR vide pour marquer la fin 
+  de l'import-table. Voyons &ccedil;a en pratique.</p>
+<ul>
+  <li> On recherche visuellement un nom de DLL dans la partie ascii</li>
+  <li>On trouve <strong>USER32.dll</strong> &agrave; l'offset <strong>000020FC</strong></li>
+</ul>
+<pre>00001FF0 00000000 00000000 00000000 00000000 16210000 08210000 00000000 .................!...!......<br>0000200C C0200000 B2200000 EC200000 A6200000 D2200000 94200000 DE200000 . ... ... ... ... ... ... ..<br>00002028 00000000 <strong>74200000 00000000 00000000</strong> <font color="#FF0000"><strong>FC200000</strong></font> <strong>0C200000</strong> 68200000 ....t ........... ... ..h ..<br>00002044 00000000 00000000 2A210000 00200000 00000000 00000000 00000000 ........*!... ..............<br>00002060 00000000 00000000 16210000 08210000 00000000 C0200000 B2200000 .........!...!....... ... ..<br>0000207C EC200000 A6200000 D2200000 94200000 DE200000 00000000 92004469 . ... ... ... ... ........Di<br>00002098 616C6F67 426F7850 6172616D 4100B800 456E6444 69616C6F 67000001 alogBoxParamA...EndDialog...<br>000020B4 47657444 6C674974 656D0000 02014765 74446C67 4974656D 54657874 GetDlgItem....GetDlgItemText<br>000020D0 41009B01 4C6F6164 49636F6E 4100BB01 4D657373 61676542 6F784100 A...LoadIconA...MessageBoxA.<br>000020EC 10025365 6E644D65 73736167 65410000 55534552 33322E64 6C6C0000 ..SendMessageA..<font color="green"><strong>USER32.dll</strong></font>..<br>00002108 75004578 69745072 6F636573 73001101 4765744D 6F64756C 6548616E u.ExitProcess...GetModuleHan<br>00002124 646C6541 00004B45 524E454C 33322E64 6C6C0000 00000000 00000000 dleA..KERNEL32.dll..........<br></pre>
+<ul>
+  <li>On fait une recherche dans l'&eacute;diteur hexa sur la valeur <strong>FC200000</strong> 
+    ( on inverse l'ordre des bytes )</li>
+  <li>l'&eacute;diteur nous en trouve une &agrave; l'offset <strong>00002038</strong> 
+    (en rouge sur l'exemple ci-dessus)</li>
+  <li>la on sait qu'on est sur le 4&egrave;me &eacute;l&eacute;ment d'une structure IMAGE_IMPORT_DESCRIPTOR</li>
+  <li>J'ai mis en gras les 5 &eacute;l&eacute;ments de cette structure qui repr&eacute;sentent les import 
+    pour USER32.dll</li>
+  <li>On a trouv&eacute; une structure mais comme on voit d'apr&egrave;s la colonne ascii 
+    qu'il y a 2 dll (kernel32 et user32) on doit donc avoir une 2eme structure</li>
+  <li>On peut donc &ecirc;tre s&ucirc;r que les 5 dwords suivants seront ceux de cette structure 
+    (en bleu sur l'exemple suivant)</li>
+  <li>ensuite on doit logiquement trouv&eacute; une structure vide (5 dword de 
+    0) ce qui est le cas (en vert sur l'exemple suivant)</li>
+</ul>
+<pre>
+00001FF0 00000000 00000000 00000000 00000000 16210000 08210000 00000000 .................!...!......<br>0000200C C0200000 B2200000 EC200000 A6200000 D2200000 94200000 DE200000 . ... ... ... ... ... ... ..<br>00002028 00000000 <strong>74200000 00000000 00000000</strong> <font color="#FF0000"><strong>FC200000</strong></font> <strong>0C200000</strong> <font color="#0000FF"><strong>68200000</strong></font> ....t ........... ... ..h ..<br>00002044 <strong><font color="#0000FF">00000000 00000000 2A210000 00200000</font></strong> <font color="#009900"><strong>00000000 00000000 00000000</strong></font> ........*!... ..............<br>00002060 <font color="#009900"><strong>00000000 00000000</strong></font> 16210000 08210000 00000000 C0200000 B2200000 .........!...!....... ... ..<br>0000207C EC200000 A6200000 D2200000 94200000 DE200000 00000000 92004469 . ... ... ... ... ........Di<br>00002098 616C6F67 426F7850 6172616D 4100B800 456E6444 69616C6F 67000001 alogBoxParamA...EndDialog...<br>000020B4 47657444 6C674974 656D0000 02014765 74446C67 4974656D 54657874 GetDlgItem....GetDlgItemText<br>000020D0 41009B01 4C6F6164 49636F6E 4100BB01 4D657373 61676542 6F784100 A...LoadIconA...MessageBoxA.<br>000020EC 10025365 6E644D65 73736167 65410000 55534552 33322E64 6C6C0000 ..SendMessageA..<font color="green"><strong>USER32.dll</strong></font>..<br>00002108 75004578 69745072 6F636573 73001101 4765744D 6F64756C 6548616E u.ExitProcess...GetModuleHan<br>00002124 646C6541 00004B45 524E454C 33322E64 6C6C0000 00000000 00000000 dleA..KERNEL32.dll..........   
+   </pre>
+<p>Voil&agrave; on a trouv&eacute; notre table des imports qui d&eacute;bute donc &agrave; l'offset 
+: <strong>202C</strong> et qui s'&eacute;tend sur 5*3 dwords (60 bytes =&gt; 3Ch)</p>
+
+<a name="8"></a><h3>8. Mise &agrave; jour du PE</h3>
+<p>Notre dump est pr&ecirc;t &agrave; fonctionner, mais il faut encore mettre &agrave; 
+  jour le PE avec les informations suivantes :</p>
+<ul>
+  <li>offset entry-point = <strong>1000</strong></li>
+  <li>offset import-table = <strong>202C</strong></li>
+  <li>size import-table = <strong>3C</strong></li>
+  <li>caract&eacute;ristique de la section .text = <strong>E0000020</strong> (pour pouvoir 
+    d&eacute;sassembler sous wdasm)</li>
+</ul>
+<p>Cette fois c'est bon notre dump est fonctionnel et d&eacute;sassemblable avec 
+  les imports.</p>
+
+<a name="9"></a><h3>9. Infos pratiques relev&eacute;s sur Aspack 2.12</h3>
+<ul>
+  <li>Les sections d'origines sont gard&eacute;es quasi intactes</li>
+  <li>Aspack rajoute 2 sections en fin, apr&egrave;s celle d'origine pour y ins&eacute;rer son 
+    loader</li>
+  <li>Pour sauter vers l'OEP le loader d'aspack s'y prend de cette fa&ccedil;on :</li>
+</ul>
+<pre>004063a6 59               pop     ecx				<br>004063a7 0bc9             or      ecx,ecx<br>004063a9 8985a8030000     mov     [ebp+0x3a8],eax  <br>004063af 61               popad					; restaure les registres
+004063b0 7508             jnz     image004063BA<br>004063ba 6800104000       push    0x401000			; push sur la pile l'OEP<br>004063bf c3               ret					; recup l'OEP sur la pile et y saute 
+
+
+</pre>
+<a name="10"></a><h3>10. Script pour Windbg pour dumper auto la section .rdata</h3>
+<p>Comme pour dumper la section .rdata d'un programme pack&eacute; par Aspack, 
+  la technique reste toujours la m&ecirc;me. On peut automatiser &ccedil;a dans un script pour 
+  WinDbg qu'il suffira de charger et qui fera le boulot tout seul. Voila le script 
+  que j'ai cr&eacute;&eacute; :</p>
+<pre>**********************************************<br>*<br>* Script pour windbg<br>* &eacute;crit par Netix<br>*<br>* Dump auto de la section .rdata<br>* pour un programme pack&eacute; par aspack 2.12<br>* la section sera dump&eacute; sur c:\rdata.dmp<br>*<br>**********************************************<br>bp 406001				;* &agrave; remplacer par l'entry point de votre programme<br>G					;* lance l'exe (jusqu'au break point)<br>ba r1 402000				;* mettre l'adresse de votre section .rdata<br>G					;* lance l'exe<br>G					;* re lance apr&egrave;s le 2eme break<br>p4					;* step 4 instructions<br>.writemem c:\rdata.dmp 402000 L1000	;* dump la section sur le disque</pre>
+<p>Il suffira juste de changer l'entry-point et l'adresse de votre section .rdata 
+  selon votre programme et vous aurez votre section dump&eacute;e automatiquement.</p>
+<p>Pour lancer le script il suffit de taper la commande suivante <strong>$&lt;</strong> 
+  suivi du nom de fichier du script, exemple :</p>
+<p><strong>$&lt;c:\Mes documents\aspack\test\script.txt</strong></p>
+
+<p class="image"><img src="../../images/signatures/Netix.gif"></p>
+
+</body>
+</html>

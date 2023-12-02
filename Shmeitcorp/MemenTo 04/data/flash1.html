@@ -1,0 +1,193 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2//EN">
+<HTML>
+
+<HEAD>
+	<META HTTP-EQUIV="Content-Type" CONTENT="text/html;CHARSET=iso-8859-1">
+	<META NAME="GENERATOR" Content="Visual Page 2.0 for Windows - Trial Version">
+	<TITLE>untitled</TITLE>
+</HEAD>
+
+<BODY TEXT="white" BGCOLOR="black">
+
+<P><B><FONT SIZE="5" FACE="Comic Sans MS">Life Guard version 3.7</FONT></B><BR>
+<BR>
+<BR>
+La m&eacute;thode et la protection sont identiques &agrave; celles d'ACDSee 3.0<BR>
+Voyons si elle va confirmer le &quot; How to Proceed... &quot;<BR>
+<BR>
+Apr&egrave;s les modifications d'usages des caract&eacute;ristiques, le Symbol Loader break sur l'Entry Point.
+<PRE>:004A4002  E872050000          CALL      004A4579
+:004A4007  EB33                JMP       004A403C</PRE>
+<P>Pour trouver rapidement le dernier passage de relais vers Life Guard, le plus simple, cette fois ci, va &ecirc;tre
+de chercher la signature du POPAD :<BR>
+<BR>
+S 00400000 L 00500000 61 75 08 <BR>
+<BR>
+Comme pr&eacute;c&eacute;demment, cette partie n'est pas compress&eacute;e et donc lisible d&egrave;s l'Entry Point
+:
+<PRE>:004A44F3  61                  POPAD
+:004A44F4  7508                JNZ       004A44FE
+:004A44F6  B801000000          MOV       EAX,00000001
+:004A44FB  C20C00              RET       000C
+:004A44FE  6800000000          PUSH      00000000  <FONT COLOR="#FF6666">-&gt; va devenir PUSH 00462270</FONT>
+:004A4503  C3                  RET</PRE>
+<P>Un BPX 004A4503 va nous faire breaker &agrave; l'adresse qui nous permettra de r&eacute;aliser notre Dump.<BR>
+Au passage, vous penserez &agrave; relever l'adresse qu'ASPack aura Patch&eacute; en 004A44FE -&gt; 00462270<BR>
+<BR>
+<U><B>R&eacute;alisation du DUMP :</B></U><BR>
+<BR>
+Ouverture de ProcDump<BR>
+S&eacute;lection dans la fen&ecirc;tre de la tache &quot; Lifeguard &quot;<BR>
+Clic Droit sur Lifguard et &quot; Dump Full &quot;<BR>
+Sauvegarde du Dump obtenu<BR>
+Kill de LifeGuard<BR>
+S&eacute;lection du bouton &quot; PE Editor &quot;<BR>
+Ouverture du Dump<BR>
+Modification de l'Entry Point<BR>
+<BR>
+That's all<BR>
+Le Dump fonctionne sans probl&egrave;me, et Wdasm le d&eacute;sassemble sans fr&eacute;mir.<BR>
+<BR>
+Passons &agrave; l'&eacute;tape suivante : <U><B>le d&eacute;buggage</B></U><BR>
+<BR>
+Dans sa version Shareware, LifeGuard est &eacute;quip&eacute; d'un &eacute;cran d'accueil avec un Timer (g&eacute;r&eacute;
+par GetTickCount) de 30 secondes.<BR>
+C'est long trente secondes avant d'avoir le droit d'entrer un Password (champ unique) ou de pouvoir cliquer sur
+&quot; continuer &eacute;valuation &quot;.</P>
+<P ALIGN="CENTER"><IMG SRC="Image3c.GIF" WIDTH="420" HEIGHT="226" ALIGN="BOTTOM" BORDER="0">
+<P><BR>
+Comme il est hors de question de cracker ce programme (c'est POA Ben !), on va simplement en faciliter un peu la
+d&eacute;couverte dans le plus pur esprit du respect Shareware :<BR>
+<BR>
+Comme le nag de d&eacute;part est orn&eacute; d'un tr&egrave;s joli <FONT COLOR="yellow">UNREGISTERED VERSION</FONT>,
+il m'a sembl&eacute; qu'il pourrait &ecirc;tre int&eacute;ressant de commencer par en rechercher la String Data
+:
+<PRE><FONT COLOR="#00CC00">* Possible StringData Ref from Code 0bj -&gt;&quot;Unregistered version.&quot;</FONT>
+I
+:00454394       mov edx, 004543E8
+:00454399       cal1 0043A7FO</PRE>
+<P>en remontant &agrave; la racine de ce call, vous aurez trois adresses d'appels :
+<PRE>* Referenced by a CALL at Addresses:
+<FONT COLOR="yellow">|:0045357E   , :00453E1C   , :004575F7</FONT>
+I
+:00454334       mov eax, dword ptr [00464AD4]
+:00454339       cal1 00454064</PRE>
+<P>Celle qui nous int&eacute;resse pour le moment est le branchement fait en 004575F7
+<PRE>:004575D2       mov eax, dword ptr [00464B10]
+:004575D7       call 00402CBO
+:004575DC       test bl, bl
+:004575DE       <FONT COLOR="yellow">je 004575EC</FONT>
+:004575EO       mov eax, dword ptr [00463D48]
+:004575E5       mov eax, dword ptr [eax]
+:004575E7       call 0045413C
+
+* Referenced by a (U)nconditional or (C)onditiona1 Jump at Address:
+|:004575DE(C)
+I
+:004575EC       test bl, bl
+:004575EE       <FONT COLOR="yellow">jne 004575FC</FONT>
+:004575FO       mov eax, dword ptr [00463D48]
+:004575F5       mov eax, dword ptr [eax]
+:004575F7       call 00454334               <FONT COLOR="red">   ; vers Unregistered</FONT></PRE>
+<P>Deux sauts conditionnels se trouvent juste au-dessus, en 004575DC et 004575EE.<BR>
+Celui qui va &eacute;viter l'affichage du nag est le second, mais si vous posez un BPX sur le premier, vous verrez
+que c'est celui qui va d&eacute;terminer l'&eacute;tat de BL, qui lui-m&ecirc;me provoquera, ou non, le saut &eacute;vitant
+le call d&eacute;plaisant.<BR>
+<BR>
+La proc&eacute;dure en 00402CB0 est appel&eacute;e par 221 Calls et deux sauts conditionnels. Inutile de perdre
+du temps &agrave; chercher quoi modifier dans cette proc&eacute;dure. Evidement il serait int&eacute;ressant de
+comprendre pourquoi BL reste &agrave; 00  apr&egrave;s l'avoir travers&eacute;, mais les valeurs pouss&eacute;es
+juste avant son appel ne donnent rien de significatif. La v&eacute;rit&eacute; est plus en amont dans le listing...
+<BR>
+<BR>
+Par contre, bien que BL n'en soit pas affect&eacute;, il y a le call 0045413C suivant :
+<PRE>* Referenced by a CALL at Addresses:
+<FONT COLOR="yellow">|:004534DA   , :00453FCA   , :004575E7</FONT>
+I
+:0045413C 55                      push ebp
+:0045413D 8BEC                    mov ebp, esp</PRE>
+<P>3 appels sur celui ci. Nous en connaissons un, mais les deux autres ?<BR>
+<BR>
+Le premier va servir &agrave; l'affichage de la boite &quot; ABOUT &quot;
+<PRE>:004534C3       mov eax, dword ptr [00463D24]
+:004534C8       mov eax, dword ptr [eax]
+:004534CA       call 00402CBO
+:004534CF       test b1, bl
+:004534D1       je 004534DF
+:004534D3       mov eax, dword ptr [00463D48]
+:004534D8       mov eax, dword ptr [eax]
+:004534DA       call 0045413C
+
+* Referenced by a (U)nconditional or (C)onditiona1 Jump at Address:
+|:004534D1(C)
+I
+:004534DF       test b1, bl
+:004534E1       jne 004534EA</PRE>
+<P ALIGN="CENTER"><IMG SRC="Image1c.GIF" WIDTH="442" HEIGHT="241" ALIGN="BOTTOM" BORDER="0">
+<P>et le suivant :<BR>
+<BR>
+<FONT COLOR="lime">* Possible StringData Ref from Code 0bj -&gt;&quot;Thank you for registering!&quot;</FONT><BR>
+<BR>
+Amusant, non ?<BR>
+D'autant plus que l'on retrouve le m&ecirc;me sch&eacute;ma pour le nag et pour l'&eacute;cran ABOUT :
+<PRE>:004575D7       call 00402CBO
+:004575DC       test bl, bl
+:004575DE       je 004575EC
+:004575EO       mov eax, dword ptr [00463D48] ;<FONT COLOR="red"> h&eacute;las, rien de significatif l&agrave; non plus</FONT>
+:004575E5       mov eax, dword ptr [eax]
+:004575E7       call 0045413C
+:004575EC       test bl, bl
+:004575EE       jne 004575FC</PRE>
+<P>Qu'arriverait il si le test BL,BL devenait un Mov Bl,01 cod&eacute; sur un m&ecirc;me nombre d'octets ?<BR>
+<BR>
+Et bien le JE envoi directement en 004575E7, et &eacute;vite les call Nag_Screen (ou le Unregistered_Version de
+la boite About).<BR>
+<BR>
+En fait, plus rien ne s'affiche &agrave; la place du UNREGISTERED dans l'&eacute;cran ABOUT. En inversant le JE,
+vous y gagnerez le &quot; Registered to : &quot; qui fait d&eacute;j&agrave; plus clean.</P>
+
+<P><BR>
+<U><B>Modifier la version Pack&eacute;e :</B></U><BR>
+<BR>
+Nous avons donc, au minimum et &agrave; d&eacute;faut d'avoir mieux pour le moment, &agrave; modifier deux test
+bl,bl en mov bl,01 (en 004575DC et 004534CF) et un 74 en 75 &agrave; l'adresse 004534D1.<BR>
+<BR>
+Pour trouver de la place, la m&eacute;thode d'ACDSee va encore fonctionner : en partant de la fin de la section
+.aspack, et en cherchant les premiers ADD [EAX],AL  vous allez avoir de la place disponible en 004A59E0 :<BR>
+<BR>
+<U><B>Le patch</B></U>
+<PRE>:004A59E0  66C705DC754500B301  MOV       WORD PTR [004575DC],01B3
+:004A59E9  C705CF344500B301750CMOV       DWORD PTR [004534CF],0C7501B3
+:004A59F3  6870224600          PUSH      00462270
+:004A59F8  C3                  RET
+:004A59F9  0000                ADD       [EAX],AL</PRE>
+<P>004A59E0... : modification sur un WORD (2 octets) de 84DB(test BL,BL) qui devient B301 (mov Bl,01). Vous remarquerez
+que les octets &agrave; modifier s'&eacute;crivent &quot; &agrave; l'envers &quot;<BR>
+004A59E9... : modification sur un DWORD (4 octets) de 84DB740C (test BL,BL JE 004534DF) qui devient B301750C (mov
+BL,01 JNE 004534DF)<BR>
+004A59F3... : on pousse l'adresse de l'Entry Point de LifeGuard<BR>
+004A59F8... : et on simule la fin d'un call.<BR>
+<BR>
+<U>Petit rappel :</U><BR>
+A la fin d'un call, le RET va amener le processeur &agrave; r&eacute;cup&eacute;rer au sommet de la pile la valeur
+de retour qui y a &eacute;t&eacute; plac&eacute; lors de la commande CALL (EIP + 5 octets pour la call + 1 octet
+pour l'OpCode suivant).<BR>
+Si on pousse une valeur sur la pile juste avant un RET, c'est cette valeur qui va &ecirc;tre utilis&eacute;e comme
+adresse de retour.<BR>
+<BR>
+La derni&egrave;re chose &agrave; faire va &ecirc;tre de d&eacute;tourner ASPack vers notre Patch, avant qu'il
+ne passe la main &agrave; LifeGuard :
+<PRE>:004A44F3    POPAD
+:004A44F4    <FONT COLOR="yellow">JMP       004A59E0</FONT></PRE>
+<P>Et ce juste apr&egrave;s le POPAD qui r&eacute;tabli les valeurs sauvegard&eacute;es par le PUSHAD, et avant
+l'adresse ou ASPack va se patcher lui m&ecirc;me pour cr&eacute;er le PUSH EntryPoint &agrave; la place du PUSH
+00000000 (sinon votre &quot; aiguillage &quot; sera &eacute;cras&eacute;...)
+
+<p>&nbsp;</p>
+
+<p align="center">&nbsp;</p>
+
+<p>&nbsp;</p>
+</BODY>
+
+</HTML>

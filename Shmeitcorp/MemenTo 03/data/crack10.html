@@ -1,0 +1,140 @@
+<html>
+<body text="#FFFFFF" bgcolor="#000000" link="#0000EE" vlink="#551A8B" alink="#FF0000">
+<font size=+3>Introduction aux Keygenerators</font>
+<p><b><u><font size=+1>Intro</font></u></b><br><br>
+<p>Nous allons aborder ici les keygenerators. Pour ceux qui ne savent pas
+ce que c'est, ce sont des petits programmes o&ugrave; vous rentrez votre
+nom et le s&eacute;rial officiel du soft correspondant s'affiche. Il ne
+vous reste plus qu'ensuite &agrave; vous enregistrer dans le soft le plus
+normalement du monde.
+<p>Personellement, je me suis toujours demand&eacute; au d&eacute;but comment
+les mecs qui faisaient les keygens arrivaient &agrave; trouver l'algorythme.
+Et ben on verra qu'il y a 2 mani&egrave;res au moins, encore que si la
+1&egrave;re marche, c'est que le programmeur du soft ne s'est vraiment
+pas foul&eacute;!!!
+<p>Ce tut sur les keygens est en 2 parties. Dans la 1&egrave;re, on va
+transformer notre bon vieux Startclean (je suis s&ucirc;r qu'il y a des
+nostalgiques parmis vous &agrave; qui il a manqu&eacute;!! :p) en son propre
+keygen de mani&egrave;re assez surprenante mais au combien simple et efficace!
+Dans la 2&egrave;me partie, on va &eacute;tudier le source en asm pour
+en d&eacute;duire l'algorythme de calcul du s&eacute;rial. On reprogrammera
+ensuite cet algorythme en pascal pour faire notre propre keygen.
+<p>Vous &ecirc;tes pr&ecirc;t?! Alors, on y va :o)</p>
+<br>&nbsp;
+<br>&nbsp;
+<font size=+3>Transformer un soft en son propre keygenerator</font>
+<p><br>
+<br>
+<br>
+<p><u>Outils n&eacute;cessaires</u> : Softice, Wdasm, Hexedit
+<p>On reprend donc notre petit Startclean :). Quand vous vous enregistrez
+avec un s&eacute;rial bidon, une messagebox apparait avec le message d'erreur
+suivant : "<i>Incorrect code!</i>" (cf. Memento 1). Ce serait-il pas cool
+si &agrave; la place de ce vilain message, Startclean nous affichait le
+bon s&eacute;rial sur un plateau !??!?! :)) Et bien oui, c'est possible!
+Mais comment?!? Dans le Memento 2, vous avez appris &agrave; choper un
+s&eacute;rial avec Softice. L'id&eacute;e est de remplacer le code asm
+du message d'erreur par celui qui contient le bon s&eacute;rial.
+<p>Cela se fait en deux &eacute;tapes : on chope le code asm qui contient
+le bon s&eacute;rial sous Softice, puis on remplacera le message d'erreur
+sous Hexedit.
+<ul>
+<li>
+<b><u>Trouver le code hexad&eacute;cimal du s&eacute;rial</u></b></li>
+</ul>
+Exactement, il s'agit de trouver le code hexad&eacute;cimal de la partie
+de la m&eacute;moire qui contient le s&eacute;rial. Pour cela on va donc
+choper le s&eacute;rial avec Softice, mais &agrave; l'instar de la m&eacute;thode
+utilis&eacute;e par notre ami Crazy dans le Memento 2 (tiens Crazy, vala
+une noisette ---> @! ;) ), on va poser un <i><font color="#3366FF">bpx
+hmemcpy</font></i> qui est le bpx le plus "magique".
+<p>Donc dans Startclean, vous vous enregistrez, pour moi ce sera <font color="#3366FF">Anubis
+/ 12345</font><font color="#FFFFFF">, puis vous faites </font><font color="#3366FF">ctrl+D</font><font color="#FFFFFF">
+pour rentrer dans Softice, vous posez le </font><font color="#3366FF">bpx
+hmemcpy </font><font color="#FFFFFF">et vous faites </font><font color="#3366FF">F5
+</font><font color="#FFFFFF">pour
+sortir. Vous validez votre code dans Startclean en appuyant sur </font><font color="#3366FF">Ok</font><font color="#FFFFFF">
+et aussit&ocirc;t Softice apparait.</font>
+<p>A ce moment, faites <font color="#3366FF">F5</font> une fois pour valider
+le s&eacute;rial bidon que vous avez rentr&eacute;, puis <font color="#3366FF">F12</font>
+quelques fois (on passe les Bozo et compagnie) pour arriver l&agrave; :
+<p><img SRC="ds_1er_call.jpg" height=174 width=885>
+<p>Le call 00401280 est la routine qui fabrique le s&eacute;rial &agrave;
+partir de notre nom. Dans la 2&egrave;me partie de ce tut, on plongera
+dedans, mais pour l'instant on le passe en faisant <font color="#3366FF">F10</font><font color="#FFFFFF">.
+Aussit&ocirc;t, les registres (eax, esi, ...) s'allument de </font><b><font color="#FFFFFF">furie.
+Regardez eax : on voit "eax = 00406030" et</font></b><font color="#FFFFFF">
+si on fait un </font><font color="#3366FF">d eax</font><font color="#FFFFFF">,
+on obtient notre s&eacute;rial officiel. Et la valeur hexa du registre
+eax est le fameux code que l'on cherche : 00406030. </font><b><font color="#FFFFFF">Autrement
+dit, notre s&eacute;rial est stock&eacute; dans une adresse m&eacute;moire
+repr&eacute;sent&eacute;e par cette valeur 00406030. Si plus tard je veux
+manipuler mon s&eacute;rial, je n'aurai qu'&agrave; le faire en utilisant
+cette adresse 00406030!</font></b>
+<ul>
+<li>
+<b><u><font color="#FFFFFF">Remplacer le message d'erreur</font></u></b></li>
+</ul>
+Maintenant, vous pouvez fermer Softice et ouvrir Wdasm. Une recherche dans
+les <i>strings data references</i> sur "Incorrect code!" nous am&egrave;ne
+l&agrave; :
+<p><img SRC="1e_partie_incorrect_code.jpg" height=497 width=752>
+<p>En 4027C5, push 004063AC nous affiche le fameux "Incorrect code!". <b><font color="#FFFFFF">Pour
+le voir apparaitre, il vous suffit de faire un </font></b><font color="#3333FF">d
+4063AC</font><b><font color="#FFFFFF"> sous Softice (mais comme je viens
+juste de vous dire de le fermer, ben.. croyez moi sur parole ;)&nbsp; ).&nbsp;
+On veut donc on veut remplacer "Incorrect code!" par notre s&eacute;rial,
+c'est &agrave; dire (en langage assembleur) push 004063AC par push 00406030.</font></b>
+Pour ce faire, regardez la correspondance en hexad&eacute;cimal (j'ai mis
+des couleurs pour mieux voir la construction) :
+<center>
+<p><font color="#FF0000">push</font> 00<font color="#FFFFFF">40</font><font color="#FFFF00">63</font><font color="#33CCFF">AC&nbsp;&nbsp;&nbsp;</font>
+donne&nbsp;&nbsp;&nbsp; <font color="#FF0000">68</font><font color="#33CCFF">AC</font><font color="#FFFF00">63</font><font color="#FFFFFF">40</font>00
+<br>&nbsp;&nbsp;&nbsp; donc
+<br><font color="#FF0000">push</font> 00<font color="#FFFFFF">40</font><font color="#FFFF00">60</font><font color="#33CCFF">30</font>&nbsp;&nbsp;&nbsp;
+donnera&nbsp;&nbsp;&nbsp; <font color="#FF0000">68</font><font color="#33CCFF">30</font><font color="#FFFF00">60</font><font color="#FFFFFF">40</font>00</center>
+
+<p>Il ne vous reste plus qu'&agrave; prendre un &eacute;diteur hexad&eacute;cimal
+pour effectuer la modification. <b><font color="#FFFFFF">Vous ouvrez Startclean
+dans l'&eacute;diteur hexa, vous lancez une recherche sur <i>68AC634000</i>,
+et vous faites le changement (n'oubliez pas de sauvegarder!).</font></b><i>
+</i>Maintenant, retournez &agrave; Startclean et enregistrez-vous avec
+un s&eacute;rial bidon et voyez le r&eacute;sultat :
+<br>&nbsp;
+<br>&nbsp;
+<center><table BORDER=0 COLS=2 WIDTH="51%" >
+<tr>
+<td>
+<center><img SRC="1.jpg" height=183 width=216>
+<br>- avant -</center>
+</td>
+
+<td>
+<center><img SRC="2.jpg" height=180 width=215>
+<br>- apr&egrave;s -</center>
+</td>
+</tr>
+</table></center>
+
+<p><b><font color="#FFFFFF">Voila, la message box n'affichera plus "Incorrect
+code!" (push 004063AC), mais notre s&eacute;rial (push 00406030).</font></b>
+Au passage, vous pourrez &eacute;galement enregistrer tous vos potes, le
+s&eacute;rial correspondant sera affich&eacute; &agrave; chaque fois ;)
+<p><b><u><font size=+1>Conclusion</font></u></b>
+<p>Voil&agrave;! Vous avez vu qu'en modifiant simplement l'adresse du message
+d'erreur, on transforme de mani&egrave;re surprenante le logiciel. Je tiens
+&agrave; faire un petit commentaire ici : toutes les techniques de Cracking
+que l'on rencontre &agrave; travers les Mementos constituent une excellente
+introduction au Reverse Engineering (ou RE). Le RE nous permet de compl&egrave;tement
+transformer un soft dont on n'a pas les sources (ajouts de menus supl&eacute;mentaires,
+modifications de fonctions, suppression des bugs...). Pour faire une "comparaison"
+: avec le Cracking, vous apprenez &agrave; lire (lire dans le source d&eacute;compil&eacute;
+en asm, lire dans l'execution du prog sous Softice...), avec le RE vous
+apprendrez &agrave; &eacute;crire. C'est l'arme absolue, et je ne citerai
+qu'un exemple c&eacute;l&egrave;bre : <b><font color="#3366FF">MoRE</font></b>
+(Greetz to you people!).
+<p><font size="3"></font>&nbsp;</p>
+
+<p align="center">&nbsp;</p>
+</body>
+</html>

