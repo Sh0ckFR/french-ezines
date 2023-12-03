@@ -10,96 +10,98 @@ Some articles are also sensitive and may mention, for example, the creation of h
 
 # List of the available ezines
 
-* rafale.org
-* hzv-mag
-* 50-1337
-* cryptel
-* frhack
-* Land Of The Free
-* NPN
-* Noway
 * 3d13
+* 50-1337
 * 912 Hacking Departement
 * Aktivist
-* Blackclowns
-* NoCooking
-* hackoff
-* CounterStrike
-* Cyber Hackers Guide
-* Brain Storm Crew
-* Blast
-* Black Lotus
-* Belgian Hackers Zone
-* Apocalypse
-* AOH
-* Alternative
-* Allianx
 * Alcibiade
-* TDC mag by DHS
-* Dead End mag by DHS
+* Allianx
+* Alternative
+* AOH
+* Apocalypse
+* Belgian Hackers Zone
+* Black Lotus
+* Blackclowns
+* Blast
+* Brain Storm Crew
+* CounterStrike
+* cryptel
+* Cyber Hackers Guide
 * Cybz
-* Fantom
+* Dead End
 * Deathlyby
+* Drapeau Noir
+* Fantom
+* frhack
 * Gogo
 * h=edm
 * Hack 25
-* Drapeau Noir
-* Hackerstorm
 * Hack Team L
+* Hackerstorm
+* hackoff
 * Hackviewer
 * HackZine
 * haqch
 * hccc
 * hohs
 * HVU
-* Kult Dead Bill
-* Immortal
-* Lightning Jokers
+* hzv-mag
 * Illegal Granted Access
-* Kaotix
-* Just Crack It
+* Immortal
 * Input Output Corporation
+* Just Crack It
+* Kaotix
+* Kult Dead Bill
 * Lamah
+* Land Of The Free
 * Liberté
+* Lightning Jokers
 * Lutin
 * MacMilliam
 * MagAttack
 * Malicia
-* Multi-system and Internet Base
 * Mindkind
 * MJ13
 * Mobilisation Virtuelle Minoritaire
+* Multi-system and Internet Base
 * n0name
 * Nightz
+* NoCooking
 * NoFutur
 * Nopast
 * Nopeace
 * Noroute
 * Northern Phun Co
 * Nowall
+* Noway
 * Nowhere
 * Nozep
+* NPN
 * Organiks
 * Phreakazoide
-* Pretty Good Keys
-* Silmarillon
-* Pyrofreak
-* Shogun
-* Quebec Hackers Alliance
-* Polio
-* SécuriMag
-* Revolution
-* Psykaos
-* Seven Synkop
 * Pirage
+* Polio
+* Pretty Good Keys
+* Psykaos
+* Pyrofreak
+* Quebec Hackers Alliance
+* Rafale
+* Revolution
 * Row
+* Secu-info
+* Seven Synkop
+* Shmeitcorp
+* Shogun
+* Silmarillon
 * Sleazy Wind
 * Snapscan
+* SécuriMag
+* T-S63
+* The Darkunderground Clan
 * The Last Click
 * The Ultimate
 * Total Control
 * Tradefr
-* T-S63
 * UnderDark
 * Underhack
 * Underwayy
@@ -108,8 +110,6 @@ Some articles are also sensitive and may mention, for example, the creation of h
 * X-H
 * XIII
 * Zone 51
-* Secu-info
-* Shmeitcorp
 
 # How to deploy it
 
