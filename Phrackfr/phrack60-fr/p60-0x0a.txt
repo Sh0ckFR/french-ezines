@@ -1,0 +1,810 @@
+                             ==Phrack Inc.==
+
+               Volume 0x0b, Issue 0x3c, Phile #0x0a of 0x10
+
+
+|=--------------------=[ Basic Integer Overflows ]=----------------------=|
+|=-------------------=[ by blexim <blexim@hush.com> ]=-----------------=|
+|=--------------------------Traduit par X-FaKtOr-------------------------=|
+
+1: Introduction
+    1.1 Qu'est ce qu'un entier?
+    1.2 Qu'est ce qu'un débordement d'entier?
+    1.3 Pourquoi peuvent ils être dangereux?
+
+2: Débordements d'entiers
+    2.1 Débordements de taille
+        2.1.1 Exploitation
+    2.2 Débordement arithmétiques
+        2.2.1 Exploitation
+
+3: Bugs de signe
+    3.1 A quoi ressemble t-ils?
+        3.1.1 Exploitation
+    3.2 Bugs de signes causés par des débordement d'entiers
+
+4: Exemples de la vie réelle
+    4.1 Débordement d'entiers
+    4.2 Bugs de signes
+
+
+--[ 1.0 Introduction
+
+Dans ce papier je vais décrire deux classes de bugs de programmation qui
+peuvent parfois permettre a un utilisateur malintentionné de modifier le
+chemin d'exécution des processus affectés. Ces deux classes de bugs marchent
+en forçant des variables à contenir des valeurs inattendues, et donc ne sont
+pas aussi directs que certaines classes qui écrasent la mémoire,e.g. les
+débordements de tampons ou les bugs de formats. Tous les exemples donnés 
+dans ce papier sont en C, donc une relative familiarité avec le C est demandée.
+Une connaissance de la façon dont les entiers sont stockés en mémoire est
+aussi utile mais pas essentielle.
+
+----[ 1.1 Qu'est ce qu'un entier?
+
+Un entier, dans le contexte informatique, est une variable capable
+de représenter un nombre entier sans partie décimale. Les entiers sont
+sont en général de la même taille qu'un pointeur sur le système sur lequel
+ils sont compilés(i.e sur une architecture 32 bits, telle que i386 un entier
+est long de 32 bits, sur une architecture 64 bits telle que SPARC,un entier
+est long de 64 bits). Certains compilateurs n'utilisent pas les entiers et
+les pointeurs de la même taille cependant, pour un soucis de simplicité
+tous les exemples se réfèrent à des architectures 32 bits avec des entiers,
+long et pointeurs sur 32 bits.
+
+Les entiers, comme toutes les variables sont justes des portions de
+mémoire. Quand nous parlons d'entiers, nous les représentons habituellement
+en décimal, comme c'est le system de numérotation dont les humaine ont le
+plus l'habitude. Les ordinateurs, les êtres numériques, ne peuvent parler
+avec le décimal, donc à l'intérieur des ordinateurs les entiers sont stockés
+en binaire. Le binaire est un autre système de numérotation des nombres
+qui utilise seulement deux chiffres,1 et 0,à l'opposé des dix chiffres
+utilisés en décimal. Comme le binaire et le décimal, l'hexadécimal(base 
+seize)est souvent utilisé en informatique comme il est très facile de
+convertir du binaire en hexadécimal.
+
+Comme il est souvent nécessaire de stocker des nombres négatifs, il est
+nécessaire d'avoir un mécanisme pour représenter les nombres négatifs
+en utilisant juste le binaire. La facon dont cela est accomplis passe
+par l'utilisation du bit le plus signifiant (MSB en v.o)d'une variable pour
+déterminer le signe: si le MSB est à un 1,la variable est interprété comme
+négative;si il est à 0,la variable est positive. Cela peut causer certaines
+confusions ,comme cela va être expliqué dans la section sur les bugs sur
+entiers non signés, car toutes les variables ne sont pas signées ce qui
+signifie qu'elles n'utilisent pas toutes le MSB pour déterminer si elles
+sont positives ou non. Ces variables sont reconnues comme non signées
+et peuvent être assignées seulement à des valeur positives, contrairement
+aux variables qui peuvent être soit négatives soit positives qui sont
+appelées non signées.
+
+
+----[ 1.2 Qu'est ce qu'un débordement d'entiers?
+
+Comme un entier à une taille fixe(32 bits dans le cadre de cet article),
+il y a une valeur maximum qu'il peut stocker. Quand en tentative est faite
+de stocker une valeur supérieure à cette valeur maximum on parle de
+débordement d'entier. Le standard ISO C99 dit qu'un débordement de tampon
+cause "un comportement indéfini",ce qui signifie que les compilateurs se
+conformant au standard peuvent faire ce qu'il veulent ,de l'ignorement 
+complet au débordement pour arrêter le programme. La plupart des
+compilateurs semblent ignorer le débordement, aboutissant à un
+résultat stocké inattendu ou erroné.
+
+----[ 1.3 Pourquoi peuvent t-ils être dangereux?
+
+Les débordement d'entiers ne peuvent pas être détectés  après qu'il ce soit
+produits, donc il n'y a pas de manière pour une application de dire si un
+résultat calculé précédemment est en fait correct. Cela peut devenir 
+dangereux si le calcul doit gérer la taille d'un tampon ou jusqu'ou un index
+peut aller dans un tableau. Bien sur la plupart des débordement d'entiers
+ne sont pas exploitables car la mémoire ne va pas être directement écrasée
+,mais parfois ils peuvent mener à d'autres types de classes de bugs,
+fréquemment des débordement de tampons. Comme ceux-ci, les débordements
+d'entiers peuvent être difficiles a détecter, ainsi même un code bien audité
+peut apporter des surprises.
+
+--[ 2.0 Débordements d'entiers
+
+Donc que se passe t-il se produit un débordement d'entiers? ISO C99 à cela
+à dire:
+
+	"Un calcul mettant en jeu des opérandes non-signés ne peut jamais
+	être débordé car un résultat qui ne peut pas être représenté par le
+	résultat d'entiers de type non signé est réduit modulo le nombre qui
+	est d'un supérieur à la plus grande valeur représentable par le type
+	résultant."
+
+N.B:le modulo arithmétique implique la division de deux nombres et prend
+le reste:
+	10 modulo 5 = 0
+	11 modulo 5 = 1
+ainsi la réduction d'une grande valeur par modulo(ENTIERMAX + 1) permet
+l'isolement de la valeur qui ne peut rentrer dans un entier et garde le 
+reste.
+En C, l'opérateur modulo est un caractère %.
+</NB>
+
+C'est un peu flou, alors peut être qu'un exemple démontrera mieux le fameux
+"comportement indéfini":
+
+Nous avons deux entiers non signés, a et b, tous les deux sont long de 32 
+bits.
+Nous assignons à a la valeur maximum qu'un entier de 32 bits peut gérer, et 
+à b nous assignons 1. Nous ajoutons a et b ensemble et stockons le résultat dans 
+in troisième entier non signé de 32 bits nommé r:
+
+    a = 0xffffffff
+    b = 0x1
+    r = a + b
+
+Maintenant, comme le résultat d'une addition ne peut pas être représenté sur
+32 bits, le résultat ,en accord avec le standard ISO,est réduit modulo 
+0x100000000.
+
+    r = (0xffffffff + 0x1) % 0x100000000
+    r = (0x100000000) % 0x100000000 = 0
+
+Réduire le résultat en utilisant basiquement un modulo arithmétique assure
+que le seulement les 32 bits les plus bas du résultat sont utilisés, donc
+les débordements de tampon forcent les résultats a être tronqués a une 
+taille qui peut être représentée par la variable. C'est souvent appelé
+un "wrap around", comme le résultat apparaît dans le voisinage de 0
+
+----[ 2.1 Débordements de taille
+
+Ainsi un débordement de tampon est le résultat de la tentative de stocker
+une valeur dans une variable qui est trop petite pour le supporter. 
+L'exemple le plus simple de cela peut être démontré simplement en
+assignant le contenu de variables larges à des plus petites:
+
+    /* ex1.c - perte de précision */
+    #include <stdio.h>
+
+    int main(void){
+            int l;
+            short s;
+            char c;
+
+            l = 0xdeadbeef;
+            s = l;
+            c = l;
+
+            printf("l = 0x%x (%d bits)\n", l, sizeof(l) * 8);
+            printf("s = 0x%x (%d bits)\n", s, sizeof(s) * 8);
+            printf("c = 0x%x (%d bits)\n", c, sizeof(c) * 8);
+
+            return 0;
+    }
+    /* EOF */
+
+Le résultat ressemble à ca:
+
+    nova:signed {48} ./ex1
+    l = 0xdeadbeef (32 bits)
+    s = 0xffffbeef (16 bits)
+    c = 0xffffffef (8 bits)
+
+Comme chaque assignation pousse les limites des valeurs qui peuvent être 
+stockés à être dépassées, la valeur est tronquée donc de façon à ce
+qu'elle rentre dans la variable à laquelle elle est assignée.
+
+Il est bon de mentionner la promotion des entiers ici. Quand un calcul 
+mettanten jeu des opérandes de différentes tailles est ralisé,
+l'opérande le plus petit est "promus" a la taille du plus grand des
+deux. Le calcul est alors fait avec ces tailles promues et, si le
+résultat est apte à être stocké dans la variable la plus petite, le
+résultat est tronqué a la plus petite taille de nouveau.
+Par exemple:
+
+    int i;
+    short s;
+
+    s = i;
+
+Un calcul est réalisé ici avec des opérandes de tailles différentes.
+Qu'arrive t-il dans le cas ou la variable s est promue en un entier (32 bits
+long),alors le contenu de i est copié dans la nouvelle promue s. Après cela,
+le contenu de la variable promue est "rétrogradée" de nouveau a 16 bits dans 
+le but de sauver s. Ce rétrogradage peut amener le résultat à être
+tronqué si il est supérieur à la valeur maximum gérable.
+
+------[ 2.1.1 Exploitation
+
+Les débordements de tampons ne sont pas comme la plupart des classes de bug.
+Ils n'autorisent pas un écrasement direct de la mémoire ou un contrôle 
+directe du flot d'exécution, mais sont beaucoup plus subtils. Le
+racine du problème est lié au fait qu'il n'y pas de manière pour un
+processus de vérifier le résultat d'un calcul après qu'il se soit
+produit, ainsi il peut y avoir une  divergence entre la résultat
+stocké  et le résultat correct. A cause de cela, la plupart des
+débordements d'entiers ne sont pas actuellement exploitables. Même si,
+dans certains cas il est possible de forcer une variable cruciale à
+contenir une valeur erronée, et  ceci peut mener à des problèmes plus
+tard dans le code.
+
+A cause de la subtilité de ces bugs, il y a un grand nombre de situations 
+dans lesquelles ils peuvent être exploités, ainsi je ne vais pas
+essayer de couvrir toutes les conditions d'exploitations. A la place,
+je vais fournir des  exemples dequelques situations qui sont
+exploitables, dans l'espoir d'inspirer les lecteurs dans leur propres
+recherches.
+
+Exemple 1:
+
+    /* width1.c - exploitation d'un bug trivial de taille */
+    #include <stdio.h>
+    #include <string.h>
+
+    int main(int argc, char *argv[]){
+            unsigned short s;
+            int i;
+            char buf[80];
+
+            if(argc < 3){
+                    return -1;
+            }
+
+            i = atoi(argv[1]);
+            s = i;
+
+            if(s >= 80){            /* [w1] */
+                    printf("Oh no you don't!\n");
+                    return -1;
+            }
+
+            printf("s = %d\n", s);
+
+            memcpy(buf, argv[2], i);
+            buf[i] = '\0';
+            printf("%s\n", buf);
+
+            return 0;
+    }
+
+Bien qu'une construction comme celle-ci ne se présenterait probablement 
+jamais dans le vie réelle,elle va bien nous servir en tant
+qu'exemple. Jetez un oeil au code suivant:
+
+    nova:signed {100} ./width1 5 hello
+    s = 5
+    hello
+    nova:signed {101} ./width1 80 hello
+    Oh no you don't!
+    nova:signed {102} ./width1 65536 hello
+    s = 0
+    Segmentation fault (core dumped)
+
+L' argument longueur est récupéré a partir de la ligne de commande et stocké
+dans l'entier i. Lorque cette valeur est transférée dans l'entier court s, 
+il est tronqué si la valeur est trop grande pour rentrer dans s(i.e. si la 
+valeur supérieure à 65535).A cause de cela ,il est possible d'outrepasser la 
+vérification des limites à [w1] et de déborder le tampon. Après cela,
+les techniques  d'écrasement standard de la pile peuvent être
+utilisées pour exploiter le processus.
+
+----[ 2.2 Débordements arithmétiques
+
+Comme montré dans la section 2.0, si une tentative est faite afin de
+stocker une valeur dans un entier qui est supérieure à la valeur
+maximum que peut  supporter l'entier, la valeur sera tronquée. Si la
+valeur stockée est le résultat  d'une opération arithmétique,
+n'importe quelle partie du programme qui utilisera  plus tard le
+résultat va tourner d'une façon incorrecte du fait que le résultat
+arithmétique soit incorrect. Considérez cette exemple démontrant la
+faille montrée plus tôt:
+
+    /* ex2.c - un débordement de tampon */
+    #include <stdio.h>
+
+    int main(void){
+            unsigned int num = 0xffffffff;
+
+            printf("num is %d bits long\n", sizeof(num) * 8);
+            printf("num = 0x%x\n", num);
+            printf("num + 1 = 0x%x\n", num + 1);
+
+            return 0;
+    }
+    /* EOF */
+
+The output of this program looks like this:
+
+    nova:signed {4} ./ex2
+    num is 32 bits long
+    num = 0xffffffff
+    num + 1 = 0x0
+
+Note:
+Le lecteur avertis aura noté que 0xffffffff est décimale -1,ainsi il 
+apparait que nous venons juste de faire
+1 + (-1)= 0
+Tandis que c'est une méthode pour voir ce qui se passe ,cela peut causer
+quelque confusions car la variable num est assignée et par conséquent
+toute l'arithmétique effectuée sur celle-ci sera non signée. Comme
+cela arrive, de nombreux calculs arithmétique signés dépendent des
+débordements  d'entiers, comme ce qui suit le démontre(supposons que
+les deux opérandes sont des variables de 32 bits):
+
+-700       + 800   = 100
+0xfffffd44 + 0x320 = 0x100000064
+
+Comme le résultat de l'addition excède la portée de la variable , les
+32 bits les plus faibles sont pris comme résultat. Ces 32 bits bas sont
+0x64,ce qui est égal à 100 en décimal.
+</note>
+
+Comme un entier est signé par défaut, un débordement d'entier peut causer
+un changement dans le signe qui peut souvent avoir des effets intéressants
+sur le code qui suit. Considérez l'exemple suivant:
+
+    /* ex3.c - changement de signes */
+    #include <stdio.h>
+
+    int main(void){
+            int l;
+
+            l = 0x7fffffff;
+
+            printf("l = %d (0x%x)\n", l, l);
+            printf("l + 1 = %d (0x%x)\n", l + 1 , l + 1);
+
+            return 0;
+    }
+    /* EOF */
+
+Dont le sortie est:
+
+    nova:signed {38} ./ex3
+    l = 2147483647 (0x7fffffff)
+    l + 1 = -2147483648 (0x80000000)
+
+Ici l'entier est initialisé avec la plus grande valeur positive que
+les entiers longs peuvent gérer. Quand il est incrémenté, le bit le plus
+signifiant(indiquant le signe) est mis à 1 et l'entier est interprété
+comme étant négatif.
+
+L'addition n'est pas l'unique opération arithmétique qui peut causer un
+débordement d'entier. Ainsi n'importe quelle opération qui change la valeur
+d'une variable peut causer un débordement, comme le démontre l'exemple
+suivant:
+
+    /* ex4.c - différents débordements arithmétiques */
+    #include <stdio.h>
+
+    int main(void){
+            int l, x;
+
+            l = 0x40000000;
+
+            printf("l = %d (0x%x)\n", l, l);
+
+            x = l + 0xc0000000;
+            printf("l + 0xc0000000 = %d (0x%x)\n", x, x);
+
+            x = l * 0x4;
+            printf("l * 0x4 = %d (0x%x)\n", x, x);
+
+            x = l - 0xffffffff;
+            printf("l - 0xffffffff = %d (0x%x)\n", x, x);
+
+            return 0;
+    }
+    /* EOF */
+
+Sortie:
+
+    nova:signed {55} ./ex4
+    l = 1073741824 (0x40000000)
+    l + 0xc0000000 = 0 (0x0)
+    l * 0x4 = 0 (0x0)
+    l - 0xffffffff = 1073741825 (0x40000001)
+
+L'addition cause un débordement exactement de la même manière que dans
+le premier exemple, de même que pour la multiplication, même si cela semble
+différent. Dans les deux cas le résultat est trop grand pour rentrer dans
+un entier, ainsi il est réduit comme décrit plus haut. La soustraction
+est un peu différente, comme elle cause un underflow(comment traduire çà 
+!!!), plutôt qu'un overflow. Une tentative est faite de stocker une
+valeur plus petite que le minimum gérable, causant un wrap
+around(???). De cette manière nous somme en mesure de forcer une
+addition à soustraire, une multiplication à diviser ou une
+soustraction à ajouter.
+
+------[ 2.2.1 Exploitation
+
+L'une des manières le plus courantes dont les débordements arithmétiques
+peuvent être exploités est lorsque un calcul est fait à propos de la taille
+d'allocation d'un tampon. Souvent un programme doit allouer de l'espace pour
+un tableau d'objets ,ainsi il utilise les routines malloc(3) ou calloc(3)
+pour réserver de la place et calculer combien de place est nécessaire
+en multipliant le nombre d'éléments par la taille d'un objet. Comme il a
+précédemment été montré, si nous sommes capable de contrôler l'un de ces
+deux opérandes (le nombre d'éléments ou la taille de l'objet) nous pourrions
+être en mesure de contrefaire la taille du tampon comme le code suivant
+le montre:
+
+    int myfunction(int *array, int len){
+        int *myarray, i;
+
+        myarray = malloc(len * sizeof(int));    /* [1] */
+        if(myarray == NULL){
+            return -1;
+        }
+
+        for(i = 0; i < len; i++){              /* [2] */
+            myarray[i] = array[i];
+        }
+
+        return myarray;
+    }
+
+Cette innocente fonction en apparence peut amener à la fermeture du 
+programme
+à cause de son manque vérification de ses paramètres. La multiplication [1]
+peut être crée pour mener à un débordement en soumettant une valeur assez
+grande pour que nous puissions forcer le tampon à être de la taille que l'on
+veut. En choisissant une valeur qui convient pour la longueur, nous pouvons 
+faire que la boucle [2] écrive à la fin du tampon myarray, résultant à un 
+débordement du tas. Cela peut être déterminant pour l'exécution de code 
+arbitraire sur certaines implémentations en écrasant les structures de 
+contrôles de malloc, mais cela déborde du cadre de cette article(un article 
+overflow :)N.D)
+
+Autre example:
+
+    int catvars(char *buf1, char *buf2, unsigned int len1,
+                unsigned int len2){
+        char mybuf[256];
+
+        if((len1 + len2) > 256){    /* [3] */
+            return -1;
+        }
+
+        memcpy(mybuf, buf1, len1);      /* [4] */
+        memcpy(mybuf + len1, buf2, len2);
+
+        do_some_stuff(mybuf);
+
+        return 0;
+    }
+
+Dans cet exemple, la vérification [3] peut être outrepassée en utilisant des
+valeurs convenant pour la longueur len1 et len2 qui vont faire que 
+l'addition
+va écraser et devenir un petit nombre. Par exemple les valeurs suivantes:
+
+    len1 = 0x104
+    len2 = 0xfffffffc
+
+Lorsque ajoutées l'une à l'autre, cela résulte à un retour avec un résultat
+de 0x100(256 en décimal).Cela passerai la vérification [3],alors les 
+memcpy(3) [4]
+copient les donnés collées à la fin du tampon.
+
+
+--[ 3 Bugs de signes
+
+Les bugs de signes surviennent quand une variables non signées est 
+interprétée  comme signée. Ce type de comportement peut se produire du
+fait qu'à l'intérieur de l'ordinateur, il n'y pas de distinction entre
+la façon dont les variables signées et non signées sont
+stockées. Récemment, différent bugs de signes se  sont montrés dans
+les kernels de FreeBSD et de OpenBSD, ainsi il y a de  nombreux
+exemples disponibles à lire.
+
+
+----[ 3.1 A quoi ressemble t-ils?
+
+Les bugs de signes peuvent prendre de nombreuse formes, mais certaines des
+choses qu'il faut surveiller sont:
+* les entier signés utilisés pour des comparaisons
+* les entier signés utilisés en arithmétique
+* les entiers non signés qui sont comparés à des entier signés
+
+Voici un exemple classique de bug de signe:
+
+    int copy_something(char *buf, int len){
+        char kbuf[800];
+
+        if(len > sizeof(kbuf)){         /* [1] */
+            return -1;
+        }
+
+        return memcpy(kbuf, buf, len);  /* [2] */
+    }
+
+Le problème ici est que memcpy prend un entier non signé comme
+paramètre, mais la vérification des limites réalisée avant le memcpy
+est faite en utilisant des entiers signés. En passant une valeur une
+valeur négative pour longueur, il est possible de passer la
+vérification [1], mais alors dans le call memcpy[2], la longueur va
+être interprétée comme une très grande valeur non signée, menant la
+mémoire à être écrasée à la fin du buffer kbuff.
+
+Un autre problème peut être du à une confusion signés/non signés survient
+quand un calcul arithmétique est réalisé. Considérez l'exemple suivant:
+
+    int table[800];
+
+    int insert_in_table(int val, int pos){
+        if(pos > sizeof(table) / sizeof(int)){
+            return -1;
+        }
+
+        table[pos] = val;
+
+        return 0;
+    }
+
+Comme la ligne
+    table[pos] = val;
+est équivalente à:
+    *(table + (pos * sizeof(int))) = val;
+Nous pouvons voir que le problème ici est que le code ne s'attends pas à
+un  opérande négatif pour l'addition:il s'attends à ce que(table+ pos)
+soit supérieur à table,ainsi soumettre une valeur négative pour pos
+entraîne une situation à laquelle le programme ne s'attends pas et
+peut de ce fait pas le gérer.
+
+------[ 3.1.1 Exploitation
+
+Cet classe de bugs peut être problématique à exploiter, à cause du fait
+que les entiers signés, lorsqu'ils sont interprétés comme non signés,
+tendent à devenir énormes.Par exemple,-1 lorsque il est représenté en
+hexadécimal est 0xffffffff.Quand il est interprété comme non signé,
+il devient la plus grande valeur qu'il est possible de représenter
+en entier(4,294,967,295),ainsi si cette valeur est passée à memcpy
+en temps que paramètres longueur (par exemple), memcpy va tenter de copier
+4GB de données dans le tampon de destination. Evidemment cela peut causer
+un segfault ou si sinon, détruire une grande quantité de la pile ou du tas.
+Quelque fois il est possible de remédier à ce problème en passant un très 
+petite valeur pour l'adresse source et espérer, mais cela n'est pas
+toujours  possible.
+
+----[ 3.2 Bugs de signes entraînés par les débordements d'entiers
+
+Quelque fois, il est possible de déborder un entier de manière à ce qu'il 
+repasse à une valeur négative. Comme l' application n'est pas conçue pour 
+s'attendre à une telle valeur, il peut être possible de repérer un bug
+de signe comme  décrit ci-dessus
+
+Un exemple de ce type de bug pourrait ressembler à cela:
+
+    int get_two_vars(int sock, char *out, int len){
+        char buf1[512], buf2[512];
+        unsigned int size1, size2;
+        int size;
+
+        if(recv(sock, buf1, sizeof(buf1), 0) < 0){
+            return -1;
+        }
+        if(recv(sock, buf2, sizeof(buf2), 0) < 0){
+            return -1;
+        }
+
+        /* packet begins with length information */
+        memcpy(&size1, buf1, sizeof(int));
+        memcpy(&size2, buf2, sizeof(int));
+
+        size = size1 + size2;       /* [1] */
+
+        if(size > len){             /* [2] */
+            return -1;
+        }
+
+        memcpy(out, buf1, size1);
+        memcpy(out + size1, buf2, size2);
+
+        return size;
+    }
+
+Cette exemple montre ce qu'il peut parfois se produire dans les démons  
+réseaux,spécialement lorsque quand une information de longueur est
+passée en tant qu'une partie d'un paquet (en d'autres mots, lorsque il
+y un soumission de la part d'un utilisateur en lequel on n'a pas
+confiance).L'addition [1], utilisée pour vérifier que les données
+n'excèdent pas les limites du tampon de sortie, peut être abusée en
+mettant size1 et size2 à des valeurs qui vont faire que la taille de
+la variable à passer à une valeur négative. Des valeurs exemples
+pourraient être:
+    size1 = 0x7fffffff
+    size2 = 0x7fffffff
+    (0x7fffffff + 0x7fffffff = 0xfffffffe (-2)).
+Quand cela se produit, la vérification de limites [2] est passée, et 
+beaucoup plus du tampon de sortie peut être écrit que ce qu'il était
+voulu (en fait, de la mémoire arbitraire peut être écrite, comme le
+paramètre destination (out+size1) dans le second appel à memcpy qui
+peut nous permettre d'atteindre n'importe quelle endroit de la
+mémoire).
+
+Ces bugs peuvent être exploités d'un manière exactement similaire que
+les bugs de signes réguliers et comporte les même problèmes associés à
+ces derniers- i.e. les valeurs négatives traduites en énorme valeurs
+positives qui peuvent facilement causer des segfaults
+
+--[ 4 Exemples de la vie réelle
+
+Il y de nombreuses applications dans la vie réelle qui contiennent des
+débordements d'entiers et des bugs de signes, particulièrement les démons
+réseaux et, fréquemment, dans les kernels des systèmes d'exploitation
+
+----[ 4.1 Débordements d'entiers
+
+Cet exemple (non-exploitable) est tiré d'un module de sécurité pour linux.
+Ce code tourne dans le contexte du kernel:
+
+    int rsbac_acl_sys_group(enum  rsbac_acl_group_syscall_type_t call,
+                            union rsbac_acl_group_syscall_arg_t arg)
+      {
+    ...
+        switch(call)
+          {
+            case ACLGS_get_group_members:
+              if(   (arg.get_group_members.maxnum <= 0) /* [A] */
+                 || !arg.get_group_members.group
+                )
+                {
+    ...
+                rsbac_uid_t * user_array;
+                rsbac_time_t * ttl_array;
+
+                user_array = vmalloc(sizeof(*user_array) *
+                arg.get_group_members.maxnum);   /* [B] */
+                if(!user_array)
+                  return -RSBAC_ENOMEM;
+                ttl_array = vmalloc(sizeof(*ttl_array) *
+                arg.get_group_members.maxnum); /* [C] */
+                if(!ttl_array)
+                  {
+                    vfree(user_array);
+                    return -RSBAC_ENOMEM;
+                  }
+
+                err =
+                rsbac_acl_get_group_members(arg.get_group_members.group,
+                                                  user_array,
+                                                  ttl_array,
+
+                                                  arg.get_group_members.max
+                                                  num);
+    ...
+    }
+
+Dans cet exemple ,la vérification des limites [A] n'est pas suffisante
+pour prévenir d'un débordement d'entier [B] et [C]. En passant une
+valeur assez grande(i.e. plus grande que 0xffffffff /4) pour
+arg.get_get_group_members.maximum, nous pouvons obliger les
+multiplications [B] et [C] à déborder et forcer les tampons ttl_arrays
+et user_array à être plus petit que ce à quoi s'attends
+l'application. Comme rsbac_cal_get_group_members copie des données
+contrôlées par l'utilisateur dans ces tampons, il est possible
+d'écrire à la fin des tampons ,ce qui va tout simplement provoquer une
+erreur, ainsi cela ne peut pas être exploité. Même si , cela fournit
+un exemple de ce à quoi ces bugs peuvent ressembler dans du code réel.
+
+Un autre exemple d'une récente vulnérabilité par débordement d'entier
+de la vie réelle était le problème dans le XDR RPC library (découvert
+par ISS X-Force).
+Dans ce cas, des données soumises par l'utilisateur étaient utilisées dans 
+le calcul de la taille d'un tampon alloué dynamiquement qui était
+rempli avec les donnée fournies par l'utilisateur. Le code vulnérable
+était celui-ci:
+
+    bool_t
+    xdr_array (xdrs, addrp, sizep, maxsize, elsize, elproc)
+         XDR *xdrs;
+         caddr_t *addrp;	/* array pointer */
+         u_int *sizep;		/* number of elements */
+         u_int maxsize;		/* max numberof elements */
+         u_int elsize;		/* size in bytes of each element */
+         xdrproc_t elproc;	/* xdr routine to handle each element */
+    {
+      u_int i;
+      caddr_t target = *addrp;
+      u_int c;		/* the actual element count */
+      bool_t stat = TRUE;
+      u_int nodesize;
+
+      ...
+
+      c = *sizep;
+      if ((c > maxsize) && (xdrs->x_op != XDR_FREE))
+        {
+          return FALSE;
+        }
+      nodesize = c * elsize;    /* [1] */
+
+      ...
+
+      *addrp = target = mem_alloc (nodesize);   /* [2] */
+
+      ...
+
+      for (i = 0; (i < c) && stat; i++)
+        {
+          stat = (*elproc) (xdrs, target, LASTUNSIGNED);   /* [3] */
+          target += elsize;
+        }
+
+Comme vous pouvez le voir, en soumettant de grandes valeurs pour
+elsize et c(sizep),il était possible de faire déborder la
+multiplication [1] et d'obliger nodesize à être bien plus petit que ce
+qui était prévu par le programme. Comme nodesize était alors utilisé
+pour allouer un tampon[2], le tampon peut mener à un taille erronée et
+à un débordement du tas [3]. Pour d'avantages d'informations sur cette
+faille, lisez l'avertissement du CERT dont le lien est en appendice.
+
+----[ 4.2 Bugs de signes
+
+Récemment, différent bugs de signes ont été mis en lumière dans le
+kernel de FreeBSD. Cela permet à de larges portions de la mémoire du
+kernel d'être lues en passant des longueurs arguments négatifs à
+différent appels systèmes.
+La fonction getpeername(2) comporte un tel problème et ressemble à ça:
+
+    static int
+    getpeername1(p, uap, compat)
+        struct proc *p;
+        register struct getpeername_args /* {
+            int	fdes;
+            caddr_t asa;
+            int	*alen;
+    } */ *uap;
+    int compat;
+    {
+        struct file *fp;
+        register struct socket *so;
+        struct sockaddr *sa;
+        int len, error;
+
+        ...
+
+        error = copyin((caddr_t)uap->alen, (caddr_t)&len, sizeof (len));
+        if (error) {
+            fdrop(fp, p);
+            return (error);
+        }
+
+        ...
+
+        len = MIN(len, sa->sa_len);    /* [1] */
+        error = copyout(sa, (caddr_t)uap->asa, (u_int)len);
+        if (error)
+            goto bad;
+    gotnothing:
+        error = copyout((caddr_t)&len, (caddr_t)uap->alen, sizeof (len));
+    bad:
+        if (sa)
+            FREE(sa, M_SONAME);
+        fdrop(fp, p);
+        return (error);
+    }
+
+C'est un exemple classique de bug de signe -la vérification [1] ne prends
+pas en compte le fait que la longueur pourrait être négative, auquel cas
+la macro MIN retournerai toujours la longueur. Lorsque ce paramètre négatif
+est passé à copyout, il est interprété en tant qu'entier positif très grand
+qui oblige copyout à copier jusqu'à 4GB de mémoire kernel dans l'espace
+de l'utilisateur.
+
+--[ Conclusion
+
+Les débordements d'entiers peuvent être extrêmement dangereux, en partie car
+il est impossible de les détecter après qu'il se soient produits. Si un
+débordement d'entier a lieu, l'application ne peut pas savoir que le calcul
+qu'il a effectué est incorrect, et va continuer jusqu'à
+Même si ils peuvent être compliqués à exploiter, et fréquemment pas du tout
+exploitables, ils peuvent entraîner des comportements inattendus, ce qui 
+n'est jamais une bonne chose dans un système sécurisé.
+
+--[ Appendice
+
+L'avertissement du CERT sur le bug XDR:
+http://www.cert.org/advisories/CA-2002-25.html
+L'avertissement pour FreeBSD: 
+http://online.securityfocus.com/advisories/4407
+
+
+|=[ EOF ]=---------------------------------------------------------------=|
+
+

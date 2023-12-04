@@ -1,0 +1,515 @@
+
+                             ==Phrack Inc.==
+
+               Volume 0x0b, Issue 0x3c, Phile #0x0e of 0x10
+
+|=------------------------=[ Les feux de circulation ]=------------------=|
+|=-----------------------------------------------------------------------------=|
+|=-----------------------=[ plunkett@hush.com ]=-------------------------=|
+
+.:Saving the planet, again:.
+
+/*
+ * Ceci est prurement educatif;
+ * Toute connaissance gagnee dans ce document s'impose d'elle-meme et donc
+ * l'auteur ne peut etre tenu responsable. Toute activite resultant de
+ * connaissances gagnees dans ce document n'est pas imputable a l'auteur.
+ * Si vous n'acceptez pas cela, priere de vous abstenir de lire la suite.
+ *
+ */
+#include <disclaimer.h>
+
+Une facon plus sympa pour l'environnement de voyager en voiture. Comme
+plusieurs d'entre vous se rappellent peut-etre dans tous les films, livres,
+shows TV, etc. de hacking, il y a eu le cas de quelqu'un qui fraudait les
+feux de circulation. Eh bien nous riions tous betement a l'apparence
+irrealiste de cela et n'y avons plus jamais repense. Eh bien dans ma quete
+pour une planete plus interessante pour nos enfants je me suis senti oblige
+de penser a une solution pour reduire la quantite de pollution emise par les
+vehicules de nos jours.
+Arrete a une intersection, personne d'autre autour, vous etiez encore bloque
+derriere la lumiere rouge, et cette invisible barriere de culpabilite
+gouvernementale possedait suffisamment de pouvoir pour vous laisser attendre
+la et polluer l'air toujours plus, juste pour une minable lumiere verte. Ce
+serait leet d'avoir un ordinateur portable dans la voiture ou vous pourriez
+selectionner l'intersection dans une liste, changer le timing [or current
+stream running], et rouler avec moins de temps perdu et moins de polluants
+sortis du pot d'echappement et une conscience tranquille.
+
+Maintenant, assez de conneries a propos des raisons, allons-y pour la putain
+de technique.
+[NDT : desole, je n'ai pas pu rendre le jeu de mots sur "crap" et "shit"]
+
+Le systeme de controle de la circulation routiere est un reseau superflu et
+bien huile qui utilise les meme vieux protocoles que nous connaissons tous.
+Oui il est hackable et c'est comme dans les films. :)
+here we go!
+
+Une description des termes utilises.
+
+ - controller
+	C'est le terme technique pour un feu de circulation et ca va etre
+	rapporte comme ca.
+
+ - UTC
+	Urban Traffic Control [Controle de la Circulation Urbaine],
+	transistors connectes a un ordinateur central par PSTN. Etablit le
+	standard de communication pour les controllers (voir fig. 1)
+
+ - SCOOT
+	Split Cycle Offset Optimization Technique. [Technique d'Optimisation
+	d'Offset par Separation de Cycle]
+	Un standard maintenant implemente sur la majorite des systemes de
+	circulation routiere a travers le monde. Cela permet un controle
+	adapte des controllers, qui est effectue par le bureau de controle.
+	Il recoit les donnees du traffic routier de boucles fermees autour
+	de l'intersection, qui sont analysees, et renvoit la configuration
+	courante en temps reel au controller.
+
+ - ITS
+	Intelligent Transport System, c'est juste un mot oral pour decrire
+	le systeme couvrant tout, UTC, SCOOT, CCTV (video) et la pile de
+	protocoles les reliant tous. (voir fig.2)
+
+ - NTCIP
+	C'est le protocole qui est en passe de devenir un standard pour la
+	gestion des communications de la circulation routiere. Il est base
+	sur TCP/IP et tourne autour de SNMP qui des MIB specifiques pour
+	l'usage dans les messages aux controllers. (le protocole peut varier
+	de pays en pays)
+	Certains controllers aux USA sont compatibles NTCIP, a savoir Thereon
+	et le modele 170 des controllers NEMA. CCTV, VMS, Fields Processors,
+	Ramp metering sont tous relies via NTCIP.
+
+ - ATC
+	Area Traffic Control [Controle des Zones de Circulation], c'est le
+	bureau central qui controle tous les aspects de la gestion du
+	controle de la circulation routiere.
+
+ - FEP
+	Front End Processor, Virtual Processing pour les controllers. Localise
+	avant l'ordinateur de gestion, et connecte directement aux controllers
+	via installation par le modem rack ou via le hardware de telemetrie.
+	Un FEP supporte jusqu'a 512 lignes PSTN.
+
+ - OTU
+	Au Royame Uni c'est le Outstation Transmission Unit [Unite
+	de Transmission aux Stations Exterieures], cela fournit les moyens de
+	convertir les donnees serie venant de l'ordinateur central en donnees
+	paralleles pour le controleur, et fournit l'interchangeabilite des
+	controllers.
+	(Je ne suis pas sur que ce systeme soit un standard a travers le monde,
+	pour l'Afrique du Sud cela est effectue par un CCIU : Controller
+	Communication Interface Unit [Unite d'Interface de Communication avec le
+	Controller)
+
+ - CMU
+	Cabinet Monitoring Unit [Unite de Surveillance des Armoires], c'est ce
+	qui detecte quand vous fraudez dans la boite juste a cote de la route.
+	Ca rapporte les erreurs hardware/software et emballe les donnees pour
+	rapporter au FEP et ATC.
+
+
+
+Figure 1. Differants arrangements de liens
+-----------------------------------------
+
+                      ---0 jonction 1
+                     /
+   0----------------0----0 jonction 2
+ BUREAU    ECHANGEUR \ 
+ CENTRAL        LOCAL ---0 jonction 3
+
+              [UTC Radial Arrangement]
+
+
+                  ---0  jonction 1
+                 /    \
+   0------------0      \
+  B.C          E.L   0-- jonction 2
+                       /
+                      /
+                     0 jonction 3
+
+           [UK Multi-drop UTC arrangement]
+
+
+
+Figure 2.  Topologies ITS
+-------------------------
+
+         ________     ________        ________
+        |COMPUTER|---|COMPUTER|------|COMPUTER|
+        `--------'   `--------'      `--------'
+  (coax)    |_____        |  (dialup)    |__    (radio)
+                  |       |                 |
+      __________  |   ____|_____       _____|_____
+     |CONTROLLER|-|  |  MASTER  |__   |FIELD PROC.|__
+     `----------' |  `----------'  |  `-----------'  |
+      __________  |   __________   |   ___________   |
+     | VAX/VMS  |-|  |  VAX/VMS |__|  |CCTV CAMERA|__|
+     `----------' |  `----------'  |  `-----------'  |
+      __________  |   __________   |   ___________   |
+     |COUNTSTION|-|  |CONTROLLER|__|  |CONTROLLER |__|
+     `----------'    `----------'     `-----------'  |
+                                       ___________   |
+                                      | VAX/VMS   |__|
+                                      `-----------'
+
+   (Liens Physiques  (Liens Physiques  (Liens Physiques
+    EIA 232)          FSK-modem)        Fibres)
+
+
+
+
+Introduction
+------------
+
+Les boxes de controle de la circulation que vous pouvez voir sur la route ont
+toutes une configuration standard mise a l'origine, mais elles sont toutes
+reliees a un bureau central pour modification de la configuration a distance,
+report d'erreurs, remise a zero, etc.
+Le ATC heberge un FEP qui se connecte a chaque controller ou a l'echangeur
+local.
+Le FEP est la connection reseau directe au controller et fait des requetes au
+controller toutes les n secondes et recoit ls reponses qui sont transportees
+a l'ordinateur de control central (OS/2 ou ALPHA VAX en Afrique du Sud et au
+Royaume Uni) via DECnet sur des cables coaxiaux ou d'autres moyens via le LAN.
+L'ordinateur de controle analyse ensuite les resultats et determine les erreurs
+ou les autres donnees et les place dans la base de donnee de controle contral
+sur un VAX/VMS. La base de donnees est ensuite muine des priorites et est
+accessible via une interface web sur l'intranet local pour voir les rapports
+d'erreurs et les infos de timing.
+
+Quand une reconfiguration est sortie, un operateur peut mettre toutes les
+configurations a distance meme si un une remise a zero totale du controller est
+requise. Cela inclut les timings de streams (les streams sont les differantes
+configurations de timing), heure locale, reduction de la lumiere, streams
+d'urgence (pour les ambulances et les choses de ce genre), les differants
+settings seront discutes plus tard. Quand l'operateur demande un changement
+dans la configuration, cela est envoye au FEP dans un gros datagrame qui est
+divise et module pour les communication avec le controller. Les protocoles
+entre le OTU/CCIU et le FEP n'est d'habitude pas un standard, et des protocoles
+proprietaires sont installes par le constructeur des unites.
+
+Nous montrons un diagrame de comment UTC est relie (fig. 3)
+
+figure 3. Diagrame du protocole et du lien physique du systeme UTC
+------------------------------------------------------------------
+                            ATC                  DANS LA BOITE DU CONTROLLER
+   ____________                           :
+  |UTC COMPUTER|           RS232 SERIAL   :
+  `------------'                          :         SERIAL
+         |                    ___ ______  :   _____   :   ________
+         | DECnet-> _______  |___|MODEM |-/--|MODEM|-----|OTU/CCIU|
+TCP/IP   |---------|  FEP  |_|___| RACK | :  `-----'     `--------'
+ETHERNET |         `-------' |___`------' :                  | RS232
+LAN   -> |                                :                  | SERIAL
+         | (NTCIP inclus     )            :               ___|______
+         |   protocoles                   :              |CONTROLLER|
+         |    _______                     :              `----------'
+         |___|       |                    :
+             `-------'                    :
+             divers appareils             :
+             comme VAX/VMS pour           :
+             la surveillance
+             des erreurs et autres.
+
+
+La communication entre le controller et le ATC est faite via un signal bit
+stream ou certains bits representent une fonction preprogrammee dans un
+controller.
+Un bit stream serie seconde par seconde est recu par chaque controller en
+continu et est converti en parallele pour l'usage interne dans le controller.
+Le stream consiste en 16 bits, ainsi 32 connections paralleles peuvent etre
+initiees avec le controller, et certains bits stream controlent certaines
+fonctions et quelques-unes ont une valeur de retour par exemple pour notifier
+au controller quel stream est actuellement en cours. La communication pourrait
+sembler similaire a ceci :
+
+1001011011011101 envoye
+1000101111010101 recu
+
+Comme il est dit, le protocole de communication est plus que probablement
+proprietaire et donc non-standard . ie. Le bit de controle 10 pourrait
+signifier "mettre max duree vert 30s" et dans un autre "tenir les vehicules a
+l'arret". Mais, globalement, selon les standards ATC, il y a deux ou trois
+standards comme le control du stream, le controle des urgences et d'autres
+caracteristiques plutot chic.
+
+Mais ce n'est pas important car l'acces a l'ordinateur de controle est de
+toute facon necessaire pour le controle du controller, et ainsi le protocole
+specifique utilise n'a pas d'importance.
+
+
+----------------------------------------------
+details techniques des communications, yummy!
+----------------------------------------------
+
+messages UTC
+------------
+
+Ci-dessous est une description de la communication entre le controller et le
+ATC. UTC est le systeme qui est actuellement utilise dans la majorite des
+centres ATC a travers le monde. Et la communication est presque standard.
+Les messages specifiques de bits de donnees peuvent etre differants dans des
+pays differants des le moment ou c'est fait de facon proprietaire par le
+controller et le contructeur du systeme. Mais ils tendent a poser le standard,
+l'Afrique du Sud est basee sur le systeme Britanique, et le systeme Britanique
+est le meme qu'en Amerique, et donc tout cela va revenir au meme, sauf pour
+les fonctions specifiques des zones.
+
+Bits de Controle et de Reponse UTC (Fn = F1,F2,F3...Differants niveaux,
+----------------------------------                      pareil pour Dx)
+Controle                   Description                            Reponse
+
+Dn (ou Dx)    Demande etage individuel                               SDn/SDx
+Fn            Force l'etage
+FM            Mode reculer                                           FC
+HI            Empecher appel presse
+              Confirmation etage, etage n                            Gn
+              Controle manuel                                        MC
+              Vehicule d'urgence                                     EV
+              Defaut de lampe rouge 1 du vehicule                    RF1
+              Defaut de lampe rouge 2 du vehicule                    RF2
+SFn           Facilite a switcher                                    Scn
+SO            Passer outre le soleil
+SG            Syncronisation du groupe temps CLF                     CG
+LO            Lampes On/Off                                          LE
+LL            Inhibition du lien local
+TS            Valeur enregistree de syncronisation du switch timer
+TO            Take Over
+TC            Confirmation de la transmission
+CP            Fermer  voiure garee                                   CL
+              Moniteur de detection d'erreur                         DF
+              Groupe temps CLF dans le premier groupe                GR1
+              Reconnexion a distance                                 RR
+              Entree dans le log des erreurs du controller           CF
+              [Handset connected]                                    TF
+              Erreur de la lampe                                     LFn
+              [car park occup thresh exeeded]                        CA
+              Confirmer le vert pour les pietons                     PC
+              Detecteur de presence de queue                         VQ
+               [NDT : ah, tiens, jacob, on parle de toi la ;) ]
+              Compte du detecteur de vehicules                       VC
+              Information parking voiture                            CSn
+              Queue dans la reserve d'entree du parking voiture      CR
+              Detecteur de presence SCOOT                            Vsn
+              Ouvrir la porte de l'armoire                           CO
+PV            Tenir les vehicules a l'arret
+PX            Demande pietons au sol
+              [Puffin Clearance Period]                              PR
+              Confirmation du vert pour les vehicules                GX
+              Confirmation de l'indicateur d'attente                 WI
+
+Un controller est normalement installe pour recevoir de 16 a 32 bits de
+bits de controle a quoi le controller repond par un datagrame de reponse.
+(notez que les fonctions SCOOT specifiques sont effectuees de meme)
+
+Message reponse UTC typique :
+
+Bits 1,2 bits de controle (addresse 2)
+Bit 3 (F1,F2,F3,D2,D3,DX,SO,-)   (check la table ci-dessus pour une desription
+                                   des bits)
+Bit 4 (-,-,-,-,-,-,-,RT)
+
+0 0 0 0 0 0 1 0 0 1 0 1 0 0 1 0 0 0 0 0 0 0 0 0
+
+La communication est faite de facon asynchrone et dans le controller
+representee comme parallele, alors que dans le FEP elle est en serie. La
+modulation peut etre faite soit par le FEP soit par l'installation de cartes
+specifiques au controller.
+
+
+Messages NTCIP (UK et quelques ATC's aux USA)
+---------------------------------------------
+
+Je ne vais pas discuter du systeme specifique de messages NTCIP parce que cela
+n'est pas encore pose comme un standard, et surtout, parce que je n'ai pas eu le
+plaisir de jouer avec. Les Etats-Unis (sauf NY et d'autres grandes villes),
+l'Afrique du Sud, la Namibie et je pense la majorite des pays a travers le
+monde utilisent toujours SCOOT capable UTC de facon primaire alors que le
+Royaume Uni l'adopte comme un standart.
+
+La pile NTCIP :
+
+Couche               Classe A        Classe B        Classe C
+------------------------------------------------------------------
+Application (7)      SNMP/STMP       SNMP/STMP       SNMP/STMP/FTP
+Presentation (6)     -               -               -
+Session (5)          -               -               -
+Transport (4)        UDP             -               TCP/UDP
+Reseau (3)           IP              Null            IP
+Lien de donnee (2)   HDLC            HDLC            HDLC
+Physique (1)         RS232/FSK       RS232/FSK       RS232/FSK
+
+A et C ne sont pas des standards mais peuvent etre utilisees. Pour la
+compatibilite tcp et le routage.
+A et C peuvent etre implementees aussi bien que des piles TCP/IP
+additionnelles.
+
+B est definie comme un standard et est utilisee pour des echanges de donnees
+a bande passante performante mais ne fournit pas l'assurance de la delivrance,
+c'est fait au tour par la couche physique pour les retransmission necessaires.
+
+B ne contient que trois couches, application, lien de donnee, couche physique.
+C'est parce que la ligne constante entre le bureau et le controller est fixee
+donc aucun routage n'est necessaire ; de plus SNMP inclut les fonctions de
+connection.
+
+NTCIP et SNMP et un peu de SMTP :
+
+Commandes SNMP :
+-get
+-set
+-get Next/get Bulk
+-trap
+
+Le manager (ATC) peut envoyer la commande 'get' pour retirer des informations
+de l'agent (controller) et attend une reponse. Mais SNMP de fournit pas
+l'agent pour intitier le contact, et donc le manager sonde periodiquement avec
+la commande 'trap'. C'est fait a chaque seconde.
+
+La frame SNMP habituelle est de 37 octets
+----------------------------------------------------------------------------
+|ver|community|command|req id|error status|error index|objct id|objct value|
+----------------------------------------------------------------------------
+
+ver =
+	SNMP v1 -NTCIP v2 inclut des fonctionnalites de securite qu'ils ont
+        pensees comme un gachis de bande passante- ;)
+
+Id flag =
+	est utilise pour coupler les messages et les reponses.
+
+community name =
+	essentiellement un mot de passe
+
+noyau du message dans Object ID et Value =
+	les donnees de controle du controller et la section de reponse
+
+SNMP est un protocole mangeur de bande passante, donc ils ont designe le STMP
+(simple transportation management protocol) [protocole de simple gestion de
+transport) qui est une version simplifiee de SNMP. Cela utilise les memes
+commandes mais a le bienfait ajoute de ne pas avoir d'entete et d'utiliser des
+objets dynamiques. Les objets dynamiques peuvent inclure un certain nombre de
+variables comme le temps, la date, l'annee et tout en un seul objet. Les
+objets sont definis en ligne et les parties stations interieures et
+exterieures connaissent ce que les objets decrivent et ainsi juste une simple
+valeur a besoin d'etre transmise. La taille habituelle d'un message STMP est
+1 octet, avec un maximum de 13 objets dynamiques.
+
+
+Comparaisons entre les messages UTC et NTCIP
+--------------------------------------------------
+                         UK UTC             NTCIP classe B
+Cycle de sonde           1s                 1s
+Taille du message        Fixee              Variable
+Variables materielles
+transmises               Toutes             Seuls les parametres a changer
+Valeur des variables
+materielles              bit                Entier ou bit
+Protocoles               proprietaires      standardises
+
+
+
+-----------------------------------------------
+Hacking the Traffic lights GOdDamnit! #$@#%@#%
+-----------------------------------------------
+
+Ok je veux sauver l'environnement maintenant, avec ma nouvelle UhbEr
+technique.
+
+A la base, l'idee est d'obtenir un acces a la base de donnees VAX/VMS ou a
+l'ordinateur de controle en lui-meme. Maintenant, comme cela est dans un LAN
+interne, et utilise DECnet, nous devons trouver des idees intelligentes pour
+entrer.
+
+Un peu de social engineering peut vous aider grandement.
+Telephonez a votre municipalite locale, ou checkez sur les sites web, journaux
+ou n'importe ou, ou est situe le ATC. Maintenant, vous aurez le numero ou
+contacter les gens qui y travaillent, peut-etre un numero pour rapporter les
+erreurs. Sortez votre wardialer et commencez a scanner le prefixe. Ils ont
+surement un serveur ou ils dialup pour donner une tache a un nouveau
+controller ou quand ils ont besoin d'un d/l de software dans la place. En
+Afrique du Sud c'est un ordinateur sous DOS avec pc-anywhere dessus. Mais
+s'ils sont intelligents, comme tous les centres que j'ai vus, ils auront
+surement une fonction de rappel, sinon vous avez de la chance car apres vous
+etes directement relie au LAN interne, et pourriez commencer a hacker le VAX
+ou le FEP. Notez : le FEP est normalement un systeme proprietaire, comme en
+Afrique du Sud, sous DOS avec des protocoles de communications en serie. Mieux
+ : l'obtention d'un acces a l'ordinateur VAX/OS2 de controle comme systeme
+plus familier, bien que le FEP a plus de controle sur le systeme de messages
+au controller.
+Et vous pouvez acceder aux connections series directement au modem.
+
+Si vous etes malchanceux et avez un ATC intelligent. Vous devez inventer un
+autre moyen d'acceder au LAN interne. Dans mon experience le LAN est toujours
+connecte au WAN de la municipalite locale pour les mails et l'acces a
+l'intranet pour la base de donnees des rapports des fautes de conduite
+routiere. Maintenant pour gagner un acces au WAN local ce n'est pas si
+difficile, ils sont d'habitude tres gros et fournissent des services comme des
+sites web, serveurs de mail pour les employes municipaux et autres.
+Maintenant Hax0r-isez un serveur web ou quelque chose et backdoor-isez le
+*TRES* *TRES* bien. Vous allez en avoir bien besoin, peut-etre backdoor-isez
+en plusieurs. :)
+
+Maintenant dans le WAN local, vous pouvez probablement acceder au serveur de
+noms du LAN ATC ou vous pouvez y acceder directement. Je ne suis pas en train
+de vous fournir un tutorial de hacking, juste des moyens d'acces, donc sniffez
+les e-mails, le traffic reseau blah blah... jusqu'a ce que vous obteniez un
+acces au VAX ou a l'ordinateur de controle.
+
+Maintenant une fois que vous etes dedans, backdoor-isez le *TRES* *TRES*
+*TRES* bien ;)
+Vous devriez utiliser tous les outils et conneries pour se cacher dans un vax,
+regardez dans phrack pour le hacking VAX/VMS [NDT : traducteurs siouplet ;-)]
+Il y a de jolis outils pour se cacher des SHOW USER, et des trucs ecrits par
+mentor et d'autres. Et une fois que vous etes dedans, regardez ce qui est sur
+le DECnet, et peut-etre voyez si c'est relie a d'autres ATC's.
+De la vous pouvez acceder aux ordinateurs de controle, aux FEP's et a tout.
+Essayez de voir les connections serie directement via le FEP ou de voir la
+communication depuis l'ordinateur de controle, donc vous pouvez calculer le
+format des messages aux controllers. Ou, si vous etes chanceux, vous pouvez
+acceder au programe utilise pour les messages en lui-meme, s'il est utilisable
+a partir d'un terminal [terminal friendly].
+
+A present trouvez un controller dont vous connaissez la localistaion, les
+addresses sont assez faciles a calculer, la plupart du temps navigez juste
+dans la base de donnees VAX ou des rapports d'erreurs ou checkez l'intranet
+local. Maintenant construisez un message et un datagrame convenable des
+donnees capturees, et faites-lui faire quelque chose de remarquable comme :
+UTC message - PX   DEMANDE PASSAGE PIETON
+Par chance, vous avez un ordinateur portable ou quelque chose, allez au
+controller auquel vous avez l'intention de lancer le message. Maintenant vous
+allez remarquer que tout cela est fait sur tcp/ip, depuis que vous vous etes
+relie au LAN ou vous allez dans le DECnet VAX/VMS et autour de l'ordinateur de
+controle/FEP. Donc envoyez la commande et regardez si le controller vous obeit.
+Si il le fait alors vous pouvez scripter la procedure entiere ;).
+Faites de jolis timings pour des voyages cools pour l'ENVIRONNEMENT entre les
+destinations A et B. Les commandes pour forcer un passage sont egalement sont
+chouettes a avoir,   UTC message - Fn   ; maintenant si vous etes cloue au sol
+par un feu rouge, et que vous etes juste en train de mettre de la pollution
+dans l'air, forcez le passage suivant dans le stream et vous roulerez sans la
+culpabilite de griller un feu rouge ;)
+
+Encore, si vous etes en train de vous balader dans le LAN, surveillez les
+infos chics comme le source du logiciel de la societe des controllers, car ce
+logiciels est update vraiment souvent. Cela va peut-etre s'appliquer au
+serveur de dialup ou a quelque serveur FTP interne.
+La frequence exacte et la sequence de bit utilisees pour initier le cycle
+d'urgence dans les controllers, pour les ambulances et les vheicules d'urgence
+est egalement sympa.
+Il y a aussi le software qui est utilise pour donner des taches aux controllers
+et l'unite de main pour le monitoring du champ.
+
+Bien entendu hacker le systeme de circulation routiere peut etre miserable et
+avoir des effets desastreux, mais je sens que si vous avez les competances
+pour acceder a un systeme comme celui-la, alors vous aurez le bon-sens de ne
+pas le fsck.
+
+
+|=[ EOF ]=---------------------------------------------------------------=|
+
+
+Traduction par [DegenereScience]DecereBrain, le 14 Janvier 2003, 18:02

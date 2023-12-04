@@ -1,0 +1,2406 @@
+
+                             ==Phrack Inc.==
+
+               Volume 0x0b, Issue 0x3c, Phile #0x09 of 0x10
+
+
+|=-------------------=[ Big Loop Integer Protection]=------------------=|
+|=----------------------------------------------------------------------------=|
+|=-----------=[ Oded Horovitz ohorovitz@entercept.com ]=----------=|
+
+--[ Table des matieres
+
+  1 - Introduction
+
+
+  2 - Partie I - Problemes de nombres entiers
+    2.1 - Introduction
+    2.2 Exemples de codes basiques
+
+
+  3 - Partie II - Modele d'exploitation
+    3.1 - Une entree, deux interpretations
+    3.2 - Quelle est la nature de l'entree ?
+    3.3 - Detection suggeree
+
+
+  4 - Partie III - Implementation
+    4.1 - Introduction
+    4.2 - Pourquoi gcc ?
+    4.3 - Quelques mots a propos de gcc
+        4.3.1 - Flux de compilation
+	4.3.2 - Le AST
+	4.3.3 - Demarrons
+    4.4 - Buts du patch
+    4.5 - Passage en revue du patch
+        4.5.1 - Tactique
+	4.5.2 - Modifions le AST
+    4.6 - Limites
+
+
+  5 - References
+
+
+  6 - Remerciements
+
+
+  7 - Annexe A - Des exemples dans la vraie vie
+    7.1 - Encodage de Apache Chunked
+    7.2 - Authentification OpenSSH
+
+
+  8 - Annexe B - Utilisons blip
+
+
+--[ 1 - Introduction
+
+Les failes de debordement de nombres entiers et de signe de nombres entiers 
+sont aujourd'hui connues de tous/toutes. Ceci a mene a une exploitation
+avancee des failles du meme genre. L'article tentera de suggerer un moyen 
+de detecter ces failles en ajoutant un support au compilateur qui detecte
+et signale les exploitations de failles integer. Un patch pour gcc est
+specialement presente pour demontrer la faisabilite de cette technique.
+
+L'article est divise en trois parties. La premiere contient une breve 
+introduction a plusieurs des failles communes basees sur des integers. Nous 
+listons plusieurs des failles publiques recentes. La deuxieme partie de
+l'article tente d'expliquer la cause premiere du probleme des failles 
+integer. En utilisant de vrais exemples, l'article explique en 
+premier lieu pourquoi l'exploitation est possible, et comment il serait 
+possible de detecter l'exploitation de failles intger, meme quand la faille 
+n'est pas connue d'avance. La troisieme partie passe en revue
+l'implementation du plan de detection suggere. Comme la forme de cette 
+implementation de ce plan de detection suggere est un patch de gcc, des 
+informations d'introduction a propos du fonctionnement interne de gcc sont 
+donnees. Nous resummons l'article en demontrant la protection en action 
+contre OpenSSH et les paquetages htppd de Apache
+
+
+--[ 2 - Partie I - Problemes de nombres entiers
+
+----[ 2.1 - Introduction
+
+Au cours de l'annee derniere l'attention semble s'etre tournee vers une 
+nouvelle mauvaise pratique de programmation. Cette pratique a a voir avec 
+la possibilite de deborder des nombres entiers ce qui cause des
+debordements de tampons. Il se trouve que les tres populaires et
+(soit-disant) tres securises paquetages de logiciels (OpenSSH, Apache, *BSD
+kernel) partagent cette faille. La cause premiere de cette mauvaise
+pratique est l'insuffisante verification d'entree pour les entrees de type
+integer. L'entree de nombres entiers semble tellement naive, seulement
+longue de quelques bits. Qu'est ce qui peut aller mal ici ? Et bien, il
+semble que beaucoup de choses peuvent aller mal. Ce qui suit est un tableau
+des failles liees a des nombres entiers prises des listes de securite de
+OpenBSD et FreeBSD. Toutes les failles ont ete rapportees pendant l'annee
+2002.
+
+--------------------------------------------------------------------------
+| Paquetage vulnerable   | Courte description de la faille               |
+--------------------------------------------------------------------------
+| OpenBSD select syscall | Le test de la limite positive contre les      |
+| (See reference [4])    | valeurs entieres permet un debordement de pile|
+--------------------------------------------------------------------------
+| RPC xdr_array          | Un integer overflow cause une allocation de   |
+|                        | petit tampon qui est overflow-e par l'entree  |
+--------------------------------------------------------------------------
+| OpenSSH Authentication | Un integer overflow cause une allocation de   |
+|                        | petit tampon qui est overflow-e par l'entree  |
+--------------------------------------------------------------------------
+| Apache chunked-encoding| La condition positive faite sur les entiers   |
+|                        | signes permet un heap overflow                |
+--------------------------------------------------------------------------
+|                        | La condition positive faite sur les entiers   |
+| FreeBSD get_pallette   | signes permet une fuite d'informations        |
+|                        | de l'espace noyau vers l'espace utilisateur   |
+--------------------------------------------------------------------------
+| FreeBSD accept1,getsoc-| La condition positive faite sur les entiers   |
+| kname1,getpeername1    | signes permet une fuite d'informations        |
+|                        | de l'espace noyau vers l'espace utilisateur   |
+--------------------------------------------------------------------------
+ Table 1 - Exemple de failles integer dans l'annee 2002.
+
+Le probleme commun qui existe dans toutes les failles ci-dessus est qu'une 
+entree de type integer (signe ou non-signe) etait utilisee pour declencher 
+l'overflow (en ecriture) ou une fuite d'information (en lecture) vers/en 
+provenance des tampons du programme. Toutes les failles ci-dessus auraient 
+ete evitees si des limites propres avaient ete mises en vigueur.
+
+Les failles integer peuvent etre illustree plus en avant en regardant les 
+deux simples exemples de code suivants :
+
+Example 1 (int overflow):
+-------------------------
+01	int main(int argc,char* argv[]){
+
+02		unsigned int len,i;
+03		char	*buf;
+
+04		if(argc != 3) return -1;
+
+05		len=atoi(argv[1]);
+
+06		buf = (char*)malloc(len+1);
+07		if(!buf){
+08			printf("Allocation echouee\n");
+09			return -1;
+10		}
+
+11		for(i=0; i < len; i++){
+12			buf[i] = _toupper(argv[2][i]);
+13		}
+14		buf[i]=0;
+
+15		printf("%s\n",buf);
+16	}
+
+Le code ci-dessus semble tout a fait regulier. Le programe convertit
+une chaine de caracteres en sa representation en majuscules. D'abord
+il alloue assez d'espace pour la chaine et le caractere de
+terminaison NULL. Ensuite il convertit chaque caractere en sa valeur
+en majuscule. Mais quand on y regarde d'un peu plus pres, nous pouvons
+identifier deux problemes majeurs dans le code. D'une part  le programe
+fait confiance a l'utilisateur pour avoir autant de caracteres qu'il
+le specifie (ce qui n'est evidemment pas le ca) (ligne 5). D'autre
+part le programe ne tient pas compte du fait qu'en calculant l'espace
+a allouer, un integer overflow pourrait se produire (ligne 6). En
+essayant de generaliser le probleme, le premier bug peut permettre a
+l'attaquant de lire l'information qu'il ne fournit pas (en faisant
+confiance a l'entree de l'utilisateur et en lisant les caracteres
+*len* en provenance de argv[2]). Le second bug permet a l'attaquant de
+faire un heap overflow avec ses propres donnees, et par consequent de
+compromettre totalement le programe.
+
+Example 2 (outrepassage des tests de signe ):
+------------------------------
+01	#define BUF_SIZE 10
+02	int	max = BUF_SIZE;
+
+03	int main(int argc,char* argv[]){
+
+04		int		len;
+05		char	buf[BUF_SIZE];
+
+06		if(argc != 3) return -1;
+
+07		len=atoi(argv[1]);
+
+08		if(len < max){
+09			memcpy(buf,argv[2],len);
+10			printf("Donnees copiees\n");
+11		}
+12		else
+13			printf("Trop de donnees\n");
+
+
+14	}
+
+Le second exemple montre un programe qui a l'intention de resoudre le
+probleme presente dans le premier exemple, en tentant de mettre en
+vigueur une longueur d'entree utilisateur a une valeur maximale connue
+et predefinie. Le probleme dans ce code est que len est definit comme
+un entier signe. Dans ce cas uns tres grosse valeur (non-signee bien
+entendu) est interpretee comme une valeur negative (ligne 8), qui
+outrepassera le est de limite. Encore, a la ligne 9 la meme valeur est
+interpretee comme un nombre positif non-signe causant uun debordement
+de tampon et permettant une possible compromission totale.
+
+--[ 3 - Partie II - Modele d'exploitation
+
+----[ 3.1 - Une entree, deux interpretations
+
+Alors quel est le vrai probleme ? Comment de tels packetages orientes
+securite ont ces failles ? La reponse est que les entrees d'integer
+ont parfois une interpretation ambigue a differantes parties du code
+(les entiers peut changer de signe a differantes valeurs, type cast
+implicite, integer overflows). Cette interpretation ambigue est
+difficile a remarquer en implementant du code de validation d'entree.
+
+Pour expliquer cette ambiguite laissez-nous regarder le premier
+exemple. Au moment de l'allocation (ligne 6), le code croit que comme
+l'entree est un nombre, alors ajouter un autre nombre produira un gros
+nombre (len+1). Mais comme le langage C habituel ignore les les
+integer overflows que la nombre particulier 0xffffffff ne s'applique
+pas a cet essai et produira un reultat innattendu. Malheureusement, la
+meme erreur nest *PAS* repetee plus tars dans le code. Par consequent
+la meme entree 0xffffffff interpretee cette fois comme une valeur
+non-signee (un enorme nombre positif).
+
+Dans le second exemple l'ambiguite de l'entree est encore plus
+evidente. Le code inclut un casting de type silencieux genere par le
+compilateur quand il appelle memcpy. Par consequent le code teste la
+valeur de l'entree comme si c'etait un nombre signe (ligne 8) pendant
+qu'il l'utilise pour copier des donnees comme si c'etait non-signe
+(ligne 9).
+
+Cette ambiguite est invisible pour l'oeil du coder, et peut ne pas
+etre detecte, lassant le code vulnerable a cette attaque "furtive".
+
+----[ 3.2 - Quelle est la nature de l'entree?
+
+En regardant en arriere les exemples ci-dessus revelent unn sens
+commun pour l'entree de l'attaquant. (Desole si les quelques lignes a
+venir expliquent l'evidence :>)
+L'entree du dessus est un nombre pour une raison. C'est un compteur !
+Cela compte des items ! Pas d'importance ce que sont ces "items"
+(octets, caracteres, objets, fichiers, etc.). Ce sont de tranquilles
+quantites comptables d'items. Et que pouvez-vous faire avec un
+compteur ? Eh bien, vous etes probablement en train de faire quelques
+comptes. En remarque je dirais que *tout* nombre n'est pas aussi un
+compteur. Il y a beaucoup d'autres raisons d'avoir des nombres
+autour. Mais le seul qui ait quelque chose a voir avec les failles
+integer sont la plupart du temps des "compteurs".
+
+Par exemple, si le compte est pour deviner les reponses vous voudriez
+peut-etre lire "compte" la somme des reponses (OpenSSH). Ou si le
+compte est une longueur de tampon vous voudriez peut-etre copiez
+"compte" la somme d'octets de d'un endroit de la memoire vers l'autre
+(Apache httpd).
+
+La ligne du bas est que quelque part derriere ce nombre il y a la
+"boucle" propre dans le code qui fera des processus, et elle les fera
+"compte" fois. Cette "boucle" pourrait avoir de multiples formes comme
+la boucle for dans le premier exemple, ou comme une boucle implicite
+dans memcpy. Toutes ces sortes de boucles se terminerons apres le
+"compte".
+
+----[ 3.3 - Detection suggeree
+
+OK, qu'avons-nous a faire a propos de ces failles ?
+- L'entree etait utilisee de maniere ambigue dans le code.
+- Quelque par dans le code il y a une boucle qui utilise l'entree de
+nombre entier comme un compteur d'iteration.
+
+Pour l'interpretation du nombre ambigu, l'attaquant doit envoyer un
+enorme nombre. En regardant le premier exemple nous voyons que pour
+faire que le nombre soit ambigu l'attaquant avait besoin d'envoyer un
+tel nombre que si on fait (len+1) le nombre va deborder. Pour que cela
+arrive l'attaquant devra envoyer la valeur 0xffffffff. En regardant le
+second exemple, pour l'interpretation du nombre ambigu, l'attaquant a
+besoin d'envoyer un tel nombre qu'il va tomber dans le rang negative
+d'un entier 0x80000000-0xffffffff.
+
+Le meme nombre enorme envoye par l'attaquant pour declencher la faille
+est plus tard utilise dans une boucle comme le compteur d'iterations
+(comme decrit dans la section "Quelle est la nature de l'entree ?").
+
+A present analysons le processus de l'exploit :
+
+1. L'attaquant veut deborder un tampon.
+2. L'attaquant pourrait utiliser une faille integer.
+3. L'attaquant envoie un enorme entier pour declencher la faille.
+4. Le compte de la boucle s'execute (probablement) en utilisant
+l'entree de l'attaquant comme borne de la boucle.
+5. Un tampon est deborde (aux premieres iterations de la boucle !)
+
+Par consequent detecter (et prevenir) l'exploitation d'une faille
+integer est possible en validant les bornes de la boucle avant son
+execution. La validation de la boucle testera si la limite de boucle
+n'est pas au dessus d'un seuil predefini, et si la limite est pus
+haute que le seuil un handler special sera declenche pour s'occuper de
+la possible exploitation.
+
+Comme la valeur requise pour declencher la plupart les failles
+integer est enorme, nous pouvons supposer (esperer) que la plupart des
+boucles legitimes ne declencherons pas cette protection.
+
+Pour avoir une idee de quelles valeurs nous nous attendons a voir dans
+les failles integer, examinons les exemples suivants :
+
+- Allocation d'un tampon pour les donnees de l'utilisateur et les
+  donnees du programme
+
+Ca ressemble a : buf = malloc(len + sizeof(header));
+
+Dans ce cas la valeur requise pour declencher un integer verflow est
+tres pres de 0xffffffff car les tailles des structures de la plupart
+des programmes sont de l'ordre de plusieurs octets a des centaines
+d'octets au plus.
+
+- Allocation de tableau
+
+Ca ressemble a : buf = malloc(len * sizeof(object));
+
+Dans ce cas la valeur requise pour declencher l'overflow pourrait etre
+bien plus petite que dans le premier exemple mais c'est toujours une
+valeur relativement grande. Par exemple si sizeof(object) == 4 alors
+la valeur devrait etre plus grande que 0x40000000 (un giga). De meme
+si sizeof(object)== 64 alors la valeur devrait etre plus grande que
+0x4000000 (64 megas) pour causer un overflow.
+
+- Tomber dans l'ordre negatif
+
+Dans ce cas la valeur requise pour faire un nombre negatif est
+n'importe quel nombre plus grand que 0x7fffffff.
+
+
+En regardant les valeurs requises pour declencher la faille integer,
+nous pouvons choisir un seuil comme 0x40000000 (un giga) qui va
+prendre en main la plupart des cas. Ou nous pouvons choisir un seuil
+plus petit pour une meilleure protection, qui pourrait declencher des
+faux-positifs.
+
+--[ 4 - Partie III - Implementation
+
+----[ 4.1 - Introduction
+
+Une fois que nous avons un moyen de detecter les attaques integer, ce
+sera joli d'implementer un systeme base sur cette idee. Un candidat
+possible l'implementation de se systeme est d'etendre un compilateur
+existant. Comme le compilateur est au courant de toutes les boucles
+dans l'application, il sera possible pour le compilateur d'ajouter les
+tests de securite appropries avant tout "comptage de boucle". Faire
+comme ceci securisera l'application sans aucune connaissance de la
+faille specifique.
+
+Par consequent j'ai choisi d'implementer ce systeme comme un patch
+pour gcc et de le nommer "Big Loop Integer Protection" alias
+blip. Utiliser le flag --fblip pourrait etre capable de proteger cette
+application du prochain integer exploit a etre public.
+
+----[ 4.2 - Pourquoi gcc ?
+
+Coisir gcc n'etait pas une decision difficile. D'abord ce compilateur
+est l'un des compilateurs les plus communs dans le monde GNU/Linux et
+*nix. Par consequent, patcher gcc permettra de proteger toutes les
+applications compilees avec gcc. Deuxiemement, gcc est open-source et
+donc il serait faisable d'y implementer ce patch en premier
+lieu. Troisiemement, de precedants patchs de securite furent
+implementes comme des patches pour gcc (Stackguard, ProPolice). Donc
+pourquoi pas suivre leur sagesse ?
+
+---- [ 4.2 - Quelques mots a propos de gcc
+
+Eh bien..., tout joyeux je pose que je suis sur le point de faire un
+patch pour gcc pour eviter les attaques integer. Mais, sauf cela, que
+sais-je reellement a propos de gcc ? Je dois admettre que la reponse a
+cette question etait - "pas grand chose".
+
+Pour depasser ce petit probleme, j'ai cherche de la documentation a
+propos du fonctionnement interne de gcc. J'ai egalement espere trouver
+quelque chose de similaire a ce que je voulais faire, qui existait
+deja. Assez rapidement, il devint clair qu'avant de sauter sur
+d'autres exemples, je devait comprendre la bete gcc.
+
+.. Deux semaines plus tard, j'avais lu suffisamment de la
+documentation interne de gcc et j'avais passe suffisamment de temps en
+sessiosn de debugging du compilteur pour etre capable de commencer a
+modifier le code. Malgre tout avant de commencer a aller dans les
+details je voudrais fournir quelques generalites sur comment
+fonctionne gcc, que j'espere le lecteur / la lectrice trouvera utile.
+
+------[ 4.3.1 - Flux de compilation.
+
+Le compilateur gcc est reellement une machine amusante. Les intentions
+de gcc incluent la capacite a supporter de multiples langages de
+programmation, qui peuvent plus tard etre compiles sur de multiples
+plates-formes et sets d'instructions. Pour atteindre un tel but, le
+compilateur utilise plusieurs niveaux d'abstraction./
+
+
+En premier lieu, un fichier de langage est traite (parse) par un
+"Front End" de langage. A chaque fois que vous invoquez le compilateur
+gcc, il decidera lequel des "Front End" disponibles est bon pour
+parser les fichier entree, et executera ce "Front End". Le "Front
+End" va parser le fichier entree en entier et le convertira (en
+utilisant des fonctions globales assistantes) en un "Arbre
+d'abstraction de syntaxe" (AST [ : "Abstract Syntax Tree"]). En
+faisant comme cela le compilateur fait que le langage de programmation
+d'origine devient transparant pour le le "Back End" de gcc. Le AST,
+comme son nom l'indique, est une structure de donnees, qui reside en
+memoire et qui peut representer toutes les fonctionalites de tous les
+langages de programmation que gcc supporte.
+
+A chaque fois que le "Front End" finit de parser une fonction
+complete, et la convertit en sa representation AST, une fonction de
+gcc nommee rest_of_compilation est appellee. Cette fonction prend le
+AST sorti du parser et "l'etend" en un "Langage de Transfer de
+Registre" (["Register Transfer Language"] : RTL). Le RTL, qui est la
+version "etendue" du AST, est ensuite traite encore et encore au
+travers de differantes phases de compilation.
+[NDT : et oui, RTL, comme quoi gcc, c'est pour les grosses tetes :] 
+
+Pour avoir une idee de ce qui est fait sur l'arbre RTL, voici une
+liste des differantes phases :
+ - Obtimisation des jump
+ - CSE (Common sub-expression elimination : Elimination des
+ sous-expression communes)
+ - Analyse du flux de donnees
+ - Combinaison des instructions
+ - Plan d'execution des intructions
+ - Re-ordonnancement des blocs de base
+ - Raccourcissement des branches
+ - Finale (generation du code)
+
+J'ai choisi seulement quelques phases parmi la longue liste des phases
+pour demontrer le travail effectue sur le RTL. La liste complete est
+nettement plus longue et peut etre trouvee dans les docs sur le
+fonctionnement interne de gcc (voir la sections "Demarrons" pour les
+liens vers les docs). Le truc sympa a propos du RTL est que toutes ces
+phases sont effectuees independamment de la machine cible.
+
+La derniere phase qui est effectuee sur l'arbre RTL sera la phase
+"finale". A ce point la representation est prete a etre substituee a
+d'actuelles instructions assembleur qui ont a voir avec l'architecture
+specifique. Cette phase est possible grace au fait que gcc maintient
+une definition d'abstraction des "modes machine". Un set de fichier
+qui peut decrire chaque hardware des machines supportees et un set
+d'intruction dans un sens qui rend possible de traduire le RTL en code
+approprie a la machine.
+
+------[ 4.3.3 - Le AST
+
+Je me focaliserai sur le AST, auquel je vais me referer comme
+"l'ARBRE". Cet ARBRE est la sortie du parsing du front end d'un
+fichier langage. L'ARBRE contient toute l'information existant dans le
+fichier source qui est requise pour la generation du code
+(i.e. declarations, fonctions, types,...). En plus le TREE inclut
+egalement plusieurs des attributs et des transformations implicites
+que le compilateur pourrait choisir d'effectuer (i.e. conversion de
+type, variables auto,...).
+
+Comprendre l'ARBRE est critique pour creer ce patch. Par chance,
+l'ARBRE est bien structure est meme si sa
+programmation-comme-orientee-objet-en-utilisant-le-C [NDT : y'en a
+j'vous jure ...] est accablante au debut, apres un peu de sessions de
+debugging, tout commence a se mettre en place.
+
+Le noyau de structure de donnee de l'ARBRE est le tree_node (defini
+dans tree.h). Cette structure est actuellement une grosse union qui
+peut representer n'importe quel morceau d'information. La maniere dont
+cela fonctionne est que tout noeud de l'arbre a son code, qui est
+accessible en faisant "TREE_CODE (tree node)". En utilisant ce code le
+compilateur peut savoir lesquels des champs de l'union sont appropries
+pour ce noeud (i.e. Un nombre constant aura le
+TREE_CODE() == INTEGER_CST, par consequent le node->int_cst est sur le
+point d'etre le membre de l'union qui aura l'information valide.). En
+remarque, je dirai qu'il n'y a aucun besoin d'acceder a n'importe quel
+champ de structure de noeud de l'arbre directement. Pour chaque champ
+dans cette structure il y a une macro dediee qui uniformise l'acces a
+ce champ. Dans la plupart des cas cette macro contiendra des
+verifications additionelles du noeud, et peut-etre meme de la logique
+a executer a chaque fois qu'un acces a ce champ est effectue
+(i.e. DECL_RTL qui est responsable d'extraire la representation RTL
+d'un noeud d'un arbre, appellera make_decl() si aucune expression RTL
+n'existe poiur ce noeud).
+
+Donc nous savons a propos de l'ARBRE et des noeuds, et nous savons que
+chaque noeud peut representer des choses differantes, qu'est-t-il
+important de connaitre a propos des noeuds d'un arbre ? Eh bien, une
+chose est la maniere dont les noeuds d'un arbre sont lies a tous les
+autres. Je vais tenter de donner quelques exemples de scenarios qui
+representent la plupart des cas ou un noeud est relie a un autre.
+
+Reference I : Chaines :
+
+Une chaine est une relation qui peut etre mieux decrite comme une
+liste. Lorsque le compilateur a besoin de maintenir une  liste de
+noeuds *qui n'ont aucune information a propos des liens*, il utilisera
+simplement le champ chaine du noeud (accessible par la macro
+TREE_CHAIN() ). Un exemple pour un tel cas est la liste des
+declarations de noeuds dans le corps d'une fonction. Pouir chaque
+declaration dans une liste CMOPOUND_STMT il y a une declaration de
+chaine qui represente la declaration suivante dans le code.
+
+Reference II : Listes :
+
+A chaque fois qu'une chaine simple n'est pas suffisante, le
+compilateur utilisera un noeud special de TREE_LIST. TREE_LIST permet
+au compilateur de sauvegarder des informations attachees a chaque
+objet dans la liste. Pour ce faire chaque objet dans la liste est
+represente par trois noeuds. Le premier noeud aura le code TREE_LIST.
+Ce noeud aura le pointeur TREE_CHAIN pointant sur le prochain noeud
+de la liste. Il aura le pointeur TREE_VALUE pointant sur l'objet du
+noeud actuel, et il aura egalement le pointeur TREE_PURPOSE qui
+pourrait pointer sur un autre noeud qui tient des informations
+supplementaires a propos de la signification de cet objet dans la
+liste. Par exemple le noeud du code CALL_EXPR aura un TREE_LIST comme
+seconde operande. Cette liste representera les parametres envoyes a la
+fonction appelee.
+
+Reference III : Reference directe :
+
+Plusieurs des champs du noeud d'un arbre sont eux meme des noeuds d'un
+arbre. Cela pourrait etre sujet a confusion au premier coup d'oeuil,
+mais ce sera clair assez prochainement. Quelques exemples communs
+sont :
+
+ - TREE_TYPE ce champ represent le type d'un noeud. Par exemple chaque
+noeud avec une expression de code doit avoir un type.
+
+ - DECL_NAME a chaque fois que des noeud de declaration ont un nom, il
+n'existera pas en tant que chaine de caractere pointee directement par
+le noeud de declaration. Au lieu d'utiliser DECL_NAME on peut obtenir
+l'acces a un autre noeud de code IDENTIFIER_NODE. Le second aura
+l'information demandee.
+
+ - TREE_OPERAND() L'une des commandes les plus utilisees. A chaque
+   fois qu'il y a un noeud qui a un nombre defini de noeud "fils", le
+   tableau TREE_OPERAND sera utilise (i.e. le noeud de code IF_STMT
+   aura TREE_OPERAND(t,0) comme un noeud COND_EXPR, TREE_OPERAND(t,1)
+   comme un noeud de declaration THEN_CLAUSE, et TREE_OPERAND(t,2)
+   comme noeud de declaration ELSE_CLAUSE.)
+
+Reference IV - Vecteurs :
+
+La derniere et la moins commune est le noeud vecteur. Ce conteneur,
+qui est accessible en utilisant les macros TREE_VEC_XXX, est utilise
+pour maintenir des vecteurs de tailles qui peuvent varier.
+
+Il y a beaucoup plus a savoir a propos des noeuds de l'arbre AST pour
+lesquels les documents internes de gcc auront peut-etre de meilleures
+et plus completes explications. Je vais donc stopper ici ma revue de
+AST en suggerant de lire les docs.
+
+En addition au conte des codes d'abstraction dans le AST. Il y a
+plusieurs structures globales, qui sont tres utilisees par le
+compilateur. Je tenterai d'en nommer quelques-unes de ces structures
+globales que je trouve tres utiles a verifier au cours des sessions de
+debugging.
+
+ - current_stmt_tree : fournit le dernier stmt ajoute a l'arbre, le
+type de la derniere expression, et le nom de fichier de l'expression.
+
+ - current/global_binding_level : fournit des informations de lien,
+comme les noms definis dans un niveau de lien particulier, et les
+pointeurs de blocs.
+
+ - lineno : variable contenant le numero de la ligne qui est parsee a
+ce moment
+
+ - input_filename : nom du fichier qui est parse a ce moment
+
+------[ 4.3.3 - Demarrons
+
+Si vous voulez experimenter le AST par vous-meme, ou creuser dans les
+details du patch, il est recommende de lire cette sections. Vous
+n'aurez aucun probleme a passer a la section suivante si vous ne
+voulez pas faire ceci.
+
+La premiere de toutes les choses, prenez le code source du
+compilateur. La version que j'ai utilise comme base pour ce patch est
+gcc 3.2. Pour de l'information a propos du telechargement et de la
+construction du compilateur regardez s'il vous plait
+http://gcc.gnu.org/install/ .
+
+(Rappellez-vous s'il vous plait de specifier la version du compialteur
+que vous voulez telecharger. La version par defaut pourrait etre la
+derniere sortie, qui n'a pas ete teste avec ce patch).
+
+La chose suivante que vous voudriez peut-etre faire est de vous
+asseoir et de lire attentivement les documentations internes de
+gcc. (Pour la cause de ce patch, vous devriez vous devriez etre
+familier avec la section 9 de ce document.) Le document est situe a
+http://gcc.gnu.org/onlinedocs/gccint/
+
+Supposant que vous lisez le document et que vous voulez allez au
+niveau suivant, je recommande d'avoir un set de programmes simple pour
+etre utilise comme fichier de langage du compilateur, le debugger de
+votre choix, et de commencer a debugger le compilateur. Quelques bons
+points d'arret que vous pourriez trouver utiles :
+
+ - add_stmt : appele a chaque fois que le parse decide d'ajouter une
+nouvelle declaration dans le AST. Ce point pourrait etre tres pratique
+quand le comment un noeud specifique est cree n'est pas aussi
+clair. En breakant sur add_stmt et en verifiant la pile d'appel, il
+est facile de trouver de plus interessants endroits ou creuser.
+
+ - rest_of_compiliation : appele a chaque fois qu'une fonction est
+completement convertie en une representation AST. Si vous etes
+interesse a regarder comment le AST devient RTL c'est un bon endroit
+pour debuter.
+
+ - expand_stmt : appele a chaque fois qu'une declaration est sur le
+point d'etre etendue en code RTL. Mette un point d'arret ici vous
+permettra d'investiguer facilement dans la structure d'un noeud AST
+sans le besoin d'aller au travers de niveaux niches interminables.
+
+<ASTUCE>Comme le compilateur gcc arretera d'appeler le compilateur cc1
+pour les fichiers *.c, vous voudriez peut-etre debugger cc1 dans un
+premier temps, et sauver vous-meme le trouble de faire suivre a votre
+debugger le processus fils de gcc.
+</ASTUCE>
+
+Assez rapidement vous aurez besoin de quelques references pour toutes
+les petites macros utilisee par la construction de l'arbre AST. Pour
+cela je recommende de se familiariser avec les fichiers suivants :
+
+gcc3.2/gcc/gcc/tree.h
+gcc3.2/gcc/gcc/tree.def
+
+
+----[ 4.4 - Buts du patch
+
+Comme pour chaque projet dans votre vie, vous devez definir les buts
+du projets. D'abord vous saurez mieux si vous avez atteint vos
+buts. Deuxiemement, qui n'est pas moins important, comme les
+ressources sont limitees, il est plus simple de vous proteger d'un
+projet sans fin.
+
+Les buts de ce patch etaient avant tout d'etre une preuve de concept
+pour l'expose suggere de prevention des exploits integer. Ce n'est par
+consequent *pas un but de resoudre tous les problemes actuels et
+futurs dans le monde de la securite, ou meme de resoudre tous les
+exploits qui sont lies a une entree d'integer.
+
+Le second but de cette implementation est de garder le patch
+simple. Comme le patch n'est seulement qu'une preuve de concept, nous
+avons prefere de conserver les choses simples et d'eviter les
+solutions fantaisistes si elles requierent du code plus complexe.
+
+Last but not least, le troisieme but est de rendre ce patch
+utilisable. Cela signifie simple a utiliser, intuitif et capable de
+proteger les paquetages du monde reel plus gros que 30 lignes de code
+:) .
+
+
+----[ 4.5 - Passage en revue du patch
+
+Le patch introduira un nouveau flag au compilateur gcc nomme
+"blip". En compilant un fichier en utilisant le flag -fblip, le
+compilateur genere du code qui verifira les conditions "blip" pour
+toutes les bocles for/while et pour tous les appels a des fonctions
+pareilles a des boucles.
+
+Une fonction pareille a une boucle est n'importe quelle fonction qui
+est un synonyme pour une boucle (i.e. mecpy, bcopy, memset, etc.).
+
+La verification generee evaluera si une boucle est sur le point
+de s'executer un "enorme" nombre de fois (determine par
+LIBP_MAX). A chaque fois qu'une boucle est sur le point de s'executer,
+le code genere verifie que la limite de la boucle est plus petite que
+le seuil. Si une tentative d'execution d'une boucle superieure a la
+valeur du seuil est identifiee, le handler __blip_violation() sera
+appele au lieu de la boucle, menant a une fin controlee du processus.
+
+La version actuelle du patch ne supportera que le langage C. Cette
+decision a ete prise pour garder cette premiere version du patch
+petite et simple. Egalement, tous les paquetages vulnerables que ce patch
+projetait de proteger sont ecrits en C. J'ai donc pense que n'avoir
+que le C est un bon debut.
+
+------[ 4.5.1 - Tactique
+
+Ayant en tete les buts ci-dessus, j'ai du prendre des decisions durant
+le developpement de ce patch. L'un des problemes que j'avais etait de
+choisir le bon endroit ou tailler le code. Il y a beaucoup d'options
+disponibles, et je tenterai de donner des pour et des contres pour
+chaque option, en esperant que cela aidera d'autres a prendre des
+decisions reflechies lorsqu'ils / elles rencontrerons les memes
+dilemmes.
+
+La premiere chose que je devais decider etait la representation du
+programme que je voulais modifier. Le processus de compilation
+ressemble plus ou moins a ceci :
+
+ Processus          Representation du programme
+-------------      -----------------------------
+Programmation  =>  1. Code source
+Parsing        =>         2. AST
+Etendement     =>  3. RTL
+"final"        =>         4. Fichier objet
+
+Alors quelle est la bonne place ou implementer les verifications ?
+
+Le tableau suivant liste quelques pour et contre pour la modification
+du code aux differantes etapes durat le processus de compilation.
+
++----------+----------------------------+---------------------------+
+|Etape     |Pour                        | Contre                    |
++----------+----------------------------+---------------------------+
+| AST      |- Independant de la cile    |- Pas d'acces aux registres|
+|          |- Independent du langage    |  ni aux instructions      |
+|          |- Independant des           |  materiels                |
+|          |  optimisations             |                           |
+|          |- Acces haut niveau au      |                           |
+|          |  langage "source"          |                           |
+|          |- Ajout du code intuituif   |                           |
++----------+----------------------------+---------------------------+
+| RTL      |- Independant de la cible   |- Acces de bas niveau a    |
+|          |- Independant du langage    |  la source                |
+|          |- Plein acces au materiel   |- Pourrait interferer avec |
+|          |  de la cible               |  les optimisations        |
++----------+----------------------------+---------------------------+
+| Fichier  |- Independant du langage    |- Dependent du materiel    |
+|  objet   |                            |- Manque d'information     |
+|          |                            |  de syntaxe               |
+|          |                            |- La modification du flux  |
+|          |                            | pourrait casser la logique|
+|          |                            | du compilateur            |
++----------+----------------------------+---------------------------+
+
+Apres quelques reflexions j'ai decide de modifier la representation
+AST. Cela semble etre l'endroit le plus naturel pour faire un tel
+changement. Premierement le patch n'a pas vraiment besoin d'acceder a
+des informations de bas niveau comme les registres materiels, ou meme
+les allocations de registres virtuels. Deuxiemement le patch peut
+facilement modifier le ASt pour injecter dedans de la logique sur
+mesure, alors que faire la meme chose au niveau du RTL requiererait
+des changements majeurs, qui blesserons les niveaux d'abstraction
+definis dans gcc.
+
+Resoudre mon second dilemme ne fut pas aussi simple que le premier. A
+present que le patching du AST etait le plan que j'avais en tete,
+j'avais besoin de trouver le meilleur point dans le temps ou
+j'examinerai l'arbre AST existant, et emettre mes tests
+dessus. J'avais trois options possibles.
+
+1) Ajouter un appel a ma fonction depuis le code du parser de quelques
+langages (qui passent pour etre le C). En faisant cela, j'ai la chance
+d'evaluer et de modifier l'arbre "a la volee" et par consequent sauver
+un passage supplementaire sur l'arbre plus tard. Un desavantage clair
+est que le patch devient dependant du langage.
+
+2) Attendre jusqu'a ce que la fonction entiere soit parsee par le
+front-end. Apres aller a travers l'arbre cree, avant de le convertir
+en RTL et trouiver les endroit qui requierent un test et les patcher.
+Un avantage de cette methode est que le patch n'est plus dependant du
+langage. D'un autre cote, implementer un "parcours d'arbre" qui
+scannera un arbre donne est une tache trescomplexe et source d'erreur,
+qui ira contre les buts que nous avons definits au-dessus comme un
+patch simple et utile.
+
+3) Patcher l'arbre AST *pendant* qu'il est convertit en RTL. Malgre
+que cette option semble etre la plus avantageuse (independante du
+langage, pas besoin d'un parcours d'arbre) elle a toujours un
+desavantage majeur qui est l'incertitude d'etre capable de modifier de
+maniere *sure* l'arbre AST a ce moment. Comme la "convertion machine"
+du RTL est deja faite pour certaines parties de l'arbre AST, il peut
+etre dangereux de patcher l'arbre AST a ce moment.
+
+Finalement, j'ai decide que le but de faire ce patch simple impliquait
+de choisir la premiere option d'appeler mes fonctions d'evolution
+depuis le parser C.
+
+J'ai place le grapin dans mon patch en trois endroits. Deux appels
+dans le code de c-parse.y (fichier principal du parser) permettant
+d'examiner les boucles FOR et WHILE et de les modifier a la volee. Le
+troisieme appel est localise en dehors du parser car attraper tous les
+endroits etait tres delicat a faire depuis l'interieur du
+parser. Basiquement, comme dans plein d'autres situations differantes,
+un CALL_EXPR est cree les reliant tous semble ne pas etre
+naturel. L'alternative que j'ai trouvee qui semble bien fonctionner
+pour moi, etait d'ajouter un appel a ma fonction dans
+build_function_call() a l'interieur du fichier typeck.c (constructeur
+d'expressions de verification de type du compilateur C).
+
+L'entree principale dans le patch est la fonction
+blip_check_loop_limit() qui fera tout le travail de verifier si une
+boucle semble etre approprie, et d'appeler la bonne fonction qui fera
+le patch actuel de l'arbre AST.
+
+Pour qu'une boucle soit consideree elle doit ressembler a une boucle
+de comptage. Le patch blip essaiera par consequent d'examiner chaque
+boucle et de decider si la boucle semble etre une boucle de comptage
+(des criteres supplementaires pour l'examen des boucles
+suivront). Pour chaque boucle de comptage un essai est fait pour
+detecter la variable "compteur" et la variable "limite".
+
+Exemple de boucles simples et leurs variables :
+ - for(i=0; i < j; i+=3}{;} ==> boucle incrementale, i = compteur
+                                                     j = limite
+ - while(len--){;} ==> boucle decrementale, len = compteur, 0 = limite
+
+L'implementation actuelle considere une boucle comme etant une boucle
+de comptage si et seulement si :
+ - 2 variables sont detectees dans la condition de la boucle
+   (parfois l'une d'entre elles peut etre une constante)
+ - l'une de ces variables est modifiee dans la condition de la boucle
+ou dans l'expression de la boucle
+ - *seulement une* variable est modifiee
+ - La modification est du type incrementation/decrementation
+    (++,--,+=,-=)
+
+Le code qui examine la boucle est execute dans blip_find_loop_vars()
+et il pourrait etre ameliore a l'avenir pour identifier plus de
+boucles comme boucle de comptage.
+
+Apres avoir detecte la direction de la boucle, son compteur et sa
+limite, l'arbre AST est modifie pour inclure un test qui verifie
+qu'une grosse boucle est rapportee comme une violation de blip.
+
+Dans le but de maintenir le patch simple et sans risque, a chaque fois
+qu'une boucle semble trop complexe pour etre prise pour une boucle de
+comptage, la boucle sera ignoree (en utilisant les flags de warning de
+blip il est possible de lister les boucles ignorees, et la raison pour
+laquelle elles furent ignorees).
+
+------[ 4.5.2 - Modifions le AST
+
+Lorsque vous commencez a patcher des applications complexes comme gcc,
+vous voulez vous assurer que vous ne causez aucun "effet papillon"
+pendant que vous modifiez a la volee des structures residant en
+memoire. Pour vous garder de beaucoup d'ennuis je suggererai d'eviter
+les modification d'aucune structure directement. Mais utilisez a la
+place les fonctions existantes que le paser de langage aurait utilise
+si le code que vous voulez "injecter" avait ete trouve dans le code
+source oiginal. Suivre ce niveau d'encapsulation sous empechera de
+faire des erreurs comme oublier d'initialiser un membre de structure,
+ou ne pas mettre a jour une autre variable globale ou flag.
+
+J'ai trouve tres utile de simuler l'injection de code en modifiant
+reellement le code source, et de tracer le compilateur quand il
+contruit l'arbre AST, et de mimer plus tard la creation de code en
+utilisant les memes fonctions utilisees par le parser pour construire
+mon nouveau code de test. De cette maniere j'etais capable d'eliminer
+le besoin d'acces "impropre" a l'arbre AST, lequel m'effrayais pendant
+que je commencais la modification.
+
+Connaissant le bon set de fonctions a utiliser pour injecter n'importe
+quel code voulu, la question devint qu'aimerais vraiment injecter ? La
+reponse differe un peu entre les differents types de boucles. Dans le
+cas d'une boucle for le patch blip ajoutera l'expression de test comme
+derniere expresion dans la declaration de FOR_INIT. Dans le cas d'une
+boucle while le patch blip ajoutera l'expression de test en tant que
+nouvelle declaration avant la boucle while. Dans le cas d'un appel a
+une fonction ressemblant a une boucle, comme memcpy, le patch blip
+remplacera l'expression d'appel entiere avec une nouvelle expression
+de condition, ayant le __blip_violation sur le cote "vrai" et
+l'espression d'appel originale sur le cote "faux".
+
+Illustrons le dernier paragraphe avec quelques exemples...
+
+Avant blip
+----------
+
+1) for(i=0;i< len;i++){}
+
+2) While(len--){}	
+
+3) p = memcpy(d,s,l)
+
+
+Apres blip
+----------
+
+1) for(i=0,<blip_check>?__blip_violation:0;i<len;i++){}
+
+2) <blip_check>?__blip_violation:0;
+   while(len--){}
+
+3) p = <blip_check>?__blip_violation : memcpy(d,s,l)
+
+
+Le <blip_check> en lui-meme est tres simple. Si la boucle est
+incrementale (allant en augmentant) alors le test ressemblera a
+(limite > compteur && limite - compteur > max). Si la boucle va en
+baissant le test sera (compteur > limit && compteur - limite > max). Il
+y a besoin de tester la differance entre le compteur et la limite et
+pas seulement la limite car nous ne voulons pas declencher un faux
+positif dans une boucle comme :
+
+len = 0xffff0000;
+for(i=len-20;i < len; i++){};
+
+L'exemple ci-dessus pourrait ressembler au debut a un exploit
+integer. Mais il pourrait egalement etre une boucle legitime qui
+s'occupe simplement d'iterer sur de tres grandes valeurs.
+
+La fonction responsable du <blip_check> est blip_build_check_exp(), et
+son code est explicite, donc je ne vais pas dupliquer les commentaires
+ici.
+
+L'une des difficultes que j'ai eues en injectant le code de blip fut
+l'injection de la fonction __blip_violation dans le fichier
+cible. Pendant la creation de <blip_check> j'ai simlpement cree des
+expressions qui referencie les memes noeuds d'arbres que j'ai trouves
+dans la condition de boucle ou comme parametre d'appel d'une fonction
+qui ressemble a une boucle. MAis la fonction __blip_violation n'existe
+pas dans l'espace nom du fichier compile, et par consequent tenter de
+la referencer etait un peu plus astucieux, ou du moins c'est ce que je
+pensais. D'habitude lorsqu'un CALL_EXPR est cree, un FUNCTION_DECL est
+identifie (comme l'une des fonctions disponibles visibles depuis
+l'appelant) et un ADDR_EXPR est plus tard cree pour exprimer l'adresse
+de la fonction declaree. Comme __blip_violation n'etait pas declaree,
+les tentatives d'executer lookup_name() pour cela produiront une
+declaration vide.
+
+Par chance gcc etait suffisamment aimable / negligent, et je fus
+capable de construire une FUNCTION_DECL et de la referencer en
+laissant tout le reste du travail pour que le RTL le calcule.
+
+<DISCLAIMER> Toutes les modifications ci-dessus ont ete faites dans
+l'esprit d'une preuve de concept pour la detection d'exploits integer
+blip. Il n'y a aucune garantie que le patch augmentera reellement la
+protection de quelque systeme que ce soit, ni qu'il gardera le
+compilateur stable et utilisable (en utilisant -fblip), ni que quelque
+recommandation de coding / patching que ce soit aura un quelconque
+sens pour ne noyau dur de mainteneur du projet gcc :>.</DISCLAIMER>
+
+----[ 4.6 - Limites
+
+Cette section resumme les limites a ma connaissance au moment d'ecrire
+cet article. Je commencerai par les limites de haut niveau en allant
+vers les limites techniques de bas niveau.
+
+ - La premiere limite est la couverture de ce patch. Le patch est
+concu pour stopper les failles integer qui produisent de grosses
+boucles. D'autres failles qui sont dues a une mauvaise conception ou
+un manque de validation de nombres entiers ne seront pas protegees.
+
+Par exemple le code suivant est vulnerable mais ne peut pas etre
+protege par le patch :
+
+void foo(unsigned int len,char* buf){
+
+	char	dst[10];
+
+	if(len < 10){
+		strcpy(dst,buf);
+	}
+}
+
+ - Parfois un integer overflow generique fait "comme dans les livres"
+ne sera pas detecte. Un exemple pour un tel cas sera la faille
+xdr_array. Le probleme est du au fait que la fonction malloc etait
+appelee avec l'expression debordee de *deux* entree integer
+differantes, alors que la protection blip ne peut intercepter qu'une
+simple boucle de comptage. En regardant la boucle xdr_array, nous
+pouvons voir qu'il serai facile pour l'attaquant / l'attaquante de
+fournir de telles entrees de nombres entiers qui deborderons
+l'expression malloc, mais qui gardera encore le compte de boucle
+petit.
+
+
+ - Quelques boucles de comptage ne seront pas considerees. Un exemple
+est une condition de boucle complexe et ce n'est pas trivial
+d'identifier la boucle de comptage. De telles boucles doivent etre
+ignorees, ou autrement des faux positifs pourraient apparaitre qui
+pourraient mener a une execution non-definie.
+
+ - [Limite technique] La version actuelle est concue pour fonctionner
+uniquement avec le langage C.
+
+ - [Limite technique] La version actuelle n'examinera pas le code
+assembleur embarque qui pourrait inclure des instructions de
+boucles. Par consequent elle permettra a l'exploitation d'integer
+owerflow de n'etre pas detectee.
+
+
+--[ 5 - References
+
+[1] StackGuard 
+    Detection et prevention automatique des attaques de smash de pile
+    http://www.immunix.org/StackGuard/
+
+[2] ProPolic 
+    Extension GCC pour proteger les applications des attaques de smash
+de pile
+    http://www.trl.ibm.com/projects/security/ssp/
+
+[3] GCC
+    GNU Compiler Collection
+    http://gcc.gnu.org
+
+[4] noir
+    Smashing The Kernel Stack For Fun And Profit
+    Phrack Issue #60, Phile 0x06 by noir
+
+[5] Halvar Flake
+    Third Generation Exploits on NT/Win2k Platforms
+    http://www.blackhat.com/presentations/bh-europe-01/halvar-flake/bh-
+europe-01-halvarflake.ppt
+
+[6] MaXX
+    Vudo malloc tricks
+    Phrack Issue 0x39, Phile #0x08
+
+[7] Once upon a free()..
+    Phrack Issue 0x39, Phile #0x09
+
+[8] Aleph One
+    Smashing The Stack For Fun And Profit
+    Phrack Issue 0x31, Phile #0x0E
+
+
+--[ 6 - Thanks
+
+Je veux remercier mon equipe pour m'avoir aide dans le processus de
+creation de l'article. Merci Monty, sinan, yona, shok pour vos
+commentaires utiles et vos idees pour ameliorer l'article. Si vous
+pensez que l'Anglais est massacre dans cet article alors imaginez ce
+que mon team a du supporter :>. Sans vous les mecs je ne l'aurai
+jamais fait.
+
+Merci a anonymous : > pour avoir relu l'article, et m'avoir fournit du
+feedback technique interessant et de l'assurance.
+
+
+
+--[ 7 - Annexe A - Des exemples dans la vraie vie
+
+Ayant le patch pret, j'ai voulu le tester sur une faille connue. Les
+criteres utililses pour tester le patch etaient :
+ - le paquetage doit etre compile avec succes avec le patch
+ - le patch doit etre capable de proteger le paqutetage contre
+l'exploitation des bugs connus.
+
+J'ai choisi de tester le patch sur les paquetages Apache httpd et
+OpenSSH. Car les deux paquetages sont : de haut profil ont des failles
+dont le patch est cense proteger, et sont suffisamment gros pour
+certifier le patch.
+
+Le test de protectiona demontre son succes :), et la version
+vulnerable compilee avec -fblip a ete demontree comme etant non
+exploitable.
+
+La section suivante explique comment compiler les paquetages avec le
+patch blip. Nous montrerons le code assembleur genere avant et apres
+le patch pour le code qui permettait l'exploit de deborder les tampos
+du programe.
+
+
+----[ 7.1 - Apache Chunked encoding
+
+--[ Informations sur la faille
+
+Juste pour nous assurer que tout est OK avec la le probleme de la
+faille du chunked-encoding de Apache, je vais lister une partie du
+code vulnerable suivi de quelques explications.
+
+Code: Apache src/main/http_protocol.c : ap_get_client_block()
+
+01 len_to_read = get_chunk_size(buffer);
+
+<un peu de code ici...>
+
+02 r->remaining = len_to_read;
+
+<un peu de code ici...>
+
+03 len_to_read = (r->remaining > bufsiz) ? bufsiz : r->remaining;
+04 len_read = ap_bread(r->connection->client, buffer , len_to_read);
+
+La faille dans ce cas autorise a un(e) attaquant(e) d'envoyer une
+longueur de chunk negative. Faire ceci passera au travers du test de
+la ligne 03, et terminera en appelant ap_bread() avec un enorme nombre
+positif.
+
+--[ Testons le patch
+
+Pour compiler le Apache httpd avec le -fblip accorde, on pourrait edit
+le fichier src/apaci et ajouter la ligne suivante a la fin du fichier
+"echo '-fblip'".
+
+Toute tentative d'envoyer une longueur de chunk negative apres avoir
+compile Apache httpd avec le patch blip terminera avec le httpd
+executant la __blip_ violation.
+
+Selon la theorie de blip, l'attaque devrait declencher une sorte de
+boucle. Nous voyons a la ligne 04 du code liste qu'un appel est fait a
+la fonction ap_bread(). Docn si la theorie est correcte nous sommes
+supposes trouver une boucle a l'interieur de cette fonction.
+
+/*
+ * Lis jusqu'a nbyte octets dans buf
+ * Si moins d'octets que byte sont actuellement disponible,
+alors les retourner
+ * Retourne 0 pour EOF, -1 pour erreur.
+ * NOTE EBCDIC: Le tampon readaway contient _toujours_ des donnees
+*non converties*
+ * Une conversion n'est faite que lorsque l'appelant reprend des
+donnees du tampon (appelle bread), si le flag de conversion est mis a
+ce moment.
+ */
+API_EXPORT(int) ap_bread(BUFF *fb, void *buf, int nbyte)
+{
+    int i, nrd;
+
+    if (fb->flags & B_RDERR)
+	return -1;
+    if (nbyte == 0)
+	return 0;
+
+    if (!(fb->flags & B_RD)) {
+	/*Lecture non dans le tampon. Verifier d'abord si il y avait
+	* quelque chose dans le tampon avant que nous soyons
+	* non-tampon-ises. */
+	if (fb->incnt) {
+	    i = (fb->incnt > nbyte) ? nbyte : fb->incnt;
+#ifdef CHARSET_EBCDIC
+	    if (fb->flags & B_ASCII2EBCDIC)
+		ascii2ebcdic(buf, fb->inptr, i);
+	    else
+#endif /*CHARSET_EBCDIC*/
+	    memcpy(buf, fb->inptr, i);
+	    fb->incnt -= i;
+	    fb->inptr += i;
+	    return i;
+	}
+	i = read_with_errors(fb, buf, nbyte);
+#ifdef CHARSET_EBCDIC
+	if (i > 0 && ap_bgetflag(fb, B_ASCII2EBCDIC))
+	    ascii2ebcdic(buf, buf, i);
+#endif /*CHARSET_EBCDIC*/
+	return i;
+    }
+
+    nrd = fb->incnt;
+/* pouvons-nous remplir le tampon */
+    if (nrd >= nbyte) {
+#ifdef CHARSET_EBCDIC
+	if (fb->flags & B_ASCII2EBCDIC)
+	    ascii2ebcdic(buf, fb->inptr, nbyte);
+	else
+#endif /*CHARSET_EBCDIC*/
+	memcpy(buf, fb->inptr, nbyte);
+	fb->incnt = nrd - nbyte;
+	fb->inptr += nbyte;
+	return nbyte;
+    }
+
+    if (nrd > 0) {
+#ifdef CHARSET_EBCDIC
+	if (fb->flags & B_ASCII2EBCDIC)
+	    ascii2ebcdic(buf, fb->inptr, nrd);
+	else
+#endif /*CHARSET_EBCDIC*/
+	memcpy(buf, fb->inptr, nrd);
+	nbyte -= nrd;
+	buf = nrd + (char *) buf;
+	fb->incnt = 0;
+    }
+    if (fb->flags & B_EOF)
+	return nrd;
+
+/* fait une simple lecture */
+    if (nbyte >= fb->bufsiz) {
+/* lit directement dans le tampon de l'appelant */
+	i = read_with_errors(fb, buf, nbyte);
+#ifdef CHARSET_EBCDIC
+	if (i > 0 && ap_bgetflag(fb, B_ASCII2EBCDIC))
+	    ascii2ebcdic(buf, buf, i);
+#endif /*CHARSET_EBCDIC*/
+	if (i == -1) {
+	    return nrd ? nrd : -1;
+	}
+    }
+    else {
+/* lit dans le tampon tenu, puis memcpy */
+	fb->inptr = fb->inbase;
+	i = read_with_errors(fb, fb->inptr, fb->bufsiz);
+	if (i == -1) {
+	    return nrd ? nrd : -1;
+	}
+	fb->incnt = i;
+	if (i > nbyte)
+	    i = nbyte;
+#ifdef CHARSET_EBCDIC
+	if (fb->flags & B_ASCII2EBCDIC)
+	    ascii2ebcdic(buf, fb->inptr, i);
+	else
+#endif /*CHARSET_EBCDIC*/
+	memcpy(buf, fb->inptr, i);
+	fb->incnt -= i;
+	fb->inptr += i;
+    }
+    return nrd + i;
+}
+
+Nous voyons dans le code plusieurs flux d'execution possibles. Chacun
+d'eux inclut une boucle qui bouge toute les donnees dans le paraletre
+buf. Si le code supporte CHARSET_EBCDIC alors la fonction
+ascii2ebdcdic execute la boucle mortelle. Dans les cas normaux, la
+fonction memcpy implemente la boucle meurtriere.
+
+Ce qui suit est le code assembleur genere pour la fonction ci-dessus.
+
+	.type	ap_bread,@function
+ap_bread:
+	pushl	%ebp
+	movl	%esp, %ebp
+	subl	$40, %esp
+	movl	%ebx, -12(%ebp)
+	movl	%esi, -8(%ebp)
+	movl	%edi, -4(%ebp)
+	movl	8(%ebp), %edi
+	movl	16(%ebp), %ebx
+	testb	$16, (%edi)
+	je	.L68
+	movl	$-1, %eax
+	jmp	.L67
+.L68:
+	movl	$0, %eax
+	testl	%ebx, %ebx
+	je	.L67
+	testb	$1, (%edi)
+	jne	.L70
+	cmpl	$0, 8(%edi)
+	je	.L71
+	movl	8(%edi), %esi
+	cmpl	%ebx, %esi
+	jle	.L72
+	movl	%ebx, %esi
+.L72:
+	cmpl	$268435456, %esi          ----------------------------
+	jbe	.L73
+	movl	%esi, (%esp)               Test de blip (utilisant esi)
+	call	__blip_violation
+	jmp	.L74                      ----------------------------
+.L73:
+	movl	4(%edi), %eax
+	movl	12(%ebp), %edx
+	movl	%edx, (%esp)
+	movl	%eax, 4(%esp)
+	movl	%esi, 8(%esp)
+	call	memcpy
+.L74:
+	subl	%esi, 8(%edi)
+	addl	%esi, 4(%edi)
+	movl	%esi, %eax
+	jmp	.L67
+.L71:
+	movl	%edi, (%esp)
+	movl	12(%ebp), %eax
+	movl	%eax, 4(%esp)
+	movl	%ebx, 8(%esp)
+	call	read_with_errors
+	jmp	.L67
+.L70:
+	movl	8(%edi), %edx
+	movl	%edx, -16(%ebp)
+	cmpl	%ebx, %edx
+	jl	.L75
+	cmpl	$268435456, %ebx          ----------------------------
+	jbe	.L76
+	movl	%ebx, (%esp)              Test de blip (utilisant ebx)
+	call	__blip_violation
+	jmp	.L77                      ----------------------------
+.L76:
+	movl	4(%edi), %eax
+	movl	12(%ebp), %edx
+	movl	%edx, (%esp)
+	movl	%eax, 4(%esp)
+	movl	%ebx, 8(%esp)
+	call	memcpy
+.L77:
+	movl	-16(%ebp), %eax
+	subl	%ebx, %eax
+	movl	%eax, 8(%edi)
+	addl	%ebx, 4(%edi)
+	movl	%ebx, %eax
+	jmp	.L67
+.L75:
+	cmpl	$0, -16(%ebp)
+	jle	.L78
+	cmpl	$268435456, -16(%ebp)     ------------------------
+	jbe	.L79
+	movl	-16(%ebp), %eax             Test de blip
+	movl	%eax, (%esp)                (utilisant [ebp-16])
+	call	__blip_violation
+	jmp	.L80                      ------------------------
+.L79:
+	movl	4(%edi), %eax
+	movl	12(%ebp), %edx
+	movl	%edx, (%esp)
+	movl	%eax, 4(%esp)
+	movl	-16(%ebp), %eax
+	movl	%eax, 8(%esp)
+	call	memcpy
+.L80:
+	subl	-16(%ebp), %ebx
+	movl	-16(%ebp), %edx
+	addl	%edx, 12(%ebp)
+	movl	$0, 8(%edi)
+.L78:
+	testb	$4, (%edi)
+	je	.L81
+	movl	-16(%ebp), %eax
+	jmp	.L67
+.L81:
+	cmpl	28(%edi), %ebx
+	jl	.L82
+	movl	%edi, (%esp)
+	movl	12(%ebp), %eax
+	movl	%eax, 4(%esp)
+	movl	%ebx, 8(%esp)
+	call	read_with_errors
+	movl	%eax, %esi
+	cmpl	$-1, %eax
+	jne	.L85
+	jmp	.L91
+.L82:
+	movl	20(%edi), %eax
+	movl	%eax, 4(%edi)
+	movl	%edi, (%esp)
+	movl	%eax, 4(%esp)
+	movl	28(%edi), %eax
+	movl	%eax, 8(%esp)
+	call	read_with_errors
+	movl	%eax, %esi
+	cmpl	$-1, %eax
+	jne	.L86
+.L91:
+	cmpl	$0, -16(%ebp)
+	setne	%al
+	movzbl	%al, %eax
+	decl	%eax
+	orl	-16(%ebp), %eax
+	jmp	.L67
+.L86:
+	movl	%eax, 8(%edi)
+	cmpl	%ebx, %eax
+	jle	.L88
+	movl	%ebx, %esi
+.L88:
+	cmpl	$268435456, %esi          ----------------------------
+	jbe	.L89
+	movl	%esi, (%esp)              Test de blip (utilisant esi)
+	call	__blip_violation
+	jmp	.L90                      ----------------------------
+.L89:
+	movl	4(%edi), %eax
+	movl	12(%ebp), %edx
+	movl	%edx, (%esp)
+	movl	%eax, 4(%esp)
+	movl	%esi, 8(%esp)
+	call	memcpy
+.L90:
+	subl	%esi, 8(%edi)
+	addl	%esi, 4(%edi)
+.L85:
+	movl	-16(%ebp), %eax
+	addl	%esi, %eax
+.L67:
+	movl	-12(%ebp), %ebx
+	movl	-8(%ebp), %esi
+	movl	-4(%ebp), %edi
+	movl	%ebp, %esp
+	popl	%ebp
+	ret
+
+On peut remarquer qu'avant tout appel a la fonction memcpy (qui est
+l'une des fonctions ressemblant a une boucle) [NDT : dans tout
+l'article c'est l'expression "loop like" function que j'ai traduite
+comme cela, desole], un peu de code fut ajoute qui appelle
+__blip_violation au cas ou le troisieme parametre de memcpy est plus
+grand que blip_max.
+
+Une autre chose qui vaut d'etre mentionnee est le moyen par lequel le
+test injecte accede au troisieme parametre. Dans le premier bloc de
+code injecte le parametre est stocke dans le registre esi, dans le
+second bloc le parametre est dans le registre ebx et dans le troisieme
+bloc le parametre est stocke dans la pile a ebp-16. La raison a cela
+est tres simple. Comme la modification du code a ete faite dans
+l'arbre AST, et comme de patch etaient en train d'utiliser exactement
+le meme noeud de l'arbre qui etait utilise dans l'expression d'appel a
+memcpy, le RTL a genere le meme code pour l'expression d'appel et
+l'expression de test.
+
+A present retournons a la fonction ap_bread. Et supposons que
+CHARSET_EBCDIC etait en effet definie. Dans ce cas la fonction
+ascii2ebcdic aurait ete celle qui aurait eu la boucle
+"vulnerable". Par consequent nous esperons que le patch blip aurait
+aussi bien teste la boucle dans cette fonction.
+
+Ce qui suit est le code de ascii2ebcdic extrait de src/ap/ap_ebcdic.c
+
+API_EXPORT(void *)
+ascii2ebcdic(void *dest, const void *srce, size_t count)
+{
+    unsigned char *udest = dest;
+    const unsigned char *usrce = srce;
+
+    while (count-- != 0) {
+        *udest++ = os_toebcdic[*usrce++];
+    }
+
+    return dest;
+}
+
+Resultat de la compilation de la focntion ci-dessus avec -fblip
+
+	.type	ascii2ebcdic,@function
+ascii2ebcdic:
+	pushl	%ebp
+	movl	%esp, %ebp
+	pushl	%edi
+	pushl	%esi
+	pushl	%ebx
+	subl	$12, %esp
+	movl	16(%ebp), %ebx
+	movl	8(%ebp), %edi
+	movl	12(%ebp), %esi
+	cmpl	$0, %ebx            -------------------
+	jbe	.L12
+	cmpl	$268435456, %ebx
+	jbe	.L12                   Test de Blip
+	movl	%ebx, (%esp)
+	call	__blip_violation
+.L12:                               -------------------
+	decl	%ebx
+	cmpl	$-1, %ebx
+	je	.L18
+.L16:
+	movzbl	(%esi), %eax
+	movzbl	os_toebcdic(%eax), %eax
+	movb	%al, (%edi)
+	incl	%esi
+	incl	%edi
+	decl	%ebx
+	cmpl	$-1, %ebx
+	jne	.L16
+.L18:
+	movl	8(%ebp), %eax
+	addl	$12, %esp
+	popl	%ebx	
+	popl	%esi
+	popl	%edi
+	popl	%ebp
+	ret
+.Lfe2:
+
+Pendant qu'il s'occupait de la fonction ascii2ebcdic, le patch blip a
+identifie la boucle while comme etant une boucle de comptage. La
+condition de la boucle fournti toute les informations requises pour
+creer un <blip_check>. D'abord nous identifions les variables de la
+boucle. Dans ce cas "count" est une variable est la constante "0" est
+la seconde. En cherchant des modifications de la variable, nous voyons
+que "count" est decrementee dans l'expression "count--". Comme "count"
+est la seule variable modifiee nous pouvosn dire que "count" est la
+variable-compteur et que la constante 0 est la varable limite. Nous
+pouvons egalement dire que la boucle est une boucle decrementale car
+l'operation de modification est "--". Le test sera par consequent
+(count > limit && count - limit > MAX_BLIP). En regardant le code
+assembleur ci-dessus, nous voyons que le compteur de boucle est stocke
+dans le registre ebx (Il est facile de reperer ceci en regardant le
+code sous l'etiquette 12 (L12). Ce code represente la condition
+while. Ca decremente d'abord ebx et le compare plus tard avec la
+constant de la boucle.). Par consequent le <blip_check> utilsera le
+registre ebx pour le test.
+
+
+----[ 7.2 - Authentification OpenSSH
+
+--[ Informations sur la faille
+
+La faille OpenSSH est un exemple de bug integer overflow, qui mene a
+un mauvais calcul de la taille de l'allocation. Ce qui suit est un
+bout du code vulnerable :
+
+OpenSSH auth2-chall.c : input_userauth_info_response()
+
+01 nresp = packet_get_int();
+
+<un peu de code ici...>
+
+02 response = xmalloc(nresp * sizeof(char*));
+03 for(i = 0; i < nresp; i++)
+04	response[i] = packet_get_string(NULL);
+
+A la ligne 01 le code lit un entier dans une variable non-signee. Plus
+tard la code alloue un tableau a nresp entrees. Le probleme est que
+nresp * sizeof(char*) est une expression qui pourreait deborder. Par
+consequent envoyer nresp plus grand que 0x40000000 permet l'allocation
+d'un petit tampon qui peut etre plus tard deborde par l'assigment de
+la ligne 04.
+
+--[ Testons le patch
+
+Pour compiler le paquetage OpenSSH avec -fblip, on peut ajouter
+-fbliup a la definition CFLAGS de Makefile.in
+(i.e. CFLAGS=@CFLAGS@ -fblip)
+
+Toute tentative d'envoyer un grand nombre de reponses apres avoir
+compile OpenSSH avec le patch blip terminera avec OpenSSH executant la
+__blîp_violation.
+
+Ce qui suit est un morceau de la fonction vulnerable.
+
+static void
+input_userauth_info_response(int type, u_int32_t seq, void *ctxt)
+{
+	Authctxt *authctxt = ctxt;
+	KbdintAuthctxt *kbdintctxt;
+	int i, authenticated = 0, res, len;
+	u_int nresp;
+	char **response = NULL, *method;
+
+	<omitted code>
+
+	nresp = packet_get_int();
+
+	if (nresp != kbdintctxt->nreq)
+		fatal("input_userauth_info_response: wrong number of 
+replies");
+
+	if (nresp > 0) {
+		
+		-----------------------------------------
+			 ** Code vulnerable**
+		-----------------------------------------
+
+		response = xmalloc(nresp * sizeof(char*));
+		for (i = 0; i < nresp; i++)
+			response[i] = packet_get_string(NULL);
+
+
+	}
+
+	<code omis>
+}
+
+La fonction ci-dessus se traduit par le code assembleur qui suit si
+compilee avec la protection -fblip. (Pour rendre lisible la
+modification blip, lle code a ete compile en utilisant -O au lieu
+d'utiliser -O2, qui va reordonner les blocs de base).
+
+	.type	input_userauth_info_response,@function
+input_userauth_info_response:
+
+	movl	-16(%ebp), %eax
+	movl	$0, 4(%eax)
+	call	packet_get_int
+	movl	%eax, %esi
+	movl	-20(%ebp), %edx
+	cmpl	12(%edx), %eax
+	je	.L111
+	movl	$.LC15, (%esp)
+	call	fatal
+.L112:
+	testl	%esi, %esi
+	je	.L113
+	leal	0(,%esi,4), %eax
+	movl	%eax, (%esp)
+	call	xmalloc
+	movl	%eax, -32(%ebp)
+	movl	$0, %ebx
+	cmpl	$0, %esi
+	jbe	.L115
+	cmpl	$268435456, %esi          ------------------------
+	jbe	.L115
+	movl	%esi, (%esp)                   Test de Blip
+	call	__blip_violation
+.L115:                                    ------------------------
+	cmpl	%esi, %ebx
+	jae	.L113
+.L120:
+	movl	$0, (%esp)
+	call	packet_get_string
+	movl	-32(%ebp), %ecx
+	movl	%eax, (%ecx,%ebx,4)
+	incl	%ebx
+	cmpl	%esi, %ebx
+	jb	.L120
+
+Le patch blip a identifie la boucle for comme une boucle de comptage
+est a injecte un code pour rediriger le flux vers l'intercepteur
+_blip_violation dans le cas ou la limite (i.e. nresp) est plus grand
+que BLIP_MAX. Par consequent si la valeur de nresp est assez haute
+pour declencher un overflow dans l'appel de xmalloc, elle sera
+egalement assez haute pour se faire prendre par le <blip_check>.
+
+
+--[ 8 - Annexe B - Utilisons blip
+
+Pour mettre en service le patch blip on devrait d'abord ajouter le
+flag -fblip quand on execute le compilateur gcc.
+
+Le patch blip tentera d'emettre le <blip_check> a chaque fois que cela
+semble possible de le faire. Le patch ignorera sans rien dire toutes
+les boucles qui ne peuvent pas etre protegees. Pour voir les boucles
+ignorees on peut utiliser l'un des flags de warning suivants, qui vont
+egalement fournir un message decrivant la raison pour laquelle la
+boucle a ete ignoree.
+
+Flags de warning :
+- blip_for_not_emit - rapporte les boucles for ignorees.
+- blip_while_not_emit - rapporte les boucles while ignorees.
+- blip_call_not_emit - rapporte les appels ignores a des fonctions
+ressemblant a des boucles.
+
+Une raison pour ignorer une boucle sera l'une des suivantes :
+- Les variables de boucles sont longues de moins de 4 octets
+- L'intitalisation du for n'est pas une expression
+- L'appel a la fonction est fait en utilisant un pointeur vers une
+fonction
+- Les parametres d'appel ont des effets de bords. Reutiliser
+l'expression peut causer des resultats inattendus
+- La condition de boucle est trop complexe pour trouver les variables
+de la boucle
+- Aucune des variables de la boucle n'est modifiee (pas suffisamment
+d'informations pour effectuer le test)
+- Les deux variables de la boucle sont modifiees
+- La condition est trop complexe
+
+Le patch blip est egalement capable de rapporter les statistiques de
+de tests. En utilisant -fblip_stat on peut faire imprimer des
+informations statistiques a propos du nombre de boucles effectuees et
+le nombre de boucles qui ont ete testees avec succes.
+
+La ligne de commande qui suit compilera le code du premier exemple. La
+sortie de la compilation suivra.
+
+$ gcc -o sample -fblip -fblip_stat -O sample.c
+
+-=] Blip statistics (checks emits)
+Total:	1/100%		1/100%
+for:	1/100%		1/100%
+while:	0/0%		0/0%
+calls:	0/0%		0/0%
+-=] End Blip Statistics
+
+
+begin 640 blip.patch
+M9&EF9B`M3G5R(&=C8RTS+C(O9V-C+TUA:V5F:6QE+FEN(&=C8RTS+C(M8FQI
+M<"]G8V,O36%K969I;&4N:6X-"BTM+2!G8V,M,RXR+V=C8R]-86ME9FEL92YI
+M;@E4:'4@36%Y(#(S(#$P.C4W.C(Q(#(P,#(-"BLK*R!G8V,M,RXR+6)L:7`O
+M9V-C+TUA:V5F:6QE+FEN"4UO;B!$96,@(#(@,3DZ-#(Z,SD@,C`P,@T*0$`@
+M+3<R-RPW("LW,C<L-R!`0`T*("!S:6)C86QL+F\@<VEM<&QI9GDM<G1X+F\@
+M<W-A+F\@<W-A+6-C<"YO('-S82UD8V4N;R!S=&UT+F\)7`T*("!S=&]R+6QA
+M>6]U="YO('-T<FEN9W!O;VPN;R!T:6UE=F%R+F\@=&]P;&5V+F\@=')E92YO
+M('1R964M9'5M<"YO(`E<#0H@('1R964M:6YL:6YE+F\@=6YR;VQL+F\@=F%R
+M87-M+F\@=F%R<F%Y+F\@=F5R<VEO;BYO('9M<V1B9V]U="YO('AC;V9F;W5T
+M+F\@7`T*+2`D*$='0RD@)"AO=71?;V)J96-T7V9I;&4I("0H15A44D%?3T)*
+M4RD-"BL@8FQI<"YO("0H1T=#*2`D*&]U=%]O8FIE8W1?9FEL92D@)"A%6%12
+M05]/0DI3*0T*(`T*($)!0TM%3D0@/2!M86EN+F\@;&EB8F%C:V5N9"YA#0H@
+M#0I`0"`M-S8X+#<@*S<V."PX($!`#0H@#0H@3$E",D953D-37S(@/2!?9FQO
+M871D:7AF(%]F:7AU;G-X9G-I(%]F:7AT9F1I(%]F:7AU;G-T9F1I(%]F;&]A
+M=&1I=&8@7`T*("`@("!?8VQE87)?8V%C:&4@7W1R86UP;VQI;F4@7U]M86EN
+M(%]E>&ET(%]A8G-V<VDR(%]A8G-V9&DR(%]A9&1V<VDS(%P-"BT@("`@7V%D
+M9'9D:3,@7W-U8G9S:3,@7W-U8G9D:3,@7VUU;'9S:3,@7VUU;'9D:3,@7VYE
+M9W9S:3(@7VYE9W9D:3(@7V-T;W)S#0HK("`@(%]A9&1V9&DS(%]S=6)V<VDS
+M(%]S=6)V9&DS(%]M=6QV<VDS(%]M=6QV9&DS(%]N96=V<VDR(%]N96=V9&DR
+M(%]C=&]R<R!<#0HK"5]B;&EP7W9I;VQA=&EO;@T*(`T*(",@1&5F:6YE9"!I
+M;B!L:6)G8V,R+F,L(&EN8VQU9&5D(&]N;'D@:6X@=&AE('-T871I8R!L:6)R
+M87)Y+@T*($Q)0C)&54Y#4U]35"`](%]E<')I;G1F(%]B8B!?7V=C8U]B8VUP
+M#0ID:69F("U.=7(@9V-C+3,N,B]G8V,O8FQI<"YC(&=C8RTS+C(M8FQI<"]G
+M8V,O8FQI<"YC#0HM+2T@9V-C+3,N,B]G8V,O8FQI<"YC"5=E9"!$96,@,S$@
+M,38Z,#`Z,#`@,3DV.0T**RLK(&=C8RTS+C(M8FQI<"]G8V,O8FQI<"YC"4UO
+M;B!$96,@(#(@,3DZ-#(Z,SD@,C`P,@T*0$`@+3`L,"`K,2PX,S4@0$`-"BLO
+M*@T-"BL@*B`@("!4:&ES(&9I;&4@:7,@<&%R="!O9B!'3E4@0T,N#0T**R`J
+M#0T**R`J("`@($=.52!#0R!I<R!F<F5E('-O9G1W87)E.R!Y;W4@8V%N(')E
+M9&ES=')I8G5T92!I="!A;F0O;W(@;6]D:69Y#0T**R`J("`@(&ET('5N9&5R
+M('1H92!T97)M<R!O9B!T:&4@1TY5($=E;F5R86P@4'5B;&EC($QI8V5N<V4@
+M87,@<'5B;&ES:&5D(&)Y#0T**R`J("`@('1H92!&<F5E(%-O9G1W87)E($9O
+M=6YD871I;VX[(&5I=&AE<B!V97)S:6]N(#(L(&]R("AA="!Y;W5R(&]P=&EO
+M;BD-#0HK("H@("`@86YY(&QA=&5R('9E<G-I;VXN#0T**R`J#0T**R`J("`@
+M($=.52!#0R!I<R!D:7-T<FEB=71E9"!I;B!T:&4@:&]P92!T:&%T(&ET('=I
+M;&P@8F4@=7-E9G5L+`T-"BL@*B`@("!B=70@5TE42$]55"!!3ED@5T%24D%.
+M5%D[('=I=&AO=70@979E;B!T:&4@:6UP;&EE9"!W87)R86YT>2!O9@T-"BL@
+M*B`@("!-15)#2$%.5$%"24Q)5%D@;W(@1DE43D534R!&3U(@02!005)424-5
+M3$%2(%!54E!/4T4N("!3964@=&AE#0T**R`J("`@($=.52!'96YE<F%L(%!U
+M8FQI8R!,:6-E;G-E(&9O<B!M;W)E(&1E=&%I;',N#0T**R`J#0T**R`J("`@
+M(%EO=2!S:&]U;&0@:&%V92!R96-E:79E9"!A(&-O<'D@;V8@=&AE($=.52!'
+M96YE<F%L(%!U8FQI8R!,:6-E;G-E#0T**R`J("`@(&%L;VYG('=I=&@@1TY5
+M($-#.R!S964@=&AE(&9I;&4@0T]064E.1RX@($EF(&YO="P@=W)I=&4@=&\-
+M#0HK("H@("`@=&AE($9R964@4V]F='=A<F4@1F]U;F1A=&EO;BP@-3D@5&5M
+M<&QE(%!L86-E("T@4W5I=&4@,S,P+`T-"BL@*B`@("!";W-T;VXL($U!(#`R
+M,3$Q+3$S,#<L(%5302X@("HO#0T**PT-"BLC:6YC;'5D92`B8V]N9FEG+F@B
+M#0T**R-I;F-L=61E(")S>7-T96TN:"(-#0HK(VEN8VQU9&4@(FUA8VAM;V1E
+M+F@B#0T**R-I;F-L=61E(")R=&PN:"(-#0HK(VEN8VQU9&4@(G1R964N:"(-
+M#0HK(VEN8VQU9&4@(G1O<&QE=BYH(@T-"BLC:6YC;'5D92`B8FQI<"YH(@T-
+M"BLC:6YC;'5D92`B9FQA9W,N:"(-#0HK(VEN8VQU9&4@(F,M8V]M;6]N+F@B
+M#0T**PT-"BLO*B!T:&ES('-T<G5C="!W:6QL(&AE;'`@86QL(&-H96-K7VQO
+M;W!?;&EM:70@9G5N8W1I;VYT:6]N#0T**R`J('1O(&-O;6UU;FET8V%T92X-
+M#0HK("H@4VEN8V4@=&AE(&-O;7!I;&5R(&ES('-I;F=L92!T:')E860L(&%N
+M9"!T:&4@8FQI<"!C:&5C:W,@87)E(&%L;'=A>7,@#0T**R`J('-T871L97-S
+M+"!T:&%N(&ET<R!S869E('1O('5S92!T:&ES('-T<G5C="!A<R!G;&]B86P@
+M:6YS=&5A9"!O9B!P87-S:6YG#0T**R`J(&ET(&%L;"!A<F]U;F0N("HO#0T*
+M*PT-"BML;V]P7VQI;6ET7W,@;&]O<%]L:6UI=#L-#0HK#0T**R\J('-A=F4@
+M9G5N8W1I;VX@=&\@8F4@8VAE8VME9"!A9V%I;G-T(&EN=&5G97(@97AP;&]I
+M="`J+PT-"BML;V]P7VQI:V5?<R`);&]O<%]L:6ME<UM=/7L-#0HK"7LB;65M
+M8W!Y(BPR?2P-#0HK"7LB;65M;6]V92(L,GTL#0T**PE[(FUE;7-E="(L,GTL
+M#0T**PE[(FUE;6-C<'DB+#-]+`T-"BL)>R)B8V]P>2(L,GTL#0T**PE[(F)Z
+M97)O(BPQ?2P-#0HK"7LB<W=A8B(L,GTL#0T**PE[(B(L,'T)#0T**WT[#0T*
+M*PT-"BLO*B!G;&]B86P@9F]R(&)L:7`@<W1A=&ES=&EC<R`J+PT-"BMB;&EP
+M7W-T871I<W1I8W-?<R`@(&)L:7!?<W1A=#U[,"PP+#`L,"PP+#`L,"PP?3L-
+M#0HK#0T**R-D969I;F4@4$52*'@L>2D@"7D@/R`H>"`J(#$P,"DO>2`Z(#`-
+M#0HK#0T**R\J('!R:6YT(&)L:7`@<W1A=&ES=&EC<R!T;R!T:&4@<W1D97)R
+M("HO#0T**W9O:60@#0T**V)L:7!?<W1A=%]P<FEN="AF<"D-#0HK"49)3$4J
+M"69P.PT-"BM[#0T**PT-"BL):68H(69L86=?8FQI<"!\?`T-"BL)"2%F;&%G
+M7V)L:7!?<W1A="D@<F5T=7)N.PT-"BL)#0T**PEI9BAF<"`]/2`P*2`-#0HK
+M"0EF<"`]('-T9&5R<CL-#0HK"0T-"BL-#0HK"69P<FEN=&8H9G`L(EQN+3U=
+M($)L:7`@<W1A=&ES=&EC<R`H8VAE8VMS(&5M:71S*5QN(BD[#0T**PD-#0HK
+M"69P<FEN=&8H9G`L(E1O=&%L.EQT)60O)60E)5QT7'0E9"\E9"4E7&XB+`T-
+M"BL)"0EB;&EP7W-T870N=&]T86Q?8VAE8VMS+#$P,"P-#0HK"0D)8FQI<%]S
+M=&%T+G1O=&%L7V5M:71S+`T-"BL)"0E015(H8FQI<%]S=&%T+G1O=&%L7V5M
+M:71S+&)L:7!?<W1A="YT;W1A;%]C:&5C:W,I*3L)"0D-#0HK"0D)#0T**PEF
+M<')I;G1F*&9P+")F;W(Z7'0E9"\E9"4E7'1<="5D+R5D)25<;B(L#0T**PD)
+M"6)L:7!?<W1A="YF;W)?8VAE8VMS+`T-"BL)"0E015(H8FQI<%]S=&%T+F9O
+M<E]C:&5C:W,L8FQI<%]S=&%T+G1O=&%L7V-H96-K<RDL#0T**PD)"6)L:7!?
+M<W1A="YF;W)?96UI=',L#0T**PD)"5!%4BAB;&EP7W-T870N9F]R7V5M:71S
+M+&)L:7!?<W1A="YF;W)?8VAE8VMS*2D["0D)#0T**PD)"0T-"BL)9G!R:6YT
+M9BAF<"PB=VAI;&4Z7'0E9"\E9"4E7'1<="5D+R5D)25<;B(L#0T**PD)"6)L
+M:7!?<W1A="YW:&EL95]C:&5C:W,L#0T**PD)"5!%4BAB;&EP7W-T870N=VAI
+M;&5?8VAE8VMS+&)L:7!?<W1A="YT;W1A;%]C:&5C:W,I+`T-"BL)"0EB;&EP
+M7W-T870N=VAI;&5?96UI=',L#0T**PD)"5!%4BAB;&EP7W-T870N=VAI;&5?
+M96UI=',L8FQI<%]S=&%T+G=H:6QE7V-H96-K<RDI.PD)"0T-"BL)"0D-#0HK
+M"69P<FEN=&8H9G`L(F-A;&QS.EQT)60O)60E)5QT7'0E9"\E9"4E7&XB+`T-
+M"BL)"0EB;&EP7W-T870N8V%L;%]C:&5C:W,L#0T**PD)"5!%4BAB;&EP7W-T
+M870N8V%L;%]C:&5C:W,L8FQI<%]S=&%T+G1O=&%L7V-H96-K<RDL#0T**PD)
+M"6)L:7!?<W1A="YC86QL7V5M:71S+`T-"BL)"0E015(H8FQI<%]S=&%T+F-A
+M;&Q?96UI=',L8FQI<%]S=&%T+F-A;&Q?8VAE8VMS*2D["0D)#0T**PT-"BL)
+M9G!R:6YT9BAF<"PB+3U=($5N9"!";&EP(%-T871I<W1I8W-<;B(I.PT-"BM]
+M#0T**PT-"BLO*B!P<FEN="!A('=A<FYI;F<@;65S<V%G92P@;VYL>2!D;R!S
+M;R!I9B!T:&4@<FEG:'0@=V%R;FYI;F<@9FQA9R!I<R!T=7)N960@#0T**R`J
+M(&]N+B`J+PT-"BL-#0HK=F]I9`T-"BMB;&EP7W=A<FYI;F<H=V%R;E]I9"QM
+M97-S86=E*0T-"BL)96YU;2!B;&EP7W=A<FYI;F=S('=A<FY?:60[#0T**PEC
+M;VYS="!C:&%R*@EM97-S86=E.PT-"BM[#0T**PT-"BL):68H=V%R;E]I9"`]
+M/2!314Q&7T-(14-+*7L-#0HK"0ES=VET8V@H5%)%15]#3T1%("AL;V]P7VQI
+M;6ET+G-T;70I*7L-#0HK"0D)8V%S92!&3U)?4U1-5#H-#0HK"0D)"7=A<FY?
+M:60@/2!.15]&3U([#0T**PD)"0EB<F5A:SL-#0HK#0T**PD)"6-A<V4@5TA)
+M3$5?4U1-5#H-#0HK"0D)"7=A<FY?:60@/2!.15]72$E,13L-#0HK"0D)"6)R
+M96%K.PT-"BL-#0HK"0D)8V%S92!#04Q,7T584%(Z#0T**PD)"6-A<V4@041$
+M4E]%6%!2.@T-"BL)"0D)=V%R;E]I9"`]($Y%7T-!3$P[#0T**PD)"0EB<F5A
+M:SL-#0HK#0T**PD)"61E9F%U;'0Z<F5T=7)N.PT-"BL)"7T-#0HK"7T-#0HK
+M#0T**PES=VET8V@H=V%R;E]I9"E[#0T**PD)8V%S92!.15]&3U(Z#0T**PD)
+M"6EF*"%W87)N7V)L:7!?9F]R7VYO=%]E;6ET*2!R971U<FX[#0T**PD)"6)R
+M96%K.PT-"BL)"6-A<V4@3D5?5TA)3$4Z#0T**PD)"6EF*"%W87)N7V)L:7!?
+M=VAI;&5?;F]T7V5M:70I(')E='5R;CL-#0HK"0D)8G)E86L[#0T**PD)8V%S
+M92!.15]#04Q,.@T-"BL)"0EI9B@A=V%R;E]B;&EP7V-A;&Q?;F]T7V5M:70I
+M(')E='5R;CL-#0HK"0D)8G)E86L[#0T**PT-"BL)"61E9F%U;'0Z(')E='5R
+M;CL-#0HK"7T-#0HK#0T**PT-"BL)=V%R;FEN9RAM97-S86=E*3L-#0HK?0T-
+M"BL-#0HK#0T**R\J(&)U:6QD(&$@8V%L;"!T;R!T:&4@8FQI<%]V:6]L871I
+M;VX@9G5N8W1I;VXN('5S:6YG('1H92!A<F<@97AP(&%S('1H92`-#0HK("H@
+M<&%R86UE=&5R(&9O<B!T:&ES(&-A;&PN("HO#0T**PT-"BMT<F5E#0T**V)L
+M:7!?8G5I;&1?=FEO;&%T:6]N7V-A;&PH87)G*0T-"BL)=')E92!A<F<[#0T*
+M*WL-#0HK#0T**PET<F5E"7!A<F%M<SL-#0HK"71R964)97AP.PT-"BL)=')E
+M90EB;&EP7V9U;F-?9&5C;#U.54Q,.PT-"BL-#0HK"71R964)8FQI<%]V:6]L
+M871I;VY?9&5C;"`]($Y53$P[#0T**PD-#0HK"6)L:7!?=FEO;&%T:6]N7V1E
+M8VP@/0T-"BL)"6)U:6QD7V1E8VP@*$953D-424].7T1%0TPL(&=E=%]I9&5N
+M=&EF:65R*")?7V)L:7!?=FEO;&%T:6]N(BDL#0T**PD)"0EB=6EL9%]F=6YC
+M=&EO;E]T>7!E("AI;G1E9V5R7W1Y<&5?;F]D92Q.54Q,7U12144I*3L-#0HK
+M#0T**PE$14-,7T%25$E&24-)04P@*&)L:7!?=FEO;&%T:6]N7V1E8VPI(#T@
+M,3L-#0HK"41%0TQ?15A415).04P@*&)L:7!?=FEO;&%T:6]N7V1E8VPI(#T@
+M,3L-#0HK"41%0TQ?24Y,24Y%("AB;&EP7W9I;VQA=&EO;E]D96-L*2`](#`[
+M#0T**PE44D5%7U!50DQ)0R`H8FQI<%]V:6]L871I;VY?9&5C;"D@/2`Q.PT-
+M"BL)#0T**PEB;&EP7V9U;F-?9&5C;"`](&)L:7!?=FEO;&%T:6]N7V1E8VP[
+M#0T**PT-"BL)<&%R86US("`]('1R965?8V]N<R`H3E5,3"QA<F<L3E5,3"D[
+M#0T**PEI9B@A<&%R86US*2!R971U<FX@3E5,3#L-#0HK"0T-"BL)+RH@8VAE
+M8VL@:68@9G5N8W1I;VX@9&5C;"XN*B\)#0T**PEI9BA44D5%7T-/1$4@*&)L
+M:7!?9G5N8U]D96-L*2`A/2!&54Y#5$E/3E]$14-,*7L-#0HK"0ER971U<FX@
+M3E5,3#L-#0HK"7T-#0HK"0D)#0T**PEE>'`@/2!B=6EL9%]F=6YC=&EO;E]C
+M86QL*&)L:7!?9G5N8U]D96-L+'!A<F%M<RD[#0T**PD-#0HK"7)E='5R;B!E
+M>'`[#0T**WT-#0HK#0T**R\J(`E#<F5A=&4@82!C:&5C:R!E>'`@9F]R('1H
+M92!B;&EP(&-O;F1I=&EO;B!T:&4@97AP('=I;&P@8F4@;V8@0T].1%]%6%!2
+M(`T-"BL@*B`)='EP92P@86YD('=I;&P@:&%V92!T:&4@9F]L;&]W:6YG(&9O
+M<FUA=#H-#0HK("H@"2@H;W`Q(#X@;W`R*2`F)B`H*&]P,2UO<#(I(#X@;6%X
+M7VQI;6ET*2D@(#\@8FQI<%]V:6]L871I;VXH*2`Z(&5X<#L@(`T-"BL@*@T-
+M"BL@*B`)=VAE<F4@;W`Q+V]P,B!A<F4@8V]U;F0@86YD(&QI;6ET+"!A;F0@
+M=&AE:7(@;W)D97(@:6X@=&AE(&5X<&5R<W-I;VX@:7,-#0HK("H@"2!D969I
+M;F1E9"!B>2!T:&4@9&ER96-T:6]N(&]F('1H92!L;V]P(`T-"BL@*@T-"BL@
+M*B`)($%S(&$@;F]T92P@:2!C;W5L9"!H879E(&%D9"!S;VUE(&5X=')A(&QO
+M9VEC('1O(&5L:6UI;F%T92!T:&4@8V]M<&QE>"`-#0HK("H@"2!C:&5C:R!I
+M9B!T:&4@;&EM:70O8V]U;G0@87)E(&-O;G-T86YT<RP@8G5T('-I;F-E('1H
+M92!O<'1I;6EZ97(@8V%N(`T-"BL@*B`)('!I8VL@=&AA="!U<"!I="!W:6QL
+M(&)E(')E9'5N9&%N="!A;F0@82!S;W5R8V4@;V8@;6ES=&%K97,N*B\-#0HK
+M#0T**W1R964-#0HK8FQI<%]B=6EL9%]C:&5C:U]E>'`H97AP*0T-"BL)=')E
+M90EE>'`[#0T**WL-#0HK#0T**PET<F5E"71T(#T@=F]I9%]T>7!E7VYO9&4[
+M#0T**PET<F5E"6]P7W1T.PT-"BL)=')E90EB;&EP7W9I;VQA=&EO;E]C86QL
+M+&)L:7!?;6%X.PT-"BL)#0T**PDO*B!A;&P@97AP<F5S<VEO;B!N965D960@
+M9F]R('1H92!C;VYD=&EO;B!C<F5A=&EO;B`J+PT-"BL-#0HK"71R964@("`@
+M;W!?9W1?;6%X.PD)+RH@;W`@/B!M87@@*B\)#0T**PET<F5E"6]P,5]G=%]O
+M<#([(`DO*B`H;W`Q(#X@;W`R*2`J+PT-"BL)=')E90EM:6YU<SL@"0D)+RH@
+M*&]P,2UO<#(I("HO#0T**PET<F5E"6UI;G5S7V=T7VUA>#L@"2\J("@H;W`Q
+M+6]P,BD@/B!M87A?;&EM:70I("HO#0T**PET<F5E"71?86YD:68[(`D)+RH@
+M=&AE("@I)B8H*2`J+PT-"BL-#0HK"71R964)8V]U;G0["0D)+RH@=&AE(&-A
+M;&-U;&%T960@8V]U;G0@;&]O<"`J+PD-#0HK"71R964)8V]N9%]T97-T.PD)
+M+RH@=&AE(&-O;F1I=&EO;B!T97-T("HO#0T**PET<F5E"6-O;F1?97AP.PD)
+M+RH@5&AE('=H;VQE(&)L:7`@8V]N9&ET:6]N("HO#0T**PD-#0HK"6EF*&5X
+M<"D)='0@/2!44D5%7U194$4@*&5X<"D[#0T**PD)#0T**PEO<%]T="`](&QO
+M;F=?=6YS:6=N961?='EP95]N;V1E.PT-"BL-#0HK"6)L:7!?;6%X(#T@8G5I
+M;&1?:6YT7S(@*$),25!?34%8+#`I.PT-"BL)5%)%15]465!%("AB;&EP7VUA
+M>"D@/2!O<%]T=#L-#0HK#0T**PT-"BL)+RH@:68@;&]O<"!C;W5N=&5R(&]R
+M(&QO;W`@;&EM:70@87)E('-M86QL97(@=&AE;B`T8GET92!I;G1S(`T-"BL)
+M("H@9&]N="!E=F5N(&)O=&AE<B!T;R!C<F5A=&4@8VAE8VL@97AP<F5S<VEO
+M;BX@*B\-#0HK"6EF*"%44D5%7U194$4H;&]O<%]L:6UI="YC;W5N=&5R*2!\
+M?`T-"BL)"5194$5?4%)%0TE324].*%12145?5%E012AL;V]P7VQI;6ET+F-O
+M=6YT97(I*2`\(#,R('Q\#0T**PD)(512145?5%E012AL;V]P7VQI;6ET+FQI
+M;6ET*2!\?`T-"BL)"5194$5?4%)%0TE324].*%12145?5%E012AL;V]P7VQI
+M;6ET+FQI;6ET*2D@/"`S,BE[#0T**PD)#0T**PD)8FQI<%]W87)N:6YG*%-%
+M3$9?0TA%0TLL(F)L:7`Z('9A<B!S;6%L;&5R('1H96X@;&]N9R(I.PD-#0HK
+M"0ER971U<FX@3E5,3#L-#0HK"7T-#0HK"0T-"BL)<W=I=&-H*%12145?0T]$
+M12`H;&]O<%]L:6UI="YS=&UT*2E["0T-"BL-#0HK"6-A<V4@5TA)3$5?4U1-
+M5#H-#0HK"6-A<V4@1D]27U-4350Z#0T**PT-"BL)"0T-"BL)"2\J(&EN(&QO
+M;W`@;V8@='EP92!W:&EL92AL96XM+2D@9V-C(&9O<B!S;VUE(')E87-O;B!P
+M<F5F97(@=&\@8V]M<&%R92`-#0HK"0D@*B!T:&4@<F5S=6QT(&]F(")L96XM
+M+2(@=&\@82!V86QU92!I;G-T96%D(&]F(&-O;7!A<FEN9R`B;&5N(BX@#0T*
+M*PD)("H@*'1O('-A=F4@<F5G:7-T97)S('=H:6-H(&]L9"!L96X_*2!T:&4@
+M<F5S=6QT(&ES('1H870@9V-C(&%S<W5M92`-#0HK"0D@*B!T:&%T(#`@+2T@
+M=VEL;"!B96-O;64@,'AF9F9F9F9F9B!E=F5N(&EF('1H92!L;V]P(&ES('5N
+M<VEG;F5D("$A+@T-"BL)"2`J(%1O(')E<')E<V5N="!T:&4@<F5A;"!D:7-T
+M86YC92!W92!W:6QL(&-H86YG92!T:&ES('9A;'5E('1O(#`N("HO#0T**PD)
+M:68H;&]O<%]L:6UI="YD:7(@/3T@1$5#4D5-14Y4("8F#0T**PD)"512145?
+M0T].4U1!3E0H;&]O<%]L:6UI="YL:6UI="D@)B8-#0HK"0D)5%)%15])3E1?
+M0U-47TQ/5RAL;V]P7VQI;6ET+FQI;6ET*2`]/2`P>$9&1D9&1D9&*7L-#0HK
+M"0D);&]O<%]L:6UI="YL:6UI="`](&EN=&5G97)?>F5R;U]N;V1E.PD)#0T*
+M*PD)?0T-"BL)#0T**PD-#0HK"0DO*B!C;VYV97)T('1H92!L:6UI="!A;F0@
+M8V]U;G0@:6YT;R!U;G-I9VYE9"!I;G0@:68@=&AE>2!A<F4@;F]T(`T-"BL)
+M"2`J(&%L;')E861Y('-O+B!4:&ES(&-O;G9E<G1I;VX@:7,@;F]T('-U<'!O
+M<V4@=&\@969F96-T('1H92!R96%L(`T-"BL)"2`J('9A<G,N+B`Z*2`J+PT-
+M"BL)"6EF*"%44D5%7U5.4TE'3D5$*&QO;W!?;&EM:70N8V]U;G1E<BD@)B8-
+M#0HK"0D)(512145?0T].4U1!3E0H;&]O<%]L:6UI="YC;W5N=&5R*2E[#0T*
+M*PD)"6QO;W!?;&EM:70N8V]U;G1E<B`](&)U:6QD,2`H0T].5D525%]%6%!2
+M+&QO;F=?=6YS:6=N961?='EP95]N;V1E+`T-"BL)"0D)"0D)"0D);&]O<%]L
+M:6UI="YC;W5N=&5R*3L-#0HK"0E]#0T**PD)#0T**PD):68H(512145?54Y3
+M24=.140H;&]O<%]L:6UI="YL:6UI="D@)B8-#0HK"0D)(512145?0T].4U1!
+M3E0H;&]O<%]L:6UI="YL:6UI="DI>PT-"BL)"0EL;V]P7VQI;6ET+FQI;6ET
+M(#T@8G5I;&0Q("A#3TY615)47T584%(L;&]N9U]U;G-I9VYE9%]T>7!E7VYO
+M9&4L#0T**PD)"0D)"0D)"0EL;V]P7VQI;6ET+FQI;6ET*3L-#0HK"0E]#0T*
+M*PD)#0T**PD)#0T**PD)+RH@8V]N<W1R=6-T('1H92!C:&5C:R!E>'!R97-S
+M:6]N<R!D97!E;F1I;F<@;VX@;&]O<"!D:7)E8W1I;VX@*B\-#0HK"0EI9BAL
+M;V]P7VQI;6ET+F1I<B`]/2!)3D-214U%3E0I>PT-"BL)"0EM:6YU<R`](&)U
+M:6QD("A-24Y54U]%6%!2+&]P7W1T+`T-"BL)"0D)"0D);&]O<%]L:6UI="YL
+M:6UI="QL;V]P7VQI;6ET+F-O=6YT97(I.PT-"BL)#0T**PD)"6]P,5]G=%]O
+M<#(@/2!B=6EL9"`H1U1?15A04BQB;V]L96%N7W1Y<&5?;F]D92P-#0HK"0D)
+M"0D)"0EL;V]P7VQI;6ET+FQI;6ET+&QO;W!?;&EM:70N8V]U;G1E<BD[#0T*
+M*PD)?0T-"BL)"65L<V5[#0T**PD)"6UI;G5S(#T@8G5I;&0@*$U)3E537T58
+M4%(L;W!?='0L#0T**PD)"0D)"0EL;V]P7VQI;6ET+F-O=6YT97(L;&]O<%]L
+M:6UI="YL:6UI="D[#0T**PD)"0T-"BL)"0EO<#%?9W1?;W`R(#T@8G5I;&0@
+M*$=47T584%(L8F]O;&5A;E]T>7!E7VYO9&4L#0T**PD)"0D)"0D);&]O<%]L
+M:6UI="YC;W5N=&5R+&QO;W!?;&EM:70N;&EM:70I.PT-"BL)"7T)#0T**PD-
+M#0HK"0DO*B!I9B!A;GD@;V8@=&AE(&5X<')E<W-I;VYS('=A<R!N;W0@8W)E
+M871E9"P@9F%I;"`J+PT-"BL)"6EF*"%M:6YU<R!\?"`A;W`Q7V=T7V]P,BD@
+M<F5T=7)N($Y53$P[#0T**PD-#0HK"0EM:6YU<U]G=%]M87@@/2!B=6EL9"`H
+M1U1?15A04BQB;V]L96%N7W1Y<&5?;F]D92QM:6YU<RQB;&EP7VUA>"D[#0T*
+M*PD):68H(6UI;G5S7V=T7VUA>"D@<F5T=7)N($Y53$P[#0T**PD)#0T**PD)
+M=%]A;F1I9B`](&)U:6QD("A44E542%]!3D1)1E]%6%!2+&)O;VQE86Y?='EP
+M95]N;V1E+`T-"BL)"0D)"0EO<#%?9W1?;W`R+&UI;G5S7V=T7VUA>"D[#0T*
+M*PD-#0HK"0EI9B@A=%]A;F1I9BD@<F5T=7)N($Y53$P[#0T**PD)#0T**PD)
+M8V]N9%]T97-T(#T@=%]A;F1I9CL-#0HK"0EC;W5N="`](&UI;G5S.PD-#0HK
+M"0D-#0HK"0EB<F5A:SL-#0HK"0T-"BL)8V%S92!#04Q,7T584%(Z#0T**PT-
+M"BL)"6EF*%12145?54Y324=.140H;&]O<%]L:6UI="YL:6UI="D@)B8-#0HK
+M"0D)(512145?0T].4U1!3E0H;&]O<%]L:6UI="YL:6UI="DI>PT-"BL)"0EL
+M;V]P7VQI;6ET+FQI;6ET(#T@8G5I;&0Q("A#3TY615)47T584%(L;&]N9U]U
+M;G-I9VYE9%]T>7!E7VYO9&4L#0T**PD)"0D)"0D)"0EL;V]P7VQI;6ET+FQI
+M;6ET*3L-#0HK"0E]#0T**PT-"BL)"6]P7V=T7VUA>"`](&)U:6QD("A'5%]%
+M6%!2+&)O;VQE86Y?='EP95]N;V1E+&QO;W!?;&EM:70N;&EM:70L8FQI<%]M
+M87@I.PT-"BL)"6EF*"%O<%]G=%]M87@I(')E='5R;B!.54Q,.PT-"BL-#0HK
+M"0EC;VYD7W1E<W0@/2!O<%]G=%]M87@[#0T**PD)8V]U;G0@/2!L;V]P7VQI
+M;6ET+FQI;6ET.PT-"BL)"0T-"BL)"6)R96%K.PT-"BL-#0HK"61E9F%U;'0Z
+M<F5T=7)N($Y53$P["0T-"BL)?0T-"BL)"0T-"BL)8FQI<%]V:6]L871I;VY?
+M8V%L;"`](&)L:7!?8G5I;&1?=FEO;&%T:6]N7V-A;&PH8V]U;G0I.PT-"BL)
+M:68H(6)L:7!?=FEO;&%T:6]N7V-A;&PI(')E='5R;B!.54Q,.PT-"BL)#0T*
+M*PDO*B!N;W<@=V4@=VEL;"!B=6EL9"!T:&4@0T].1%]%6%!2('5S:6YG('1H
+M92!G="!A<R!T:&4@8V]N9&ET:6]N#0T**PD@*B!A(&-A;&P@=&\@;W5R(&)L
+M:7!?=FEO;&%T:6]N(&9U;F-T:6]N(&EF(&-O;F1I=&EO;B!I<R!T<G5E+"!A
+M;F0@#0T**PD@*B!T:&4@87)G(")E>'`B(&%S(&9A;'-E(&5X<"!O9B!T:&4@
+M0T].1%]%6%!2("HO#0T**PEC;VYD7V5X<"`](&)U:6QD("A#3TY$7T584%(L
+M='0L8V]N9%]T97-T+&)L:7!?=FEO;&%T:6]N7V-A;&PL#0T**PD)"0D@97AP
+M(#\@97AP(#H@:6YT96=E<E]Z97)O7VYO9&4I.PT-"BL-#0HK"7)E='5R;B!C
+M;VYD7V5X<#L-#0HK?0T-"BL-#0HK#0T**R\J($-R96%T92!A;B!%6%!27U-4
+M350@=VET:"!A($-/3D1?15A04B!I;G-I9&4L('=H:6-H(&-H96-K(&9O<B!B
+M;&EP(`T-"BL@*B!C;VYD:71I;VXN("HO#0T**PT-"BMT<F5E#0T**V)L:7!?
+M8G5I;&1?8VAE8VM?<W1M="AE>'`I#0T**PET<F5E"65X<#L-#0HK>PT-"BL-
+M#0HK"71R964)8VAE8VM?<W1M=#TP.PT-"BL)=')E90EC:&5C:U]E>'`],#L-
+M#0HK#0T**PEC:&5C:U]E>'`@/2!B;&EP7V)U:6QD7V-H96-K7V5X<"AE>'`I
+M.PT-"BL):68H(6-H96-K7V5X<"D@<F5T=7)N($Y53$P[#0T**PD-#0HK"6-H
+M96-K7W-T;70@/2!B=6EL9%]S=&UT*$584%)?4U1-5"P@8VAE8VM?97AP*3L-
+M#0HK#0T**PER971U<FX@8VAE8VM?<W1M=#L-#0HK?0T-"BL-#0HK#0T**R\J
+M"6%D9"!A($-/3D1?15A04B!T;R!T:&4@9F]R(&EN:70@<W1M="X@5&AE(&%D
+M9&ET:6]N(&-H96-K('=I;&P@8F4@:6X@80T-"BL@*@EF;W)M870@;V8@82!N
+M97<@15A04E]35$U4(&)Y(&UA:VEN9R!T:&4@8W5R<F5N="!F;W(@:6YI="!S
+M=&UT(&$@#0T**R`J"4-/35!/54Y$7U-4350@86YD(&-H86EN9R!T:&4@;F5W
+M($584%)?4U1-5"!A="!T:&4@96YD(&]F('1H92!E>&ES=&EN9R!O;F4N(`T-
+M"BL@*B\-#0HK(`T-"BMB;V]L("`-#0HK8FQI<%]E;6ET7V9O<E]L;V]P7V-H
+M96-K<RAF;W)?<W1M="D-#0HK"71R964)9F]R7W-T;70[#0T**PD)#0T**WL-
+M#0HK#0T**PET<F5E"69O<E]I;FET.PT-"BL)=')E90EC;VUP;W5N9%]E>'!R
+M.PT-"BL)=')E90EB;&EP7V5X<#L-#0HK#0T**PEF;W)?:6YI="`]($9/4E])
+M3DE47U-4350@*&9O<E]S=&UT*3L-#0HK#0T**PDO*B!(86YD;&4@;VYL>2!C
+M87-E<R!W:&5R92!F;W(@:6YI="!I<R!E>'!R97-S:6]N+B`J+PT-"BL):68H
+M5%)%15]#3T1%("AF;W)?:6YI="D@(3T@15A04E]35$U4*2![#0T**PD)8FQI
+M<%]W87)N:6YG*$Y%7T9/4BP-#0HK"0D)(F)L:7`Z(&9O<B!I;FET(&ES(&YO
+M="!%6%!27U-4350B*3L)#0T**PD)<F5T=7)N(&9A;'-E.PT-"BL)?0T-"BL)
+M#0T**PDO*B!B=6EL9"!A(&)L:7`@8VAE8VL@=7-I;F<@=&AE(&=L;V)A;"!L
+M;V]P7VQI;6ET("HO#0T**PEB;&EP7V5X<"`](&)L:7!?8G5I;&1?8VAE8VM?
+M97AP*$Y53$Q?5%)%12D[#0T**PEI9B@A8FQI<%]E>'`I>PT-"BL)"6)L:7!?
+M=V%R;FEN9RA.15]&3U(L#0T**PD)"2)B;&EP.B!I;G1E<FYA;"!F86EL=7)E
+M('=H:6QE(&)U:6QD:6YG(&-H96-K(&5X<')E<W-I;VXB*3L)#0T**PD)<F5T
+M=7)N(&9A;'-E.PT-"BL)?0T-"BL-#0HK"6EF*%12145?3U!%4D%.1"`H9F]R
+M7VEN:70L,"D@/3T@3E5,3%]44D5%*7L-#0HK"0E44D5%7T]015)!3D0@*&9O
+M<E]I;FET+#`I(#T@8FQI<%]E>'`[#0T**PE]#0T**PEE;'-E>PT-"BL)"2\J
+M(&-O;G-T<F%C="!A(&YE=R!C;VUP;W5N9"!E>'!R97-S:6]N("HO#0T**PD)
+M8V]M<&]U;F1?97AP<B`](&)U:6QD*$-/35!/54Y$7T584%(L=F]I9%]T>7!E
+M7VYO9&4L#0T**PD)"0D)"0D)5%)%15]/4$5204Y$("AF;W)?:6YI="PP*2P-
+M#0HK"0D)"0D)"0EB;&EP7V5X<"D[#0T**PD-#0HK"0EI9B@A8V]M<&]U;F1?
+M97AP<BD@<F5T=7)N(&9A;'-E.PT-"BL)#0T**PD)+RH@<F5P;&%C92!C=7)R
+M96YT(&9O<B!I;FET(&5X<')E<W-I;VX@=VET:"!T:&4@;F5W(&-O;7!O=6YD
+M(`T-"BL)"2`J(&5X<')E<W-I;VX@*B\-#0HK"0D-#0HK"0E44D5%7T]015)!
+M3D0@*&9O<E]I;FET+#`I(#T@8V]M<&]U;F1?97AP<CL-#0HK"7T-#0HK"0T-
+M"BL)<F5T=7)N('1R=64[#0T**PD-#0HK?0T-"BL-#0HK+RH)861D(&$@0T].
+M1%]%6%!2(&)E9F]R92!T:&4@5TA)3$5?4U1-5"X@5&AE(&%D9&ET:6]N(&-H
+M96-K('=I;&P@8F4@:6X@80T-"BL@*@EF;W)M870@;V8@82!N97<@15A04E]3
+M5$U4+B!3:6YC92!W92!A<F4@8V%L;&5D(&EN(&$@<W1A=&4@=VAE<F4@=&AE
+M(`T-"BL@*@E72$E,15]35$U4('=A<R!N;W0@>65T(&%D9&5D('1O('1H92!T
+M<F5E+B!W92!W:6QL('-I;7!L>2!A9&0@;W5R(&-O;F0N(`T-"BL@*B\-#0HK
+M(`T-"BMB;V]L("`-#0HK8FQI<%]E;6ET7W=H:6QE7VQO;W!?8VAE8VMS*"D-
+M#0HK>PT-"BL)=')E90EB;&EP7W-T;70[#0T**PD)#0T**PEB;&EP7W-T;70@
+M/2!B;&EP7V)U:6QD7V-H96-K7W-T;70H3E5,3%]44D5%*3L-#0HK"6EF*"%B
+M;&EP7W-T;70I(')E='5R;B!F86QS93L-#0HK"0T-"BL)861D7W-T;70H8FQI
+M<%]S=&UT*3L-#0HK"0T-"BL)<F5T=7)N('1R=64[#0T**WT-#0HK#0T**PT-
+M"BLO*B!C;VYV97)T(&$@0T%,3%]%6%!2('1O(&$@0T].1%]%6%!2(&AA=FEN
+M9R!T:&4@8FQI<"!C:&5C:W,@87,@=&AE(&-O;F0N#0T**R`J(&%N9"!T:&4@
+M;W)I9VEN86P@0T%,3%]%6%!2(&%S('1H92!F86QS92!S:61E(&]F('1H92!E
+M>'!R97-S:6]N+B`J+R`-#0HK#0T**W1R964@(`T-"BMB;&EP7V5M:71?8V%L
+M;%]C:&5C:W,H8V%L;"D-#0HK"71R964)8V%L;#L-#0HK"0D-#0HK>PT-"BL)
+M=')E90EC:&5C:U]E>'`[#0T**PT-"BL)8VAE8VM?97AP(#T@8FQI<%]B=6EL
+M9%]C:&5C:U]E>'`H8V%L;"D[(`T-"BL-#0HK"2\J(&EF('=E(&9A:6QE9"!T
+M;R!C;VYV97)T('1H92!E>'`@:6YT;R!O=7(@8VAE8VLL(`T-"BL)("H@=&AE
+M;B!R971U<FX@=&AE(&]R:6=I;F%L(&5X<'(@*B\-#0HK"6EF*"%C:&5C:U]E
+M>'`I(')E='5R;B!C86QL.PT-"BL-#0HK"7)E='5R;B!C:&5C:U]E>'`[#0T*
+M*WT-#0HK#0T**R\J(&-H96-K(&EF(&$@9&5C;"!I<R!P87)T(&]F(&$@<W1M
+M="!O<B!A;B!E>'!R(&%S(&$@;'9A;'5E#0T**R`J(&EF(&ET(&ES('1H96X@
+M8V]N<VED97(@:70@87,@;6]D:69I960@#0T**R`J#0T**R`J(%1H:7,@9G5N
+M8W1I;VX@:7,@<F5C=7)S:79E(&%N9"!T:&4@<W1O<"!C;VYI=&EO;B!I<R!E
+M:71H97(-#0HK("H@+2!A('-I;7!L92!E>'!R('=A<R!F;W5N9"!W:&EC:"!A
+M;&QO=R!U<R!T;R!F:6=U<F4@;W5T('1H870@#0T**R`J(`D@=&AE(&1E8VP@
+M:7,@;6]D:69I960N#0T**R`J("T@82!F=6YC=&EO;B!R96%C:"!A('-T;70@
+M+R!E>'!R('1O(&-O;7!L97@@=&\@=F5R9FEY#0T**R`J(`D@*'=E(&-A;B!C
+M:&5A="!I;B!F:7)S="!V97)S:6]N(&%N9"!C;&%I;2!T:&%T(&%L;6]S="!E
+M=F5R>71H:6YG#0T**R`J(`D@:7,@=&]O(&AA<F0@=&\@:61E;G1I9GD@<V\@
+M<F5C=7)S:79E(&5N9"!W:&EL92!S=7!P;W)T:6YG(&]N;'D@#0T**R`J(`D@
+M8F%S:6,@<W1U9F8@*2HO#0T**PT-"BL-#0HK#0T**V)O;VP-#0HK8FQI<%]D
+M96-L7VUO9&EF:65D("AD96-L+'0I#0T**PET<F5E(&1E8VP[#0T**PET<F5E
+M('0[#0T**WL-#0HK"6EN="!I.PT-"BL)=')E90EE>'`[#0T**PD-#0HK"6EF
+M*"%T*2!R971U<FX@9F%L<V4[#0T**PD-#0HK"7-W:71C:"A44D5%7T-/1$4@
+M*'0I*7L-#0HK#0T**PDO*B!H86YD;&4@:VYO=VX@<VEM<&QE(&-A<V5S('=H
+M:6-H(&ES('1Y<&EC86P@=&\@8V]U;G1E<B`-#0HK"2`J(&UO9&EF:6-A=&EO
+M;G,@*B\-#0HK"0D-#0HK"0EC87-E($U/1$E&65]%6%!2.@T-"BL)"0DO*B!O
+M;FQY('1A:V4@8V%R92!O9B!C87-E(&QI:V4@*ST@+3T@34]$24997T584%(@
+M=VAE<F4@9&5C;"`-#0HK"0D)("H@:7,@;VX@;&5F="!S:61E(&%N9"!A;'-O
+M(&]N(')I9VAT('-I9&4@=&]G871H97(@=VET:"!A(`T-"BL)"0D@*B!C;VYS
+M=&%N="`J+PT-"BL)"0EE>'`@/2!44D5%7T]015)!3D0@*'0L,2D[#0T**PD)
+M"6EF*`E44D5%7T]015)!3D0@*'0L,"D@/3T@9&5C;"`F)@T-"BL)"0D)97AP
+M("8F#0T**PD)"0E44D5%7T]015)!3D0@*&5X<"PP*2`]/2!D96-L("8F#0T*
+M*PD)"0E44D5%7T]015)!3D0@*&5X<"PQ*2`F)@T-"BL)"0D)5%)%15]#3TY3
+M5$%.5"`H5%)%15]/4$5204Y$("AE>'`L,2DI*7L-#0HK#0T**PT-"BL)"0D)
+M:68H5%)%15]#3T1%("AE>'`I(#T](%!,55-?15A04BE[#0T**PD)"0D);&]O
+M<%]L:6UI="YD:7(@/2!)3D-214U%3E0[#0T**PD)"0D)<F5T=7)N('1R=64[
+M#0T**PD)"0E]#0T**PD)"0D-#0HK"0D)"6EF*%12145?0T]$12`H97AP*2`]
+M/2!-24Y54U]%6%!2*7L-#0HK"0D)"0EL;V]P7VQI;6ET+F1I<B`]($1%0U)%
+M345.5#L-#0HK"0D)"0ER971U<FX@=')U93L-#0HK"0D)"7T-#0HK#0T**PD)
+M"0ER971U<FX@=')U93L-#0HK"0D)?0T-"BL)"0EE;'-E#0T**PD)"0ER971U
+M<FX@9F%L<V4[#0T**PT-"BL)"0D-#0HK"0EC87-E(%!214E.0U)%345.5%]%
+M6%!2.@T-"BL)"6-A<V4@4$]35$E.0U)%345.5%]%6%!2.@T-"BL)"0T-"BL)
+M"0EI9BAD96-L(#T](%12145?3U!%4D%.1"`H="PP*2E[#0T**PD)"0EL;V]P
+M7VQI;6ET+F1I<B`]($E.0U)%345.5#L-#0HK"0D)"7)E='5R;B!T<G5E.PT-
+M"BL)"0E]#0T**PD)"0T-"BL)"0EB<F5A:SL-#0HK#0T**PD)8V%S92!03U-4
+M1$5#4D5-14Y47T584%(Z#0T**PD)8V%S92!04D5$14-214U%3E1?15A04CH-
+M#0HK"0D)#0T**PD)"0T-"BL)"0EI9BAD96-L(#T](%12145?3U!%4D%.1"`H
+M="PP*2E[#0T**PD)"0EL;V]P7VQI;6ET+F1I<B`]($1%0U)%345.5#L-#0HK
+M"0D)"7)E='5R;B!T<G5E.PT-"BL)"0E]#0T**PD)"0T-"BL)"0EB<F5A:SL-
+M#0HK#0T**PD)8V%S92!,5%]%6%!2.@T-"BL)"6-A<V4@3$5?15A04CH-#0HK
+M"0EC87-E($=%7T584%(Z#0T**PD)8V%S92!'5%]%6%!2.@T-"BL)"6-A<V4@
+M15%?15A04CH-#0HK"0EC87-E($Y%7T584%(Z#0T**PT-"BL)"0DO*B!I;B!T
+M:&4@8V%S92!O9B!S:6UP;&4@8V]N9&ET:6]N+"!C:&5C:R!F;W(@;6]D:69I
+M8V%T:6]N(&]F#0T**PD)"2`J(&]N92!O9B!T:&4@<VED97,N(%1H:7,@=VEL
+M;"!H96QP('5S(&EN(&-A<V5S(&QI:V4@#0T**PD)"2`J('=H:6QE*&QE;BTM
+M*2`J+PT-"BL-#0HK"0D)9F]R*&D],#MI(#P@,CL@:2LK*7L-#0HK#0T**PD)
+M"0EI9BAB;&EP7V1E8VQ?;6]D:69I960H9&5C;"`L(%12145?3U!%4D%.1"AT
+M+&DI*2D-#0HK"0D)"0ER971U<FX@=')U93L-#0HK"0D)?0T-"BL-#0HK"0D)
+M<F5T=7)N(&9A;'-E.PT-"BL-#0HK"0D)#0T**PD)9&5F875L=#H-#0HK"0D)
+M<F5T=7)N(&9A;'-E.PT-"BL)"0T-"BL)?0T-"BL-#0HK"7)E='5R;B!F86QS
+M93L)#0T**WT-#0HK#0T**R\J(&9I;F0@82!D96-L(&]U="!O9B!P87)E;G0@
+M97AP<B!O<&5R86YD+B!M;W-T('-I;7!L92!C87-E(&ES('=H96X-#0HK("H@
+M;W`@:7,@=&AE(&1E8VP@:71S96QF+B!A;F]T:&5R('-U<'!O<G1E9"!C87-E
+M(&ES('=H96X@=&AE(&]P(&ES(&$-#0HK("H@;6]D:69Y(&]R(&EN8W)E;65N
+M="`O(&1E8W)E;65N="!E>'!R+"!I;B!T:&ES(&-A<V4@=&AE(&9I<G-T(&]P
+M97)A;F0-#0HK("H@=VEL;"!B92!T:&4@;&]O:V5D(&9O<B!D96-L+B`-#0HK
+M("H-#0HK("H@:6X@8V%S97,@;W1H97(@=&AE;B!T:&]S92P@=V4@=VEL;"!N
+M;W0@9FEN9"!T:&4@9&5C;"X@*B\-#0HK#0T**W1R964-#0HK8FQI<%]F:6YD
+M7V1E8VPH;W`I#0T**PET<F5E(&]P.PT-"BM[#0T**PT-"BL)<W=I=&-H*"!4
+M4D5%7T-/1$4H;W`I*7L-#0HK"0EC87-E(%9!4E]$14-,.@T-"BL)"6-A<V4@
+M4$%235]$14-,.@T-"BL)"6-A<V4@1DE%3$1?1$5#3#H-#0HK"0EC87-E($E.
+M5$5'15)?0U-4.@T-"BL-#0HK"0D)<F5T=7)N(&]P.PT-"BL)"0D-#0HK"0DO
+M*B!I9B!S:6UP;&4@97AP<B!L;V]K(&EN<VED92XJ+PT-"BL)"6-A<V4@4%)%
+M1$5#4D5-14Y47T584%(Z#0T**PD)8V%S92!04D5)3D-214U%3E1?15A04CH-
+M#0HK"0EC87-E(%!/4U1$14-214U%3E1?15A04CH-#0HK"0EC87-E(%!/4U1)
+M3D-214U%3E1?15A04CH-#0HK#0T**PD)"7)E='5R;B!B;&EP7V9I;F1?9&5C
+M;"A44D5%7T]015)!3D0@*&]P+#`I*3L-#0HK"0D)#0T**PD)+RH@:6X@8V%S
+M92!L;V]P('9A<B!N965D(&-O;G9E<G1I;VXL('=E('=I;&P@9FEN9"!S;VUE
+M(`T-"BL)"2`J(&YO<"!E>'!R97-S:6]N<R`J+PT-"BL)"6-A<V4@3D]07T58
+M4%(Z#0T**PD)8V%S92!#3TY615)47T584%(Z#0T**PD)"0T-"BL)"0ER971U
+M<FX@8FQI<%]F:6YD7V1E8VPH5%)%15]/4$5204Y$("AO<"PP*2D[#0T**PD)
+M#0T**PD)9&5F875L=#H-#0HK"0D)<F5T=7)N($Y53$P[#0T**PE]#0T**WT-
+M#0HK#0T**R\J(&QO;VL@:6YS:61E(&$@0T%,3%]%6%!2+"!A;F0@9FEN9"!T
+M:&4@9G5N8W1I;VX@;F%M92X@=&AE;B!S96%R8V@@#0T**R`J(&9U;F-T:6]N
+M(&YA;64@:6X@8FQI<"!L:7-T+"!A;F0@8W)E871E(&$@(FQO;W!?;&EM:70B
+M('-T=7)C="!U<VEN9PT-"BL@*B!T:&4@3BUT:"!P87)A;2!A<R!L:6UI="P@
+M8V]N<W1A;G0@,"!A<R!C;W5N=&5R+"!A;F0@<V5T(&1I<F5C=&EO;B`-#0HK
+M("H@=&\@:6YC<F5M96YT+B`J+PT-"BMB;V]L#0T**V)L:7!?9FEN9%]C86QL
+M7VQI;6ET<RAC86QL+'!A<F%M<RD-#0HK"71R964)8V%L;#L-#0HK"71R964)
+M<&%R86US.PT-"BM[#0T**PT-"BL)=')E90EF=6YC7V1E8VPL<&%R86T[#0T*
+M*PEI;G0)"6DL<&%R86U?:6YD97@]+3$[#0T**PT-"BL)+RH@=7!D871E('-T
+M871I<W1I8W,@8V]U;G1E<G,@*B\-#0HK"6)L:7!?<W1A="YT;W1A;%]C:&5C
+M:W,K*SL-#0HK"6)L:7!?<W1A="YC86QL7V-H96-K<RLK.PT-"BL)#0T**PEI
+M9B@A8V%L;"!\?`T-"BL)"2%44D5%7T]015)!3D0H8V%L;"PP*7Q\#0T**PD)
+M5%)%15]#3T1%("A44D5%7T]015)!3D0@*&-A;&PL,"DI("$]($%$1%)?15A0
+M4B!\?`T-"BL)"2%44D5%7T]015)!3D0H5%)%15]/4$5204Y$("AC86QL+#`I
+M+#`I*7L-#0HK"0D-#0HK"0EB;&EP7W=A<FYI;F<H3D5?0T%,3"PB8FQI<#H@
+M8V%L;"!E>'!R(&1O;G0@:&%V92!A9&1R97-S(&5X<'(B*3L)#0T**PD)<F5T
+M=7)N(&9A;'-E.PT-"BL)?0T-"BL-#0HK"69U;F-?9&5C;"`](%12145?3U!%
+M4D%.1"`H5%)%15]/4$5204Y$("AC86QL+#`I+#`I.PT-"BL):68H(%12145?
+M0T]$12`H9G5N8U]D96-L*2`A/2!&54Y#5$E/3E]$14-,('Q\#0T**PD)(41%
+M0TQ?3D%-12`H9G5N8U]D96-L*2!\?`T-"BL)"2$@241%3E1)1DE%4E]03TE.
+M5$52("@@1$5#3%].04U%*&9U;F-?9&5C;"DI*7L-#0HK#0T**PD)8FQI<%]W
+M87)N:6YG*$Y%7T-!3$PL(F)L:7`Z(&-A;&P@8GD@<&]I;G1E<B!T;R!F=6YC
+M=&EO;B!N;W0@<W5P<&]R=&5D(BD[#0T**PD@("`)<F5T=7)N(&9A;'-E.PT-
+M"BL)?0T-"BL-#0HK#0T**PEF;W(H:3TP.R!S=')L96XH;&]O<%]L:6ME<UMI
+M72YF=6YC7VYA;64I(#X@,#MI*RLI>PT-"BL)"6EF*'-T<F-M<"A)1$5.5$E&
+M24527U!/24Y415(@*$1%0TQ?3D%-12`H9G5N8U]D96-L*2DL#0T**PD)"0D)
+M;&]O<%]L:6ME<UMI72YF=6YC7VYA;64I/3TP*7L-#0HK"0D)#0T**PD)"7!A
+M<F%M7VEN9&5X(#T@;&]O<%]L:6ME<UMI72YP87)A;5]I;F1E>#L-#0HK"0D)
+M8G)E86L[#0T**PD)?0T-"BL)?0T-"BL)#0T**PDO*B!I9B!F=6YC=&EO;B!N
+M;W0@9F]U;F0@:6X@;&]O<%]L:6ME<R!L:7-T('1H96X@9&]N="!C;W5N=`T-
+M"BL)("H@:70@:6X@=&AE(&)L:7!?<W1A="`J+PT-"BL):68H<&%R86U?:6YD
+M97@@/"`P*7L-#0HK"0EB;&EP7W-T870N=&]T86Q?8VAE8VMS+2T[#0T**PD)
+M8FQI<%]S=&%T+F-A;&Q?8VAE8VMS+2T[#0T**PD)<F5T=7)N(&9A;'-E.PT-
+M"BL)?0T-"BL)"0D-#0HK#0T**PEP87)A;2`]('!A<F%M<SL-#0HK"69O<BAI
+M/3`[(&D@/"!P87)A;5]I;F1E>"`F)B!P87)A;3L@:2LK*7L-#0HK"0EP87)A
+M;2`](%12145?0TA!24X@*'!A<F%M*3L-#0HK"7T-#0HK"0T-"BL):68H(7!A
+M<F%M*2!R971U<FX@9F%L<V4[#0T**PD-#0HK"6QO;W!?;&EM:70N;&EM:70@
+M/2!44D5%7U9!3%5%("AP87)A;2D[#0T**PT-"BL)+RH@:68@<&%R86T@:7,@
+M8V%L8W5L871E9"!U<VEN9R!A(&9U;F-T:6]N+"!D;VYT(&EN8VQU9&4@=&AA
+M=`T-"BL)("H@97AP<B!I;B!T:&4@8VAE8VLL(&ET<R!W87D@=&]O(')I<VMY
+M+B`J+PT-"BL):68H5%)%15]3241%7T5&1D5#5%,@*&QO;W!?;&EM:70N;&EM
+M:70I*7L-#0HK"0EB;&EP7W=A<FYI;F<H3D5?0T%,3"PB8FQI<#H@<&%R86T@
+M<V5E;7,@=&\@:&%V92!S:61E(&5F9F5C=',B*3L-#0HK"0ER971U<FX@9F%L
+M<V4["0D-#0HK"7T-#0HK"0T-"BL);&]O<%]L:6UI="YC;W5N=&5R(#T@:6YT
+M96=E<E]Z97)O7VYO9&4[#0T**R`@"6QO;W!?;&EM:70N9&ER(#T@24Y#4D5-
+M14Y4.PD-#0HK"0T-"BL)+RH@86QL('-E96US('1O(&)E(&]K+"!W92!F;W5N
+M9"!T:&4@;&EM:71S+"!A;F0@=V4@8V%N(`T-"BL)("H@8V]N=&EN=64@=VET
+M:"!E;6ET:6<@=&AE(&)L:7`@8VAE8VLN("HO#0T**PD-#0HK"7)E='5R;B!T
+M<G5E.PT-"BM]#0T**PT-"BL-#0HK+RH@3&]O:R!I;G-I9&4@82!L;V]P(&-O
+M;F1I=&EO;BX@9FER<W0@8VAE8VL@:68@8V]N9&ET:6]N(&ES('1O;R`-#0HK
+M("H@8V]M<&QI8V%T960N(&EF(&ET(&ES+"!R971U<FX@3E5,3"`O+R!&25A-
+M12!R961U8V4@(F-O;7!L:6-A=&5D(B!S970-#0HK("H-#0HK("H@9F]R(&5A
+M8V@@9&5C;"!I;B!T:&4@8V]N9&ET:6]N+"!C:&5C:R!I9B!D96-L(&ES(&UO
+M9&EF:65D(&5I=&AE<@T-"BL@*B!I;B!C;VYD(&]R(&5X<'(N(&EF(&ET)W,@
+M;6]D:69I960@8V]N<VED97(@:70@87,@=&AE(&-O=6YT97(N#0T**R`J(&EF
+M(&UO<F4@=&AE;B!O;F4@8V]U;G1E<B!F;W5N9"!R971U<FX@3E5,3"X@*B\-
+M#0HK#0T**V)O;VP-#0HK8FQI<%]F:6YD7VQO;W!?=F%R<RAC;VYD+&5X<'(I
+M#0T**PET<F5E"6-O;F0[#0T**PET<F5E"65X<'([#0T**WL-#0HK#0T**PET
+M<F5E"61E8VP],#L-#0HK"6EN=`D):2QN=6U?;6]D:69I960],#L-#0HK#0T*
+M*PEI9B@A8V]N9"D@<F5T=7)N(&9A;'-E.PT-"BL)#0T**PDO*B!F:7)S="!V
+M97)S:6]N('=I;&P@<W5P<&]R="!O;FQY('9E<GD@<VEM<&QE(&-O;F1I=&EO
+M;G,@*B\)#0T**PES=VET8V@H5%)%15]#3T1%("AC;VYD*2E[#0T**PD)8V%S
+M92!,5%]%6%!2.@T-"BL)"6-A<V4@3$5?15A04CH-#0HK"0EC87-E($=%7T58
+M4%(Z#0T**PD)8V%S92!'5%]%6%!2.@T-"BL)"6-A<V4@15%?15A04CH-#0HK
+M"0EC87-E($Y%7T584%(Z#0T**PT-"BL)"0DO*B!F:6YD(&1E8VP@=VEL;"!G
+M970@86X@;W!E<F%N9"!A;F0@<F5T=7)N('1H92`B;6%I;B(-#0HK"0D)("H@
+M9&5C;"!T:&%T(')E<')E<W0@:70N(`T-"BL)"0D@*B`-#0HK"0D)("H@4VEN
+M8V4@=&AI<R!O<&5R86YD(&ES('!A<G0@;V8@=VAA="!W92!H;W!E(&$@8V]U
+M;G1E<@T-"BL)"0D@*B!C;VYD:71I;VXL(&ET<R!G;VEN9R!T;R!B92!E:71H
+M97(@=F%R+W!A<F%M(&1E8VP@;W(@#0T**PD)"2`J(&%N(&5X<'(@=VAI8V@@
+M;W5R(')E<75E<W1E9"!D96-L(&ES('!A<G0@;V8N("HO#0T**PD)#0T**PT-
+M"BL)"0EF;W(H:3TP.R!I(#P@,CL@:2LK*7L-#0HK"0D-#0HK"0D)"61E8VP@
+M/2!B;&EP7V9I;F1?9&5C;"A44D5%7T]015)!3D0@*&-O;F0L:2DI.PD)"0T-
+M"BL)"0D):68H(61E8VPI>PT-"BL)"0D)"6)L:7!?=V%R;FEN9RA314Q&7T-(
+M14-++`T-"BL)"0D)"0D)(F)L:7`Z(&-A;G0@9FEN9"!L;V]P(&1E8VP@:6X@
+M8V]N9&ET:6]N(BD[#0T**PD)"0D)+RH@8V]N9&ET:6]N('1O;R!C;VUP;&5X
+M+"!R971U<FX@*B\-#0HK"0D)"0ER971U<FX@9F%L<V4[#0T**PD)"0E]#0T*
+M*PT-"BL)"0D)+RH@8VAE8VL@:68@9&5C;"!I<R!M;V1I9FEE9"X@=V4@:&]P
+M92!T;R!G970@80T-"BL)"0D)("H@;6]D:69I8V%T:6]N('-U8V@@87,@:6YC
+M<F5M96YT(&]R(&1E8W)E;65N=`T-"BL)"0D)("H@<VEN8V4@=V4@:&%V92!T
+M;R!K;F]W('1H92!L;V]P(&1I<F5C=&EO;B`J+PT-"BL)"0D):68H*&)L:7!?
+M9&5C;%]M;V1I9FEE9"AD96-L+&-O;F0I('Q\#0T**PD)"0D)(&)L:7!?9&5C
+M;%]M;V1I9FEE9"AD96-L+&5X<'(I*2E[#0T**PD)"0D)#0T**PD)"0D);G5M
+M7VUO9&EF:65D*RL[#0T**PD)"0D);&]O<%]L:6UI="YC;W5N=&5R(#T@9&5C
+M;#L-#0HK"0D)#0T**PD)"0D)#0T**PD)"0E]#0T**PD)"0DO*B!I9B!N;W0@
+M;6]D:69I960@;6%Y8F4@:71S('1H92!L:6UI="`N<V%V92!I="`-#0HK"0D)
+M"2`J(&EN(&-A<V4@=&AA="!W92!W:6QL(&9I;F0@;W1H97(@87,@8V]U;G1E
+M<B`J+PT-"BL)"0D)96QS97L-#0HK"0D)"0EL;V]P7VQI;6ET+FQI;6ET(#T@
+M9&5C;#L-#0HK"0D)"7T-#0HK"0D)?0D-#0HK"0D)#0T**PD)"6EF*&YU;5]M
+M;V1I9FEE9"`]/2`Q*7L-#0HK"0D)"7)E='5R;B!T<G5E.PT-"BL)"0E]#0T*
+M*PD)"0T-"BL)"0DO*B!W92!D:61N="!F;W5N9"!O;F4@*&%N9"!O;FQY(&]N
+M92D@;6]D:69I960@9&5C;"X@#0T**PD)"2`J('-O('=E(&1O;G0@:VYO=R!W
+M:&EC:"!I<R!T:&4@;&EM:70@*&EF(&%T(&%L;"!E>&ES="D@*B\-#0HK"0D)
+M:68H;G5M7VUO9&EF:65D(#T](#`I>PT-"BL)"0D)8FQI<%]W87)N:6YG*%-%
+M3$9?0TA%0TLL#0T**PD)"0D)(F)L:7`Z('=H:6-H(&QO;W`@=F%R(&ES(&UO
+M9&EF:65D/R`H8F]D>2!N;W0@<V5A<F-H960I(BD[#0T**PD)"7T-#0HK"0D)
+M96QS97L-#0HK"0D)"6)L:7!?=V%R;FEN9RA314Q&7T-(14-++`T-"BL)"0D)
+M"2)B;&EP.B!M;W)E('1H96X@;VYE('9A<B!I<R!M;V1I9FEE9"P@=VAO(&ES
+M(&-O=6YT97(_(BD[#0T**PD)"0D-#0HK"0D)?0T-"BL)"0ER971U<FX@9F%L
+M<V4[#0T**PD)"0T-"BL)"0T-"BL)"61E9F%U;'0Z#0T**PD)"6)L:7!?=V%R
+M;FEN9RA314Q&7T-(14-++`T-"BL)"0D)"2)B;&EP.B!C;VYD:71I;VX@:7,@
+M=&]O(&-O;7!L97@@9F]R('1H:7,@=F5R<VEO;B(I.PT-"BL)"0ER971U<FX@
+M9F%L<V4[#0T**PE]#0T**PD-#0HK?0T-"BL-#0HK#0T**R\J(&-H96-K(&9O
+M<B!L;V]P(&QI;6ET<RX@:68@;&]O<"!S965M<R!T;R!B92!A(&-O=6YT(&QO
+M;W`L(`T-"BL@*B!E;6ET(&-O9&4@=&\@8VAE8VL@;&]O<"!C;W5N=&5R(&EN
+M(')U;BUT:6UE+B!T:&%T(&-O9&4@=VEL;`T-"BL@*B!M86ME('-U<F4@=&AE
+M(&-O=6YT97(@:7,@;F]T('1O;R!B:6<@*&%S(')E<W5L="!O9B!I;G0@;W9E
+M<F9L;W<-#0HK("H@97AP;&]I=&%T:6]N*2`J+PT-"BL-#0HK("`@#0T**W1R
+M964-#0HK8FQI<%]C:&5C:U]L;V]P7VQI;6ET("AT*0T-"BL@("`@('1R964@
+M=#L-#0HK>PT-"BL)+RH@3&]O<"!P87)T<R`J+PT-"BL)=')E90ER97-U;'0]
+M=#L-#0HK#0T**PDO*B!)9B!W92!A<F4@;F]T(&%S:V5D('1O(&)L:7`L(')E
+M='5R;B!T:&4@=')E92!W92!G;W0@*B\-#0HK"6EF*"%F;&%G7V)L:7`I(')E
+M='5R;B!R97-U;'0[#0T**PT-"BL)+RH@268@=&AE('1R964@=V4@9V]T(&ES
+M(&YU;&P@=&AE;B!W92!C86YT(&1O(&UU8V@@*B\-#0HK"6EF*"%T*0ER971U
+M<FX@<F5S=6QT.PT-"BL-#0HK"2\J(&EN:71I86QI>F4@;&]O<%]L:6UI="!G
+M;&]B86P@*B\-#0HK"6QO;W!?;&EM:70N<W1M="`]('0[#0T**PEL;V]P7VQI
+M;6ET+F-O=6YT97(@/2!.54Q,.PT-"BL);&]O<%]L:6UI="YL:6UI="`]($Y5
+M3$P[#0T**PEL;V]P7VQI;6ET+F1I<B`](%5.2TY/5TX[#0T**PT-"BL-#0HK
+M"0T-"BL)#0T**PES=VET8V@H5%)%15]#3T1%("AT*2E[#0T**PD-#0HK"2\J
+M(&1E<&5N9&EN9R!O9B!L;V]P('1Y<&4L(&5X=')A8W0@=&AE(&QO;W`@<W1M
+M=',@86YD(&5X<')S#0T**PD@*B!L;V]P(&-O;F1I=&EO;B!W:6QL(&AE;'`@
+M=7,@:61E;G1I9GD@=&AE(&QO;W`@8V]U;G1E<B!V87(-#0HK"2`J('=E('=I
+M;&P@;&%T97(@;&]O:R!I;B!C;VYD(&ET<V5L9B!A;F0@=&AE(&9O<E]E>'!R
+M(&9O<B`-#0HK"2`J(&UO9&EF:6-A=&EO;B!O9B!V87)S(&]F(&-O;F1I=&EO
+M;BX@#0T**PD@*@T-"BL)("H@:68@;6]D:69I8V%T:6]N(&9O=6YD(&%N9"!L
+M;V]K(&QI:V4@82`B8V]U;G0B(&UO9&EF:6-A=&EO;B`-#0HK"2`J("AI+F4N
+M("LK+"TM+"L]+"H]+BX@971C*2!W92!W:6QL(&MN;W<@:71S(&$@(F-O=6YT
+M(B!L;V]P+@T-"BL)("H@"0T-"BL)("H@;F5X="!S=&5P+"!I<R!T;R!I9&5N
+M=&EF>2!C;VYD:71I;VX@97AP<F5S:6]N+B!A;F0@=&\@96UI=`T-"BL)("H@
+M8V]D92!T;R!C:&5C:R!L:6UI="!I;B!R=6YT:6UE+"!B969O<F4@;&]O<"!S
+M=&%R="!E>&5U8W1I;VX@("HO#0T**PT-"BL)8V%S92!&3U)?4U1-5#H-#0HK
+M"0EB;&EP7W-T870N9F]R7V-H96-K<RLK.PT-"BL)"6)L:7!?<W1A="YT;W1A
+M;%]C:&5C:W,K*SL-#0HK"0D)#0T**PD):68H8FQI<%]F:6YD7VQO;W!?=F%R
+M<RA&3U)?0T].1"`H="DL1D]27T584%(@*'0I*2D-#0HK"0D):68H8FQI<%]E
+M;6ET7V9O<E]L;V]P7V-H96-K<RAT*2E[#0T**PD)"0EB;&EP7W-T870N=&]T
+M86Q?96UI=',K*SL-#0HK"0D)"6)L:7!?<W1A="YF;W)?96UI=',K*SL-#0HK
+M"0D)?0T-"BL-#0HK"0EB<F5A:SL-#0HK"6-A<V4@5TA)3$5?4U1-5#H-#0HK
+M"0EB;&EP7W-T870N=VAI;&5?8VAE8VMS*RL[#0T**PD)8FQI<%]S=&%T+G1O
+M=&%L7V-H96-K<RLK.PT-"BL-#0HK"0EI9BAB;&EP7V9I;F1?;&]O<%]V87)S
+M*%=(24Q%7T-/3D0@*'0I+$Y53$Q?5%)%12DI#0T**PD)"6EF*&)L:7!?96UI
+M=%]W:&EL95]L;V]P7V-H96-K<R@I*7L-#0HK"0D)"6)L:7!?<W1A="YT;W1A
+M;%]E;6ET<RLK.PT-"BL)"0D)8FQI<%]S=&%T+G=H:6QE7V5M:71S*RL[#0T*
+M*PD)"7T-#0HK"0T-"BL)"6)R96%K.PT-"BL)8V%S92!#04Q,7T584%(Z#0T*
+M*PD)#0T**PD):68H8FQI<%]F:6YD7V-A;&Q?;&EM:71S*'0L5%)%15]/4$52
+M04Y$("AT+#$I*2D-#0HK"0D)<F5S=6QT(#T@8FQI<%]E;6ET7V-A;&Q?8VAE
+M8VMS*'0I.PD)#0T**PT-"BL)"6EF*')E<W5L="`A/2!T*7L-#0HK"0D)8FQI
+M<%]S=&%T+G1O=&%L7V5M:71S*RL[#0T**PD)"6)L:7!?<W1A="YC86QL7V5M
+M:71S*RL[#0T**PD)?0T-"BL)"0T-"BL)"6)R96%K.PD-#0HK"61E9F%U;'0Z
+M#0T**PD)<F5T=7)N(')E<W5L=#L-#0HK"7T-#0HK#0T**PER971U<FX@<F5S
+M=6QT.PT-"BL)#0T**WT-#0ID:69F("U.=7(@9V-C+3,N,B]G8V,O8FQI<"YH
+M(&=C8RTS+C(M8FQI<"]G8V,O8FQI<"YH#0HM+2T@9V-C+3,N,B]G8V,O8FQI
+M<"YH"5=E9"!$96,@,S$@,38Z,#`Z,#`@,3DV.0T**RLK(&=C8RTS+C(M8FQI
+M<"]G8V,O8FQI<"YH"4UO;B!$96,@(#(@,3DZ-#(Z,SD@,C`P,@T*0$`@+3`L
+M,"`K,2PY.2!`0`T**R\J#0HK#0HK"4)I9R!,;V]P($EN=&5G97(@4')O=&5C
+M=&EO;B`M($$N2RY!(")B;&EP(@T**PT**PEB;&EP(&ES(&$@<&%T8V@@9F]R
+M('1H92!G8V,@8V]M<&EL97(L('=H:6-H(&1E=&5C="!T:&4@97AP;&]I=&%T
+M:6]N#0HK"6]F("AP=6)L:6-L>2D@=6YK;F]W;B!I;G1E9V5R(&]V97)F;&]W
+M(&%N9"!S:6=N('9U;&YE<F%B:6QI=&EE<RX-"BL-"BL@("`-"BM4:&ES(&9I
+M;&4@:7,@<&%R="!O9B!'3E4@0T,N#0HK#0HK1TY5($-#(&ES(&9R964@<V]F
+M='=A<F4[('EO=2!C86X@<F5D:7-T<FEB=71E(&ET(&%N9"]O<B!M;V1I9GD-
+M"BMI="!U;F1E<B!T:&4@=&5R;7,@;V8@=&AE($=.52!'96YE<F%L(%!U8FQI
+M8R!,:6-E;G-E(&%S('!U8FQI<VAE9"!B>0T**W1H92!&<F5E(%-O9G1W87)E
+M($9O=6YD871I;VX[(&5I=&AE<B!V97)S:6]N(#(L(&]R("AA="!Y;W5R(&]P
+M=&EO;BD-"BMA;GD@;&%T97(@=F5R<VEO;BX-"BL-"BM'3E4@0T,@:7,@9&ES
+M=')I8G5T960@:6X@=&AE(&AO<&4@=&AA="!I="!W:6QL(&)E('5S969U;"P-
+M"BL)8G5T(%=)5$A/550@04Y9(%=!4E)!3E19.R!W:71H;W5T(&5V96X@=&AE
+M(&EM<&QI960@=V%R<F%N='D@;V8-"BL)34520TA!3E1!0DE,2519(&]R($9)
+M5$Y%4U,@1D]2($$@4$%25$E#54Q!4B!055)03U-%+B`@4V5E('1H90T**PE'
+M3E4@1V5N97)A;"!0=6)L:6,@3&EC96YS92!F;W(@;6]R92!D971A:6QS+@T*
+M*PT**PE9;W4@<VAO=6QD(&AA=F4@<F5C96EV960@82!C;W!Y(&]F('1H92!'
+M3E4@1V5N97)A;"!0=6)L:6,@3&EC96YS90T**PEA;&]N9R!W:71H($=.52!#
+M0SL@<V5E('1H92!F:6QE($-/4%E)3D<N("!)9B!N;W0L('=R:71E('1O#0HK
+M"71H92!&<F5E(%-O9G1W87)E($9O=6YD871I;VXL(#4Y(%1E;7!L92!0;&%C
+M92`M(%-U:71E(#,S,"P-"BL)0F]S=&]N+"!-02`P,C$Q,2TQ,S`W+"!54T$N
+M("`J+PT**PT**R-D969I;F4@0DQ)4%]-05@),'@Q,#`P,#`P,"`O*B`R-38@
+M34(@<V5E;7,@=V%Y('1O;R!M=6-H(&)I9R!L;V]P+BXN*B\-"BL-"BMT>7!E
+M9&5F(&5N=6T@;&]O<%]D:7(-"BM[#0HK"55.2TY/5TY?1$E2+"\J('=E(&-A
+M;FYO="!T96QL(&QO;W`@9&ER96-T:6]N("HO#0HK"4E.0U)%345.5"P)+RH@
+M;&]O<"!I<R!G;VEN9R!U<"`J+PT**PE$14-214U%3E0)+RH@;&]O<"!I<R!G
+M;VEN9R!D;W=N("HO#0HK?0T**VQO;W!?9&ER.PT**PT**W1Y<&5D968@96YU
+M;2!B;&EP7W=A<FYI;F=S#0HK>PT**PE314Q&7T-(14-++`DO*B!U<VEN9R!T
+M:&4@5%)%12!O8FIE8W0@9FEN9"!O=70@=&AE(')I9VAT#0HK"0D)"2`@('=A
+M<FYI;F<@9FQA9R`J+PT**PE.15]&3U(L"0DO*B!W87)N(&YO="!E;6ET:6YG
+M(&-H96-K(&9O<B!F;W(@;&]O<',@*B\-"BL)3D5?5TA)3$4L"2\J('=A<FX@
+M;F]T(&5M:71I;F<@8VAE8VL@9F]R('=H:6QE(&QO;W!S("HO#0HK"4Y%7T-!
+M3$P)"2\J('=A<FX@;F]T(&5M:71I;F<@8VAE8VL@9F]R(&-A;&QS("HO#0HK
+M?0T**V)L:7!?=V%R;FEN9W,[#0HK#0HK='EP961E9B!S=')U8W0@7VQO;W!?
+M;&EM:71?<WL-"BL)=')E92!S=&UT.PD-"BL)=')E92!C;W5N=&5R.PT**PET
+M<F5E(&QI;6ET.PT**PEE;G5M(&QO;W!?9&ER(&1I<CL-"BL):6YT"2!L:6YE
+M;F\[#0HK#0HK?6QO;W!?;&EM:71?<SL-"BL-"BLO*B!B;&EP('-T871I<W1I
+M8W,@<W1R=6-T=7)E+"!W:6QL(&UA:6YT86EN('1H92!A;6]U;G0@;V8@96YC
+M;W5T97)D(`T**R`J(&-O9&4@=&AA="!M:6=H="!H879E(&YE961E9"!A(&)L
+M:7`@8VAE8VLL(&%N9"!T:&4@<F5A;"!A;6]U;G0@;V8@#0HK("H@=&EM97,@
+M=&AA="!A(&)L:7`@8VAE8VL@=V%S(&5M:71E9"X@*B\-"BMT>7!E9&5F('-T
+M<G5C="!?8FQI<%]S=&%T:7-T:6-S7W-[#0HK"75N<VEG;F5D(&EN=`ET;W1A
+M;%]C:&5C:W,[#0HK"75N<VEG;F5D(&EN=`ET;W1A;%]E;6ET<SL-"BL)#0HK
+M"75N<VEG;F5D(&EN=`EF;W)?8VAE8VMS.PT**PEU;G-I9VYE9"!I;G0)=VAI
+M;&5?8VAE8VMS.PT**PEU;G-I9VYE9"!I;G0)8V%L;%]C:&5C:W,[#0HK"0T*
+M*PEU;G-I9VYE9"!I;G0)9F]R7V5M:71S.PT**PEU;G-I9VYE9"!I;G0)=VAI
+M;&5?96UI=',[#0HK"75N<VEG;F5D(&EN=`EC86QL7V5M:71S.PT**WUB;&EP
+M7W-T871I<W1I8W-?<SL-"BL-"BLO*B!.54Q,('1E<FUI;F%T960@;&ES="!O
+M9B!F=6YC=&EO;B!W:&EC:"!A<F4@86QM;W-T('1H92!S86UE(&%S(&$@#0HK
+M("H@;&]O<"X@:2YE(&UE;6-P>2P@;65M;6]V92XN(&9O<B!E86-H(&9U;F-T
+M:6]N('=E('=I;&P@<V%V92!T:&4@#0HK("H@;F%M92!O9B!T:&4@9G5N8W1I
+M;VX@87,@=V5L;"!A<R!T:&4@,"!B87-E9"!I;F1E>"!T;R!T:&4@<&%R86T@
+M#0HK("H@=VAI8V@@:7,@<W5P<&]S92!T;R!H879E('1H92!L96YG=&@@=F%R
+M:6%B;&4@*B\-"BL-"BMT>7!E9&5F('-T<G5C="!?;&]O<%]L:6ME7W-[#0HK
+M"6-H87()"0EF=6YC7VYA;65;,C4V73L-"BL)=6YS:6=N960@:6YT"7!A<F%M
+M7VEN9&5X.PT**WUL;V]P7VQI:V5?<SL-"BL-"BL-"BL-"BMV;VED(&)L:7!?
+M<W1A=%]P<FEN=`D)"5!!4D%-4R`H*$9)3$4J*2D[#0HK#0HK8F]O;"!B;&EP
+M7V1E8VQ?;6]D:69I960@("`@("`@("!005)!35,@*"AT<F5E+'1R964I*3L-
+M"BMT<F5E(&)L:7!?9FEN9%]D96-L("`@("`@("`@("`@(%!!4D%-4R`H*'1R
+M964I*3L-"BMB;V]L(&)L:7!?9FEN9%]L;V]P7W9A<G,@("`@("`@(%!!4D%-
+M4R`H*'1R964L=')E92DI.PT**V)O;VP@8FQI<%]F:6YD7V-A;&Q?;&EM:71S
+M("`@("`@4$%204U3("@H=')E92QT<F5E*2D[#0HK#0HK8F]O;"!B;&EP7V5M
+M:71?9F]R7VQO;W!?8VAE8VMS("`@("`@4$%204U3("@H=')E92DI.PT**V)O
+M;VP@8FQI<%]E;6ET7W=H:6QE7VQO;W!?8VAE8VMS("`@(%!!4D%-4R`H*'9O
+M:60I*3L-"BMT<F5E(&)L:7!?96UI=%]C86QL7V-H96-K<R`@("`@("`@("!0
+M05)!35,@*"AT<F5E*2D[#0HK#0HK=')E92!B;&EP7V)U:6QD7V-H96-K7W-T
+M;70@("`@("!005)!35,@*"AT<F5E*2D[#0HK=')E92!B;&EP7V)U:6QD7V-H
+M96-K7V5X<"`@("`@("!005)!35,@*"AT<F5E*2D[#0HK=')E92!B;&EP7V)U
+M:6QD7W9I;VQA=&EO;E]C86QL("!005)!35,@*"AT<F5E*2D[#0HK#0HK=')E
+M92!B;&EP7V-H96-K7VQO;W!?;&EM:70)"5!!4D%-4R`H*'1R964I*3L-"BMV
+M;VED(&)L:7!?=V%R;FEN9PD)"0E005)!35,@*"AE;G5M(&)L:7!?=V%R;FEN
+M9W,L8V]N<W0@8VAA<BHI*3L-"F1I9F8@+4YU<B!G8V,M,RXR+V=C8R]C+6]B
+M:F,M8V]M;6]N+F,@9V-C+3,N,BUB;&EP+V=C8R]C+6]B:F,M8V]M;6]N+F,-
+M"BTM+2!G8V,M,RXR+V=C8R]C+6]B:F,M8V]M;6]N+F,)5&AU($UA<B`R."`Q
+M,#HT.3HU."`R,#`R#0HK*RL@9V-C+3,N,BUB;&EP+V=C8R]C+6]B:F,M8V]M
+M;6]N+F,)36]N($1E8R`@,B`Q.3HT,CHS.2`R,#`R#0I`0"`M-C(L-B`K-C(L
+M.2!`0`T*("`@:68@*&QO;VMU<%]A='1R:6)U=&4@*")A;'=A>7-?:6YL:6YE
+M(BP@1$5#3%]!5%1224)55$53("AF;BDI("$]($Y53$PI#0H@("`@(')E='5R
+M;B`Q.PT*(`T**R`@:68H1$5#3%],04Y'7U-014-)1DE#("AF;BD@/3T@3E5,
+M3"D@#0HK"2`@<F5T=7)N(#`[#0HK("`-"B`@(')E='5R;B!$14-,7T1%0TQ!
+M4D5$7TE.3$E.15]0("AF;BD@)B8@1$5#3%]%6%1%4DY!3"`H9FXI.PT*('T-
+M"B`-"F1I9F8@+4YU<B!G8V,M,RXR+V=C8R]C+7!A<G-E+GD@9V-C+3,N,BUB
+M;&EP+V=C8R]C+7!A<G-E+GD-"BTM+2!G8V,M,RXR+V=C8R]C+7!A<G-E+GD)
+M5V5D($%U9R`Q-"`P,CHS,CHS-2`R,#`R#0HK*RL@9V-C+3,N,BUB;&EP+V=C
+M8R]C+7!A<G-E+GD)36]N($1E8R`@,B`Q.3HT,CHS.2`R,#`R#0I`0"`M-#8L
+M-B`K-#8L-R!`0`T*("-I;F-L=61E(")O=71P=70N:"(-"B`C:6YC;'5D92`B
+M=&]P;&5V+F@B#0H@(VEN8VQU9&4@(F=G8RYH(@T**R-I;F-L=61E(")B;&EP
+M+F@B#0H@("`-"B`C:69D968@355,5$E"651%7T-(05)3#0H@(VEN8VQU9&4@
+M/&QO8V%L92YH/@T*0$`@+3(Q.3$L.2`K,C$Y,BPQ,"!`0`T*("`@("`@("`@
+M("`@("`@("![("0T(#T@=')U=&AV86QU95]C;VYV97)S:6]N("@D-"D[#0H@
+M"0D@(&-?9FEN:7-H7W=H:6QE7W-T;71?8V]N9"`H=')U=&AV86QU95]C;VYV
+M97)S:6]N("@D-"DL#0H@"0D)"0D@("`@)#QT='EP93XR*3L-"BL)"0EB;&EP
+M7V-H96-K7VQO;W!?;&EM:70@*"0\='1Y<&4^,BD[#0H@"0D@("0\='1Y<&4^
+M)"`](&%D9%]S=&UT("@D/'1T>7!E/C(I.R!]#0H@"2`@8SDY7V)L;V-K7VQI
+M;F5N;U]L86)E;&5D7W-T;70-"BT)"7L@4D5#2$%)3E]35$U44R`H)#QT='EP
+M93XV+"!72$E,15]"3T19("@D/'1T>7!E/C8I*3L@?0T**PD)>R!214-(04E.
+M7U-43513("@D/'1T>7!E/C8L(%=(24Q%7T)/1%D@*"0\='1Y<&4^-BDI.WT-
+M"B`)?"!D;U]S=&UT7W-T87)T#0H@"2`@)R@G(&5X<'(@)RDG("<[)PT*("`@
+M("`@("`@("`@("`@("![($1/7T-/3D0@*"0Q*2`]('1R=71H=F%L=65?8V]N
+M=F5R<VEO;B`H)#,I.R!]#0I`0"`M,C(Q,BPW("LR,C$T+#@@0$`-"B`)("!X
+M97AP<B`G*2<-"B`)"7L@1D]27T584%(@*"0\='1Y<&4^,BD@/2`D.3L@?0T*
+M(`D@(&,Y.5]B;&]C:U]L:6YE;F]?;&%B96QE9%]S=&UT#0HM("`@("`@("`@
+M("`@("`@('L@4D5#2$%)3E]35$U44R`H)#QT='EP93XR+"!&3U)?0D]$62`H
+M)#QT='EP93XR*2D[('T-"BL@("`@("`@("`@("`@("`@>R!214-(04E.7U-4
+M3513("@D/'1T>7!E/C(L($9/4E]"3T19("@D/'1T>7!E/C(I*3L-"BL)"0D)
+M("!B;&EP7V-H96-K7VQO;W!?;&EM:70@*"0\='1Y<&4^,BD[('T-"B`)?"!3
+M5TE40T@@)R@G(&5X<'(@)RDG#0H@"0E[('-T;71?8V]U;G0K*SL-"B`)"2`@
+M)#QT='EP93XD(#T@8U]S=&%R=%]C87-E("@D,RD[('T-"F1I9F8@+4YU<B!G
+M8V,M,RXR+V=C8R]C+71Y<&5C:RYC(&=C8RTS+C(M8FQI<"]G8V,O8RUT>7!E
+M8VLN8PT*+2TM(&=C8RTS+C(O9V-C+V,M='EP96-K+F,)5&AU($UA<B`R,2`Q
+M-SHU,SHS.2`R,#`R#0HK*RL@9V-C+3,N,BUB;&EP+V=C8R]C+71Y<&5C:RYC
+M"4UO;B!$96,@(#(@,3DZ-#(Z,SD@,C`P,@T*0$`@+30R+#8@*S0R+#<@0$`-
+M"B`C:6YC;'5D92`B:6YT;"YH(@T*("-I;F-L=61E(")G9V,N:"(-"B`C:6YC
+M;'5D92`B=&%R9V5T+F@B#0HK(VEN8VQU9&4@(F)L:7`N:"(-"B`-"B`O*B!.
+M;VYZ97)O(&EF('=E)W9E(&%L<F5A9'D@<')I;G1E9"!A(")M:7-S:6YG(&)R
+M86-E<R!A<F]U;F0@:6YI=&EA;&EZ97(B#0H@("`@;65S<V%G92!W:71H:6X@
+M=&AI<R!I;FET:6%L:7IE<BX@("HO#0I`0"`M,34X-RPV("LQ-3@X+#$Q($!`
+M#0H@("!44D5%7U-)1$5?149&14-44R`H<F5S=6QT*2`](#$[#0H@("!R97-U
+M;'0@/2!F;VQD("AR97-U;'0I.PT*(`T**R`@+RH@8VAE8VL@=&AE(&YE=R!C
+M<F5A=&5D($-!3$Q?15A04B!F;W(@8FQI<"!C;VYD:71I;VXN(`T**R`@("H@
+M:68@8VAE8VL@8V]D92!R97%U:7)E9"P@=&AE($-!3$Q?15A04B!W:6QL(&)E
+M(')E<&QA8V5D('=I=&@@80T**R`@("H@0T].1%]%6%!2(&AA=FEN9R!T:&4@
+M0T%,3%]%6%!2(&]N(&ET<R!F86QS92!S:61E+B`J+PT**R`@<F5S=6QT(#T@
+M8FQI<%]C:&5C:U]L;V]P7VQI;6ET*')E<W5L="D[#0HK#0H@("!I9B`H5D])
+M1%]465!%7U`@*%12145?5%E012`H<F5S=6QT*2DI#0H@("`@(')E='5R;B!R
+M97-U;'0[#0H@("!R971U<FX@<F5Q=6ER95]C;VUP;&5T95]T>7!E("AR97-U
+M;'0I.PT*9&EF9B`M3G5R(&=C8RTS+C(O9V-C+V9L86=S+F@@9V-C+3,N,BUB
+M;&EP+V=C8R]F;&%G<RYH#0HM+2T@9V-C+3,N,B]G8V,O9FQA9W,N:`E4:'4@
+M36%R(#(Q(#$U.C$R.C(Q(#(P,#(-"BLK*R!G8V,M,RXR+6)L:7`O9V-C+V9L
+M86=S+F@)36]N($1E8R`@,B`Q.3HT,CHS.2`R,#`R#0I`0"`M-C0Q+#0@*S8T
+M,2PQ.2!`0`T*("\J($YO;GIE<F\@;65A;G,@96YA8FQE('-Y;F-H<F]N;W5S
+M(&5X8V5P=&EO;G,@9F]R(&YO;BUC86QL(&EN<W1R=6-T:6]N<RX@("HO#0H@
+M97AT97)N(&EN="!F;&%G7VYO;E]C86QL7V5X8V5P=&EO;G,[#0H@#0HK+RH@
+M3F]N>F5R;R!M96%N<R!P<FEN="!B;&EP('-T871I<W1I8W,@*&EF(&)L:7`@
+M:7,@96YA8FQE9"D@*B\-"BME>'1E<FX@:6YT(&9L86=?8FQI<%]S=&%T.PT*
+M*PT**R\J($YO;GIE<F\@;65A;G,@96YA8FQE(&)L:7`@8VAE8VMS(&9O<B!L
+M;V]P<R!A;F0@;&]O<"UL:6ME(&-A;&QS("HO#0HK97AT97)N(&EN="!F;&%G
+M7V)L:7`[#0HK#0HK+RH@5V%R;B!W:&5N(&9O<B!B;&EP(&-H96-K(&-O=6QD
+M(&YO="!B92!E;6ET960N("`M5V)L:7!?9F]R7VYO=%]E;6ET+B`@*B\-"BME
+M>'1E<FX@:6YT('=A<FY?8FQI<%]F;W)?;F]T7V5M:70[#0HK#0HK+RH@5V%R
+M;B!W:&5N('=H:6QE(&)L:7`@8VAE8VL@8V]U;&0@;F]T(&)E(&5M:71E9"X@
+M("U78FQI<%]W:&EL95]N;W1?96UI="X@("HO#0HK97AT97)N(&EN="!W87)N
+M7V)L:7!?=VAI;&5?;F]T7V5M:70[#0HK#0HK+RH@5V%R;B!W:&5N(&1O(&)L
+M:7`@8VAE8VL@8V]U;&0@;F]T(&)E(&5M:71E9"X@("U78FQI<%]C86QL7VYO
+M=%]E;6ET+B`@*B\-"BME>'1E<FX@:6YT('=A<FY?8FQI<%]C86QL7VYO=%]E
+M;6ET.PT**PT*("-E;F1I9B`O*B`A($=#0U]&3$%'4U](("HO#0ID:69F("U.
+M=7(@9V-C+3,N,B]G8V,O;&EB9V-C+7-T9"YV97(@9V-C+3,N,BUB;&EP+V=C
+M8R]L:6)G8V,M<W1D+G9E<@T*+2TM(&=C8RTS+C(O9V-C+VQI8F=C8RUS=&0N
+M=F5R"5=E9"!*=6X@,3,@,#<Z,C8Z,#$@,C`P,0T**RLK(&=C8RTS+C(M8FQI
+M<"]G8V,O;&EB9V-C+7-T9"YV97()36]N($1E8R`@,B`Q.3HT,CHS.2`R,#`R
+M#0I`0"`M,3<T+#0@*S$W-"PW($!`#0H@("!?56YW:6YD7U-J3&I?4F%I<V5%
+M>&-E<'1I;VX-"B`@(%]5;G=I;F1?4VI,:E]&;W)C9615;G=I;F0-"B`@(%]5
+M;G=I;F1?4VI,:E]297-U;64-"BL-"BL@(",@0FEG($QO;W`@26YT96=E<B!0
+M<F]T96-T:6]N("AB;&EP*2!H86YD;&5R#0HK("!?7V)L:7!?=FEO;&%T:6]N
+M#0H@?0T*9&EF9B`M3G5R(&=C8RTS+C(O9V-C+VQI8F=C8S(N8R!G8V,M,RXR
+M+6)L:7`O9V-C+VQI8F=C8S(N8PT*+2TM(&=C8RTS+C(O9V-C+VQI8F=C8S(N
+M8PE4=64@36%Y(#(Q(#$V.C0T.C,X(#(P,#(-"BLK*R!G8V,M,RXR+6)L:7`O
+M9V-C+VQI8F=C8S(N8PE-;VX@1&5C("`R(#$Y.C0R.C,Y(#(P,#(-"D!`("TR
+M,#0Y+#,@*S(P-#DL,3$@0$`-"B`C96YD:68@+RH@3D5%1%]!5$58250@*B\-
+M"B`-"B`C96YD:68@+RH@3%]E>&ET("HO#0HK#0HK(VEF9&5F($Q?8FQI<%]V
+M:6]L871I;VX-"BMV;VED(%]?8FQI<%]V:6]L871I;VX@*'5N<VEG;F5D(&EN
+M="!L:6UI="E[#0HK"0T**PEP<FEN=&8H(F)L:7`@=FEO;&%T:6]N("$A(2P@
+M*'5N<VEG;F5D(&EN="DE;'4L("AI;G0I)61<;B(L;&EM:70L;&EM:70I.PT*
+M*PEA8F]R="@I.PT**WT-"BLC96YD:68-"F1I9F8@+4YU<B!G8V,M,RXR+V=C
+M8R]L:6)G8V,R+F@@9V-C+3,N,BUB;&EP+V=C8R]L:6)G8V,R+F@-"BTM+2!G
+M8V,M,RXR+V=C8R]L:6)G8V,R+F@)5V5D($%U9R`R,B`P-SHS-3HR,B`R,#`Q
+M#0HK*RL@9V-C+3,N,BUB;&EP+V=C8R]L:6)G8V,R+F@)36]N($1E8R`@,B`Q
+M.3HT,CHS.2`R,#`R#0I`0"`M,C(L-B`K,C(L-R!`0`T*("-I9FYD968@1T-#
+M7TQ)0D=#0S)?2`T*("-D969I;F4@1T-#7TQ)0D=#0S)?2`T*(`T**V5X=&5R
+M;B!V;VED(%]?8FQI<%]V:6]L871I;VX@*'5N<VEG;F5D(&EN="!L:6UI="D[
+M#0H@97AT97)N(&EN="!?7V=C8U]B8VUP("AC;VYS="!U;G-I9VYE9"!C:&%R
+M("HL(&-O;G-T('5N<VEG;F5D(&-H87(@*BP@<VEZ95]T*3L-"B!E>'1E<FX@
+M=F]I9"!?7V-L96%R7V-A8VAE("AC:&%R("HL(&-H87(@*BD[#0H@97AT97)N
+M('9O:60@7U]E<')I;G1F("AC;VYS="!C:&%R("HL(&-O;G-T(&-H87(@*BP@
+M=6YS:6=N960@:6YT+"!C;VYS="!C:&%R("HI#0ID:69F("U.=7(@9V-C+3,N
+M,B]G8V,O=&]P;&5V+F,@9V-C+3,N,BUB;&EP+V=C8R]T;W!L978N8PT*+2TM
+M(&=C8RTS+C(O9V-C+W1O<&QE=BYC"5-U;B!-87D@,C8@,C(Z-#@Z,34@,C`P
+M,@T**RLK(&=C8RTS+C(M8FQI<"]G8V,O=&]P;&5V+F,)36]N($1E8R`@,B`Q
+M.3HT,CHS.2`R,#`R#0I`0"`M-S`L-B`K-S`L-R!`0`T*("-I;F-L=61E(")D
+M96)U9RYH(@T*("-I;F-L=61E(")T87)G970N:"(-"B`C:6YC;'5D92`B;&%N
+M9VAO;VMS+F@B#0HK(VEN8VQU9&4@(F)L:7`N:"(-"B`-"B`C:68@9&5F:6YE
+M9"`H1%=!4D8R7U5.5TE.1%])3D9/*2!\?"!D969I;F5D("A$5T%21C)?1$5"
+M54='24Y'7TE.1D\I#0H@(VEN8VQU9&4@(F1W87)F,F]U="YH(@T*0$`@+3DR
+M+#8@*SDS+#@@0$`-"B`C:6YC;'5D92`B:&%L9G!I8RYH(@T*("-E;F1I9@T*
+M(`P-"BL-"BL-"B`O*B!#87)R>2!I;F9O<FUA=&EO;B!F<F]M($%335]$14-,
+M05)%7T]"2D5#5%].04U%#0H@("`@=&\@05--7T9)3DE32%]$14-,05)%7T]"
+M2D5#5"X@("HO#0H@#0I`0"`M.#8W+#8@*S@W,"PX($!`#0H@("`@1F]R(&5A
+M8V@@=F%R:6%B;&4L('1H97)E(&ES(&%N(%]L;V<@=F%R:6%N="!W:&EC:"!I
+M<R!T:&4@<&]W97(-"B`@("!O9B!T=V\@;F]T(&QE<W,@=&AA;B!T:&4@=F%R
+M:6%B;&4L(&9O<B`N86QI9VX@;W5T<'5T+B`@*B\-"B`-"BL-"BL-"B!I;G0@
+M86QI9VY?;&]O<',[#0H@:6YT(&%L:6=N7VQO;W!S7VQO9SL-"B!I;G0@86QI
+M9VY?;&]O<'-?;6%X7W-K:7`[#0I`0"`M.#<Y+#8@*S@X-"PQ-B!`0`T*(&EN
+M="!A;&EG;E]F=6YC=&EO;G,[#0H@:6YT(&%L:6=N7V9U;F-T:6]N<U]L;V<[
+M#0H@#0HK+RH@268@;VYE(&5M:70@8FQI<"!C:&5C:W,@=&\@<')O=&5C="!F
+M<F]M('-O;64@:6YT96=E<B!V=6QN97)A8FEL:71I97,-"BL@*B!E>'!L;VET
+M871I;VYS+B`J+PT**PT**VEN="!F;&%G7V)L:7`@/2`P.PT**VEN="!F;&%G
+M7V)L:7!?<W1A="`](#`[#0HK#0HK:6YT('=A<FY?8FQI<%]F;W)?;F]T7V5M
+M:70@/2`P.PT**VEN="!W87)N7V)L:7!?=VAI;&5?;F]T7V5M:70@/2`P.PT*
+M*VEN="!W87)N7V)L:7!?8V%L;%]N;W1?96UI="`](#`[#0HK#0H@+RH@5&%B
+M;&4@;V8@<W5P<&]R=&5D(&1E8G5G9VEN9R!F;W)M871S+B`@*B\-"B!S=&%T
+M:6,@8V]N<W0@<W1R=6-T#0H@>PT*0$`@+3$Q-3`L-B`K,3$V-2PQ,"!`0`T*
+M("`@($Y?*")297!O<G0@;VX@<&5R;6%N96YT(&UE;6]R>2!A;&QO8V%T:6]N
+M(&%T(&5N9"!O9B!R=6XB*2!]+`T*("`@>R`B=')A<'8B+"`F9FQA9U]T<F%P
+M=BP@,2P-"B`@("!.7R@B5')A<"!F;W(@<VEG;F5D(&]V97)F;&]W(&EN(&%D
+M9&ET:6]N("\@<W5B=')A8W1I;VX@+R!M=6QT:7!L:6-A=&EO;B(I('TL#0HK
+M("![(")B;&EP(BP@)F9L86=?8FQI<"P@,2P-"BL@("!.7R@B16UI="!":6<@
+M3&]O<"!);G1E9V5R(%!R;W1E8W1I;VX@*&)L:7`I(&-H96-K<R(I('TL#0HK
+M("![(")B;&EP7W-T870B+"`F9FQA9U]B;&EP7W-T870L(#$L#0HK("`@3E\H
+M(E)E<&]R="!B;&EP('-T871I<W1I8W,B*2!]+`T*('T[#0H@#0H@+RH@5&%B
+M;&4@;V8@;&%N9W5A9V4M<W!E8VEF:6,@;W!T:6]N<RX@("HO#0I`0"`M,30Y
+M,2PW("LQ-3$P+#$S($!`#0H@("![(F1E<')E8V%T960M9&5C;&%R871I;VYS
+M(BP@)G=A<FY?9&5P<F5C871E9%]D96-L+"`Q+`T*("`@($Y?*")787)N(&%B
+M;W5T('5S97,@;V8@7U]A='1R:6)U=&5?7R@H9&5P<F5C871E9"DI(&1E8VQA
+M<F%T:6]N<R(I('TL#0H@("![(FUI<W-I;F<M;F]R971U<FXB+"`F=V%R;E]M
+M:7-S:6YG7VYO<F5T=7)N+"`Q+`T*+2`@($Y?*")787)N(&%B;W5T(&9U;F-T
+M:6]N<R!W:&EC:"!M:6=H="!B92!C86YD:61A=&5S(&9O<B!A='1R:6)U=&4@
+M;F]R971U<FXB*2!]#0HK("`@3E\H(E=A<FX@86)O=70@9G5N8W1I;VYS('=H
+M:6-H(&UI9VAT(&)E(&-A;F1I9&%T97,@9F]R(&%T=')I8G5T92!N;W)E='5R
+M;B(I('TL#0HK("![(F)L:7!?9F]R7VYO=%]E;6ET(BP@)G=A<FY?8FQI<%]F
+M;W)?;F]T7V5M:70L(#$L#0HK("`@3E\H(E=A<FX@=VAE;B!B;&EP(&-H96-K
+M(&]F(&9O<B!L;V]P(&-O=6QD(&YO="!B92!E;6ET960B*2!]+`T**R`@>R)B
+M;&EP7W=H:6QE7VYO=%]E;6ET(BP@)G=A<FY?8FQI<%]W:&EL95]N;W1?96UI
+M="P@,2P-"BL@("!.7R@B5V%R;B!W:&5N(&)L:7`@8VAE8VL@;V8@=VAI;&4@
+M;&]O<"!C;W5L9"!N;W0@8F4@96UI=&5D(BD@?2P-"BL@('LB8FQI<%]C86QL
+M7VYO=%]E;6ET(BP@)G=A<FY?8FQI<%]C86QL7VYO=%]E;6ET+"`Q+`T**R`@
+M($Y?*")787)N('=H96X@8FQI<"!C:&5C:R!O9B!C86QL<R!C;W5L9"!N;W0@
+M8F4@96UI=&5D(BD@?0T*('T[#0H@#0H@=F]I9`T*0$`@+34R,34L-B`K-3(T
+M,"PY($!`#0H@("`O*B!3=&]P('1I;6EN9R!A;F0@<')I;G0@=&AE('1I;65S
+M+B`@*B\-"B`@('1I;65V87)?<W1O<"`H5%9?5$]404PI.PT*("`@=&EM979A
+M<E]P<FEN="`H<W1D97)R*3L-"BL-"BL@("\J(%!R:6YT(&)L:7`@<W1A=&ES
+M=&EC<R`J+PT**R`@8FQI<%]S=&%T7W!R:6YT*'-T9&5R<BD[#0H@?0T*(`P-
+M"B`O*B!%;G1R>2!P;VEN="!O9B!C8S$L(&-C,7!L=7,L(&IC,2P@9C<W,2P@
+&971C+@T*
+`
+end
+
+|=[ EOF ]=---------------------------------------------------------------=|
+
+Traduction par [DegenereScience]DecereBrain, le Jeudi 13 Mars 2003, 14:07

