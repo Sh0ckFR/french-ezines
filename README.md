@@ -10,10 +10,10 @@ Some articles are also sensitive and may mention, for example, the creation of h
 
 # List of the available ezines
 
-| eZine Name  | Active years | Category |
+| eZine Name  | Active years | Categories |
 | --- | --- | --- |
-| 3d13 | N/A  | N/A |
-| 50-1337 | N/A  | N/A |
+| 3d13 | 1999-2000 | Infosec, Hacking, Cracking |
+| 50-1337 | 2010 | Infosec, Hacking, Reverse, Low-Level |
 | 912 Hacking Departement | N/A  | N/A |
 | Aktivist | N/A  | N/A |
 | Alcibiade | N/A  | N/A |
