@@ -13,7 +13,7 @@ Some articles are also sensitive and may mention, for example, the creation of h
 | eZine Name  | Active years | Categories |
 | --- | --- | --- |
 | 3d13 | 1999-2000 | Infosec, Hacking, Cracking |
-| 50-1337 | 2010 | Infosec, Hacking, Reverse, Low-Level |
+| 50-1337 | 2010 | Infosec, Hacking, Reverse, Low-Level, Web Pentesting |
 | 912 Hacking Departement | 1999  | Infosec, Hacking, Social Engineering, Phreaking |
 | Aktivist | N/A  | N/A |
 | Alcibiade | N/A  | N/A |
