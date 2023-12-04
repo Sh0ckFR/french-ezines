@@ -14,7 +14,7 @@ Some articles are also sensitive and may mention, for example, the creation of h
 | --- | --- | --- |
 | 3d13 | 1999-2000 | Infosec, Hacking, Cracking |
 | 50-1337 | 2010 | Infosec, Hacking, Reverse, Low-Level |
-| 912 Hacking Departement | N/A  | N/A |
+| 912 Hacking Departement | 1999  | Infosec, Hacking, Social Engineering, Phreaking |
 | Aktivist | N/A  | N/A |
 | Alcibiade | N/A  | N/A |
 | Allianx | N/A  | N/A |
