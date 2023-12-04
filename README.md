@@ -112,8 +112,6 @@ Some articles are also sensitive and may mention, for example, the creation of h
 | X-H | N/A  | N/A |
 | XIII | N/A  | N/A |
 | Zone 51 | N/A  | N/A |
-| Underwayy | N/A  | N/A |
-| Underwayy | N/A  | N/A |
 
 # How to deploy it
 
