@@ -10,106 +10,110 @@ Some articles are also sensitive and may mention, for example, the creation of h
 
 # List of the available ezines
 
-* 3d13
-* 50-1337
-* 912 Hacking Departement
-* Aktivist
-* Alcibiade
-* Allianx
-* Alternative
-* AOH
-* Apocalypse
-* Belgian Hackers Zone
-* Black Lotus
-* Blackclowns
-* Blast
-* Brain Storm Crew
-* CounterStrike
-* cryptel
-* Cyber Hackers Guide
-* Cybz
-* Dead End
-* Deathlyby
-* Drapeau Noir
-* Fantom
-* frhack
-* Gogo
-* h=edm
-* Hack 25
-* Hack Team L
-* Hackerstorm
-* hackoff
-* Hackviewer
-* HackZine
-* haqch
-* hccc
-* hohs
-* HVU
-* hzv-mag
-* Illegal Granted Access
-* Immortal
-* Input Output Corporation
-* Just Crack It
-* Kaotix
-* Kult Dead Bill
-* Lamah
-* Land Of The Free
-* Liberté
-* Lightning Jokers
-* Lutin
-* MacMilliam
-* MagAttack
-* Malicia
-* Mindkind
-* MJ13
-* Mobilisation Virtuelle Minoritaire
-* Multi-system and Internet Base
-* n0name
-* Nightz
-* NoCooking
-* NoFutur
-* Nopast
-* Nopeace
-* Noroute
-* Northern Phun Co
-* Nowall
-* Noway
-* Nowhere
-* Nozep
-* NPN
-* Organiks
-* Phreakazoide
-* Pirage
-* Polio
-* Pretty Good Keys
-* Psykaos
-* Pyrofreak
-* Quebec Hackers Alliance
-* Rafale
-* Revolution
-* Row
-* Secu-info
-* Seven Synkop
-* Shmeitcorp
-* Shogun
-* Silmarillon
-* Sleazy Wind
-* Snapscan
-* SécuriMag
-* T-S63
-* The Darkunderground Clan
-* The Last Click
-* The Ultimate
-* Total Control
-* Tradefr
-* UnderDark
-* Underhack
-* Underwayy
-* USN
-* WWA
-* X-H
-* XIII
-* Zone 51
+| eZine Name  | Active years | Category |
+| --- | --- | --- |
+| 3d13 | N/A  | N/A |
+| 50-1337 | N/A  | N/A |
+| 912 Hacking Departement | N/A  | N/A |
+| Aktivist | N/A  | N/A |
+| Alcibiade | N/A  | N/A |
+| Allianx | N/A  | N/A |
+| Alternative | N/A  | N/A |
+| AOH | N/A  | N/A |
+| Apocalypse | N/A  | N/A |
+| Belgian Hackers Zone | N/A  | N/A |
+| Black Lotus | N/A  | N/A |
+| Blackclowns | N/A  | N/A |
+| Blast | N/A  | N/A |
+| Brain Storm Crew | N/A  | N/A |
+| CounterStrike | N/A  | N/A |
+| cryptel | N/A  | N/A |
+| Cyber Hackers Guide | N/A  | N/A |
+| Cybz | N/A  | N/A |
+| Dead End | N/A  | N/A |
+| Deathlyby | N/A  | N/A |
+| Drapeau Noir | N/A  | N/A |
+| Fantom | N/A  | N/A |
+| frhack | N/A  | N/A |
+| Gogo | N/A  | N/A |
+| h=edm | N/A  | N/A |
+| Hack 25 | N/A  | N/A |
+| Hack Team L | N/A  | N/A |
+| Hackerstorm | N/A  | N/A |
+| hackoff | N/A  | N/A |
+| Hackviewer | N/A  | N/A |
+| HackZine | N/A  | N/A |
+| haqch | N/A  | N/A |
+| hccc | N/A  | N/A |
+| hohs | N/A  | N/A |
+| HVU | N/A  | N/A |
+| hzv-mag | N/A  | N/A |
+| Illegal Granted Access | N/A  | N/A |
+| Immortal | N/A  | N/A |
+| Input Output Corporation | N/A  | N/A |
+| Just Crack It | N/A  | N/A |
+| Kaotix | N/A  | N/A |
+| Kult Dead Bill | N/A  | N/A |
+| Lamah | N/A  | N/A |
+| Land Of The Free | N/A  | N/A |
+| Liberté | N/A  | N/A |
+| Lightning Jokers | N/A  | N/A |
+| Lutin | N/A  | N/A |
+| MacMilliam | N/A  | N/A |
+| MagAttack | N/A  | N/A |
+| Malicia | N/A  | N/A |
+| Mindkind | N/A  | N/A |
+| MJ13 | N/A  | N/A |
+| Mobilisation Virtuelle Minoritaire | N/A  | N/A |
+| Multi-system and Internet Base | N/A  | N/A |
+| n0name | N/A  | N/A |
+| Nightz | N/A  | N/A |
+| NoCooking | N/A  | N/A |
+| NoFutur | N/A  | N/A |
+| Nopast | N/A  | N/A |
+| Nopeace | N/A  | N/A |
+| Noroute | N/A  | N/A |
+| Northern Phun Co | N/A  | N/A |
+| Nowall | N/A  | N/A |
+| Noway | N/A  | N/A |
+| Nowhere | N/A  | N/A |
+| Nozep | N/A  | N/A |
+| NPN | N/A  | N/A |
+| Organiks | N/A  | N/A |
+| Phreakazoide | N/A  | N/A |
+| Pirage | N/A  | N/A |
+| Polio | N/A  | N/A |
+| Pretty Good Keys | N/A  | N/A |
+| Psykaos | N/A  | N/A |
+| Pyrofreak | N/A  | N/A |
+| Quebec Hackers Alliance | N/A  | N/A |
+| Rafale | N/A  | N/A |
+| Revolution | N/A  | N/A |
+| Row | N/A  | N/A |
+| Secu-info | N/A  | N/A |
+| Seven Synkop | N/A  | N/A |
+| Shmeitcorp | N/A  | N/A |
+| Shogun | N/A  | N/A |
+| Silmarillon | N/A  | N/A |
+| Sleazy Wind | N/A  | N/A |
+| Snapscan | N/A  | N/A |
+| SécuriMag | N/A  | N/A |
+| T-S63 | N/A  | N/A |
+| The Darkunderground Clan | N/A  | N/A |
+| The Last Click | N/A  | N/A |
+| The Ultimate | N/A  | N/A |
+| Total Control | N/A  | N/A |
+| Tradefr | N/A  | N/A |
+| UnderDark | N/A  | N/A |
+| Underhack | N/A  | N/A |
+| Underwayy | N/A  | N/A |
+| USN | N/A  | N/A |
+| WWA | N/A  | N/A |
+| X-H | N/A  | N/A |
+| XIII | N/A  | N/A |
+| Zone 51 | N/A  | N/A |
+| Underwayy | N/A  | N/A |
+| Underwayy | N/A  | N/A |
 
 # How to deploy it
 
