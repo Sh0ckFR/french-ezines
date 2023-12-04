@@ -1,0 +1,828 @@
+
+                           ==Phrack Inc.==
+
+              Volume 0x0b, Issue 0x3d, Phile #0x0c of 0x0f
+
+|=---------------=[ Fun with the Spanning Tree Protocol ]=---------------=|
+|=--------------[traduit par DecereBrain[degenere-science]---------------=|
+|=------------=[ Oleg K. Artemjev, Vladislav V. Yasnyankin ]=------------=|
+
+
+[NDT : Bon ben j'ai pas le droit de traduire cet article, alors disons que
+je prends le gauche :). Je commence sérieusement à en avoir marre de cet
+état d'esprit de merde. Si vous ne voulez pas que vos articles soient lus,
+ne les publiez pas, en tout cas pas sur Internet. Je considère que toute
+information publiée sur Internet n'appartient à son auteur que dans la
+mesure où il s'agit de son travail, donc il mérite le respect, mais
+l'auteur ne peut pas se réserver le droit d'interdire à certaines
+personnes de mettre en pratique le contenu de son texte. Autant ne rien
+écrire et aller faire la fête.
+DecereBrain]
+--------------------------------------------------------------------------
+
+Introduction.
+*=*=*=*=*=*=*
+
+Devellopé dans la première partie des années 80 par 'l'International
+Standards Organization' (ISO), la couche sept de 'l'Open System
+Interconnection' (OSI) présente une structure hiérarchique, ou chaque
+niveau à strictement assigné un job et une interface au niveau inférieur
+et supérieur. Du au besoin industriel moderne, l'équipement courant
+supporte la couche 2 de l'OSI: Il ne fournit pas seulement le traditionel
+frame forwarding & l'hardware adress resolution, mais fourni également la 
+redondance, le multiplex, l'équilibre de charge et la séparation des 
+informations écoulées. Malheureusement, des trous de sécurité dans cette 
+couche sont souvent délaissé, par inattention. Dans cet article nous 
+allons montrer les faiblesses dans l'implémentation, et le logarythme 
+d'une des deux  couche de l'OSI (''channel'' (AC+LLC)) - Spanning Tree
+Protocol (STP). Tout cela utilise notre matériel fabriqué en russie: [2],
+[4].
+
+   Depuis que nous avons publié une information traitant des 
+vulnérabilitées avant qu'un patch soit proposé sur le marché, et depuis que
+ces informations peuvent êtres utilisés par une tierce personne, nous 
+écriront notre article de tel sorte que les newbies (aussi appellé 
+``scrip kiddies'' ou ``black hats'' - voir [1]) ne seront pas capable 
+d'utiliser ce paper comme un ``howto''. Nous comprenons que certaine 
+personnes ont des opinions différente quand a ce but, mais comprenez que
+c'est la seule solution possible pour motiver les vendeurs, pour qu'ils
+fixent les bugs beaucoup plus rapidement. Evidemment, nous avons prévenue 
+quelques vendeurs (Cisco, Avaya) sur ces vulnérabilitées, mais nous avons 
+reçut une réponse du genre 'a moins qu'on nous donnent l'argent, nous ne 
+feront pas d'investissement'. Bon, depuis nous nous sommes intéréssé à la 
+sécurité des routeurs et des switchs que nous utilisons. Nous avons 
+également noté, que les vendeurs devraient se tenir informé aupres de 
+bugtraq et autres, et directement via Cisco & Avaya. Notre premiere 
+publication en russe concernant les vulnérabilitées STP date d'environ un 
+an.
+
+   L'ensemble de nos travaux écrit traitant de l'analyse du protocol STP 
+sont trop gros pour êtres publié en un seul article, dans un magazine. 
+Toute les informations sont disponible sur internet, sur la page web de 
+projet ([]). Celles ci sont données avec les mêmes restriction cité plus
+haut concernant cette publication (voir la license plus bas)
+
+License.
+*=*=*=*=
+
+   Comme il y a une tendance de plainte pour empecher la publication de
+vulnérabilitées (ces tendances sont connu du grand public -comme la loi
+DCA- aux USA [Digitial illuennium Copyright Act]), ces accessoires sont
+sujet a la license suivante:
+
+-----------------------------------------------------------------------
+License:
+
+Cet article est une propriété intellectuel de ses auteurs: Oleg Artemjev
+et Vladislav yasnyankin. Ce paper peut etre distribué gratuitement via
+des liens, mais il ne peut (meme en partie) être traduit (NDT: mdr) dans
+une autre langue, ou être inclu dans un autre article, bouquin, magazine,
+et autre paper sans la permission de ses deux auteurs. D'ailleur, dans 
+le cas de l'utilisation de ce document, et d'apres la license, vous devez 
+fournir les informations suivantes:
+Le titre, Le nom des auteurs, et cette license. Vous pouvez gratuitement
+distribuer ce document electronique, si et seulement si, toute les
+conditions suivantes sont reunies:
+
+ 1. Cette license et l'article n'ont pas était modifié, cela inclue
+    la signature digital PGP. Un reformatage du texte est interdit.
+ 2. La distribution ne doit pas etre en contradiction avec cette license.
+
+   La distribution de cet article dans les pays avec la législation
+contenant des limitations similaires a la DCA americaine, est en 
+contradiction avec cette license. Aux moment de la publication, cela inclut
+les USA (incluant les ambassades, les vaisseaux naval, les bases militaires
+et les autres aires du juridiction americaine).
+De plus, la lecture de ce article par des citoyen d'un tel pay est
+également en contradiction avec cette license. Néanmoins, la distribution
+d'un lien a ce document ne constitue pas une violation de cette license.
+
+   Cet article est fourni 'tel quel' par les auteurs, et les garanties 
+implicites ou explicite, incluant les garanties implicites de la valeur
+marchande et de la forme physique pour un but particulier, sont alors 
+inutilisable. En aucun cas les auteurs ne peuvent être tenu responsable,
+que ce soit pour des dommages subit de façon direct, indirect, accidentel,
+special, exemplaire Comprenant, entre autres; la fourniture des 
+marchandises de remplacement ou services ; perte d'utilisation, de données,
+ou de bénéfices; ou interruption de travail)
+
+   Les auteurs ont produit cet article a titre uniquement informatif. Vous
+ne devriez pas le lire, si vous n'etes pas d'accord avec cela, et que vous 
+souhaitez l'utilisez dans un autre but.
+
+   Cette license est sujet a changement dans la futur, sans avertissement,
+et avec l'accord des deux auteurs.
+-----------------------------------------------------------------------
+
+Qu'est ce que STP?
+*=*=*=*=*=*=*=*=*=
+
+   La principale tache du protocol STP est d'automatiser le management de
+la topology de réseaux avec les canaux redondant. En général, presque tout
+les types de réseaux ne sont pas capable d'autoriser lopps (rings) dans 
+leur structure. Actuellement, si l'équipement réseaux est connecté avec des
+lignes superflues, par la suite ...
+Mais le business a besoin de la redondance, ceci est un STP - Il fait
+attention que tout soit logiquement désactivé a moins que l'une des lignes
+aient un défault - dans ce cas STP active la ligne actuellement en reserve.
+STP devrait garantir a chaque moment que seulement un des nombreux liens
+dupliqué est activé, et devrait automatiquement switcher entre eux sur
+demande (changement de topology réseaux ou par défault).
+
+Comment fonctionne STP ?
+*=*=*=*=*=*=*=*=*=*=*=*=
+
+   STP commence son travail par construire un graphe en forme d'arbre, qui
+commence à "root" ["racine"]. Un appareil compatible STP devient une racine
+après avoir gagné une élection. Chaque appareil compatible STP (cela
+pourrait être un swtich, un routeur ou un autre équipement, ici et
+désormais appelé "pont" ["bridge"]) démarre après mise sous tension en
+clamant que c'est une racine en envoyant des données spéciales nommées
+Bridge Protocol Data Unit (BDPU, voir [9]) au travers tous les
+ports. L'adresse du destinataire d'un paquet BDPU est une adresse
+(multicast) de groupe - ceci permet aux BDPUs de passer au travers des
+équipements non-intellectuels (["dumb"], crétin) comme les hubs et les
+switches non-STP.
+
+   Quand nous parlons ici d'adresse, nous parlons d'adresse MAC, car STP
+fonctionne au niveau de Media Access Control (MAC). Ici tous les problèmes
+à propos de STP et de ses failles s'appliquent de façon égale aux
+différantes méthodes de transmission, i.e. Ethernet, Token Ring et autres.
+
+   Après avoir reçu BDPU d'un autre appareil le pont compare les paramètres
+reçus avec les siens et selon les résultats il décide de stopper ou de
+rester dans son statut de racine. A la fin des élections l'appareil ayant
+la plus petite valeur d'identificatuer de pont devient une
+racine. L'identificateur de pont est une combinaison de l'adresse MAC du
+pont et d'une priorité de pont définie. Evidemment, dans un réseau avec un
+seul appreil compatible STP il sera une racine.
+
+   La racine désignée (ou " Pont Racine Dégignée" comme nommée par le
+standard) n'a aucune responsabilité en plus - elle n'est utilisée que comme
+un point de départ pour commencer la contruction du graphe de la
+topologie. Pour tous les autres ponts dans un réseau STP il définit le
+"port racine" - le plus proche vers le port de pont racine. Il diffère des
+autres ports connectés au pont par son identificateur - combinaison de son
+adresse MAC et de la prorité définie pour le port.
+
+   Le Coût de Chemin de la Racine est également une valeur sensée pour les
+élections STP - c'est construit comme une somme des coûts de chemin : vers
+le port racine d'un pont donné et les tous les coûts de chemin vers les
+autres ponts sur la route de la racine.
+
+   En plus du Pont Racine "pricipal", STP définit une entrée logique appelée
+"Pont désigné" - le propriétaire de son statut devient le pont principal en
+sevant au segment donné du LAN. Ceci est également sujet à élections.
+
+   De façon similaire STP définit pour chaque segment de réseau le "Port
+Désigné" (qui sert au segment donné du réseau) et son "Coût Désigné"
+correspondant.
+
+   Après que toutes les élections soient terminées, le réseau entre dans sa
+phase stable. Cet état est caractérisé par les conditions suivantes :
+
+ - Il n'y a qu'un seul appareil dans un réseau se réclamant comme une
+   Racine, tous les autres l'annonçent périodiquement.
+
+ - Le Pont Racine envoie périodiquement des BDPU à travers tous ses
+   ports. L'intervalle d'envoi est nommé "Hello Time".
+
+ - Dans chaque segment de LAN il n'y a qu'un Port Racine Désigné et tout le
+   trafic vers le Pont Racine passe dedans. Par comparaison au autes ponts,
+   il a la plus faible valeur de coût de chemin vers le Pont Racine, si ces
+   valeurs sont identiques alors le port ayant le plus petit identificateur
+   de port (MAC plus la priorité) est assigné.
+
+ - Les BDPUS sont envoyées et reçues par une unité compatible STP sur
+   chaque port, même ceux qui sont déactivés par le protocole
+   STP. Exceptionnellement, les BDPUs ne sont pas opérationnelles sur les
+   ports qui sont désactivés par l'administrateur/administratrice.
+
+ - Chaque pont forward les frames seulement entre le Port Racine et les
+   Ports Désignés pour les segments correspondants. Tous les autes ports
+   sont bloqués.
+
+   Suivant le dernier point, STP gère la topologie en changeant les états
+de ports dans la liste suivante : 
+
+Bloquant :   Le port est bloqué (abandonne les frames de
+             l'utilisateur/utilisatrice), mais accepte les BPDUs STP.
+
+En écoute :  Première étape avant le forwarding. Les frames STP (BPDUs) sont
+             OK, mais les frames de l'utilisateur/utilisatrice ne sont pas
+             traîtées. Aucun apprentissage des adresses encore, car il
+             pourrait donner de fausses données dans la table de switching à
+             cet instant.
+
+En apprentissage : Deuxième étape dans la préparation de l'état de
+             forwarding. Les BPDUs sont traîtées en entier, les frames
+             utilisateur ne sont utilisées que pour construire la table de
+             switching et ne sont pas forwardées.
+
+Forwarding : Etat de fonctionnement des ports du point de vue utilisateur -
+	     toutes les frames sont traîtées - les STP et celles de
+	     l'utilisateur/utilisatrice.
+
+   Au moment de la reconfiguration de la topologie, tous les ports de pont
+sont dans l'un des trois états, Bloquant, En écoute ou En apprentissage,
+les frames de l'utilisateur/utilisatrice ne sont pas délivrées et le réseau
+ne fonctionne que pour lui-même, pas pour l'utilisateur/utilisatrice.
+
+   A l'état stable tous les ponts sont en attente du BPDU Hello périodique
+du Pont Racine. Si dans la période de temps définie par Max Age Time il n'y
+avait aucun BPDU Hello, alors le pont décide que soit le Pont Racine est
+éteint, soit le lien vers lui est rompu. Dans ce cas il initie la
+reconfiguration de la topologie du réseau. En définissant les paramètres
+correspondants il est possible de réguler à quelle vitesse les ponts vont
+trouver les changements de topologie et mette en place un backup des
+liens.
+
+Allons voir plus loin.
+*=*=*=*=*=*=*=*=*=*=*=
+
+Voici la structure d'un BPDU Configuration STP selon le standard 802.1d :
+
+ ------------------------------------------------
+ |Offset  |Nom                          |Taille |
+ ------------------------------------------------
+ ------------------------------------------------
+ |1       |Protocol Identifier        |2 octets |
+ ------------------------------------------------
+ |        |Protocol Version Identifier|1 octet  |
+ ------------------------------------------------
+ |        |BPDU type                  |1 octet  |
+ ------------------------------------------------
+ |        |Flags                      |1 octet  |
+ ------------------------------------------------
+ |        |Root Identifier            |8 octets |
+ ------------------------------------------------
+ |        |Root Path Cost             |4 octets |
+ ------------------------------------------------
+ |        |Bridge Identifier          |8 octets |
+ ------------------------------------------------
+ |        |Port Identifier            |2 octets |
+ ------------------------------------------------
+ |        |Message Age                |2 octets |
+ ------------------------------------------------
+ |        |Max Age                    |2 octets |
+ ------------------------------------------------
+ |        |Hello Time                 |2 octets |
+ ------------------------------------------------
+ |35      |Forward Delay              |2 octets |
+ ------------------------------------------------
+
+En langage C :
+
+typedef struct {
+
+Bpdu_type  type;
+Identifier root_id;
+Cost       root_path_cost;
+Identifier bridge_id;
+Port_id    port_id;
+Time       message_age;
+Time       max_age;
+Time       hello_time;
+Time       forward_delay;
+Flag       topology_change_acknowledgement;
+Flag       topology_change;
+
+} Config_bpdu;
+
+Voici ce à quoi cela ressemble dans tcpdump :
+
+---------------------screendump----------------------------
+[root@ws002 root]# tcpdump -c 3 -t -i eth0 stp
+tcpdump: listening on eth0
+802.1d config 8000.00:50:e2:bd:58:40.8002 root 8000.00:50:e2:bd:58:40 pathcost 0 age 0 max 20 hello 2 fdelay 15 
+802.1d config 8000.00:50:e2:bd:58:40.8002 root 8000.00:50:e2:bd:58:40 pathcost 0 age 0 max 20 hello 2 fdelay 15 
+802.1d config 8000.00:50:e2:bd:58:40.8002 root 8000.00:50:e2:bd:58:40 pathcost 0 age 0 max 20 hello 2 fdelay 15 
+3 packets received by filter
+0 packets dropped by kernel
+[root@ws002 root]#
+---------------------screendump----------------------------
+
+Et avec des infos supplémentaires :
+
+---------------------screendump----------------------------
+[root@ws002 root]# tcpdump -vvv -e -l -xX -ttt -c 3 -i eth0 stp
+tcpdump: listening on eth0
+000000 0:50:e2:bd:58:42 1:80:c2:0:0:0 0026 64: 802.1d config \
+8000.00:50:e2:bd:58:40.8002 root 8000.00:50:e2:bd:58:40 pathcost 0 \
+age 0 max 20 hello 2 fdelay 15 
+0x0000   4242 0300 0000 0000 8000 0050 e2bd 5840        BB.........P..X@
+0x0010   0000 0000 8000 0050 e2bd 5840 8002 0000        .......P..X@....
+0x0020   1400 0200 0f00 0000 0000 0000 0000 7800        ..............x.
+0x0030   0c00                                           ..
+2. 002912 0:50:e2:bd:58:42 1:80:c2:0:0:0 0026 64: 802.1d config \
+8000.00:50:e2:bd:58:40.8002 root 8000.00:50:e2:bd:58:40 pathcost 0 \
+age 0 max 20 hello 2 fdelay 15 
+0x0000   4242 0300 0000 0000 8000 0050 e2bd 5840        BB.........P..X@
+0x0010   0000 0000 8000 0050 e2bd 5840 8002 0000        .......P..X@....
+0x0020   1400 0200 0f00 0000 0000 0000 0000 7800        ..............x.
+0x0030   0c00                                           ..
+2. 046164 0:50:e2:bd:58:42 1:80:c2:0:0:0 0026 64: 802.1d config \
+8000.00:50:e2:bd:58:40.8002 root 8000.00:50:e2:bd:58:40 pathcost 0 \
+age 0 max 20 hello 2 fdelay 15 
+0x0000   4242 0300 0000 0000 8000 0050 e2bd 5840        BB.........P..X@
+0x0010   0000 0000 8000 0050 e2bd 5840 8002 0000        .......P..X@....
+0x0020   1400 0200 0f00 0000 0000 0000 0000 7800        ..............x.
+0x0030   0c00                                           ..
+3 packets received by filter
+0 packets dropped by kernel
+[root@ws002 root]# 
+---------------------screendump----------------------------
+
+Généralement on obtient le même avec un alias de la syntaxe de tcpdump (si
+vous n'avez aucun autre trafic multicast dans le réseau cible) :
+
+---------------------screendump----------------------------
+[root@ws002 root]# tcpdump -vvv -e -l -xX -ttt -c 3 -i eth0 multicast
+tcpdump: listening on eth0
+000000 0:50:e2:bd:58:42 1:80:c2:0:0:0 0026 64: 802.1d config \
+8000.00:50:e2:bd:58:40.8002 root 8000.00:50:e2:bd:58:40 pathcost 0 \
+age 0 max 20 hello 2 fdelay 15 
+0x0000   4242 0300 0000 0000 8000 0050 e2bd 5840        BB.........P..X@
+0x0010   0000 0000 8000 0050 e2bd 5840 8002 0000        .......P..X@....
+0x0020   1400 0200 0f00 0000 0000 0000 0000 7800        ..............x.
+0x0030   0c00                                           ..
+2. 004863 0:50:e2:bd:58:42 1:80:c2:0:0:0 0026 64: 802.1d config \
+8000.00:50:e2:bd:58:40.8002 root 8000.00:50:e2:bd:58:40 pathcost 0 \
+age 0 max 20 hello 2 fdelay 15 
+0x0000   4242 0300 0000 0000 8000 0050 e2bd 5840        BB.........P..X@
+0x0010   0000 0000 8000 0050 e2bd 5840 8002 0000        .......P..X@....
+0x0020   1400 0200 0f00 0000 0000 0000 0000 7800        ..............x.
+0x0030   0c00                                           ..
+2. 006193 0:50:e2:bd:58:42 1:80:c2:0:0:0 0026 64: 802.1d config \
+8000.00:50:e2:bd:58:40.8002 root 8000.00:50:e2:bd:58:40 pathcost 0 \
+age 0 max 20 hello 2 fdelay 15 
+0x0000   4242 0300 0000 0000 8000 0050 e2bd 5840        BB.........P..X@
+0x0010   0000 0000 8000 0050 e2bd 5840 8002 0000        .......P..X@....
+0x0020   1400 0200 0f00 0000 0000 0000 0000 7800        ..............x.
+0x0030   0c00                                           ..
+3 packets received by filter
+0 packets dropped by kernel
+[root@ws002 root]#
+---------------------screendump----------------------------
+
+Comme vous le voyez ici, normalement les frames STP arrive
+approximativement dans le Hello Time (ici : 2 secondes).
+
+
+STP & VLANs.
+*=*=*=*=*=*=
+
+   Nous aimerions dire quelques mots à propos du fonctionnment de STP
+spécifique aux réseaux avec des réseaux virtuels (VLANs). Mettre en marche
+ce mode sur un switch est logiquement équivalent à le remplacer avec un
+certain nombre de switches (pour chaque switch), même lorsque physiquement
+il n'y a aucune séparation entre les média VLANs. Il serait évident de
+trouver qu'il y a différents arbres STP, mais cette option est supportée
+par seulement quelques équipements (i.e. Intel 460T ne supporte qu'un seul
+arbre STP pour tous les VLANs ; avec la famille des switches Cajun de chez
+Avaya vous ne trouverez des Spanning Trees séparés que dans les modèles
+haut de gamme). Ces faits détruisent l'espoir de localiser de possibles
+attaques STP dans un VLAN. Mais il y a des menaces existant même avec des
+arbres STP séparés par VLAN.
+
+   Certains vendeurs ont construit de nouvelles choses pour étendre STP
+dans leurs appareils, augementant leurs capacités, comme le Spanning Tree
+Portfast de Cisco (voir [11]) et le STP Fast Start dans certains switches
+3Com (voir [12]). Nous en verrons l'essence plus bas. Egalement, certaines
+compagnies supportent leur propre implémentation de STP, i.e. le Dual Layer
+STP de chez Avaya. De plus, des modifications du fonctionnement de STP pour
+d'autres types de réseaux (i.e. DECnet). Nous voudrions pointer ici leurs
+similarité de principe et ils ne diffèrent que dans les détails et dans les
+capacités étendues (ainsi, dans le Dual Layer STP d'Avaya les arbres
+peuvent se terminer aux ports compatibles 802.1d). Toutes ces
+implémentations souffrent des mêmes défauts que leurs prototypes. Les
+protocoles propriétaires non-publiés donnent un problème de plus - seuls
+les développeurs peuvent résoudre leurs problèmes, car le reverse
+engineering complet (requis pour fournir de bonnes solutions de bug-fixing)
+est plus difficile qu'un petit qui est juste requis pour réaliser des
+attaques et publier des résultats dont certains constitueraient une preuve
+d'un reverse engineering, qui pourrait être illégal.
+
+Plans d'attaque possibles.
+*=*=*=*=*=*=*=*=*=*=*=*=*=
+
+   L'idée d'un premier groupe d'attaque se voit pratiquement "en surface".
+Par essence le principe du STP autorise d'organiser facilement une attaque
+de Déni de Service (Dos). Réellement, comme définit dans le standard, à la
+reconfiguration du Spanning Tree [NDT : l'arbre représentant le réseau]
+tous les ports des appareils impliqués ne transfèrent pas les frames
+utilisateur. Ainsi, pour faire tomber un réseau (ou au moins l'un de ses
+segments) dans un état non-utilisable il suffit de forcer les appareils STP
+à une reconfiguration infinie. Cela pourrait être réalisé en initialisant
+des élections pour, par exemple, le pont racine, le pont désigné ou le port
+racine - en pratique n'importe quel objet d'élections. Par "chance", STP
+n'a aucune espèce d'authentification autorisant les utilisateurs malicieux
+d'atteindre ceci facilement en envoyant de faux BPDU.
+
+
+[NDT : Aphex Twin -  The Garden of Linmiri]
+  Un programme construisant des BPDU pourrait être écrit dans n'importe
+quel langage de haut niveau ayant une interface raw-socket (regardez
+l'exemple en C et le shell script de gestion à la home page de notre projet
+- [5], [6]). Un auter moyen - on pourrait utiliser les outils stantards
+pour gérer le Spanning Tree, i.e. ceux du projet Linux Bridge ([13]), mais
+dans ce cas il n'est pas possible de manipuler des paramètres STP avec des
+valeurs qui n'entrent pas dans la spécification du standard. Au-dessous
+nous examinerons des plans de bases d'attaques potentiellement possibles.
+
+Elections éternelles.
+*=*=*=*=*=*=*=*=*=*=*
+
+  L'attaquant(e) monitore le réseau avec un sniffer (analyseur de réseau)
+et attends l'un des BPDUs de configuration périodique en provenance du
+pont racine (contenant son identifiant). Après ceci il envoie dans
+un réseau un BPDU avec un identifiant plus petit que celui qu'il a reçu
+(id=id-1) - il a donc des prétentions à être lui-même une racine et
+initilalise des élections. Après il décrémente d'un l'identificateur et
+répète le procédure. Chaque étape initialise une nouvelle vague
+d'élections. Lorsque l'identificateur atteint sa plus petite valeur
+l'attaquant(e) retourne à la valeur calculée au début de l'attaque. En
+résultat, le réseau sera pour toujours en élections du pont racine et les
+ports des appareils STP n'atteindrons jamais l'état de forwarding tant que
+l'attaque est en marche.
+
+Disparition de la racine
+*=*=*=*=*=*=*=*=*=*=*=*=
+
+   Avec cette attaque il n'est pas besoin d'obtenir l'identificateur
+courant du pont racine - la plus petite valeur possible est une valeur de
+début. Ceci, comme nous nous en souvenons, signifie la priorité maximum. A
+la fin des élections l'attaquant(e) stoppe l'envoi de BPDU, ce qui après
+une limite de temps de Max Age donne de nouvelles élections. Aux nouvelles
+élections l'attaquant(e) agit également comme avant (et gagne). En
+assignant le minimum possible de Max Age Time il est possible d'obtenir une
+situation où tout le réseau passera tout son temps à se reconfigurer, comme
+cela se poourrait dans l'algorithme précédant. Cela pourrait avoir moins
+d'effet, mais a une réalisation plus simple. De plus, selon l'échelle du
+réseau et d'autres facteurs (i.e. la valeur de Forward Delay, qui fait
+varier la vitesse de switching dans un état de forwarding) les ports des
+appareils STP pourraient ne jamais commencer à forwarder les frames
+utilisateur - donc nous ne pouvons pas considérer cette attaque comme moins
+dangereuse.
+
+Fusion-séparation des arbres.
+*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
+
+   Dans un réseau supportant les VLANs il peut être possible de lancer une
+modification de l'attaque discutée plus haut en connectant des segments
+avec différants VLANs et arbres STP. Ceci pourrait être réalisé sans
+logiciel, à la main, en reliant ensemble les ports avec un cable croisé. Ce
+pourrait devenir une vraie douleur pour le NOC car c'est difficile à
+détecter.
+
+Déni de service local.
+*=*=*=*=*=*=*=*=*=*=*=
+
+   Un(e) attaquant(e) pourrait réaliser un Déni de Service, non pour le
+réseau entier, mais juste sur une partie. Il/elle y pourrait avoir beaucoup
+de raisons, i.e. cela pourrait isoler le client victime du vrai serveur
+pour créer une attaque de "faux serveur". Regardons la réalisation de ce
+type d'attaque dans l'exemple :
+
+ ----------------------------------------------------------------
+                                         
+ .------------------------.                 .------------------.
+ | Switch w/ STP #1       |-----------------| Switch w/ STP #2 |
+ .________________________.                 '__________________'
+    |                |                               |   
+    |                |                               |   .___.
+    |                |                               |   |   |
+    |.....           |  ._                           |   | ==|
+  .------,~          |  ||                           |   | ==|
+  |Client|'          |  ||                            \_ |  -|
+  | PC   ||           \ |....                            |   | 
+  \------ /            '=====|                           |   |
+   ======/             Portable de                      -------
+                       l'attaquan(e)                    Serveur
+
+--------------------------Figure 1------------------------------
+
+Sur la figure 1 le serveur est connecté à un switch et la victime est
+conectée à un autre (la connectivité vers le pont pourrait inclure des
+hubs). L'attaquant(e) a besoin de duper le switch le plus proche et lui
+faire croire qu'il/elle a une meilleure voie vers le pont qui sert
+l'ordinateur serveur.
+
+En terme de STP, l'attaquant(e) doit initialiser et gagner les élections du
+pont désigné du segment du serveur. Comme résultat d'avoir gagner ces
+élections le canal entre les ponts seraient désactivés en mettant les ports
+correspondants à l'état bloqué. En détruisant la connectivité entre les
+segment l'attaquant(e) pourrait de même tenter de duper le client en se
+réclamant lui-même comme le vrai serveur (comparez avec la bien connue
+attaque Mitnick) ou juste se sentir satisfait si son but est la méchanceté.
+
+Filtre BPDU.
+*=*=*=*=*=*=
+
+   Le moyen d'attaque évident est de mettre une boucle qui est indétectable
+par STP en organisant une boucle physique et en y filtrant toutes les
+frames BPDU.
+
+Man In The Middle.
+*=*=*=*=*=*=*=*=*=
+
+   Les deux attaques suivantes diffèrent fondamentalement de celles déjà
+discutées - leur but n'est pas d'atteindre un déni de service, mais de la
+pénétration de données, impossible dans le mode normal d'organisation du
+réseau. En bref, cette attaque utilise STP pour changer la structure
+logique du réseau vers un trafic direct et sensible via la station de
+l'attaquant(e). Regardons la deuxième figure.
+
+
+ ----------------------------------------------------------------
+     Clients segment                          Server segment           
+ .------------------------.                 .------------------.
+ | Switch w/ STP #1       |------X X--------| Switch w/ STP #2 |
+ .________________________.                 '__________________'
+    |                |                        |      |   
+    |                |                        |      |   .___.
+    |                |                        |      |   |   |
+    |.....           |   .------.             |      |   | ==|
+  .------,~          |   |      |             |      |   | ==|
+  |Client|'          |   |Attacking           ;       \_,|  -|
+  | PC   ||           \  | PC   |            /           |   | 
+  \------ /            \_========_,         /            |   |
+   ======/              |_________|--------'            -------
+                                                         Server
+
+--------------------------Picture 1-----------------------------
+
+   Comme pour l'attaque de déni de service partiel du réseau ci-dessus,
+suppposez que la station de l'attaquant(e) soit équipées de deux NICs, une
+Network Interface Card [NDT : une carte réseau quoi] est connectée au
+segment "du client", et l'autre au segment "du serveur". En envoyant des
+BPDUs appropriés l'attaquant initialise les élections du pont désigné pour
+les deux segments et les gagne. Du coup, les liens existants entre les
+switches (marqués "-X X-") tomberont (vont switcher vers l'état bloquant)
+et tout le trafic inter-segment sera dirigé vers la station de
+l'attaquant(e). Si les plans de l'intrus(e) n'incluent pas le déni de
+service, il/elle DOIT fournir le forwading de frames entre les cartes
+réseau. C'est une tâche très simple si l'attaquant(e) n'a pas besoin de
+modifier le trafic en aucune manière. Cela pourrait être fait soit en
+créant un simle module de programe, soit en utilisant les fonctions STP du
+système d'exploitation, par exemple pour GNU/Linux avec le Linux Bridge
+Project (voir [13]), qui contribue à une solution complète de bridge. Bien
+entendu, un(e) intrus(e) doit prendre en compte le problème de "goulôt de
+bouteille" - le lien inter-segment peut fonctionner à une vitesse de 100 Mb
+(1 Gb) alors que les ports du client ne pourraient fournir qu'une vitesse
+de 10 Mb (100 Mb), ce qui mène à une dégradation de la productivité du
+réseau et à une perte partielle de données (mais une réalisation logicielle
+de back pressure ne serait pas une grosse affaire). Bien sûr, si
+l'atttaquant(e) veut "éditer" le trafic à la volée sur un lien lourdement
+chargé, il/elle pourrait avoir besoin d'un ordinateur plus puissant (CPU et
+RAM). Par chance, cette attaque est impossible dans les réseau avec un seul
+switch - tentez de la réaliser dans ces conditions et vous obtiendrez un
+DoS partiel. Notez également que la réalisation est n'est triviale que
+lorsque l'attaquant(e) est connecté à des switches voisins. Si les
+connections sont faites vers le switch sans lien direct, il y a une tâche
+additionnelle - deviner au moins une Bridge ID, parce que les appareils STP
+ne forwardent jamais les BPDUs, mais n'envoient que sur la base des
+informations qu'ils reçoivent.
+
+Sniffing provoqué.
+*=*=*=*=*=*=*=*=*=
+
+   En général, le sniffing est la pénétration de données en switchant
+l'interface réseau en mode promiscuous. Dans cette méthode la NIC reçoit
+toutes les frames, pas seulement les broadcast et celles dirigigées vers
+elle. Il existe des attaques bien connues sur les réseau basés sur des
+switches, il y a soit le poison des tables des adresses MAC des cibles par
+des fausses réponses ARP, soit le flood de la table de switching du bridge
+et le faisant onc se comporter comme un hub, mais avec des
+séparations/collisions de domaines. Les mêmes résultats peuvent presque
+être atteints en utilisant STP.
+
+   Selon les spécifications, après la reconfiguration de l'arbre (par
+exemple, après les élections du pont désigné), les appareils STP DOIVENT
+effacer de la table de switching toutes les entrées (sauf celles mises
+statiquement par l'administrateur), incluses avant que le switch n'arrive
+aux état écoute et apprentissage. Du coup le switch se mettra en mode hub
+pour quelques temps pendant qu'il re-remplit la table de switching. Bien
+sûr, vous avez déjà noté la fragilité de cette théorie : le switch apprend
+trop vite. Après avoir reçu la première frame de la victime il écrit son
+adresse MAC dans la table de switching et arrête de les broadcaster à tous
+les ports. Quoi qu'il en soit, nous ne devons pas ignorer cette
+attaque. Notamment parce que les constructeurs incluent dans leurs produits
+des "extensions" au noyau STP. Juste après les élections le réseau est
+inatteignable. Pour réduire le down time certains constructeurs (Cisco,
+Avaya, 3Com, HP, etc.) incluent une habilitation à mettre de côté les états
+d'écoute et d'aprentissage sur les ports "utilisateur" (les ports connectés
+avec les serveurs et les stations de travail). En d'autres termes, le port
+passe directement de l'état "bloqué" à l'état "forwarding". Cette
+habilitation porte différents noms : Spanning Tree Portfast (Cisco - [11]),
+STP Fast Start (3Com - [12]), etc.. Si cette habilitation est activée,
+alors les élections éternelles ne mèneront pas à un DoS, mais à des resets
+périodiques de la table de switching, ce qui signifie le hub-mode. Notez
+que cette fonction ne devrait pas être activée sur les ports trunk, parce
+que la convergence de STP (finalisation des élections à un état stable)
+n'est pas garantie dans ce cas. Par chance, pour atteindre so but un(e)
+intrus(e) doit vider la table de switching au moins deux fois plus vite que
+les paquets intéressants sont reçus, ce qui est pratiquement
+impossible. Malgré tout cela autorise la collecte de données
+sensibles. Noez également que cette attaque permet d'attraper toutes les
+frames, parce qu'elle fonctionne au niveau canal [NDT : "channel"] du OSI
+et redirige tous les protocoles (incluant IPX, NETBEUI, etc.), pas
+seulement IP (comme l'ARP-poisoning).
+
+Autres attaques possibles.
+*=*=*=*=*=*=*=*=*=*=*=*=*=
+
+   Ces attaques n'ont pas été vérifiées, mais nous supposons qu'elles sont
+possibles.
+
+Attaque STP sur le VLAN voisin.
+*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
+
+   Selon 802.1q un pont avec le support de VLAN peut recevoir sur un canal
+donné soit toutes les frames, soit seulement les frames ayant les tags
+appropriés. Dans les réseau divisés par des VLANs contenant STP les paquets
+seront transmis via un lien trunk avec les tags appropriés. Donc, il y a
+une possibilité d'attaquer le VLAN en envoyant des paquets STP dans des
+frames taggées vers le port, qui ne supporte pas les tags. Par chance,
+selon 802.1q un pont peut filtrer ces frames. Par exemple, les appareils
+Cisco laissent tomber les frames sur les ports incompatibles avec les tags
+(au moins les utilisateurs), qui rendent cette attaque impossible. Mais
+notez que ce pour PEUT, mais ne DOIT pas dropper ces frames.
+
+STP sur les liens WAN.
+*=*=*=*=*=*=*=*=*=*=*=
+
+   Nous devons également comprendre que les liens WAN sont aussi
+vulnérables aux attaques STP. Ceci parce que la spécification BCP déclare
+STP au-dessus du support PPP. Une conséquence surprenante en est la
+capacité d'attaquer les réseaux des ISP via une connection dialup. Selon la
+RFC 2878 (description de BCP, voir [RFC 2878]), STP activé sur le lien PPP
+si les deux cotés le requièrent, ce qui n'arrive jamais en
+pratique. Néanmoins, STP est supporté sur la majorité des routeurs Cisco,
+au moins les modèles capables de combiner des interfacves virtuelles dans
+des groupes de ponts.
+
+Ceci s'applique à GARP.
+*=*=*=*=*=*=*=*=*=*=*=*
+
+   Comme vous pourriez le lire dans la spécification de Généric Attribute
+Registration Protocol (GARP) [NDT : Protocole d'Enregistrement d'Attribut
+Générique, autre protocole de Niveau 2 il me semble] par 802.1d, STP est
+une sous-partie de GARP. Certaines de attaques discutées au-dessus
+fonctionnent contre GARP et, en particulier, contre le Generic VLAN
+Registration Protocol (GVRP) [Protocole d'Enregistrement de VLAN
+Générique]. Donc les VLANs ne peuvent pas être utilisés comme seule mesure
+de sécurité dans un réseau. Le standard 802.1q prend son origine de 802.1d
+et hérite de ses défauts.
+
+   Nous pourrions continuer noter recherche des non-standards utilisant
+STP. Tout nouvau matériau sera disponible sur la page web du projet (voir
+[3]).
+
+
+Bref résumé.
+*=*=*=*=*=*=
+
+   Nous avons donc montré que malheureusement tous les réseaux supportant
+802.1d et, avec quelques restrictions, ceux qui supportent 802.1.q, sont
+vulnérables.
+
+   Alors que certains appareils ne supportent STP que si l'administrateur /
+adminitratrice active l'option appropriée durant le processus de
+configuration, d'autres le supportent par défaut, "sortant de la boite" (la
+plupart des vendeurs courants activent STP par défaut). Demandez à votre
+admin : notre réseau a-t-il besion du support de STP ? Le support de STP
+est-il désactivé sur notre réseau ?
+
+Détection et protection.
+*=*=*=*=*=*=*=*=*=*=*=*=
+
+   Quelle est la principale difficulté de la détection des attaques basées
+sur STP ? Le problème est que cette attaque utilise des paquets C-BPDU
+standards, donc la présence de paquets STP sur le réseau n'est pas une
+caractéristique forte de l'attaque. Une autre difficulté est que les
+Systèmes de Détection d'Intrusion (IDS) doivent disposer en eux-mêmes les
+informations à propos du plan du réseau, au moins une liste des appareil
+réseau (avec les ID des ponts) pour distinguer le trafic STP usuel des
+paquets de l'intrus(e). De plus, comme l'un des principaux buts de
+l'attaque est la disponibilité du réseau, l'IDS doit avoir son propre canal
+d'alarme. Mais notez que dans ce cas il y a de possibles faux négatifs -
+l'attaque ne sera pas détectée si des BPDUs malicieuses affectent avant que
+l'IDS ne les révèlent. Chaque état normal de réseau réel peut être décrit
+en termes de STP. Par exemple, dans un réseau qui n'utilise normalement pas
+STP, l'apparition de paquets STP signifie très probablement une tentative
+d'attaque STP. Des séries d'Elections de Pont Racine avec une baisse
+séquentielle de l'ID du Pont Racine peut signifier une attaque "d'élections
+éternelles". Dans un réseau ayant une liste d'ID d'appareils fixée
+l'apparition de BPDUs avec une nouvelle ID signifiera probablement dans la
+plupart des cas une attaque (sauf bien sûr des cas ridicules comme
+l'installation d'un nouvel appareil par certains d'une équipe
+d'administration mal-coordinée). Nous supposons que la solution la plus
+efficace est un IDS s'adaptivant et auto-apprenant utilisant une
+technologie de réseau de neurones, parce qu'il peut comparer dynamiquement
+l'état actuel du réseau avec un état "normal". L'une des mesures les plus
+significatives est la proportion de STP dans la somme totale du trafic.
+
+Fix rapide ?
+*=*=*=*=*=*=
+
+Que peuvent faire les adminitrateurs/administratrices réseau quand des
+problèmes existent ?
+
+ - Si STP n'est pas strictement nécessaire pour votre réseau, il doit êter
+   désactivé. Comme nous l'avons noté ci-dessus, dans la plupart des
+   appareils STP est activé par défaut.
+ - Dans beaucoup de cas les liens backup peuvent être contrôlés en
+   utilisant d'autres mécanismes comme le Link Aggregation. Cette
+   fonctionalité est supportée par beaucoup d'appareils, incluant Intel,
+   Avaya, etc.
+ - Si le matériel supporte des configurations STP individuelles sur chaque
+   port alors STP doit être désactivé sur tous les ports sauf sur les ports
+   marqués connectés aux autres matériels réseau, mais pas aux stations de
+   travails des utilisateurs/utilisatrices. Ceci doit être spécialement
+   pris en compte par les ISPs, parce que des utilisateurs/utilisatrices
+   maliceux/malicieuses pourrait tenter de faire des DoS soit contre le
+   réseau de l'ISP soit contre les réseaux d'autres clients. [NDT : jacob,
+   on t'a reconnu ;]
+ - Si possible les administrateurs/administratrices doivent segementer le
+   domaine STP, i.e. créer plusieurs spanning trees indépendants,
+   particulièrement si deux segment du réseau (bureaux), connectés via un
+   lien WAN, alors STP doit êter désactivé sur ce lien.
+
+
+Conclusion
+*=*=*=*=*=
+
+   Chaque système compliqué a inévitablement des erreurs et la
+communication n'est pas une exception. Mais ceci n'est pas une rasion pour
+stopper l'évolution des technologies de l'information - nous pouvons
+totalement échaper aux erreurs si nous ne faisons rien. En même temps, la
+complexité croissante des technoilogies demande une nouvelle approche de
+développement, une approche qui prendrait en compte toutes les conditions
+et facteurs, incluant la sécurité de l'information. Nous supposons que les
+développeurs doivent utiliser de nouvelles méthodes, comme la simulation
+mathématique du système produit, qui ne prend pas seulement en compte les
+impacts de contrôle et de dérangement sur le système, mais qui prédise
+également le comportement du système les lorsque les entrés sont hors d'un
+rang spécifié.
+
+   Il n'est pas étonnant que les développeurs prennent en considération en
+premier lieu le but premier de la création d'un système et que les autres
+questions reçoivent peu d'attention. Mais si nous n'incluons pas de mesures
+de sécurité appropriées durant le développement du système, il est
+pratiquement impossible de "rendre sécurisé" ce système lorsqu'il est déjà
+créé. Au minimum, ce processus est très cher, parce que les manques
+fondamentaux de conception sont difficiles à détecter et trop difficiles
+(parfois - impossibles) à réparer au contraire de l'implémentation et des
+erreurs de configuration.
+
+
+
+References
+*=*=*=*=*=
+  
+ [2]  Notre article en Russe dans LAN-magazine :
+      http://www.osp.ru/lan/2002/01/088.htm , également là, sur papier :
+      Russia, Moscow, LAN, #01/2002, publié par les éditeurs ``Open Systems''.
+ [3]  Les autes matériaux de cette recherche sont publiés en totalité à :
+      http://olli.digger.org.ru/STP
+ [4]  Rapport formaté de notre recherche :
+      http://olli.digger.org.ru/STP/STP.pdf
+ [5]  Code source en C du programme de génération de BPDU :
+      http://olli.digger.org.ru/STP/stp.c
+ [6]  Shell script pour manipuler les paramètres STP :
+      http://olli.digger.org.ru/STP/test.sh
+ [7]  ANSI/IEEE 802.1d (Media Access Control, MAC) et ANSI/IEEE 802.1q
+      (Virtual Bridged Local Area Networks) peuvent être téléchargés depuis : 
+      http://standards.ieee.org/getieee
+ [8]  RFC2878 (PPP Bridging Control Protocol)
+      http://www.ietf.org/rfc/rfc2878.txt
+ [9]  Description de BPDU :
+      http://www.protocols.com/pbook/bridge.htm#BPDU
+ [10] Assigned Numbers (RFC1700) http://www.iana.org/numbers.html
+ [11] Cisco STP Portfast feature
+      http://www.cisco.com/warppublic/473/65.html
+ [12] Description du support STP sur le 3Com SuperStack Switch 1000
+      http://support.3com.com/infodeli/tools/switches/s_stack2/3c16902/man
+      ual.a02/chap51.htm
+ [13] Linux Bridge Project
+      http://bridge.sourceforge.net/
+ [14] Thomas Habets. Playing with ARP
+      http://www.habets.pp.se/synscan/docs/play_arp-draft1.pdf
+  
+|=[ EOF ]=---------------------------------------------------------------=|
+
+Traduction par [DegenereScience]Jacob (début) & DecereBrain (milieu et fin)
+le Jeudi 8 Janvier 2004, 10:06.
+Désolé pour le retard, vraiment.
+
+L'article est excellant, dommage qu'il soit gâché par une
+licence-de-merde-à-la-con-que-ça-donne-envie-de-coller-des-baffes-à-l'auteur
+et une conclusion tout à la gloire du mouvement WhiteHat.
+C'est con un WH, franchement.
+
+"Il devait y avoir dans son âme un interrupteur qui permettait de passer de
+Christa à Antéchrista. Le commutateur n'avait pas de position
+intermédiaire. Et moi de me demander s'il y avait un dénominateur commun
+entre celle qui était on et celle qui était off."
+ - Amélie Nothomb, "Antéchrista", 2003

