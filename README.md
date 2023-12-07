@@ -118,6 +118,8 @@ Some articles are also sensitive and may mention, for example, the creation of h
 | XIII | N/A  | N/A |
 | Zone 51 | N/A  | N/A |
 
+All the list will be updated in few days with all informations, just be patient please
+
 # How to deploy it
 
 Just clone this repository and place its contents in a webroot with PHP enabled and directory listing activated.
