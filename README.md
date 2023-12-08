@@ -15,10 +15,10 @@ Some articles are also sensitive and may mention, for example, the creation of h
 | 3d13 | 1999-2000 | Infosec, Hacking, Cracking |
 | 50-1337 | 2010 | Infosec, Hacking, Reverse, Low-Level, Web Pentesting |
 | 912 Hacking Departement | 1999  | Infosec, Hacking, Social Engineering, Phreaking |
-| Aktivist | N/A  | N/A |
-| Alcibiade | N/A  | N/A |
-| Allianx | N/A  | N/A |
-| Alternative | N/A  | N/A |
+| Aktivist | 1999-2000  | Infosec, Hacking, Phreaking |
+| Alcibiade | 1999  | Infosec, Hacking, Phreaking |
+| Allianx | 2000  | Infosec, Hacking, Phreaking, Development |
+| Alternative | 1999  | Infosec, Hacking, Phreaking, Hardware |
 | AOH | N/A  | N/A |
 | Apocalypse | N/A  | N/A |
 | Belgian Hackers Zone | N/A  | N/A |
