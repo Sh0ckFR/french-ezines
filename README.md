@@ -20,8 +20,8 @@ Some articles are also sensitive and may mention, for example, the creation of h
 | Allianx | 2000  | Infosec, Hacking, Phreaking, Development |
 | Alternative | 1999  | Infosec, Hacking, Phreaking, Hardware |
 | AOH | N/A  | N/A |
-| Apocalypse | N/A  | N/A |
-| Belgian Hackers Zone | N/A  | N/A |
+| Apocalypse | 2000  | Infosec, Hacking, Reverse, Cracking, Phreaking |
+| Belgian Hackers Zone | 1999-2000  | Infosec, Hacking, Web Pentesting, Phreaking, Social Engineering |
 | Black Lotus | N/A  | N/A |
 | Blackclowns | N/A  | N/A |
 | Blast | N/A  | N/A |
