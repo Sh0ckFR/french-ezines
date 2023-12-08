@@ -22,8 +22,8 @@ Some articles are also sensitive and may mention, for example, the creation of h
 | AOH | N/A  | N/A |
 | Apocalypse | 2000  | Infosec, Hacking, Reverse, Cracking, Phreaking |
 | Belgian Hackers Zone | 1999-2000  | Infosec, Hacking, Web Pentesting, Phreaking, Social Engineering |
-| Black Lotus | N/A  | N/A |
-| Blackclowns | N/A  | N/A |
+| Black Lotus | 1999  | Infosec, Hacking, Web Pentesting, Warez, Development |
+| Blackclowns | N/A  | Infosec, Hacking, Reverse, Low-Level, Maldev, Rootkits |
 | Blast | N/A  | N/A |
 | Brain Storm Crew | N/A  | N/A |
 | CounterStrike | N/A  | N/A |
