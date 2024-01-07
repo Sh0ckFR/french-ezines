@@ -1,0 +1,751 @@
+                            ==Phrack Inc.==
+
+               Volume 0x0b, Issue 0x3c, Phile #0x0d of 0x10
+
+|=---------------=[ Brouilleur GPS Portatif et Bon Marche ]=-------------=|
+|=---------------------------------------------------------------------------------=|
+|=---------------=[ anonymous <p60_0d@author.phrack.org ]=------------=|
+
+--[ Sommaire
+
+  1 - Description du projet
+
+  2 - Pourquoi ?
+
+  3 - Description technique
+    3.1 - Boucle de phase fermee
+    3.2 - Generateur de bruit
+    3.3 - Amplificateur RF
+    3.4 - Regulation de la tension
+    3.5 - Antenne
+
+  4 - Notes de construction
+    4.1 - Aquisition des composants
+    4.2 - Disposition
+
+  5 - Operation
+
+  6 - References
+
+  7 - Annexe A : liens vers des feuilles de donnees.
+
+  8 - Annexe B : Diagrame schematique - gps_jammer.ps.gz (uuencode)
+
+
+--[ 1 - Description du projet
+
+  Un appareil bon marche pour desactiver temporairement le code de
+reception  de la [course acquisition (C/A)] civile utilise pour le
+Standard Positioning Service (SPS) [Service de Positionnement
+Standard] sur le Glogal Positionning System (GPS/NAVSTAR) [Systeme de
+Positionnement Global] L1 de frequence 1575.42 MHz
+
+  Ceci est accompli en transmettant un signal de bruit de gauss sur
+une bande etroite, avec une deviation de plus ou moins 1.023 MHz, sur
+la frequence L1 GPS elle-meme. Cette technique est un petit peu plus
+compliquee qu'une simple brouilleur a vague continue (VC), mais tend a
+etre plus efficace (i.e. plus difficile a filtrer) contre les
+recepteurs radios bases sur de larges spectres.
+
+  Cet appareil n'aura aucun effet sur le Precise Psitionning Service
+(PPS) qui est transmit sur la frequence GPS L2 de 1227.6 MHz et un
+petit effet sur le P-code qui est egalement porte par la frequence
+L1. Il peut y avoir un probleme si votre recepteur GPS particulier a
+besoin d'aquerir le P(Y)-code au travers du C/A-code avant une
+operation propre.
+
+  Cet appareil ne fonctionnera pas non plus contre la nouvelle frequence
+GPS L5 de 1176.45 MHz a venir ou les systeme GLONASS Russe ou Galileo
+Europeen. Il peut etre adapte pour brouiller le nouveau signal
+C/A-code civil qui est sur le point d'etre egalement transmit sur la
+frequence GPS L2.
+
+  Cela dit, ca fonctionnera contre la majorite des recepteurs GPS
+consumer/OEM, fournits sans aucune installation en aucune
+configuration d'anti brouillage avance.
+
+
+--[ 2 - Pourquoi ?
+
+  Les attaques sur les appareils de navigation basee sur des GPS bon
+marche(ou sur les appareils de tracking caches) ces dernieres annees ont
+rendu necessaire au citoyen de base de se mettre au bel art de la guerre de 
+
+
+l'electronique.
+
+  Diverses compagnies [2] vendent a present des appareils de tracking 
+caches bases sur le GPS qui se mettent dans ou sous votre vehicule.
+Quelques-uns transmettent, via telephonie cellulaire, les coordonnees
+presentes et/ou passees de votre vehicule pendant une semaine sans
+changement de batteries ni d'ordre du tribunal !
+
+Les compagnies de location de vehicules sont connues pour utiliser des 
+appareils de traquing GPS pour verifier que vous ne faites pas d'exces de 
+vitesse ou abusez de leurs vehicules de location. Les loueurs non mefiants 
+sont souvent confrontes a ce genre d'abus caches apres le retour du 
+vehicule de location.
+
+  Les agences de maintient de l'ordre sont assez folles pour garder des
+traces des prisonniers assignes a residence avec de simples bracelets bases 
+sur du tracking par GPS [3]. Certains meme utilisent le GPS pour la
+localisation automatique de vehicule (LAV) sur leur voitures de patrouille 
+pour permettre aux aiguilleurs d'envoyer l'unite la plus prochevers un 
+appel partculier ou pour connaitre la localisation d'un officier dans le 
+cas d'une situation d'urgence ou ils ne peuvent utiliser leur radio.
+
+  Les compagnies de telephonie cellulaire, de transports routiers, les 
+investigateurs prives, les routes a peages, les avions, les systeme du 
+genre "protegez votre enfant" et beaucoup d'autres services sont totalement 
+impliquees dans l'utilisation de tracking par GPS. Le probleme est :
+voulez-vous vraiment que tout le monde sache ou vous etes ?
+
+
+--[ 3 - Description technique
+
+  Ce sera une breve description de chacune des sections majeures qui
+compromettent le brouilleur entier. Referez-vour au diagrame schematique
+inclus (Annexe B) quand vous aurez tout lu. Vous devriez egalement vous
+referer aux feuilles de donnees des composants pour toujours plus
+d'information detaillee.
+
+----[ 3.1 - Boucle de phase fermee
+
+  Les principaux composants oscillants du brouilleur est un chip
+synthetiseur de frequence a boucle de phase fermee (PLL) [NDT : desole j'ai
+rien trouve de mieux pour "phase-locked loop", si quelqu'un a une idee ...]
+Motorola MC145151, un module d'oscilateur a voltage controlle (VCO)
+Micronetics M3500-1324S et un chip prescaler divise-par-256.
+[NDT : Serieux, la j'ai du mal :-( ]
+
+Le VCO donne une portion de son signal de sortie de frequence radio 
+(RF)dans le chip prescaler, ou il est divide par 256. Un signal de 1575 MHz
+serait transforme en un signal de 6.15234375 MHz. Ceci est ensuite nourri
+dans un cote du chip PLL.
+
+L'autre cote du PLL est nourri par une frequence de reference qui est 
+derivee d'un cristal de quartz de 10 MHZ. Cette frequence a quartz de 
+reference est divisee 512 fois par le PLL pour atteindre 19531,25 MHz. La 
+frequence de sorti du prescaler de 6.15234375  MHz est egalement divisee
+plus loin divisee 315 fois par le chip PLL pour une freqence finale de 
+19531,25 MHz. Ceci sera la nouvelle frequence de reference interne du PLL. 
+Ce tres mauvais signal micro-wave de 1575 MHz ressemble a present a une 
+simple frequence audio pour le chip PLL et les composants qui le supporte.
+
+  Le chip PLL compare en interne la phase des 19531,25 MHZ du signal du 
+cote VCO a la phase des 19531,25 MHz du signal du cote du cristal. La 
+sortie de pulsations de haut ou bas voltage du chip PLL depend si le signal 
+du cristal depasse ou est en retard de phase avec le signal du VCO. Ces
+pulsations sont ensuite filtrees et mouille en un signal de controle CD pur 
+via un simple filtre de boucle passive. Ce signal nettoye est ensuite
+connecte a l'entree de controle de l'accordeur du voltage du VCO.
+
+  Lorsque tout fonctionne correctement, la frequence de sortie du VCO est 
+bloquee sur n'importe quelle frequence que vous avez programmee dans le
+chip PLL, 1575 MHz dans ce cas. Ca va rester sur cette frequence meme sous
+de dramatiques changements de temperature, un probleme qu'un PLL non-VCO
+aurait eu. Si le PLL ne fonctionne pas correctement, la LED rouge "PLL
+Unlock" sera allumee.
+
+  A cause du caprice de n'utiliser que des composants peu chers est faciles
+a obtenir, vous devrez legerement ajuster deux condensateurs chargeurs
+sur le signal de reference. Ceci est inhabituel, mais necessaire pour
+bouger le signal du 1575 MHz par defaut au 1575,42 plus approprie
+(plus ou moins quelques centaines de Hertz). C'est une procedure tres
+importante et tres delicate, et vous aurez besoin d'une compteur de
+freqence pour l'accomplir.
+
+----[ 3.2 - Generateur de bruit
+
+  Le generateur de bruit actuel du brouilleur est tres simple. Une diode 
+Zener de 6,8 Volt est d'abord basee, mise en tampon et amplifiee par un 
+transistor 2N3904. Cette diode Zener est capable de generer en broadband 
+des signaux de bruit depuis les frequences audios jusqu'a plus de 100 MHz. 
+Nous filtrons ensuite ce signal de bruit vers quelque chose de plus 
+pratique et quelque chose auquel le module VCO puisse repondre aussi. Ceci 
+est fait via le chip amplificateur audio LM386. Le LM386 amplifie et 
+abaisse les filtres du signal de bruit final. Le signal de sortie final du 
+LM386 aura suffisamment de marge si vous voulez l'adapter pour un 
+brouilleur sur une large bande.
+
+  Ce signal de bruit de basse frequence est alimente, via un potentiometre
+de 100 Ohm, par un simple reseau de resistors/condensateurs ou c'est
+melange avec le voltage du tune de controle du VCO (decrit ci-dessus). La
+diode 1N4148 est la pour empecher toute pulsation de voltage negatif
+d'attenidre le VCO.
+
+  Ce melange a pour resultat un signal de tune de controle de voltage
+quelque peu "bruyant" alimentant le VCO. Le signal RF resultant ressemble a 
+un bruit aleatoire dancant autour de 1575,42 MHz. Vous aurez besoin de
+mettre la deviation de ce bruit a approximativement +/- 1,023 MHz depuis la 
+frequence radio (RF) porteuse de 1575,42 MHz. L'acces a un analyseur de
+spectre est requis pour faire cela proprement, ou vous pouvez utiliser un 
+oscilloscope et le test de points de voltage iclus pour obtenir une mise au 
+point approximative.
+
+----[ 3.3 - Amplificateur de frequence radio
+
+  La sortie RF de +dBm (5 milliWatt) du VCO est d'abord legerement attenuee 
+(4dB) et on lui donne un petit coup pour l'entre dans le prescaler MB506.
+Elle passe ensuite a travers les etages de l'amplificateur RF et du fitre 
+de bande.
+
+  Le premier amplificateur RF est un Sirenza Microdevices SGA-6289. Il 
+fournit a peu pres 13 dB de gain pour compenser les pertes de l'attenuation 
+restrictive du pad. Il montre egalement une bonne terminaison de 50 Ohm
+pour la sortie RF du VCO et aide meme a conduire l'amplificateur RF final.
+
+  Le filtre de bande GPS est un bipole Toko 4DFA-1575B-12 ceramic
+dielectric filter de chez Digi-Key[4], partie numeroTKS2609CT-ND. Cette 
+partie est optionelle, mais aide a nettoyer le spectre RF avant une 
+amplification plus avancee. La perte de l'insertion du filtre est a peu 
+pres 2 dB.
+
+  L'amplificateur RF final est un WJ Communications AH102. Il fournit un 
+autre gain de 13 dB, avec un plus fort point de compression P1dB d'environ 
++27 dBm (500 mW). Le AH102 esquisse les plus courantes de toutes les 
+parties, et n'est pas reellement necessaire si vous avez pour but un
+appareil a faible rang, faible courant et a batterie.
+
+----[ 3.4 - Regulation de la tension
+
+  La regulation et le filtrage du voltage d'entree est effectue en 
+utilisant des regulateurs de voltage standard IC. Un LM2940CT-12 12 Volt, 1 
+Amp faible abandon de regulation de vlotage est utlise pour reguler
+l'alimentation 12 Volt principale. Des regulateurs standard des series 78xx 
+sont utlises ici pour fournir les deux lignes 9 et 5 Volt. Une simple
+diode/fusible de plan de protection de polarite est egalement fournie sur
+l'entree de la batterie. L'usage d'un fusible de remise a zero automatique 
+est hautement recommande.
+
+  Vous pouvez alimenter le brouilleur par une batterie 12 Volt 
+recharegeable normale. La batterie 12 Volt, 4.5 Amp-heure, lead-acid de 
+chez Radio Shack [5], partie numero 23-289, est un bon choix. Les vielles 
+batteries de voiture, les batteries des chaines de lanternes de 6 Volt ou 
+meme des panneaux solaires fonctionneront egalement. Le plan pour le 
+brouilleur complet sera autour de 300 milliAmps.
+
+----[ 3.5 - Antenne
+
+Une antenne rayonnante n'est pas montree dans le diagrame schematique et 
+elle aura besoin d'etre achetee ou construite pour des operations propres. 
+Ils y a de nombreuses antennes de reception GPS qui fonctionnerons tres 
+bien pour cette applcation de transmission a faible puissance. 
+Quelques-unes des meilleures antennes a micro-ondes pre-construites ou 
+facilement assemblables peuvent etre achetees directement chez Ramsey
+Electronics[6].
+
+  L'antenne discone broadband Ramsey DA25 est recommandee pour des 
+applications de rayonnement omni-directionnel (transmit dans un cercle). La 
+Yagi LPY2 log periodic peut etre utilisee pour des applications de 
+rayonnement directionnel (transmit sur une ligne droite). Utiliser une 
+antenne directionnelle vous donnera un petit avantage dans toute la
+puissance des frequences radio transmises, qui augmentera le rang du 
+brouilleur, et peut egalement  etre utilisee pour proteger votre propre 
+recepteur GPS d'etre brouille (i.e. point-le vers votre ennemi).
+
+  Les elements d'une antenne patch GPS dielectrique peuvent egalement etre 
+achetez chez Digi-Key. Les elements des series Toko DAK, Digi-Key partie 
+numero TK5150-ND, sont parfaits pour un montage en surface directement du 
+la planche du circuit. Il requiereront un radome en platique pour abaisser 
+un peu leur frequence de resonnance. La petite taille de l'element de 
+l'antenne est egalement parfaite pour des operations cachees ou portatives.
+
+
+--[ 4 - Notes de construction
+
+  Malheureusement, une construction propre du brouilleur requierera des 
+competances d'ingenierie plutot avancees. Une connaissance prioritaire des 
+circuits a micro-ondes hautes frequences et du design de circuits imprimes 
+est requise. Un bon commencement pour le/le debutant(e) est en lisant le
+"UHF/Microwave Handbook" [Guide de poche des Ultra Hautes
+Frequences/Micro-ondes] et "The ARRL Handbook" tous les deux publies chez
+the Amateur Radio Relay League (ARRL)[7].  L'acces a un equipement
+fondamental de test RF (oscilloscope, compteur de frequence, analyseur de
+spectre, charges, attenuateurs, etc.) est egalement requis.
+[NDT : si quelqu'un sait ou on peut se procurer les deux livres cites en
+France, si jamais un editeur les a publie, contactez-moi, je les mettrai
+ici].
+
+----[ 4.1 - Achat des composants
+
+  Le module VCO principal et les amplificateurs RF peuvent etre achetes chez 
+Richardson Electronics[8]. Partie numero M3500C-1324S pour le module VCO
+et les parties numeros SGA-6289 and AH102 pour les amplificateurs
+RF. Des VCO et amplificateurs RF equivalents peuvent etre achetes a
+des compagnies comme  Mini-Circuits[9] ou Synergy Microwave[10]. Des
+petits changements de composants pourraient etre requis si vous
+utilisez des composants alternatifs pour prendre en compte differants
+voltages operants et des besoin en energie des entrees/sorties RF. Le
+filtre de boucle PLL peut egalement avoir besoin d'etre ajuste si vous
+utilisez un module VCO differant.
+
+  Le chip sythetiseur PLL MC145151 peut etre achete chez Digi-Key. Il
+y a plusieurs paquetages en fiche disponibles (plombe ou monte en
+surface), choisissez celui qui va avec votre application. Le petit
+paquetage 28-SOIC monte en surface est la partie numero
+MC145151DW2-ND. Vous pourriez egalement recuperer des chips MC145151
+sur de vielles CB ou de vieux recepteurs satellite C-band (ceux qui
+etaient controles via des switches DIP).
+
+  Digi-Key vent egalement un prescaler IC equivalent, le NEC
+UPG1507GV, partie UPB1507GV-ND. C'est un remplacant exact pour le
+Fijitsu MB506, mais le principal desavantage du UPG1507GV est qu'il
+est dans un paquetage 8-SSOP (i.e. tres petit) et c'est honnetement
+difficile de travailler en utilisant des outils standards en soldes.
+
+  Le cristal 10 MHz est egalement disponible chez Digi-Key, partie
+numero UPB1507GV-ND. D'autres composants divers peuvent etre egalement
+achetes chez Digi-Key (condensateurs, resistances, regulateurs de
+voltage, inducteurs, diodes, transistors, LM386, boite de projet,
+connecteurs RF, etc.) car leurs prix sont les plus competitifs et leur
+service est hors-standing.
+
+----[ 4.2 - Disposition
+
+  Aucun modele PCB n'est disponible, vous devrez disposer le projet a
+la main en utilisant des marqueurs felt-types, des bandes de
+brouillon, des transferts dry-etch ou iron-on. [NDT : desole, mais, la
+je seche ... :( ] Vous devriez faire votre propre modele PCB pour
+ajuster votre application specifiquement.
+
+  La disposition PCB n'est pas difficile, mais requierera une grande
+experience et une garnde patience. Utiliser tous les composants montes
+en surface et de bonnes techniques de disposition sur le circuit
+reduira enormement la taille physique et le cout du brouilleur.
+
+  L'utilisation de hautes frequences, d'un revetement de limaille de
+cuivre a double face est essentiel pour travailler proprement des
+circuits  a micro-ondes. GIL Technologies[11] GML1000 (2-faces, 1 oz.,
+0.030") [NDT : je ne suis pas tres famillier du systeme non-metrique,
+encore desole] est un bon choix mais la limaille standard FR-4
+fonctionnera au besoin. Vous pouvez acheter de la limaille 6" x 6"
+FR-4 (2-faces, 1 oz., 0.030") chez Digi-Key, partie numero PC45-S-ND.
+
+  Un micro fil nu de 50 Ohm sur 0.030" GML1000 PCB lamine fera environ
+70 mils (1.8 mm) et en FR-4 il sera large d'environ environ 55 mils
+(1.5 mm). Soyez sur(e) de garder tout micro fil nu portant les signaux
+RF courts, droits et perpendiculaires a toute ligne DC penchante, ou a
+tout autre micro fil nu qu'il doit croiser.
+
+  La ligne large de 2 mm dans le paquetage de transfert dry-etch de
+chez Radio Shack, partie numero 276-1490, fonctionnera sur les deux
+materiaux pour creer des micro fils nus faits maison qui sont
+suffisamment pres de 50 Ohms.
+
+  Les modeles des deux amplificateurs RF, du filtre de bande, du VCO
+et du prescaler requiereront tous de nombreuses voies connectant les
+niveaux du haut et du bas. Cette aide empeche les boucles de ground et
+l'instabilite (oscillations) de perturber les operations propres du
+circuits. Dand le cas du AH102, ils fournissent meme de la chaleur qui
+s'abaisse pour autoriser une operation plus froide de l'amplificateur
+RF final.
+
+  Toute resistance, tout condensateur ou inducteur utilise dans les
+sections RF devrait etre dans un paquetage de taille de montage en
+surface 0603, 0805, ou 1026. Des composants conducteurs ne
+fonctionneront pas a cette hauteur de frequence. Soyez sur(e) que
+votre choix d'inducteurs montes en surface peut tenir le courant
+lorsque utilise comme partie du biais DC sur l'amplificateur RF. La
+perle de ferrite montree dans le schema peut etre n'importe quelle
+perle de ferrite recuperee. L'assortiment de paquetages d'inducteurs
+chez Radio Shark, partie numero 273-1601, devrait en avoir une paire.
+
+
+--[ 5 - Operation
+
+  Une fois le brouilleur operationnel, vous pouvez le tester en
+monitorant le signal sur un recepteur GPS de consommation courante ou
+un recepteur de communications de haute qualite. Un recepteur GPS pres
+du brouilleur GPS ne sera pas capable d'acquerir le lock du C/A-code
+et tout GPS operant dans le modele de radiation du brouilleur perdra
+son lock de C/A-code. Les recepteurs GPS de plus haute qualite tendent
+a etre moins susceptibles au brouillage de faible puissance, donc vous
+aurez besoin d'etre dans le modele de radiation de proximite de
+l'antenne (i.e. pres) pour qu'il fonctionne.
+
+  Toute obstruction a cote de la propre antenne du brouilleur (arbres,
+maisons, colline, murs, etc.) abaissera l'etendue de brouillage. La
+meilleure place est la ou l'antenne du brouilleur est en ligne de vue
+de l'antenne du GPS que vous etes en train d'essayer de
+brouiller. Dans le vrai monde, les resultats variront de maniere
+extreme, mais vous devriez etre capable d'obtenir un rayon de
+brouillage de quelques centaines de pieds meme dans des zones tres
+obstruees avec l'option de plus forte puissance (AH102) et une simple
+antenne.
+
+  Vous pouvez meme pratiquer des methodes d'anti-brouillage pour vous
+proteger contre des brouillages hostiles ou accidentels. Essayez de
+proteger votre recepteur GPS de la source d'interference en placant
+votre corps, des arbres, des collines, des rochers ou autres
+obstructions entre votre poistion et l'interference. Des methodes plus
+avancees impliquent l'utilisation d'antennes directionnelles ou
+pilotables sur votre recepteur GPS (pointe vers le ciel) pour annuler
+toute interference basee au sol.
+
+
+--[ 6 - References
+
+[1] Standard Positioning Service (SPS) Signal Specification
+    http://www.spacecom.af.mil/usspace/gps_support/gps_documentation.htm
+
+[2] GPS-Web
+    http://www.gps-web.com
+
+    Travel Eyes 2
+    http://www.spyyard.com/details_traveleyes2.htm
+
+[3] VeriTrack
+    http://www.veridian.com/offerings/suboffering.asp?offeringID=472
+
+    iSECUREtrac
+    http://www.isecuretrac.com
+
+    Pro Tech Monitoring
+    http://www.ptm.com
+
+[4] Digi-Key
+    http://www.digikey.com
+
+[5] Radio Shack
+    http://www.radioshack.com
+
+[6] Ramsey Electronics
+    http://www.ramseyelectronics.com
+
+[7] Amateur Radio Relay League
+    http://www.arrl.org
+
+[8] Richardson Electronics
+    http://www.rell.com
+
+[9] Mini-Circuits
+    http://www.minicircuits.com
+
+[10] Synergy Microwave
+     http://www.synergymwave.com
+
+[11] GIL Technologies
+     http://www.gilam.com
+
+[12] Xcircuit
+     http://xcircuit.ece.jhu.edu
+
+
+
+--[ Annexe A : liens vers des feuilles de donnees
+
+Des composants manufactures alternatifs peuvent etre substitues dans
+la plupart des cas.
+
+* Fairchild Semiconductor 2N3904 NPN Transistor
+  http://www.fairchildsemi.com/ds/2N/2N3904.pdf
+
+* Micronetics M3500-1324S VCO
+  http://www.micronetics.com/pdf/vco1324.pdf
+
+* Motorola MC145151 PLL Frequency Synthesizer
+  http://e-www.motorola.com/brdata/PDFDB/docs/MC145151-2.pdf
+
+* National LM2940-12 Voltage Regulator
+  http://www.national.com/ds/LM/LM2940.pdf
+
+* National LM386 Audio Amplifier
+  http://www.national.com/ds/LM/LM386.pdf
+
+* National LM78L05 Voltage Regulator
+  http://www.national.com/ds/LM/LM78L05.pdf
+
+* NEC UPB1506/07GV Prescaler
+  http://www.cel.com/pdf/datasheets/upb1506.pdf
+
+* Sirenza Microdevices SGA-6289 RF Amplifier
+  http://www.sirenza.com/pdf/datasheets/sga/89/sga-6289.pdf
+
+* STMicroelectronics 78M09 Voltage Regulator
+  http://eu.st.com/stonline/books/pdf/docs/2146.pdf
+
+* Toko DAK1575MS50T Dielectric Antenna
+  http://www.toko.com/passives/antennas/pdf/DAK1575MS50Tws.pdf
+
+* Toko 4DFA-1575B-12 Dielectric Band Pass Filter
+  http://www.toko.com/passives/filters/dielectric/4dfa.html
+
+* WJ Communications AH102 RF Amplifier
+  http://www.wj.com/pdf/AH102.pdf
+
+
+--[ Annexe B: Diagrame schematique - gps_jammer.ps.gz (uuencoded)
+
+Dessous est le diagrame schematique (gps_jammer.ps) dans un fichier
+PostScript gzippe et uuencode. C'est le format natif Xcircuit[12] et
+c'est utilise pour la simplicite de vue, d'impression et de
+modification.
+
+<++> ./gps_jammer.ps.gz.uue
+
+begin 644 gps_jammer.ps.gz
+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
+9N\EO9S^].W.AH.[%VY>3_PU'_`Z`=[X`````
+`
+end
+
+<--> ./gps_jammer.ps.gz.uue
+
+|=[ EOF]=---------------------------------------------------------------=|
+
+Traduction par [DegenereScience]DecereBrain, le Lundi 17 Mars 2003, 19:48
+
+Desole, je ne suis pas electronicien de formation, donc ma
+traduction est probablement plus fallible que dans d'autres articles.
+J'implore donc l'indulgeance du lecteur / de la lectrice, mais je fais de
+mon mieux.
+Tout commentaire sur cet article me sera donc utile, si d'avanture j'avais
+a en traduire d'autres du meme genre.
+Merci special a Jacob, cet immonde legume qui devait s'en occuper
+(enfoire :)

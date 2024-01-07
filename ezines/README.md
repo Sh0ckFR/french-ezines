@@ -15,15 +15,15 @@ Some articles are also sensitive and may mention, for example, the creation of h
 | 3d13 | 1999-2000 | Infosec, Hacking, Cracking |
 | 50-1337 | 2010 | Infosec, Hacking, Reverse, Low-Level, Web Pentesting |
 | 912 Hacking Departement | 1999  | Infosec, Hacking, Social Engineering, Phreaking |
-| Aktivist | N/A  | N/A |
-| Alcibiade | N/A  | N/A |
-| Allianx | N/A  | N/A |
-| Alternative | N/A  | N/A |
+| Aktivist | 1999-2000  | Infosec, Hacking, Phreaking |
+| Alcibiade | 1999  | Infosec, Hacking, Phreaking |
+| Allianx | 2000  | Infosec, Hacking, Phreaking, Development |
+| Alternative | 1999  | Infosec, Hacking, Phreaking, Hardware |
 | AOH | N/A  | N/A |
-| Apocalypse | N/A  | N/A |
-| Belgian Hackers Zone | N/A  | N/A |
-| Black Lotus | N/A  | N/A |
-| Blackclowns | N/A  | N/A |
+| Apocalypse | 2000  | Infosec, Hacking, Reverse, Cracking, Phreaking |
+| Belgian Hackers Zone | 1999-2000  | Infosec, Hacking, Web Pentesting, Phreaking, Social Engineering |
+| Black Lotus | 1999  | Infosec, Hacking, Web Pentesting, Warez, Development |
+| Blackclowns | N/A  | Infosec, Hacking, Reverse, Low-Level, Maldev, Rootkits |
 | Blast | N/A  | N/A |
 | Brain Storm Crew | N/A  | N/A |
 | CounterStrike | N/A  | N/A |
@@ -65,6 +65,7 @@ Some articles are also sensitive and may mention, for example, the creation of h
 | Mindkind | N/A  | N/A |
 | MJ13 | N/A  | N/A |
 | Mobilisation Virtuelle Minoritaire | N/A  | N/A |
+| MorbideDark | N/A  | N/A |
 | Multi-system and Internet Base | N/A  | N/A |
 | n0name | N/A  | N/A |
 | Nightz | N/A  | N/A |
@@ -80,6 +81,8 @@ Some articles are also sensitive and may mention, for example, the creation of h
 | Nozep | N/A  | N/A |
 | NPN | N/A  | N/A |
 | Organiks | N/A  | N/A |
+| Ph34r | N/A  | N/A |
+| Phrackfr | N/A  | N/A |
 | Phreakazoide | N/A  | N/A |
 | Pirage | N/A  | N/A |
 | Polio | N/A  | N/A |
@@ -99,19 +102,23 @@ Some articles are also sensitive and may mention, for example, the creation of h
 | Snapscan | N/A  | N/A |
 | SécuriMag | N/A  | N/A |
 | T-S63 | N/A  | N/A |
+| The Shadows Army | N/A  | N/A |
 | The Darkunderground Clan | N/A  | N/A |
 | The Last Click | N/A  | N/A |
 | The Ultimate | N/A  | N/A |
+| The Underground Angels | N/A  | N/A |
 | Total Control | N/A  | N/A |
 | Tradefr | N/A  | N/A |
 | UnderDark | N/A  | N/A |
 | Underhack | N/A  | N/A |
 | Underwayy | N/A  | N/A |
 | USN | N/A  | N/A |
-| WWA | N/A  | N/A |
+| White Wolf Army | N/A  | N/A |
 | X-H | N/A  | N/A |
 | XIII | N/A  | N/A |
 | Zone 51 | N/A  | N/A |
+
+All the list will be updated in few days with all informations, just be patient please
 
 # How to deploy it
 
