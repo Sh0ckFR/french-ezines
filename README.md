@@ -10,7 +10,7 @@ The sources have been slightly tweaked for immediate use. And unfortunately, som
 
 | eZine Name | Active years | Categories |
 | --- | --- | --- |
-| Phrackfr | N/A | Hacking, Coding, Low-Level |
+| Phrackfr | 1998-2002 | Hacking, Coding, Low-Level |
 | Northern Phun Co | 1992-1994 | Phreaking, Trashing, Virus, Hacking, Coding |
 | Noway | 1994 | Hacking, Phreaking, Network, 💣 |
 | Secu-info | 1994-1999 | Hacking |
