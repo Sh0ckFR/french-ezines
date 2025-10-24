@@ -132,3 +132,5 @@ Here is the list of the actual contributors:
 - [@Xyl2k](https://github.com/Xyl2k)
 - [@tobozo](https://github.com/tobozo)
 - [@vbouzon](https://github.com/vbouzon)
+- [@nflatrea](https://github.com/nflatrea)
+
