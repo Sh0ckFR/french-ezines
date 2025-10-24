@@ -1,0 +1,588 @@
+ _______ _______ _______ _______ 
+|   _   |   _   |   _   |   _   |                    
+|   |   |   1___|.  |   |.  |   |
+ \___   |.     \|.  |   |.  |   |
+|:  1   |:  1   |:  1   |:  1   |
+|::.. . |::.. . |::.. . |::.. . |
+`-------`-------`-------`-------' bauds
+
+┌──────────────────────────────┐
+│ ISSUE No 1 - Oct 2025 03.TXT └───────────────────────────────────────────────┐
+| Hpphckngref: C&Embedded quick refs                                           |
+| tixlegeek                                                                    |
+| HZV (Hackerzvoice)                                                           |
+└──────────────────────────────────────────────────────────────────────────────┘
+
+-- CONTENT --
+
+-- 2.1 C
+
+tixlegeek's       ╦ ╦╔═╗╔═╗╦ ╦╔═╗╦╔═╔╗╔╔═╗╦═╗╔═╗╔═╗
+                  ╠═╣╠═╝╠═╝╠═╣║  ╠╩╗║║║║ ╦╠╦╝║╣ ╠╣
+                  ╩ ╩╩  ╩  ╩ ╩╚═╝╩ ╩╝╚╝╚═╝╩╚═╚═╝╚  1.1
+              C QUICK REFERENCE (GCC, C89/C99, LP64)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ sizeof(void*)=8, sizeof(long)=8, sizeof(int)=4.
+ Impl-def:implementation-defined.
+ UB = undefined behavior.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TYPES & SIZES                       ┃ STORAGE / QUALIFIERS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+char .......... 1 (signed?/impl-def)┃ const      > read-only view
+signed char ... 1  (-128..127)      ┃ volatile   > value may change externally
+unsigned char . 1  (0..255)         ┃ restrict   > sole pointer (C99, opt hint)
+short ......... 2  (≥16 bits)       ┃ static     > internal linkage/static dur.
+int ........... 4  (≥16 bits)       ┃ extern     > external linkage
+long .......... 8  (≥32 bits)       ┃ auto       > default local storage
+long long ..... 8  (≥64 bits, C99)  ┃
+float ......... 4  IEEE754 single   ┃ ALIGNMENT
+double ........ 8  IEEE754 double   ┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+long double ... 16* x87 ext (impl)  ┃ alignof(T)   = required alignment
+_Bool / bool .. 1 (C99,<stdbool.h>) ┃ alignas(n)   = force alignment
+void* ......... 8 (generic pointer) ┃ GCC: __attribute__((aligned(n)))
+size_t ........ 8 (unsigned index)  ┃ Packing (non-portable):
+ptrdiff_t ..... 8 (signed ptr diff) ┃   #pragma pack(push,1) ... #pragma pop
+<stdint.h> int8_t,int16_t..intptr_t ┃ GCC: __attribute__((packed))
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STRUCTS & BITFIELDS                 ┃ ENUMS & TYPEDEF
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+struct P{int x,y;};                 ┃ enum Color{RED,GREEN,BLUE};
+sizeof(struct) ≥ sum, includes pad. ┃ enum Err{OK=0,IO=5,RANGE=100};
+Reorder fields to reduce padding.   ┃ Underlying type=impl-def (usually int).
+                                    ┃ Tip: add *_COUNT for bounds.
+Flexible array (C99):               ┃
+  struct Buf{size_t n; char d[];};  ┃ typedef unsigned long ulong;
+  p=malloc(sizeof*p+n);             ┃typedef int(*cmp)(const void*,const void*);
+                                    ┃ typedef struct Node Node; // opaque handle
+Bitfields (impl-def layout!):       ┃
+  struct F{ unsigned rdy:1;         ┃
+             unsigned mode:3;       ┃
+             signed off:12;         ┃
+             unsigned :0;};         ┃
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BITWISE OPS                         ┃ MEMORY MGMT (<stdlib.h>)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+& AND  | OR  ^ XOR  ~ NOT           ┃ malloc(n)   uninit
+<< shL >> shR                       ┃ calloc(c,s) zeroed
+Prec: ~ > << >> > & > ^ > |         ┃ realloc(p,n) resize, may move
+#define BIT(n) (1u<<(n))            ┃ free(p)     release
+flags |= BIT(3); // set             ┃ Pattern:
+flags &= ~BIT(3);// clear           ┃ int *a=malloc(n*sizeof*a);
+if(flags & BIT(3)) ...              ┃ int *t=realloc(a,n2*sizeof*a);
+Shift ≥width or <0 => UB            ┃ if(t) a=t;
+Right shift signed neg=impl-def     ┃
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ARRAYS & POINTERS                   ┃ FUNCTIONS & POINTERS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+int a[3]={1,2,3};                   ┃ typedef int(*pred)(int);
+int *p=a; // decay to pointer       ┃ int even(int x){return !(x&1);}
+sizeof a=3*4=12, sizeof p=8         ┃ int apply(pred f,int *arr,size_t n){...}
+VLA (C99): void f(n){int vla[n];}   ┃
+                                    ┃ CONST POINTERS
+                                    ┃ const int *p;   > ptr to const
+                                    ┃ int *const q;   > const ptr
+                                    ┃ const int *const r; > const ptr to const
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+UNIONS                              ┃ GCC EXTENSIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+union U{uint32_t u;                 ┃ __attribute__((aligned(n)))   force align
+         unsigned char b[4];};      ┃ __attribute__((packed))        no padding
+u.u=0xAABBCCDD;                     ┃ __attribute__((unused))     suppress warn
+Note: reading inactive member is    ┃ __attribute__((noreturn))  func never ret
+impl-def. Use memcpy for type pun.  ┃ __attribute__((format(printf,...)))
+                                    ┃ __builtin_expect(x,1) > branch prediction
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MACROS / DEFINES                    ┃ COMMON UB (Undefined Behavior)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#define MAX(a,b) ((a)>(b)?(a):(b))  ┃ - signed int overflow
+#define MIN(a,b) ((a)<(b)?(a):(b))  ┃ - shift by <0 or ≥width
+#define LEN(a)(sizeof(a)/sizeof*(a))┃ - out-of-bounds pointer arithmetic
+                                    ┃ - use-after-free / double free
+                                    ┃ - modify string literal
+                                    ┃ - strict aliasing violations(expt char*)
+                                    ┃ - read inactive union member
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+-- 2.2 COMPILATION
+
+tixlegeek's       ╦ ╦╔═╗╔═╗╦ ╦╔═╗╦╔═╔╗╔╔═╗╦═╗╔═╗╔═╗
+                  ╠═╣╠═╝╠═╝╠═╣║  ╠╩╗║║║║ ╦╠╦╝║╣ ╠╣
+                  ╩ ╩╩  ╩  ╩ ╩╚═╝╩ ╩╝╚╝╚═╝╩╚═╚═╝╚  1.2
+          COMPILATION & LINKING QUICK REFERENCE (C / GCC)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMPILATION PHASES                  ┃ COMMANDS / FLAGS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Preprocess: expand #include,     ┃ gcc -E file.c -o file.i      (stop at cpp)
+   macros (#define, #ifdef)         ┃ gcc -S file.i -o file.s      (stop at asm)
+2. Compile: C > assembly            ┃ gcc -c file.s -o file.o      (stop at obj)
+3. Assemble: asm > object (.o)      ┃ gcc file.o -o prog           (link to exe)
+4. Link: resolve symbols, libs,     ┃ gcc *.c -o prog              (all steps)
+   produce executable / lib         ┃ gcc main.c -L. -lmylib -lm   (link libs)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STARTUP / RUNTIME                   ┃ LIBRARIES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+crt0 / crt1.o: runtime startup      ┃ Static lib (.a):
+- sets up stack, TLS                ┃   ar rcs libfoo.a foo.o bar.o
+- calls __libc_start_main()         ┃   gcc main.o -L. -lfoo -o app
+- runs global constructors          ┃
+- calls main(), then exit()         ┃ Shared lib (.so):
+                                    ┃   gcc -fPIC -c foo.c
+                                    ┃   gcc -shared -o libfoo.so foo.o
+                                    ┃   gcc main.o -L. -lfoo -Wl,-rpath=. -o app
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SYMBOL RESOLUTION                   ┃ SYMBOL TOOLS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Undefined > must be resolved at link┃ nm libfoo.a       list symbols
+Defined in .o or library?           ┃ nm -D libfoo.so   dynamic symbols
+First found wins (link order!)      ┃ objdump -d prog   disassembly
+Duplicate definitions > error       ┃ objdump -t prog   symbol table
+                                    ┃ readelf -h prog   ELF header
+                                    ┃ readelf -s prog   symbols
+                                    ┃ ldd prog          show shared libs used
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LINKER FLAGS (with -Wl,)            ┃ GCC-LD COMMON OPTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+-Wl,-Map,link.map   generate map    ┃ -nostdlib    skip crt, libc, stdlib
+-Wl,--gc-sections   drop unused     ┃ -nodefaultlibs   skip stdlibs only
+-Wl,-rpath,path     runtime search  ┃ -nostartfiles    skip crt0
+-Wl,-rpath-link,p   link-time search┃ -Wl,--as-needed  only pull needed libs
+-Wl,-z,defs         no unresolved   ┃ -Wl,-static      fully static binary
+-Wl,-z,noexecstack  secure stack    ┃ -Wl,-dynamic-list=listfile
+-Wl,--whole-archive link full .a    ┃ -Wl,-O1          optimize linker
+-Wl,--start-group … --end-group     ┃ -Wl,-soname,libfoo.so.1 (for .so)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ORDER MATTERS (STATIC LINKING)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+gcc main.o lib1.a lib2.a -o app   (OK)
+gcc lib1.a lib2.a main.o -o app   (MAY FAIL, symbols unresolved)
+
+Tip: libs should follow objects that need them.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LINKER SCRIPTS (.ld)                ┃ MEMORY LAYOUT (ELF)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ENTRY(_start);                      ┃ Sections:
+SECTIONS {                          ┃   .text   code
+ .text : { *(.text) }               ┃   .rodata const data
+ .rodata : { *(.rodata*) }          ┃   .data   init RW data
+ .data : { *(.data*) }              ┃   .bss    zero-init data
+ .bss  : { *(.bss*) *(COMMON) }     ┃   .init, .fini startup/teardown hooks
+}                                   ┃   .plt/.got dynamic linking tables
+                                    ┃   .stack, .heap (runtime allocated)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STATIC VS DYNAMIC                   ┃ POSITION INDEPENDENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Static:                             ┃ -fPIC   for shared libs (position-indep)
++ self-contained binary             ┃ -fPIE   for executables (ASLR)
++ no external deps                  ┃ -pie    link as position-indep exe
+- larger, no sec updates to libs    ┃
+                                    ┃ Check:
+Dynamic:                            ┃ readelf -h prog ┃ grep Type
++ smaller, updates auto (libc.so)   ┃   DYN > PIE
++ share memory pages                ┃   EXEC > fixed exe
+- requires runtime libs installed   ┃
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DEBUG INFO & STRIPPING              ┃ MULTI-FILE PROJECTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+-g   generate DWARF                 ┃ gcc -c file1.c file2.c
+-ggdb gdb friendly                  ┃ ar rcs libfoo.a file1.o file2.o
+-strip   remove debug info          ┃ gcc main.c -L. -lfoo -o app
+-Os -s  (optimize & strip)          ┃
+objcopy --only-keep-debug app dbg   ┃ Makefiles / CMake handle dep & linking.
+objcopy --strip-debug app           ┃
+gdb ./app dbg                       ┃
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EXAMPLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Build > obj > link
+$ gcc -c main.c util.c
+$ ar rcs libutil.a util.o
+$ gcc main.o -L. -lutil -o app
+
+# Shared lib
+$ gcc -fPIC -c foo.c
+$ gcc -shared -o libfoo.so foo.o
+$ gcc main.c -L. -lfoo -Wl,-rpath=. -o app
+
+# Inspect symbols
+$ nm libfoo.a
+$ nm -D libfoo.so
+$ readelf -s app ┃ grep foo
+
+# Custom linker script
+$ arm-none-eabi-ld -T stm32.ld -o fw.elf crt0.o main.o
+
+# Position-independent exe
+$ gcc -fPIE -pie main.c -o app
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+-- 2.3 EMBEDDED
+
+tixlegeek's       ╦ ╦╔═╗╔═╗╦ ╦╔═╗╦╔═╔╗╔╔═╗╦═╗╔═╗╔═╗
+                  ╠═╣╠═╝╠═╝╠═╣║  ╠╩╗║║║║ ╦╠╦╝║╣ ╠╣
+                  ╩ ╩╩  ╩  ╩ ╩╚═╝╩ ╩╝╚╝╚═╝╩╚═╚═╝╚  1.3
+          EMBEDDED C QUICK REFERENCE (GCC / BARE-METAL / RTOS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TOOLCHAIN / CROSS COMPILE           ┃ MEMORY MODEL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+arm-none-eabi-gcc …                 ┃ .text   code (flash/ROM)
+avr-gcc …                           ┃ .rodata const data (flash/ROM)
+mipsel-elf-gcc …                    ┃ .data   init RW data (RAM)
+riscv64-unknown-elf-gcc …           ┃ .bss    zero-init vars (RAM)
+                                    ┃ stack   local vars, calls
+Flags:                              ┃ heap    malloc/free (avoid on small MCU)
+ -mcpu=cortex-m3 -mthumb            ┃
+ -mmcu=atmega328p                   ┃ Linker script (.ld) maps regions
+ -nostdlib -nostartfiles            ┃ MEMORY MAP = critical (flash size, RAM)
+ -T stm32.ld                        ┃
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STARTUP / INIT                      ┃ ISR (INTERRUPT SERVICE ROUTINE)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Reset handler runs before main():   ┃ void __attribute__((interrupt))
+- Set stack pointer                 ┃ isr(void) { … }
+- Copy .data from flash>RAM         ┃
+- Zero .bss                         ┃ Cortex-M (CMSIS):
+- Call constructors (C++)           ┃ void SysTick_Handler(void){ … }
+- Jump to main()                    ┃
+                                    ┃ AVR (avr-gcc):
+Provided by: crt0, startup.s        ┃ ISR(TIMER1_COMPA_vect){ … }
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BITWISE MACROS (PERIPHERALS)        ┃ INLINE & OPTIMIZATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#define BV(n) (1u<<(n))             ┃ -O0 debug, -Og dev debug
+#define SET(reg,n)  ((reg)┃=BV(n))  ┃ -O2 common release
+#define CLR(reg,n)  ((reg)&=~BV(n)) ┃ -Os optimize for size (MCU)
+#define TOG(reg,n)  ((reg)^=BV(n))  ┃ -flto link-time optimization
+#define TST(reg,n)  ((reg)&BV(n))   ┃ -fdata-sections -ffunction-sections
+                                    ┃  + -Wl,--gc-sections > shrink binary
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DEBUGGING & TESTING                 ┃ HARDWARE DEBUG INTERFACES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+printf > large; use UART minimal    ┃ SWD (ARM), JTAG (common), ISP (AVR)
+Semihosting (debug print via gdb)   ┃ OpenOCD + GDB:
+LED blink > “hello world”           ┃   arm-none-eabi-gdb prog.elf
+UART logs: ring buffer + ISR        ┃   target remote :3333
+                                    ┃   load / monitor reset / continue
+Unit tests: simulate on host (QEMU) ┃
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GCC EMBEDDED FLAGS                  ┃ HARDENING & SAFETY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+-fno-builtin -ffreestanding         ┃ -fstack-protector-strong (if RTOS)
+-fshort-enums (size saving)         ┃ -D_FORTIFY_SOURCE=2 (needs libc)
+-mcpu=… -mthumb (ARM Thumb mode)    ┃ -Wcast-align -Wvolatile-register-var
+-fomit-frame-pointer (size)         ┃ MISRA-C rules > safety coding std
+                                    ┃ Avoid dynamic mem in safety-critical
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+-- 2.4 GDB
+
+tixlegeek's       ╦ ╦╔═╗╔═╗╦ ╦╔═╗╦╔═╔╗╔╔═╗╦═╗╔═╗╔═╗
+                  ╠═╣╠═╝╠═╝╠═╣║  ╠╩╗║║║║ ╦╠╦╝║╣ ╠╣
+                  ╩ ╩╩  ╩  ╩ ╩╚═╝╩ ╩╝╚╝╚═╝╩╚═╚═╝╚  1.4
+                      GDB QUICK REFERENCE (Linux)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Build for debug (recommended):
+  gcc -g -Og -fno-omit-frame-pointer -Wall -Wextra -o app app.c
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STARTING / ATTACHING                ┃ BASIC RUN/STEP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+gdb ./app                           ┃ run [args]           start program
+gdb ./app core                      ┃ start                run to main
+gdb -q --args ./app a b c           ┃ continue (c)         resume
+(gdb) set args a b c                ┃ next (n)             step over
+(gdb) run < in.txt > out.txt        ┃ step (s)             step into
+attach PID                          ┃ finish               run until ret
+detach                              ┃ until loc/line       run until location
+kill                                ┃ advance func         run to func entry
+quit                                ┃ stepi/nexti          single-insn
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BREAKPOINTS                         ┃ WATCHPOINTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+break main                          ┃ watch expr           stop on write
+break file.c:123                    ┃ rwatch expr          stop on read
+break func if x>3                   ┃ awatch expr          stop on access
+tbreak func (temp)                  ┃ info watchpoints
+hbreak func (hw bp)                 ┃ delete N / disable N / enable N
+rbreak regex (many)                 ┃ cond N expr          set condition
+info breakpoints / delete N         ┃ (hw wps are limited; prefer scalars)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PRINTING & TYPES                    ┃ MEMORY EXAMINE (x/)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+print x        (p x)                ┃ x/<count><fmt><size> <addr/expression>
+p/x x          hex                  ┃ fmt: x hex d dec u uns o oct t bin
+p/d x          signed decimal       ┃      a addr c char s string i insn f float
+p/t x          binary               ┃ size: b byte h halfword w word g giant
+p/a ptr        address              ┃ ex: x/16xb buf      16 bytes in hex
+ptype var      C type               ┃     x/8i $pc        8 instruct at $pc
+whatis var     brief type           ┃     x/3a &arr       3 addresses
+set print pretty on  (structs)      ┃ display/i $pc       auto-show each step
+set print elements 0 (no limit)     ┃ set disassemble-next-line on
+set print array on                  ┃
+set print address on/off            ┃
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STACK / FRAMES                      ┃ SOURCE / SYMBOLS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+backtrace (bt)                      ┃ list                 show source
+bt full (locals too)                ┃ list file.c:120      around line
+frame N / up / down                 ┃ info source / info sources
+info args / info locals             ┃ info functions regex
+info registers / p $rax             ┃ directory src/       add src paths
+set $pc=expr (jump)                 ┃ file ./app           set exec+symbols
+return <expr>  (force return)       ┃ symbol-file symfile  sym only
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+THREADS / PROCESSES                 ┃ SIGNALS & EXCEPTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+info threads                        ┃ info signals
+thread N                            ┃ handle SIGPIPE nostop noprint pass
+thread apply all bt                 ┃ handle SIGSEGV stop print
+set scheduler-locking step/on/off   ┃ catch throw/catch    (C++)
+set follow-fork-mode child|parent   ┃ catch syscall open,write,…
+set detach-on-fork off              ┃ catch fork|vfork|exec|load|unload
+info inferiors / inferior N         ┃ signal SIGUSR1       deliver to program
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INPUT/ENV/WD                        ┃ LOGGING & SCRIPTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+set args …                          ┃ set pagination off
+show args                           ┃ set logging on/off | file gdb.log
+run < in > out 2>err                ┃ source script.gdb
+set environment K=V                 ┃ define cmd … end     user command
+unset environment K                 ┃ document cmd … end   help text
+cd path / pwd                       ┃ define hook-stop …   auto after stop
+tty /dev/pts/3  (program’s TTY)     ┃ alias nni = nexti; etc.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SHARED LIBS                         ┃ CORE DUMPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+info sharedlibrary                  ┃ ulimit -c unlimited  enable cores
+set breakpoint pending on           ┃ gdb ./app core
+break libfn (before lib loads)      ┃ bt / bt full
+set solib-search-path ./lib:…       ┃ thread apply all bt full
+set sysroot /path/to/sysroot        ┃ info threads / info registers
+set debuginfod enabled on (if avail)┃ frame N; info locals; x/… mem
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DISASSEMBLY / ASM                   ┃ TUI (text UI)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+disassemble /m func  (with source)  ┃ tui enable
+disassemble 0xADDR,+LEN             ┃ layout src | layout asm | layout split
+x/i $pc   (one instruction)         ┃ Ctrl-x a     toggle TUI
+display/i $pc (auto each step)      ┃ refresh     redraw
+set disassemble-next-line on        ┃
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ADVANCED BREAKPOINTS                ┃ BREAKPOINT COMMAND LISTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+break file.c:123 thread 5           ┃ break foo
+break file.c:123 if i==42           ┃ commands
+ignore N COUNT (skip N, COUNT times)┃   silent
+condition N expr (change later)     ┃   printf "i=%d\n", i
+commands N … end (scripted)         ┃   bt 2
+bp enable/disable temporary         ┃   continue
+save breakpoints bps.txt            ┃ end
+source bps.txt (reload)             ┃
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REMOTE DEBUGGING                    ┃ REVERSE / CHECKPOINTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+On target: gdbserver :1234 ./app    ┃ record           enable recording (if sup)
+On host:                            ┃ reverse-continue / reverse-(step|stepi)
+  gdb ./app                         ┃ checkpoint          snapshot process
+  (gdb) target remote :1234         ┃ info checkpoints / restart N
+  (gdb) set sysroot /sysroot        ┃
+  (gdb) set solib-search-path …     ┃
+  (gdb) continue                    ┃
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CALLING & MODIFYING STATE           ┃ PRACTICAL PRINT TRICKS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+call fn(42)                         ┃ p/x *(uint32_t*)buf     32-b value at buf
+set var x=5  (or just: set x=5)     ┃ p (int)strchr(s,'x')-s  index of 'x'
+set {int}0xADDR = 0                 ┃ p *(struct S*)ptr       dump struct
+set $sp = $sp-16                    ┃ set print pretty on     nicer structs
+set $pc = 0xADDR (jump)             ┃ set print elements 0    no trunc arrays
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FORMAT & EXAMINE CHEATSHEET
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+x/16xb p      16 bytes hex from p           x/20cb p     20 chars
+x/8xh p       8 halfwords (16-bit) hex      x/4xw p      4 words hex
+x/6i $pc      6 instructions at PC          p/x arr[i]   hex print element
+x/s p         C string at p                  p/t v        binary
+x/a p         address format                 p/f d        print float/double
+help x        (for all modifiers)            help p       (formats for print)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OPTIMIZATION & REALITY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- -Og keeps debug friendly; -O2 may inline/remove vars > use `info scope`.
+- Use `disassemble /m`, `info registers`, and watchpoints to reason at -O2.
+- `set disassemble-next-line on` helps step source↔asm coherently.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GOOD HABITS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Start with: set pagination off; set confirm off; set print pretty on
+- Use conditional breakpoints instead of manual stepping.
+- Use `thread apply all bt` early when analyzing crashes.
+- Prefer `sigaction` & handle SIGPIPE/SIGCHLD in the program for sanity.
+- Log gdb session: set logging on; set logging overwrite on
+- Keep a project .gdbinit with your defaults & helper commands.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MINI .gdbinit (drop in project root)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+set pagination off
+set confirm off
+set print pretty on
+set print elements 0
+set disassemble-next-line on
+define bpc          # break on call to function by name
+  rbreak ^$arg0$
+end
+define btall
+  thread apply all bt full
+end
+define nl           # next N lines
+  list
+  list
+end
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REAL-WORLD WORKFLOWS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Debug a crash via core:
+$ ulimit -c unlimited && ./app
+$ gdb ./app core
+(gdb) bt full
+(gdb) thread apply all bt full
+(gdb) frame 3; info locals; x/32xb buf
+
+# Attach production process, snapshot core without stopping long:
+$ gdb -q -p PID
+(gdb) gcore dump.core
+(gdb) detach; quit
+$ gdb ./app dump.core
+
+# Remote (ARM target):
+target$ gdbserver :2345 ./app
+host$   gdb ./app
+(gdb)   set sysroot /opt/arm-sysroot
+(gdb)   target remote :2345
+(gdb)   b main; c
+
+# Break when a file is opened (Linux):
+(gdb) catch syscall openat
+(gdb) r
+(gdb) bt
+
+# Data race/odd segfault at -O2 > use watchpoint:
+(gdb) watch *(int*)ptr
+(gdb) c
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+-- 2.5 Appendix
+
+tixlegeek's       ╦ ╦╔═╗╔═╗╦ ╦╔═╗╦╔═╔╗╔╔═╗╦═╗╔═╗╔═╗
+                  ╠═╣╠═╝╠═╝╠═╣║  ╠╩╗║║║║ ╦╠╦╝║╣ ╠╣
+                  ╩ ╩╩  ╩  ╩ ╩╚═╝╩ ╩╝╚╝╚═╝╩╚═╚═╝╚   1.5
+                VARIOUS QUICK REFERENCE (Linux / Embedded)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMMON BAUD RATES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Standard (HW-supported)             ┃ High / Non-standard (USB/FTDI etc.)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   300       600       1200         ┃   230400     250000     256000
+   2400      4800      9600         ┃   460800     500000     576000
+   14400     19200     28800        ┃   921600     1000000    1152000
+   38400     57600     115200       ┃   1500000    2000000    3000000
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TYPICAL FRAME FORMAT                ┃ SIGNALS / LINES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ 1 start bit                        ┃ TXD  transmit data
+ 5–9 data bits                      ┃ RXD  receive data
+ parity: none / even / odd          ┃ RTS  request to send
+ 1–2 stop bits                      ┃ CTS  clear to send
+ async, no clock                    ┃ DTR  data terminal ready
+                                    ┃ DSR  data set ready
+                                    ┃ DCD  carrier detect
+                                    ┃ RI   ring indicator
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+C EXAMPLE (TERMIO)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#include <termios.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
+
+int main(void) {
+    int fd = open("/dev/ttyUSB0", O_RDWR | O_NOCTTY);
+    struct termios tty;
+    tcgetattr(fd, &tty);
+
+    cfsetospeed(&tty, B115200);
+    cfsetispeed(&tty, B115200);
+    tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;   // 8 data bits
+    tty.c_cflag |= CREAD | CLOCAL;                // enable RX, ignore modem
+    tty.c_lflag = 0;                              // no canonical mode
+    tty.c_iflag = 0;                              // raw input
+    tty.c_oflag = 0;                              // raw output
+    tty.c_cc[VMIN]  = 1;                          // block for 1 char
+    tty.c_cc[VTIME] = 0;
+    tcsetattr(fd, TCSANOW, &tty);
+
+    write(fd, "AT\r\n", 4);
+    char buf[64];
+    int n = read(fd, buf, sizeof(buf));
+    write(STDOUT_FILENO, buf, n);
+    close(fd);
+}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BASIC TERMINAL COMMANDS             ┃ DEBUG / LOGGING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# List devices                      ┃ # Watch raw bytes
+$ ls /dev/ttyS* /dev/ttyUSB*        ┃ $ hexdump -C /dev/ttyUSB0
+# Show settings                     ┃ # Log session
+$ stty -F /dev/ttyUSB0 -a           ┃ $ script uart.log
+# Configure                         ┃ # Minimal raw mode
+$ stty -F /dev/ttyUSB0 115200 cs8 \ ┃ $ stty raw -echo
+  -cstopb -parenb -echo             ┃
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MODEM / AT COMMANDS                 ┃ RS-232 / TTL LEVELS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AT          check / OK              ┃ RS-232: ±12 V (inverted)
+ATI         info                    ┃ TTL-UART: 3.3 V or 5 V (non-inverted)
+ATZ         reset                   ┃
+AT+GMR      firmware version        ┃
+ATE0/1      echo off/on             ┃
+AT+RST      reset (ESP-type)        ┃
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ASCII TABLE (7-bit standard)
+━━━━━━━━━━━━┯━━━━━━━━━━━━━┯━━━━━━━━━━━━━┯━━━━━━━━━━━━━┯━━━━━━━━━━━━━┯━━━━━━━━━━━
+Dec Hex Chr │ Dec Hex Chr │ Dec Hex Chr │ Dec Hex Chr │ Dec Hex Chr │ Dec Hex Ch
+━━━━━━━━━━━━┿━━━━━━━━━━━━━┿━━━━━━━━━━━━━┿━━━━━━━━━━━━━┿━━━━━━━━━━━━━┿━━━━━━━━━━━
+  0 00  NUL │ 16  10  DLE │ 32  20  SPC │ 48  30  0   │ 64  40  @   │ 80  50  P
+  1 01  SOH │ 17  11  DC1 │ 33  21  !   │ 49  31  1   │ 65  41  A   │ 81  51  Q
+  2 02  STX │ 18  12  DC2 │ 34  22  "   │ 50  32  2   │ 66  42  B   │ 82  52  R
+  3 03  ETX │ 19  13  DC3 │ 35  23  #   │ 51  33  3   │ 67  43  C   │ 83  53  S
+  4 04  EOT │ 20  14  DC4 │ 36  24  $   │ 52  34  4   │ 68  44  D   │ 84  54  T
+  5 05  ENQ │ 21  15  NAK │ 37  25  %   │ 53  35  5   │ 69  45  E   │ 85  55  U
+  6 06  ACK │ 22  16  SYN │ 38  26  &   │ 54  36  6   │ 70  46  F   │ 86  56  V
+  7 07  BEL │ 23  17  ETB │ 39  27  '   │ 55  37  7   │ 71  47  G   │ 87  57  W
+  8 08  BS  │ 24  18  CAN │ 40  28  (   │ 56  38  8   │ 72  48  H   │ 88  58  X
+  9 09  HT  │ 25  19  EM  │ 41  29  )   │ 57  39  9   │ 73  49  I   │ 89  59  Y
+ 10 0A  LF  │ 26  1A  SUB │ 42  2A  *   │ 58  3A  :   │ 74  4A  J   │ 90  5A  Z
+ 11 0B  VT  │ 27  1B  ESC │ 43  2B  +   │ 59  3B  ;   │ 75  4B  K   │ 91  5B  [
+ 12 0C  FF  │ 28  1C  FS  │ 44  2C  ,   │ 60  3C  <   │ 76  4C  L   │ 92  5C  \
+ 13 0D  CR  │ 29  1D  GS  │ 45  2D  -   │ 61  3D  =   │ 77  4D  M   │ 93  5D  ]
+ 14 0E  SO  │ 30  1E  RS  │ 46  2E  .   │ 62  3E  >   │ 78  4E  N   │ 94  5E  ^
+ 15 0F  SI  │ 31  1F  US  │ 47  2F  /   │ 63  3F  ?   │ 79  4F  O   │ 95  5F  _
+━━━━━━━━━━━━┿━━━━━━━━━━━━━┿━━━━━━━━━━━━━┿━━━━━━━━━━━━━┿━━━━━━━━━━━━━┿━━━━━━━━━━━
+ 96 60  `   │ 97  61  a   │ 98  62  b   │ 99  63  c   │ 100 64  d   │ 101 65  e
+102 66  f   │103  67  g   │104  68  h   │105  69  i   │ 106 6A  j   │ 107 6B  k
+108 6C  l   │109  6D  m   │110  6E  n   │111  6F  o   │ 112 70  p   │ 113 71  q
+114 72  r   │115  73  s   │116  74  t   │117  75  u   │ 118 76  v   │ 119 77  w
+120 78  x   │121  79  y   │122  7A  z   │123  7B  {   │ 124 7C  |   │ 125 7D  }
+126 7E  ~   │127  7F  DEL │             │             │             │
+━━━━━━━━━━━━┷━━━━━━━━━━━━━┷━━━━━━━━━━━━━┷━━━━━━━━━━━━━┷━━━━━━━━━━━━━┷━━━━━━━━━━━
+PRACTICAL NOTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Default serial: 115200 8N1 (8 data, No parity, 1 stop).
+- For binary data, use raw mode: `stty raw -echo`.
+- Log sessions: `script serial.log`.
+- Loopback test: short TX↔RX, verify echo.
+- Check user perms on `/dev/ttyUSB*` (group `dialout`).
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+-- EOF --
