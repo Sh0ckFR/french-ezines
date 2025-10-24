@@ -115,6 +115,7 @@ The sources have been slightly tweaked for immediate use. And unfortunately, som
 | hzv-mag | 2008 | Virus, Hacking, Coding |
 | 50-1337 | 2010 | Infosec, Hacking, Reverse, Low-Level, Web Pentesting |
 | NPN | 2012 | Cracking, Coding, Hacking |
+| 9600 Bauds | 2025 | Hacking, Radio, Coding, Electronic |
 
 # How to deploy it
 
