@@ -1,0 +1,262 @@
+/*========================================================================/
+/= Comment crypter un message ?                                          =/
+/=  Deux applications a la cryptolodolo..lotruc                          =/
+/=   by GonE - Beef13                                                    =/
+/=                                                                       =/
+/========================================================================*/
+
+Bon : vous avez un message a crypter et vous ne savez pas comment le
+crypter. La solution : lire cet article ! Mais vous avez besoin de :
+        - un oeil au moins, pour lire l'article (un autre en option)
+        - quelques neurones pour le comprendre (un peu plus que Bozzo)
+        - un message, a crypter (si vous avez pas d'idees, cherchez sur
+             http://www.idees-pour-messages-a-crypter.fr/ )
+        - un compilateur C (je pense que n'importe lekel fera l'affaire)
+             ou un interpreteur C ('sais meme po si ca existe)
+        - un systeme d'exploitation muni d'un editeur de texte en a skis
+             (par exemple, pas Couine-Daube95 et son Blok-Nok, mais
+              pluto le Doce et son Haidite.Komes),
+              pour pouvoir reader cet article.
+
+--------------------------------------------------------------------
+|       I - coder un fichier dans un nouveau fichier               |
+--------------------------------------------------------------------
+
+pour cela, c'est pas top dur, on peut ajouter +1 par exemple au code
+ASCII, mais aussi on peut le NOTer, ou soustraire un nombre. Mais le
+mieu c'est d'ajouter des nombres contenus dans un tablo (une chaine ou
+par exempl on prend les codes ascii). On peut aussi ecrire le
+DELTA.ASCII de la chaine : putc(new_car-old_car,f);. Si avec ca on ajoute
+la date + le seek dans le message + le caractere d'une clef periodique,
+alors c'est pas mal gagne.
+ATTENTION : ne pas crypter le code source dans le code source
+(desole mais ca m'est arive :!!!)
+Ecrivons un petit prog qui fait ca :
+
+
+==CRYPTER.C=====================================================START======
+
+// CRYPTER.C
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+
+void main(void)
+{
+char c,comm,str[80],cle[80],len;
+long i=0;
+FILE *fin,*fout;
+
+printf("\n*** CRYPTER *** (g) Beef13\n");
+printf("Tu veux [c]oder, [d]ecoder, ou te [b]arrer ? ");
+ici:
+comm = tolower(getch());
+printf("%c",comm);
+switch (comm) {
+case 'd':
+case 'c': la0:
+          printf("\nBon, entre le input file : ");
+          gets(str);
+          fin = fopen(str,"rb");
+          if (!fin) { printf("Non mais tu l'as vu ou ton fichier ?"); goto la0; }
+          la1:
+          if (comm == 'd')
+          printf("Now, entre l'output file (enter pour voir a l'ecran) : ");
+          else
+          printf("Now, entre l'output file : ");
+          gets(str);
+          if (!strcmp(str,"")) { fout = stdout; goto palap; }
+          fout = fopen(str,"rb");
+          if (fout) { printf("Il existe ton fichier. Tape espace pour l'effacer, ou \n\
+n'importe quoi d'autre pour te barrer.\n"); if (getch() != 32) exit(1); fclose(fout); }
+          fout = fopen(str,"wb");
+          if (!fout) { printf("Non mais tu l'as vu, le nom de ton fichier ?\n"); goto la1; }
+          palap:
+          printf("Now, entre la key (80 charmax, enter pour \"BEEF13\") : ");
+          gets(cle);
+          ici2:
+          len = strlen(cle);
+          if (len == 0) { strcpy(cle,"BEEF13"); goto ici2; }
+          if (fout == stdout) printf("=============== START ==================\n");
+          while (1)
+          {
+          c = getc(fin);
+          if (feof(fin)) break;
+          if (comm == 'c') // coder
+            {
+            c = ~c;
+            c += cle[i%len];
+            c ^= cle[(i+0xBEEF13)%len];
+            c -= cle[(i+5169)%len];
+            c ^= cle[(cle[(i+4231)%len]*i)%len];
+            c += i;
+            }
+          else // decoder : l'inverse, dans le sens inverse
+            {
+            c -= i;
+            c ^= cle[(cle[(i+4231)%len]*i)%len];
+            c += cle[(i+5169)%len];
+            c ^= cle[(i+0xBEEF13)%len];
+            c -= cle[i%len];
+            c = ~c;
+            }
+          i++;
+          if (fout != stdout || c != 7)
+          putc(c,fout);
+          }
+          fclose(fin);
+          if (fout != stdout) fclose(fout); else printf("\n=============== END ===================\n");
+          printf("C'est oke\n");
+          break;
+case 'b': printf("\nC'est ca, kasse-toi."); exit(1);
+default: goto ici;
+}
+}
+
+==CRYPTER.C=====================================================END========
+
+Aussi, ce qu'on peut faire c'est RLEer le fichier (le compresser de
+maniere plus ou moins bidon) mais ca suffira.
+
+
+--------------------------------------------------------------------
+|       B - coder un fichier dans un fichier deja existant         |
+--------------------------------------------------------------------
+
+Dans un .BMP, .JPG, .EXE (c'est sadique), mais aussi .WAV, .ZIP, etc...
+(meme si ca met hors service le fichier destination...)
+
+==INTOCR.C======================================================START======
+
+// INTOCR.C
+
+#include <stdio.h>
+#include <string.h>
+#include <io.h>
+#include <stdlib.h>
+#include <ctype.h>
+
+void main(void)
+{
+char c,comm,str[80],cle[80],len,ch;
+long i=0,a,fl_mes,fl_bid,headsize,coef,coefc;
+FILE *fbid,*fmes=0,*fout;
+
+printf("\n*** INTOCR *** (g) Beef13\n");
+printf("Tu veux [c]oder, [d]ecoder, ou te [b]arrer ? ");
+ici:
+comm = tolower(getch());
+printf("%c",comm);
+switch (comm) {
+case 'c':
+          la0:
+          printf("\nBon, entre le message file : ");
+          gets(str);
+          fmes = fopen(str,"rb");
+          if (!fmes) { printf("Non mais tu l'as vu ou ton fichier ?"); goto la0; }
+          fl_mes = filelength(fileno(fmes));
+case 'd': if (comm == 'd') printf("\n");
+          la2:
+          printf("Bon, entre le bidon file : ");
+          gets(str);
+          fbid = fopen(str,"rb");
+          if (!fbid) { printf("Non mais tu l'as vu ou ton fichier ?"); goto la2; }
+          fl_bid = filelength(fileno(fbid));
+          la3:
+          printf("Entre la taille du header du bidon : ");
+          gets(str);
+          headsize = atol(str);
+          if (!headsize) { printf("LA TAILLE j'ai dit ! Non mais.\n"); goto la3; }
+          la1:
+          if (comm == 'c') printf("Now, entre l'output file : ");
+          else printf("Entre le fichier de sortie (entrer si l'ecran) : ");
+          gets(str);
+          if (!strcmp(str,"")) { fout = stdout; goto palap; }
+          fout = fopen(str,"rb");
+          if (fout) { printf("Il existe ton fichier. Tape espace pour l'effacer, ou \n\
+n'importe quoi d'autre pour te barrer.\n"); if (getch() != 32) exit(1); fclose(fout); }
+          fout = fopen(str,"wb");
+          if (!fout) { printf("Non mais tu l'as vu, le nom de ton fichier ?\n"); goto la1; }
+          palap:
+          printf("Now, entre la key (80 charmax, enter pour \"BEEF13\") : ");
+          gets(cle);
+          ici2:
+          len = strlen(cle);
+          if (len == 0) { strcpy(cle,"BEEF13"); goto ici2; }
+
+          if (comm == 'c') // recopie du header
+          for (i=0;i<headsize;i++) putc(getc(fbid),fout);
+          else fseek(fbid,headsize,SEEK_SET);
+
+          if (comm == 'd') fl_mes = getw(fbid); else // determination du coef
+          { getw(fbid); putw(fl_mes,fout); }
+          coef = (fl_bid-headsize-2)/(fl_mes+1);
+
+          printf("Coef = %li - Fl_mes = %li+1 - Fl_bid = %li - Prodx = %li\n",
+                       coef,fl_mes,fl_bid,(fl_mes+1)*coef+headsize);
+          if (!coef) { printf("Comment veux-tu que ca marche ?\n"); exit(1); }
+
+          i = headsize+2;
+          if (comm == 'c') // code
+           {
+           for (c=0;c<fl_mes;c++)
+            {
+            printf("\xD %i\%",c*100/fl_mes);
+            coefc = (cle[c%len]%coef);
+            for (a=0;a<coefc;a++,i++) putc(getc(fbid),fout);
+            putc(getc(fmes),fout); getc(fbid); i++;
+            }
+           while (i < fl_bid) { putc(getc(fbid),fout); i++; }
+           printf("\xD--------------- C'est oke\n");
+           }
+          else // decode
+           {
+           if (fout == stdout) printf("================= START =============\n");
+           a = headsize+1;
+           for (c=0;c<fl_mes;c++)
+            {
+            a += (cle[c%len]%coef)+1;
+            fseek(fbid,a,SEEK_SET);
+            ch = getc(fbid);
+            if (ch != 7 || fout != stdout)
+            putc(ch,fout);
+            }
+           if (fout == stdout) printf("\n================= END ===============\n");
+           else printf("Well done\n");
+           }
+
+          if (fmes) fclose(fmes);
+          if (fout != stdout) fclose(fout);
+          fclose(fbid);
+          break;
+case 'b': printf("\nC'est ca, kasse-toi."); exit(1);
+default: printf("\x8 \x8"); goto ici;
+}
+}
+
+==INTOCR.C======================================================END========
+
+  Avec cette methode, le mieux est de l'utiliser avec des wavs ou des
+bmps ou il y avait deja beaucoup de bruit. Vous pouvez en rajouter,
+bien sur, avec psp ou un equivalen pour les sons... L'inconvenient par
+rapport a la 1e partie c'est que ici ca prend de la place. Et pas mal !
+L'avantage, c'est que ca peut etre passe-partout, personne le remarque...
+'pouvez meme l'essayer sur un .txt (euh...)
+
+  Bien sur, on peut combiner les deux methodes.
+
+  On peut aller tres loin comme ca...
+
+
+/*========================================================================/
+/=                       LES MOTS DE LA FIN                              =/
+/=                                                                       =/
+/= Dicton israleo-sildave (certains disent l'avoir entendu en Iran...) : =/
+/= Quand crypter un message tu sauras, un message a crypter tu chercheras=/
+/=                                                                       =/
+/= Petit exercice : decriptez la ligne suivante                          =/
+/= SGKOMDANFDKMLRAWDDPOVCXKMGSGRJHTJKOWPVKOPEHWKMVCXKLMGEROOPGREKOPGMLKW =/
+/=                                                                       =/
+/= Et reportez les bugs et les conseils a gone@caramail.com              =/
+/==================================================== GonE98 ============*/

@@ -1,0 +1,338 @@
+/*************************************************************************/
+/* Cours de language machine v1.00 for Beef13                            */
+/* by GonE98                                                             */
+/*                             <under permanent construction>            */
+/*                                                                       */
+/* public vise : ceux qui trouve que l'asm est haut niveau               */
+/*************************************************************************/
+
+/////////////////////////////////////////////////////////////////////////////
+/*------------ Introduction -----------------------------------------------*/
+/////////////////////////////////////////////////////////////////////////////
+
+  Le language de programmation de base, de plus bas niveau, c'est a dire
+le language machine, est tres utile quand on veut hacker rapidement
+(avec un editeur hexa seulement), ou faire des petits progs vite faits.
+C'est un sacre big boulot de faire une table de correspondance
+assembleur-language machine mais c bon je vais essayer d'en faire une la
+plus complete et la plus lisible possible. Pour profiter un max de cet
+article, vous devez bien maitriser l'assembleur (hein Def Bond ?)
+
+Bon, d'abord, la table des index des registres generaux (on s'en sert apres)
+	ax 0
+	cx 1
+	dx 2
+	bx 3
+	sp 4
+	bp 5
+	si 6
+	di 7
+et celle des registres de segment :
+	es 0
+	cs 1
+	ss 2
+	ds 3
+  (pour fs et gs c'est completement different on peut pas generaliser avec,
+   enfin si on peut mais c'est hyperchiant alors vous vous en passerez)
+
+Les codes des registres de byte des 4 premiers registres sont
+	- le meme s'il s'agit du byte de poids faible (al -> 0)
+	- le meme + 4 s'il s'agit du byte de poids faible (ah -> 4)
+
+Les mnemoniques sont rentrees pas ordre àbetique, le nombre de cycles
+est donne pour un Pentium en mode reel, et tous les nombres donnes
+sont en hexa. N'oubliez pas que un word est stocke d'abord par son octet
+le plus faible (valable aussi pour les dword). <a> represente le
+1er parametre, <b> le 2e. Les [] dans le language machine signifie
+que ce parametre n'est a mettre que si on l'utilise. Et pour la signification
+des opcodes, voyez HelpPC, ou n'importe quel bouquin sur l'asm.
+
+/////////////////////////////////////////////////////////////////////////////
+/*------------ Table des opcodes ------------------------------------------*/
+/////////////////////////////////////////////////////////////////////////////
+
+AAA (3c) Ascii Adjust for Addition               	=> 37
+AAD (10c) Ascii Adjust for Division                     => D5 0A
+AAM (18c) Ascii Adjust for Multiplication               => D4 0A
+AAS (3c) Ascii Adjust for Substraction          	=> 3F
+
+ADC (1c) si <a> == al/ax && <b> == byte/word            => 14/15 <b>
+ADC (1c) si <a> == wreg && <b> == octet                 => 83 (D0+aCode) <b:byte>
+ADC (1c) si <a> == breg/wreg && <b> == word             => 80/81 (D0+aCode) <b> (dword si 66)
+ADC (1c) si <a> == breg/wreg && <b> == breg/wreg        => 12/13 (C0+aCode*8+bCode)
+ADC (2c) si <a> == breg/wreg && <b> == [zregs]          => 12/13 (aCode*8+bZ) [b:word]
+ADC (3c) si <a> == [zregs] && <b> == breg/wreg          => 10/11 (bCode*8+aZ) [b:word]
+ADC (3c) si <a> == [zregs] && <b> == byte/word          => 80/81 (aZ+10) [a:word] <b>
+ADC (1 a 3c) si <a> == dreg                             => 66 intruction corresp en word
+
+ADD (1c) si <a> == al/ax && <b> == byte/word            => 04/05 <b>
+ADD (1c) si <a> == wreg && <b> == octet                 => 83 (C0+aCode) <b:byte>
+ADD (1c) si <a> == breg/wreg && <b> == word             => 80/81 (C0+aCode) <b> (dword si 66)
+ADD (1c) si <a> == breg/wreg && <b> == breg/wreg        => 02/03 (C0+aCode*8+bCode)
+ADD (2c) si <a> == breg/wreg && <b> == [zregs]          => 02/03 (aCode*8+bZ) [<b:off+>]
+ADD (3c) si <a> == [zregs] && <b> == breg/wreg          => 00/01 (bCode*8+aZ) [<b:off+>]
+ADD (3c) si <a> == [zregs] && <b> == byte/word          => 80/81 (aZ) [a:word] <b>
+ADD (1 a 3c) si <a> == dreg                             => 66 intruction corresp en word
+
+AND (1c) si <a> == al/ax && <b> == byte/word            => 24/25 <b> (dword si 66)
+AND (1c) si <a> == wreg && <b> == byte                  => 83 (E0+aCode) <b>
+AND (1c) si <a> == breg/wreg && <b> == byte/word        => 80/81 (E0+aCode) <b> (dword si 66)
+AND (1c) si <a> == breg/wreg && <b> == breg/wreg        => 22/23 (C0+aCode*8+bCode)
+AND (2c) si <a> == breg/wreg && <b> == [zregs]          => 22/23 (aCode*8+bZ) [<b:off+>]
+AND (3c) si <a> == [zregs] && <b> == breg/wreg          => 20/21 (bCode*8+aZ) [<b:off+>]
+AND (3c) si <a> == [zregs] && <b> == byte/word          => 80/83 (20+aZ) [<b:off+>]
+
+CALL (3c) si adresse relative near                      => E8 (a = new ip - ip de l'opcode suivant)
+CALL (20c) si <a> = word:word (seg:offs)                => 9A <offs> <segm>
+
+CBW (3c) Convert byte to word                           => 98
+
+CL? (2c) disable le ? Flag                              => (F8+Code*2)
+
+CMP (1c) si <a> == al/ax && <b> == byte/word            => 3C/3D <b> (dword si 66)
+CMP (1c) si <a> == wreg && <b> == byte                  => 83 (F8+aCode) <b>
+CMP (1c) si <a> == breg/wreg && <b> == byte/word        => 80/81 (F8+aCode) <b> (dword si 66)
+CMP (1c) si <a> == breg/wreg && <b> == breg/wreg        => 3A/3B (C0+aCode*8+bCode)
+CMP (1c) si <a> == breg/wreg && <b> == [zregs]          => 3A/3B (aCode*8+bZ) [<b:off+>]
+CMP (1c) si <a> == [zregs] && <b> == breg/wreg          => 38/39 (bCode*8+aZ) [<b:off+>]
+
+CMPSB (5c) compare es:[di], et ds:[si] et di et si++--  => A6
+CMPSW (5c) compare es:[di], et ds:[si] et di et si++--2 => A7
+CMPSD (5c) compare es:[di], et ds:[si] et di et si++--4 => 66 A7
+
+IN (7c) avec <a> == al/ax/eax et  <b> == byte           => E4/E5/{66 E5} <b>
+INT (30c) avec <a> == nø de l'interruption (byte)       => CD <a>
+
+JMP (3c) avec adresse relative near d'un octet          => EB (a = new ip - ip de l'opcode suivant)
+JMP (3c) avec adresse relative near d'un word           => E9 (a = new ip - ip de l'opcode suivant)
+  ** JB = JC = JNAE ; JNC = JNB = JAE ; JA = JNBE ; JNA = JBE ;
+  ** JE = JZ ; JNE = JNZ et puis il y en a d'autres encore !! Voyez HelpPC ;)
+JC  (1c) jumpe si A  < B ou si CF == 1                  => 72 (a = new ip - ip de l'opcode suivant)
+JNC (1c) jumpe si A >= B ou si CF == 0                  => 73 (a = new ip - ip de l'opcode suivant)
+JNZ (1c) jumpe si A  Ø B ou si ZF == 0                  => 75 (a = new ip - ip de l'opcode suivant)
+JZ  (1c) jumpe si A == B ou si ZF == 1                  => 74 (a = new ip - ip de l'opcode suivant)
+JA  (1c) jumpe si A  > B ou si CF+ZF == 0               => 77 (a = new ip - ip de l'opcode suivant)
+JNA (1c) jumpe si A <= B ou si CF+ZF >= 1               => 78 (a = new ip - ip de l'opcode suivant)
+
+LES (4c) avec <a> == wreg && <b> == [zregs]             => C4 (aCode*8+bZ) [<b:off+>]
+LDS (4c) avec <a> == wreg && <b> == [zregs]             => C5 (aCode*8+bZ) [<b:off+>]
+LSS (4c) avec <a> == wreg && <b> == [zregs]             => 0F B2 (aCode*8+bZ) [<b:off+>]
+
+LES (4c) avec <a> == wreg && <b> == sreg:[zregs]        => 26 (C4+b.sregCode) (aCode*8+bZ) [<b:off+>]
+LDS (4c) avec <a> == wreg && <b> == sreg:[zregs]        => 27 (C4+b.sregCode) (aCode*8+bZ) [<b:off+>]
+
+LODSB (3c) sauve dans al, ds:[si] et si++ ou -- si df=1 => AC
+LODSW (3c) sauve dans ax, ds:[si] et si+=2 ou -= 2 si...=> AD
+LODSD (3c) sauve dans eax, ds:[si] et si+=4 ou -= 4 si..=> 66 AD
+
+MOV (1c) si <a> == breg/wreg && <b> == word             => (B0/B8+aCode) <b> (dword si 66)
+MOV (1c) si <a> == breg/wreg && <b> == breg/wreg        => 8A/8B (C0+aCode*8+bCode)
+MOV (1c) si <a> == breg/wreg && <b> == [zregs]          => 8A/8B (aCode*8+bZ) [<b:off+>]
+MOV (1c) si <a> == wreg && <b> == sreg                  => 8C (C0+aCode*8+bCode)
+MOV (1c) si <a> == sreg && <b> == wreg                  => 8E (C0+bCode*8+aCode)
+MOV (1c) si <a> == [zregs] && <b> == breg/wreg          => 88/89 (bCode*8+aZ) [<b:off+>]
+MOV (1c) si <a> == [zregs] && <b> == byte/word          => C6/C7 (aZ) [<a:off+>] <b>
+MOV (1c) si <a> == sreg:[zregs] && <b> == breg/wreg     => (26+a.sreg*8) (88/89) (aZ+bCode*8) [<a:off+>]
+MOV (1c) si <a> == sreg:[zregs] && <b> == byte/word     => (26+a.sreg*8) (C6/C7) (aZ) [<a:off+>] <b>
+  (record en size : mov es:[bx+si+1000],50000 -> 7 octets (maximum pour td))
+MOV (1c) si <a> == breg/wreg && <b> == sreg:[zregs]     => (26+b.sreg*8) (8A/8B) (bZ+aCode*8) [<b:off+>]
+MOV (1c) si <a> == dreg                                 => 66 intruction corresp en word
+ il existe pas mal d'autres mov (par exemple, pour rentrer en mode proTG)
+ mais ils constituent essentiellement des k particuliers.
+
+MOVSB (4c) transfert ds:b[si] dans es:[di] et si, di+-  => A4
+MOVSW (4c) transfert ds:w[si] dans es:[di] et si, di+-  => A5
+MOVSD (4c) transfert ds:d[si] dans es:[di] et si, di+-  => 66 A5
+
+NOP (1c) No Operation : ne fait rien (utile pour hack)  => 90
+NOT (1c) si <a> == breg/wreg                            => F6/F7 (D0+aCode) [<b:off+>]
+NOT (3c) si <a> == [zregs]                              => F6/F7 (10+aZ) [<b:off+>]
+
+OUT (7c) avec <a> == byte && <b> == al/ax/eax           => E6/E7/{66 E7} <a>
+
+POP (1c) si <a> == wreg				        => (58+aCode)
+POP (1c) si <a> == sreg				        => (07+aCode*8)
+POPA (9c)                                               => 61
+POPAD (9c)                                              => 66 61
+POPF (9c)                                               => 9D
+POPFD (9c)                                              => 66 9D
+
+PUSH (1c) si <a> == wreg				=> (50+aCode)
+PUSH (1c) si <a> == sreg				=> (06+aCode*8)
+PUSH (1c) si <a> == byte/word 	         		=> 6A/68 <b>
+PUSHA (11c)                                             => 60
+PUSHAD (11c)                                            => 66 60
+PUSHF (4c)                                              => 9C
+PUSHFD (4c)                                             => 66 9C
+
+OR (1c) si <a> == al/ax && <b> == byte/word             => 0C/0D <b> (dword si 66)
+OR (1c) si <a> == wreg && <b> == byte                   => 83 (C8+aCode) <b>
+OR (1c) si <a> == breg/wreg && <b> == byte/word         => 80/81 (C8+aCode) <b> (dword si 66)
+OR (1c) si <a> == breg/wreg && <b> == breg/wreg         => 0A/0B (C0+aCode*8+bCode)
+OR (2c) si <a> == breg/wreg && <b> == [zregs]           => 0A/0B (aCode*8+bZ) [<b:off+>]
+OR (3c) si <a> == [zregs] && <b> == breg/wreg           => 08/09 (bCode*8+aZ) [<b:off+>]
+OR (3c) si <a> == [zregs] && <b> == byte/word           => 80/83 (08+aZ) [<b:off+>]
+
+REP truc (cx iterations)                                => F3 truc
+REPE truc (cx iterations tant que ZF == 1)              => F3 truc
+REPNE truc (cx iterations tant que ZF == 0)             => F2 truc
+
+RET (5c)                                                => C3
+RETF (13c)                                              => CB
+
+SBB (1c) si <a> == al/ax && <b> == byte/word            => 1C/1D <b>
+SBB (1c) si <a> == wreg && <b> == octet                 => 83 (D8+aCode) <b:byte>
+SBB (1c) si <a> == breg/wreg && <b> == word             => 80/81 (D8+aCode) <b> (dword si 66)
+SBB (1c) si <a> == breg/wreg && <b> == breg/wreg        => 1A/1B (C0+aCode*8+bCode)
+SBB (2c) si <a> == breg/wreg && <b> == [zregs]          => 1A/1B (aCode*8+bZ) [<b:off+>]
+SBB (3c) si <a> == [zregs] && <b> == breg/wreg          => 18/19 (bCode*8+aZ) [<b:off+>]
+SBB (3c) si <a> == [zregs] && <b> == byte/word          => 80/81 (18+aZ) [a:word] <b>
+SBB (1 a 3c) si <a> == dreg                             => 66 intruction corresp en word
+
+SCASB (4c) compare es:di avec al                        => AE
+SCASW (4c)                                              => AF
+SCASD (4c)                                              => 66 AF
+
+ST? (2c) enable le ? Flag                               => (F9+Code*2)
+
+STOSB (3c) stoque al dans es:[di] et di++ ou -- si df=1 => AA
+STOSW (3c) stoque ax dans es:[di] et di+=2 ou -= 2 si...=> AB
+STOSD (3c) stoque eax dans es:[di] et di+=4 ou -= 4 si..=> 66 AB
+
+SUB (1c) si <a> == al/ax && <b> == byte/word            => 2C/2D <b>
+SUB (1c) si <a> == wreg && <b> == octet                 => 83 (E8+aCode) <b:byte>
+SUB (1c) si <a> == breg/wreg && <b> == word             => 80/81 (E8+aCode) <b> (dword si 66)
+SUB (1c) si <a> == breg/wreg && <b> == breg/wreg        => 2A/2B (C0+aCode*8+bCode)
+SUB (2c) si <a> == breg/wreg && <b> == [zregs]          => 2A/2B (aCode*8+bZ) [<b:off+>]
+SUB (3c) si <a> == [zregs] && <b> == breg/wreg          => 28/29 (bCode*8+aZ) [<b:off+>]
+SUB (3c) si <a> == [zregs] && <b> == byte/word          => 80/81 (28+aZ) [a:word] <b>
+SUB (1 a 3c) si <a> == dreg                             => 66 intruction corresp en word
+
+TEST (1c) si <a> == al/ax && <b> == byte/word           => A8/A9 <b> (dword si 66)
+TEST (1c) si <a> == breg/wreg && <b> == byte/word       => F6/F7 (C0+aCode) <b> (dword si 66)
+TEST (1c) si <a> == breg/wreg && <b> == breg/wreg       => 84/85 (C0+aCode*8+bCode)
+TEST (1c) si <a> == [zregs] && <b> == byte/word         => F6/F7 (aZ) [<b:off+>]
+
+XCHG si <a> == ax && <b> == wreg                        => 90+bCode (vrai pour ax aussi!)
+XCHG si <a> == breg/wreg && <b> == breg/wreg            => 86/87+(C0+aCode*8+bCode)
+
+XLAT (4c) Recherche un octet (al) dans [bx], result:al  => D7
+
+XOR (1c) si <a> == al/ax && <b> == byte/word            => 34/35 <b> (dword si 66)
+XOR (1c) si <a> == wreg && <b> == byte                  => 83 (F0+aCode) <b>
+XOR (1c) si <a> == breg/wreg && <b> == byte/word        => 80/81 (F0+aCode) <b> (dword si 66)
+XOR (1c) si <a> == breg/wreg && <b> == breg/wreg        => 32/33 (C0+aCode*8+bCode)
+XOR (2c) si <a> == breg/wreg && <b> == [zregs]          => 32/33 (aCode*8+bZ) [<b:off+>]
+XOR (3c) si <a> == [zregs] && <b> == breg/wreg          => 30/31 (bCode*8+aZ) [<b:off+>]
+XOR (3c) si <a> == [zregs] && <b> == byte/word          => 80/83 (30+aZ) [<b:off+>]
+
+
+/////////////////////////////////////////////////////////////////////////////
+/*------------ Legende et notes -------------------------------------------*/
+/////////////////////////////////////////////////////////////////////////////
+mreg signifie megaregistre (ax,bx,cx,dx)
+sreg signifie registre de segment
+[zreg] signifie combinaison de registres de base, d'index (bx,si,di) et de word
+Z : Pour generaliser, il suffit de dire que :
+	0,1 si [bx+index]
+	2,3 si [bp+index]
+	4,5 si [index]
+	6 si [word], ou [bp] si on y ajoute 40 ou 80
+	7 si [bx]
+	et on ajoute 80 si on ajoute a tous cela +word,
+	et on ajoute 40 si on ajoute a tous cela +byte,
+	pour les index, on a 0:si, 1:di.
+	donc pour avoir [bp] il faut avoir 46 ([bp+00])
+
+Rappellons que le registre de flag est foutu ainsi pour les Codes :
+Bit 15 : 0
+Bit 14 : NT, Nested Task Flag (386+)
+Bit 13+12 : IOPL, Input/Outpout privilege level (286+)
+Bit 11 : OF, Overflow flag (debordement)
+Bit 10 : DF, Direction flag---------------------------------- 2
+Bit  9 : IF, Interrupt flag---------------------------------- 1
+Bit  8 : TF, Trap flag (execution pas a pas)
+Bit  7 : SF, Sign flag
+Bit  6 : ZF, Zero flag
+Bit  5 : 0
+Bit  4 : AF, Auxiliary flag (retenue auxiliaire)
+Bit  3 : 0
+Bit  2 : PF, Parity flag
+Bit  1 : 1
+Bit  0 : CF, Carry flag (retenue)---------------------------- 0
+
+/////////////////////////////////////////////////////////////////////////////
+/*------------ Comment s'en servir ? --------------------------------------*/
+/////////////////////////////////////////////////////////////////////////////
+
+Ben par exemple, c'est marrant de se faire un petit programme COM, qui
+n'est qu'une suite d'opcodes en language machine, avec
+
+H:\>copy con prog.com
+et alors il faut taper chaque byte :
+3\ : 3 puis Alt-192 c'est a dire 33 C0 -> xor ax,ax
+-^V : Alt-205 puis Ctrl-V (#22 = 16h), c'est a dire CD 16-> int 16
+Ã^Z : Alt-195 (C3->ret) et Ctrl-Z pour quitter
+
+H:\>copy con prog.com
+3\-^QÃ^Z
+H:\>prog
+
+on a donc un petit programme qui demande de taper une touche, en 5 octets !
+Mais bon copy con c'est con car on peut pas utiliser tous les chars,
+et puis c'est pas pratique. Il faut avoir devant soi une table de conversion
+ASCII-HEX-DEC. Quand on est dans une grande surface et qu'on veut bidouiller
+un pc, c'est un peu demasque.
+...
+Heuresement, il y a DEBUG ! Avec une interface sans faille, ce super
+compilateur de Kro$oft a pour (seul et unique) avantage qu'il se trouve
+un peu partout, meme dans les derniers pc 566 mmx p6 cqfd, ou les seuls
+progs qui y seront lances seront probablement IE4 et Word. Mais vous,
+vous voulez que votre petit prog a la con, votre virus y veille...
+Alors, la solution : debug. Jusqu'au jour ou kro$oft l'enlevera de son dos..
+
+*** Petit mode d'emploi de debug (qui en a bien besoin!!) ù Liste des commandes :
+-? : petite aide tres incomplete
+-a : Assembler ; on tape des lignes de code qui se finissent par ESC/ENTER.
+      il compile dans (cs:100)
+-d : Dump ; on peut voir un bout de la memoire avec. Par exemple,
+     -d 0:0 (seg:offs), ou -d 0 (cs:offs)
+-e : Enter ; on modifie un bout de la memoire, a l'adresse donnee
+     -e 0:0, ou -e 0 (cs:offs)
+-h : Hexadecimal ; petits calculs a la con. On rentre 2 nombres dec, et
+	il en donne la somme et la difference sous 16 bits, en hexa.
+-g : Execute le programme. On peut specifier l'adresse
+-q : Quitter
+-u : Unassemble. Eh oui, ca peut decompiler, ce truc.
+-f : Fill. Remplit un bout de la memoire avec des octets que tu lui dis.
+     Essayez a l'adresse 0:0 pour voir... Params :
+     -f seg:off size pattern
+
+Et la vous m'dites. Il reste un truc : comment exporter en com.
+Oui mais il y a bien d'autres programmes qui crevent de faim
+dans le monde, meme s'ils savent sauver dans un COM. Et puis
+merde, si vous etes pas contents, allez jouer avec le basic pour les q.
+(je c, l'explication de debug part en couille mais je ne prevoyais pas ca)
+
+Il existe d'autres application de cette table : par exemple, vous etes
+un joyeux hacker et vous cherchez un "int 21h" pour ne pas quitter.
+Vous allez donc chercher un CD 21 et le remplacer par 2 nops : 90 90.
+Ou alors, vous n'avez rien d'autre a faire que de creer un compilateur
+ou un decompilateur freeware (vous etres les bienvenus) pour la gentille
+equipe de Beef13 !!
+
+Remerciements : Borland Intl pour le bien pratique debugger,
+		Micro$oft Corp pour le system d'exploitation,
+		Marabout pour son bouquin a la con mais bon ca je l'ai HT, et
+		David Jurgens pour son sympatique HelpPC
+
+
+/*************************************************************************/
+/*                 BILAN ET PERSPECTIVES POUR L'AVENIR                   */
+/*                                                                       */
+/* Proverbe chinois : Ni yao schemne ?                                   */
+/* Si vous trouvez comment sauver dans un COM with debug,                */
+/*                emailez moi a gone@caramail.com                        */
+/* Le QBasic, c'est pas si nul                                           */
+/* Et allez vous faire foutre ailleurs                                   */
+/**************************************************** GonE98 *************/

@@ -1,0 +1,333 @@
+/*************************************************************************/
+/* Cracks tips                                                           */
+/* by GonE                                                               */
+/*                                                                       */
+/* public vise : tous ceux qui s'interessent au crack                    */
+/*************************************************************************/
+
+1) D'abord, il faut savoir comment pensent les programmeurs, et connaitre
+les methodes qu'ils utilisent pour proteger un prog : Les methodes anti-hack
+(note : c'est strictement impossible d'empecher un hack, mais on peut
+le freiner).
+Ben il doit y en avoir des chiees mais voici celles que j'ai trouvees
+(je les ai pas toutes testees, et bcp sont sans effets) :
+
+** Les methodes anti-debugging
+
+- On lit l'heure, on fait un petit truc, on lit a nouveau l'heure,
+  et si il y a une difference de plus de 100 ms, on quitte discretement.
+- On peut essayer de detourner l'interruption 3 (Pas a pas) qui pourrait
+  empecher un debugger de fonctionner (mais je suis pas sur, j'ai pas essaye).
+- Chercher dans toute la memoire (enfin, 640 Ko) une chaine du genre
+  "Turbo Debugger", ou "Debug" et dans ce k, quitter. (je c, ca peut
+  etre un prog qui ct fini mais ca doit etre verifiable en regardant
+  la table d'allocation de la memoire).
+- On cherche la variable d'environnement du dos CMDLINE. Si c'est par exemple
+  "td prog.exe", eh ben ca quitte. Malin, non ?
+- On pklite le prog et on note sa taille pklite. Alors on le reecrit en testant
+  sa taille. S'il est superieur a un certain quotat, ben il quitte.
+- Apres les fonctions pour quitter on met quelques fonctions pour faire
+  tout planter, histoire de faire chier le hacker.
+- On teste la memoire disponible. Si elle est anormalement basse (si par ex
+  td est en memoire), en on quitte.
+
+** Les methodes anti-decompile (aussi antidebug parfois)
+
+- On code son code et ses data (par exemple par un not tout con, ou un add),
+  sauf la routine pour le decoder, au debut. On peut aussi le pkliter, cela
+  revient plus ou moins au meme.
+- On met plein d'octets compliques (choisis au prealable), entre 2 lignes
+  de code qui font croire a des mnemoniques de la mort qui tue, et avec
+  de la chance, la 2e ligne de code sera associee avec des octets
+  precedents pour faire une supermnemonique.
+- On se fabrique un programme pour masquer le nom des fonctions et des
+  variables, si votre compilateur a la mauvaise habitude de les stoquer
+  dans le exe. (c'est le k du BC31)
+- Mettre du code un peu partout, par exemple dans les donnees, le stack,
+  le far heap, ou un autre fichier carrement. Mais bon c pa vraiment pratique.
+
+** Les methodes anti-crack
+
+- On a plein de variables globales qui sont modifiees lors de
+  l'appel de fonctions. Si apres l'appel de la fonction, on ne remarque
+  pas de modif, on quitte discretement.
+
+** Les methodes anti-copy
+
+- (Si on veut bien s'encombrer d'une disquette) on formate une disquette
+  non formatee (dur a trouver je c) sauf 1 secteur, le dernier, ou un
+  autre... Le prog verifie que ce secteur soit illisible.
+- Ben mettre un dongle mais bon c'est depasse ca !
+
+Dans les 2 k, il faut savoir modifier le .EXE et non pas la disquette, ou
+se creer un dongle a la con.
+
+** Les autres methodes
+
+- Essayer de foutre la merde discretement chez le hacker quand on decouvre
+  une modif. Par ex, effacer toutes les fat du disque dur. Mais bon ils ne
+  font jamais ca, c'est vraiment salop. (mais efficace!!) Le hacker finira
+  bien par prendre sa revenche... Ou alors, on peut faire planter son
+  systeme totalement (DEF Bond pourra vous dire comment).
+- S'envoyer un mail donnant les coordonnees du hacker (mais bon s'il a un
+  modem, ca se voit. Pas s'il est sur numeris ou cable)...
+- Et puis si ca vous suffit pas, allez voir les methodes de ce programme, qui
+  detourne pas mal d'interruptions. Remercions son auteur anonyme. 'parait
+  que ca stoppe td.
+
+>> ANTIDEBUG.ASM qui doit etre linke avec un prog en pascal
+ .386p
+ .MODEL TPASCAL
+ .DATA
+ oldint3 dd ?
+ anc_interrupt3 dd ?
+
+ .CODE
+
+ public PIQ_Stop_System
+ public Keyboard_off
+ public Keyboard_on
+ public No_Stepping
+
+ keyb_off macro
+ push ax
+ in  al,21h
+ or  al,02
+ out 21h,al
+ pop ax
+ endm
+
+ keyb_on macro
+ push ax
+ in  al,21h
+ and al,0Fdh
+ out 21h,al
+ pop ax
+ endm
+
+ PIQ_Stop_System proc near
+ push ds
+ push ax
+ push bx
+ push cs
+ pop  ds                             ; CS en DS
+ mov  cs:word ptr [@int_21_fonct],4CB4h  ; Fonction arreter le Programme
+ @int_21_fonct:
+ mov  ah,30h                         ; Fonction lire la version du DOS
+ int  21h
+ pop  bx
+ pop  ax
+ pop  ds
+ ret
+ PIQ_Stop_System endp
+
+ Keyboard_off proc near
+ keyb_off
+ ret
+ Keyboard_off endp
+
+ Keyboard_on proc near
+ keyb_on
+ ret
+ Keyboard_on endp
+
+ No_Stepping proc near
+ push ax
+ jmp @Nostep+2
+ @Nostep:
+ mov ds:byte ptr [06EBh],00
+ mov ax,4C01h
+ int 21h
+ pop ax
+ ret
+ No_Stepping endp
+
+ public protected_stopping
+ protected_stopping proc pascal
+ pusha
+ cli                         ; inhibe les interruptions
+ mov eax,cr0                 ; active le mode prot,g,
+ or eax,1
+ mov cr0,eax
+ jmp PROTECTION_ENABLED      ; efface le canal d'ex,cution
+ PROTECTION_ENABLED:
+
+ and al,0FEh                 ; r,tablit le mode r,el
+ mov cr0,eax                 ; ne remet pas _ z,ro le processeur
+ jmp PROTECTION_DISABLED     ; efface le canal d'ex,cution
+ PROTECTION_DISABLED:
+ sti                         ; restaure les interruptions
+ popa
+ ret
+ protected_stopping endp
+
+ public Check_vector
+ Check_vector proc pascal check : dword;
+ mov bx,0
+ mov es,bx
+ mov bx,18
+ mov eax,es:[bx]
+ mov oldint3,eax
+ mov eax,check
+ mov es:[bx],eax
+ ret
+ Check_vector endp
+
+ public Vector_ok
+ Vector_ok proc pascal check : dword;
+ mov bx,0
+ mov es,bx
+ mov bx,18
+ mov eax,es:[bx]
+ cmp eax,check
+ je  @check_ok
+ mov al,0
+ jmp @check_fin
+ @check_ok:
+ mov al,1
+ @check_fin:
+ ret
+ Vector_ok endp
+
+ public restore_Checkvector
+ restore_Checkvector proc pascal
+ mov bx,0
+ mov es,bx
+ mov bx,18
+ mov eax,oldint3
+ mov es:[bx],eax
+ ret
+ restore_Checkvector endp
+
+ public Copy_int21_int3
+ Copy_int21_int3 proc pascal
+ mov bx,0
+ mov es,bx
+ mov bx,18
+ mov eax,es:[bx]
+ mov anc_interrupt3,eax                ; sauvegarde l'ancienne int 3
+ mov bx,84                             ; charge l'int 21
+ mov eax,es:[bx]
+ mov bx,18                             ; et la m,morise en int3
+ mov es:[bx],eax
+ ret
+ Copy_int21_int3 endp
+
+ end
+
+>> Le .PAS qui y lie
+BEGIN
+clrscr;
+writeln('Checksum sur Int3-Vector');
+check_Vector(12345678);
+writeln('desactiver Keyboard');
+keyboard_off;
+writeln('Stepping-piege');
+no_stepping;
+writeln('PIQ-Trick');
+PIQ_Stop_System;
+writeln('Protected-Mode switching');
+Protected_stopping;
+writeln('Vector-Checking');
+If NOT Vector_Ok(12345678) then begin;
+clrscr;
+writeln('Non non, n''allez pas debugger !');
+halt(0);
+end;
+writeln('retablir check-Vector');
+Restore_checkVector;
+writeln('Keyboard reconnecte');
+keyboard_on;
+writeln('Et voila ! Nous sommes dans le programme');
+readln;
+end.
+
+
+
+2) Cracker un EXE, c'est aussi reperer quelques fonctions elementaires.
+
+/*                                                             */
+/*** Borland C++ DOS *******************************************/
+/*                                                             */
+
+
+//// REPERER MAIN
+
+En general, il est assez proche du debut du fichier exe.
+
+void main(int argc,char **argv)
+  cs:03AC 55             push   bp
+  cs:03AD 8BEC           mov    bp,sp
+ il se finit par
+  cs:03B6 5D             pop    bp
+  cs:03B7 C3             ret
+ bon, je c presque toutes les fonctions se finissent comme ca..
+
+ ou alors
+void main(void)
+  cs:034B C8120000       enter  0012,00 <- locals
+  cs:034F 56             push   si
+  cs:0350 57             push   di
+ il se finit par
+  cs:040A 5F             pop    di
+  cs:040B 5E             pop    si
+  cs:040C C9             leave
+  cs:040D C3             ret
+attention : apres le ret de main(), en general, il y a plein de trucs
+qui ne signifient rien.
+
+//// QUAND ON QUITTE MAIN
+
+fonction de sortie du programme : apres le ret de main
+  cs:015B 50             push   ax
+  cs:015C E80303         call   _exit
+void exit(int status) c'est la fonction la plus rentable a reconnaitre.
+  cs:0462 55             push   bp
+  cs:0463 8BEC           mov    bp,sp
+  cs:0465 33C0           xor    ax,ax
+  cs:0467 50             push   ax  // bien noter les 2 push ax et push pile
+  cs:0468 50             push   ax
+  cs:0469 FF7604         push   word ptr [bp+04]
+  cs:046C E8A6FF         call   0415 <- varie // et encore une fct..
+  cs:046F 5D             pop    bp
+  cs:0470 C3             ret
+
+/// QUELQUES FONCTIONS CLEFS
+
+int printf(...);
+  cs:1EC8 55             push   bp
+  cs:1EC9 8BEC           mov    bp,sp
+  cs:1ECB B82E20         mov    ax,202E
+  cs:1ECE 50             push   ax
+  cs:1ECF B81402         mov    ax,0214
+  cs:1ED2 50             push   ax
+  cs:1ED3 FF7604         push   word ptr [bp+04]
+  cs:1ED6 8D4606         lea    ax,[bp+06]
+  cs:1ED9 50             push   ax
+  cs:1EDA E852E8         call   __VPRINTER
+  cs:1EDD 5D             pop    bp
+  cs:1EDE C3             ret
+
+int getch();
+  cs:101A 803E8E0400     cmp    byte ptr [__cFlag],00
+  cs:101F 740A           je     102B
+  cs:1021 C6068E0400     mov    byte ptr [__cFlag],00
+  cs:1026 A08F04         mov    al,[__cChar]
+  cs:1029 EB05           jmp    1030
+  cs:102B B80007         mov    ax,0700
+  cs:102E CD21           int    21
+  cs:1030 B400           mov    ah,00
+  cs:1032 C3             ret
+
+  et si on cherche B8??4C, on a des chances de trouver ou le programme
+  quitte.
+.. et vous pouvez continuer si ca vous amuse. Moi je prefere essayer de
+debugger les progs a la con de defbond...
+
+/*************************************************************************/
+/*                       CONCLUSION ET MORALE                            */
+/*                                                                       */
+/* Proverbe d'outrequeben : pierre qui roule n'amasse pas mousse         */
+/* Si vous elucidez la quadrature du cercle, emailez-moi                 */
+/* Et reportez les bugs et les conseils a gone@caramail.com              */
+/**************************************************** GonE98 *************/
