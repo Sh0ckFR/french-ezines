@@ -14,6 +14,7 @@ The sources have been slightly tweaked for immediate use. And unfortunately, som
 | Northern Phun Co | 1992-1994 | Phreaking, Trashing, Virus, Hacking, Coding |
 | Noway | 1994 | Hacking, Phreaking, Network, 💣 |
 | Secu-info | 1994-1999 | Hacking |
+| Cybpunk | 1995 | Ethic, Chronics |
 | Hack 25 | 1996 | Phreaking, Virus |
 | MJ13 | 1996 | Crypto,  Coding, Cracking |
 | HVU | 1996-2004 | Radio, Phreaking |
@@ -36,6 +37,7 @@ The sources have been slightly tweaked for immediate use. And unfortunately, som
 | Nopast | 1998 | Hacking, Drugs |
 | Pirage | 1998 | Cracking, Carding, Hacking |
 | XIII | 1998 | Hacking, Crypto |
+| Beef13 | 1998 | Cracking, Warez, Coding, Phreaking, Countercultures |
 | Illegal Granted Access | 1998-1999 | Hacking, Coding, Cracking |
 | Liberté | 1998-1999 | Electronic, Drugs, Phreaking |
 | Phreakazoide | 1998-1999 | Phreaking, Cracking, Coding |
@@ -47,6 +49,7 @@ The sources have been slightly tweaked for immediate use. And unfortunately, som
 | 912 Hacking Departement | 1999 | Infosec, Hacking, Social Engineering, Phreaking, 💣 |
 | Alcibiade | 1999 | Phreaking, Drugs, Carding, Coding |
 | Alternative | 1999 | Infosec, Hacking, Phreaking, Hardware |
+| Busted | 1999 | Infosec, Hacking, Cracking, Busted |
 | AOH | 1999 | Phreaking, Hacking |
 | Black Lotus | 1999 | Infosec, Hacking, Web Pentesting, Warez, Development |
 | Cyber Hackers Guide | 1999 | Phreaking, Trashing, Hacking, Interview, Ethic |
@@ -82,6 +85,7 @@ The sources have been slightly tweaked for immediate use. And unfortunately, som
 | Revolution | 1999-2000 | Hacking, Phreaking, Trashing, Drugs, Cracking |
 | Underhack | 1999-2000 | Phreaking, Hacking, 💣, Cracking, Carding |
 | Allianx | 2000 | Infosec, Hacking, Phreaking, Development |
+| Cleozine | 2000 | Hacking, Cracking, Coding |
 | Apocalypse | 2000 | Infosec, Hacking, Reverse, Cracking, Phreaking |
 | Brain Storm Crew | 2000 | Hacking, Phreaking, Protocols, Ethic |
 | Hackerstorm | 2000 | Protocols, Coding, Cracking, Hacking |
