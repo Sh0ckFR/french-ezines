@@ -1,0 +1,268 @@
+/*************************************************************************/
+/* Crack de Super Cauldron (c) Titus 1992                                */
+/* by GonE                                                               */
+/*                                                                       */
+/* public vise : ben ceux qui debutent en crack                          */
+/*************************************************************************/
+
+Resume : SuperCauldron est pas mal mais a malheuresement la particularite
+d'etre incopiable (enfin, hehe, c'est ce qu'ils disent), en verifiant
+a chaque demarrage une clef sur la disquette originale. Ca consiste en
+un truc du genre si le secteur untel est mauvais, ca va...
+Mais moi je lance le defi a Titus que j'arriverai a cracker ce jeu !!
+(note : je pense que je n'ai pas pris le plus court et le plus
+intelligent chemin, mais ca vous montre quels tests peut faire
+pour le crack d'un prog)
+
+En editant hexa le .exe, on s'apercoit la belle chaine "PKLITE truc..."
+Il faut d'abord depkliter le .exe. La version livree avec Pc
+interdit a l'air de pouvoir le compiler impec... Ceci fait,
+on voit maintenant qu'il a ete fait en Borland Turbo C (c'est ecrit).
+Maintenant on peut etudier le .EXE
+
+* Etudions le code principal avec TD, qui commence en 2A00h dans le exe :
+
+cs:0000
+mov    dx,6D99
+mov    cs:[01C7],dx        // modifie le code en CS:01C7, il met 6D99
+mov    ah,30                      // (ca va etre pratique)
+int    21                  // numero de version du dos ? vp 1349
+mov    bp,[0002]           // BP = 9F00 nombre dans le .EXE
+mov    bx,[002C]           // BX = 58CA nombre dans le .EXE
+mov    ds,dx               // DS = 58CA ce truc initialise le segm de data
+mov    [007D],ax           // n¯ de version.
+mov    [007B],es           // DSinitial = 58E1
+mov    [0077],bx           // 58CA
+mov    [0091],bp           // 9F00
+mov    word ptr [0081],FFFF
+call   012F // ce qui est : (note la fonction se termine avant 01C7)
+************************* cs:012F
+   push   ds
+   mov    ax,3500
+   int    21               // Lire le vecteur de l'interrupt 0 vp1353
+   mov    [005B],bx        // bx = offset         int 0 = div par 0
+   mov    [005D],es        // es = segment
+   mov    ax,3504
+   int    21               // Lire le vecteur de l'interrupt 4 : overflow trap
+   mov    [005F],bx
+   mov    [0061],es
+   mov    ax,3505          // Lire le vecteur de l'interrupt 5
+   int    21               // pour empecher plus tard le printscreen
+   mov    [0063],bx
+   mov    [0065],es
+   mov    ax,3506          // Lire le vecteur de l'interrupt 6...
+   int    21               // = invalid opcode
+   mov    [0067],bx
+   mov    [0069],es
+   mov    ax,2500
+   mov    dx,cs
+   mov    ds,dx
+   mov    dx,0125
+   int    21               // Modif l'int 0 avec ds:dx =  cs:0125 vp1342
+   pop    ds
+   ret
+conclusion : il modifie l'int0 (de la div0) et sauve les int0,4,5,6
+peut etre pour avoir le controle des principaux elements comme tout
+grand jeu qui se respecte
+********************* Retour au main
+les    di,[0075]                   // ca fait es = 58CA et di = 0
+ // dans es:0000 commence les variables d'environnement du dos
+mov    ax,di                       // ax = 0
+mov    bx,ax                       // bx = 0
+mov    cx,7FFF                     // cx = 7FFF = 32767
+// CS:0039
+cmp    es:word ptr [di],3738       // es:[0] =? 3738
+jne    0059                        // si non, 0059 plus bas. On y va
+mov    dx,es:[di+02]               // es:[di+2] =? 3D (61,'=')
+cmp    dl,3D
+jne    0059
+and    dh,DF                       // DFh = FFh-32d. Truc pour avoir une majuscule
+inc    word ptr [0081]             // elle etait de FFFF tout a l'heure
+cmp    dh,59                       // 59h = ';'
+jne    0059
+inc    word ptr [0081]
+// CS:0059
+repnz scasb                   // Tant que cx != 0 et que es:[di] != al,
+			      //on continue. => on cherche des caracteres nulls
+jcxz   0099                   // si on a rien trouve, va en 99 (plus loin)
+inc    bx                     // bx = 0 au debut
+cmp    es:[di],al             // encore une fois, rechercher 0 => recherche deux 0 consecutifs
+jne    0039                   // c'est reparti
+or     ch,80
+neg    cx
+mov    [0075],cx              // sauve en [0075] la taille des variables d'env
+mov    cx,0002
+shl    bx,cl
+add    bx,0010                // bx = (bx*4+10)&0xFFF0
+and    bx,FFF0
+mov    [0079],bx              // le sauve en [0079]
+mov    dx,ss
+sub    bp,dx     // bp = 9F00 (voir en haut) - ss = 237C chez moi
+mov    di,[76E6] // ca fait 1000h
+cmp    di,0200   // ben non
+jnb    0090      // not bigger : c'est pas le k
+mov    di,0200
+mov    [76E6],di // en gros, [76E6] = max([76E6],200h);
+// CS:0090
+mov    cl,04
+shr    di,cl     // di = di/16+1 = 0101
+inc    di
+cmp    bp,di     // bp == di ?? d'ou ca sort ca ??? chez moi pas du tout
+jnb    009C      // si bp <= di, va en 009C. Chez nous... on y va!
+// CS:0099
+jmp    01AF      // c'est loin... g essaye, ca va vers un abort()
+// CS:009C
+mov    bx,di     // bx = 0101 = di
+add    bx,dx     // bx = 0101+ss (souvenez vous) = 7B84
+mov    [0089],bx // qu'il sauve dans
+mov    [008D],bx // 2 endroits !!!
+mov    ax,[007B] // euh... ben c'est 58E1
+sub    bx,ax     // bx = 0101+ss-58E1 = 23A4
+mov    es,ax     // es = ax oke
+mov    ah,4A
+push   di
+int    21        // Modifier la taille d'une zone d'une memoire.
+pop    di        // avec es = adresse de seg et bx = new taille en octet/16
+shl    di,cl     // di = 0101<<4 = 1010
+cli
+mov    ss,dx     // ss = ss ouah ! megatuf utile
+mov    sp,di     // sp = 1010 si tu veux
+sti
+xor    ax,ax     // ca normalement ca veut dire ben que ax = 0
+mov    es,cs:[01C7] // euh... Hein quoi ??? Pkoi ?? Ah oui c le truc modifie
+		    // au debut du prog. Donc, es = 6D99d
+mov    di,772E      // si tu veux... = 30510d
+mov    cx,DEA2      // = 56994d
+sub    cx,di        // cx = 26484d ou 6774h
+rep stosb           // la je vois pas trop pourquoi...
+		    // Ca nettoie de l'espace alloue de 0 ? un setmem ?
+		    // ca doit etre un tableau car ici es=ds=6D99
+push   cs           // si tu veux!! ici , ss:sp = 7B84:1010
+call   [7728]       // c'est hyperloin !!
+// ca fait ca :
+	mov    word ptr [0081],0000
+	retf
+call   58F1:01D1
+call   58F1:02CF
+mov    ah,00
+int    1A
+mov    [0083],dx
+mov    [0085],cx
+push   cs
+call   [772C]
+
+// plus loin :
+// * CS:01A7 ecrit dans un fichier
+
+* Bon, tout ca c'est laborieux, et bien chiant. Et puis on comprend rien !
+On va faire autre chose : chercher dans le .EXE "CD13", c'est a dire
+int 13h. En effet, ca doit etre la commande qui verifie s'il s'agit
+d'une copie. On le trouve avec un editeur hexa, a l'adresse 15FC5
+15FC5 CD 13 B8 01 02 BB D2 6A  <--- on y est
+Alors on le teste en remplacant CD 13 par 90 90 (deux nops), et on
+execute le exe. Malheuresement, on note encore un acces disque sur A: !!
+
+* Bon, ensuite reflechissons... Faisons un trainer qui remplace l'int 13
+en C. Mais apres quelques essais bidons, et ne voulant pas chercher
+a debugger, comme Def Bond, son petit programme espion a la con, il
+faut abandonner cette partie. En effet, l'int13 est assez dure a remplacer
+en C (compare a l'int 00, 1C...), car elle need les registres et les flags.
+
+* On remarque que ce con de prog affiche "error 8000" or 8000 = 1F40.
+On cherche 40 1F dans le exe et on trouve :
+15AC9 0C EE 42 8A C5 EE 81 F1
+15AD1 40 1F 89 0E 9B 21 BA DA  <---
+15AD9 03 9D 5D 07 1F 5E 5F 5A
+donc adresse dans td = 15AD1-2A00 = 78033d = 30D1. On cherche ensuite
+dans td cette adresse. Et on obtient :
+301B A1B921         mov    ax,[21B9]
+301E 3B06BB21       cmp    ax,[21BB]
+3022 7505           jne    3029
+donc un truc qui n'a aucun rapport. Fausse route.
+
+* On regarde dans td l'endroit dans ds de "Error", et on note le debut
+du segment de data : 4 nul et "Turbo C..." donc offset 17480h dans exe
+Et ofs de la chaine 'err' = 1DF3Ah ; Difference = 27322 = 6ABAh
+On verifie dans td. C'est impec. Maintenant on cherche cette valeur
+dans le .exe. Probleme = il y en a des chiees. On sait qu'il faut commencer
+apres le debut de cs, soit apres 2A00. ('tout facon, y en a pas avant)
+0000A24D 6A BA 84 00 F7 E2 8B D8
+0000A268 6A BA 84 00 F7 E2 8B D8
+0000A2B3 6A BA 84 00 F7 E2 8B D8
+0000A2CE 6A BA 84 00 F7 E2 8B D8
+0000A431 6A BA 84 00 F7 E2 8B D8
+0000A44C 6A BA 84 00 F7 E2 8B D8
+0000A4AA 6A BA 84 00 F7 E2 8B D8
+0000A4C5 6A BA 84 00 F7 E2 8B D8
+Autre probleme : je viens de m'apercevoir que c pas 6ABA mais BA6A
+qu'il faut chercher. On recommence...
+00015F86 80 36 D1 6A 01 E8 31 00
+00015F8E 73 25 E8 2C 00 73 20 BA
+00015F96 BA*6A B4 09 CD 21 B4 0E <---
+00015F9E A0 D5 6C 04 30 CD 10 B0
+00015FA6 2D CD 10 8B 16 D6 6C E8
+00015FAE 0B 01 B8 FF 4C CD 21 5D
+Ce coup si, c'est le seul. Calculons l'adresse dans cs
+15F96h-2A00h = 79254d = 13596h
+Et on y va...
+Probleme : c'est superieur a 65536. Ou trouver ce code de merde dans td ?!
+Solution (batarde) : s'arranger avec le language machine.
+Bon !! Ou alors j'ai une autre id. Je recopie le bout de code dans un .Com.
+Je le td, et ca donne :
+xor    byte ptr [6AD1],01 // 1er code mal interprete (m'aurait etonne)
+call   0139
+jnb    012F
+call   0139
+jnb    012F
+mov    dx,6ABA            // ah !!! dx = offset du message d'erreur !!
+mov    ah,09              // oui !! ah = 09 > afficher du texte
+int    21                 // OUI !! c'est bien la fonction qui affiche ca !!
+mov    ah,0E
+mov    al,[6CD5]
+add    al,30
+int    10                 // Ca devrait afficher un truc
+mov    al,2D
+int    10
+mov    dx,[6CD6]
+call   0235               // printf ??
+mov    ax,4CFF
+int    21                   // €€ fonction qui quitte €€
+pop    bp
+pop    bcp d'autres trucs..
+
+See ya col !! C'est la fonction qui quitte le prog !! Bon ben moi je propose
+de modifier le CD 21 par 2 jolis nops... Pour le trouver ca doit etre
+quelque part apres  B8FF4C (<=> mov ax,4CFF). C'est l'offs 15FB3h.
+On y va.... Et ca marrche du tonnerre !! Que c'est beau...
+Ca ete assez long, mais ca a reussit.
+********************** YOU WIN *******************************
+Maintenant il reste a faire un joli patch signe GonE qui permet de
+jouer a SuperCauldron sans la disquette originale.
+Voila un joli code pour ca :
+// #include de beaucoup de trucs...
+
+void main(void)
+{
+FILE *f;
+printf("\nSUPER CAULDRON Crack by GonE98 (c) Titus 1992\n");
+f = fopen("CAULDRON.EXE","r+b"); // ne pas changer le nom de l'auteur svp
+if (!f) { printf("Ben il est ou cauldron.exe ??"); exit(1); }
+if (filelength(fileno(f)) != 125870) { printf("Il n'a pas la bonne taille\
+(125 870). T'as pense a le depkliter avant ??"); fclose(f); exit(1); }
+fseek(f,0x15FB3,SEEK_SET);
+putw(0x9090,f);
+fclose(f);
+printf("Voila c'est fait. Maintenant vous pouvez jouer a ce jeu a la con\n\
+sans disquette, mais vous feriez mieux de reviser pour votre bac !!\n");
+}
+
+NE PAS OUBLIER DE DEPKLITER LE EXE AVANT DE LANCER LE CRACK
+
+
+/*************************************************************************/
+/*                        SYNTHESE DES TRAVAUX                           */
+/*                                                                       */
+/* Proverbe anglais : An apple a day keeps the doctor away.              */
+/* Si vous elucidez le mystere du telephone jaune, emailez-moi.          */
+/* et SuperCauldron de Titus devient maintenant disponible par copie !!  */
+/**************************************************** GonE98 *************/

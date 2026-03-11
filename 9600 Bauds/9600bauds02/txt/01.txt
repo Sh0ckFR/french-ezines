@@ -1,0 +1,369 @@
+ ▄▄▄▄▄    ▄▄▄▄    ▄▄▄     ▄▄▄    
+██▀▀▀██ ▄██▀▀▀█ ▄██▀▀█  ▄██▀▀█  
+██ ▄▄██ ██      ██   █▄ ██   █▄ 
+ ▀▀▀▀██ ██▄███▄ ██   ██ ██   ██  
+▄   ▄██ ██▀  ██ ██  ▄██ ██  ▄██ No 2
+▀████▀  ▀█████▀  ▀███▀   ▀███▀  bauds
+
+┌──────────────────────────────┐
+│ ISSUE No 2 - Jan 2026 01.TXT └───────────────────────────────────────────────┐
+| Développement de driver sous Windows 11: Leçon 1                             |
+| Xylitol <xylitol@temari.fr>                                                  |
+| HACKGYVER HACKERSPACE (Belfort)                                              |
+└──────────────────────────────────────────────────────────────────────────────┘
+
+-- 0x0: Prélude --
+
+Mesdames et messieurs, c'est votre capitaine qui vous parle, nous nous appro-
+chons de kernel-land. Veuillez attacher vos ceintures et désactiver
+tout Secure Boot pendant la phase d'approche...
+Bon... oui c'était facile... en tout cas, ça fait plaisir d'envoyer une contrib
+à un zine après tant d'années. Peut-être que moi aussi je devrais faire mon
+zine, qui sait... après tant de temps passé dans le game a écrire pour les 
+autres... J'éspère que si des old timerz trainent encore dans le coin et lisent
+ces lignes, que mon nick vous fera sourire :)
+
+Bon donc...
+Dans cet article nous allons voir comment développer votre premier driver
+kernel mode. Ou bien votre deuxième, ou votre troisième... Il y a bien sûr déjà
+eu des articles qui traite de ça dans les zines, mais c'était quand...
+en 2006, 2010 ? Les technos évoluent d'OS en OS... il était temps de remettre
+un peu tout ça à jour.
+
+Au sommaire de cet article
+
+- 0x1: Créer l'environnement de développement
+- 0x2: Configuration du projet Visual Studio
+- 0x3: Notre premier driver
+- 0x4: Le test !
+- 0x5: Le mot de la fin 
+
+
+
+-- 0x1: Créer l'environnement de développement --
+
+Bien évidemment il vous faudra créer un environnement de test en machine
+virtuelle. De manière générale ce n'est pas une bonne idée de tester directement
+des drivers maison sur sa machine à cause des risques de BSoD, etc...
+L'installation d'un Windows 11 sous VMware est idéale pour ce tutoriel.
+Et même pour l'après.
+Donc je ne vais pas vous apprendre la vie sur comment on installe un OS, tout ce
+que je peux vous préconiser c'est de lui mettre de la place pour plus tard si
+vous souhaitez installer d'autres outils de dev ou de rev.
+
+Une fois votre OS opérationnel, on installe Visual Studio 2022.
+Vous le trouverez ici: https://visualstudio.microsoft.com/downloads/ 
+
+Depuis l'installeur de Visual Studio 2022 - v17.144.19 (October 2025)
+Voici ce qu'il faut paramétrer:
+
+
+Dans l'onglet Charges de travail:
+[*] Développement Desktop en C++
+      ^
+      `--- On Code notre driver en C, donc...
+
+
+Dans l'onglet Composants individuels:
+[*] Bibliothèques avec atténuations de Spectre MSVC v143 - VS 2022 C++ x64/x86
+    (dernière version)
+      ^
+      `--- En soi, vous n'avez pas besoin de ça, mais on va quand même l'install
+           Si vous ne souhaitez pas l'installer ne le faites pas, nous verrons
+           un peu plus tard quoi faire. (Spectre est une faille matérielle
+           découverte en 2018. Depuis, Microsoft a ajouté une option /Qspectre
+           dans la compilation pour mitiger le problème, mais ce n'est pas
+           obligatoire pour compiler) 
+
+[*] Kit de développement logiciel SDK Windows 11 (10.0.26100.6584)
+      ^
+      `--- Le SDK est nécessaire et complémentaire du WDK.
+
+[*] Windows Driver Kit
+      ^
+      `--- C'est le connecteur entre Visual Studio et le vrai WDK
+ 
+Une fois votre Visual Studio installé avec ces composants, il va falloir
+installer le vrai WDK
+-> https://learn.microsoft.com/fr-fr/windows-hardware/drivers/download-the-wdk
+
+Vous trouvez ça absurde de ne pas distribuer WDK dans l'installeur de VS
+directement?
+Sachez que sous les anciens Windows, l'installation de l'IDE et de la
+configuration des projets drivers était encore plus chronophage !
+
+Une fois ça installer il nous reste une dernière chose à faire, passer l'OS en
+mode test pour pouvoir charger nos drivers.
+Ouvrez l'invite de commande en administrateur et taper:
+bcdedit /set testsigning on
+
+Maintenant on redémarre le système.
+
+Vous devriez voir normalement sur le bureau dans le coin à droite:
+Mode test
+Windows 11 Professionnel
+Build 26100.ge_release.240331-1435 (ou un truc du genre) 
+
+Maintenant on télécharge DebugView
+-> http://download.sysinternals.com/files/DebugView.zip
+Un petit utilitaire qui nous servira à la fin pour tester notre driver. 
+
+
+
+-- 0x2: Configuration du projet Visual Studio --
+
+
+Bon, maintenant ouvrez Visual Studio
+Cliquez sur «Créer un projet», puis sélectionnez «Empty WDM Driver»
+Sur la prochaine page donnez un nom à votre projet, par exemple «HelloDriver»
+puis cliquez sur le bouton «Créer»
+
+L'interface principale de VS s'ouvre.
+Avant toute chose, en haut dans la barre d'outils, changez la configuration
+«Debug» par «Release»
+
+Ensuite nous aurons besoin de faire quelques modifications dans les propriétés
+de notre projet.
+Allez dans l'explorateur de solutions à gauche, faites un clic droit sur
+«HelloDriver» et allez dans les propriétés.
+
+C/C++ > Général > Considérer les avertissements comme des erreurs: Non (/WX-)
+C/C++ > Génération de code > Vérification de la sécurité sur: Désactiver (/GS-)
+C/C++ > Génération de code > Spectre Mitigation: Disabled
+                               ^
+                               `--- (si vous n'avez pas installé Spectre)
+
+Éditeur de liens > Entrée > Dépendances supplémentaires: uniquement ntoskrnl.lib
+Éditeur de liens > Avancé > Point d'entrée: DriverEntry
+
+Voilà... on est bon
+
+
+
+-- 0x3: Notre premier driver --
+
+Dans le menu de VS, aller dans «Projet», puis «Ajouter un nouvel élément...»
+Une nouvelle fenêtre s'ouvre, aller dans code, sélectionnez «Fichier C++ (.cpp)»
+nommez votre fichier main.cpp et cliquer sur «Ajouter»
+
+Ensuite, entrez le code suivant:
+
+```
+#include <ntddk.h>
+
+VOID DriverUnload(IN PDRIVER_OBJECT DriverObject);
+
+NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
+{
+    DriverObject->DriverUnload = &DriverUnload;
+
+    DbgPrint("Bonjour!\n");
+    DbgPrint("Chemin du registre : %wZ\n", RegistryPath);
+    return STATUS_SUCCESS;
+}
+    
+VOID DriverUnload(IN PDRIVER_OBJECT DriverObject)
+{
+    DbgPrint("Au revoir!\n");
+}
+```
+
+Expliquons un peu ce code...
+«ntddk.h», c'est le header principal du WDK qui contient toutes les définitions.
+C'est un genre d'équivalent à stdio.h, mais pour le monde kernel.
+
+«VOID DriverUnload(IN PDRIVER_OBJECT DriverObject);» ça, c'est notre déclaration
+de déchargement du driver
+
+«DriverObject» c'est une structure que Windows crée et remplit avant d'appeler
+notre driver.
+
+«DriverEntry» c'est notre point d'entrée du driver, l'équivalent du main()
+en user-mode.
+
+«RegistryPath» c'est le chemin dans le registre de notre driver.
+
+«DbgPrint» c'est l'équivalent de printf() mais pour le kernel.
+
+«STATUS_SUCCESS», c'est un code de retour standard pour indiquer que l'opération
+s'est terminée avec succès.
+
+
+
+Maintenant le .inf
+Dans votre explorateur de solution à droite, développez «Driver Files» et
+cliquez sur «HelloDriver.inf»
+Mais à quoi sert donc ce fichier ?
+Vous avez déjà dû le voir si vous avez déjà installé des drivers sous Windows.
+Il y a 2 manières d'installer un driver. La première est l'installation manuelle
+sans le fichier .inf on drop notre driver dans %SystemRoot%\system32, puis on
+déclare le driver directement au système avec «sc create»
+C'est la solution la plus simple pour les tests et le dev.
+La deuxième solution c'est "l'officielle" via un fichier .inf en utilisant
+«pnputil» ou bien simplement en faisant un clic droit sur le .inf et ensuite
+«Installer»
+
+On ne va pas supprimé le .inf du projet, comme ça vous aurez les deux méthodes
+Par contre nous allons devoir modifier le squelette de base proposé par VS, car
+le modèle qu'il nous propose est censé être un device INF attaché à un
+périphérique.
+Voici la version corrigée pour notre projet: 
+
+```
+;
+; HelloDriver.inf
+;
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=System
+ClassGuid={4d36e97d-e325-11ce-bfc1-08002be10318}
+Provider=%ManufacturerName%
+DriverVer = 10/27/2025,21.47.54.26
+CatalogFile=HelloDriver.cat
+PnpLockdown=1
+
+[DefaultInstall.NTamd64]
+CopyFiles=DriverCopy
+
+[DefaultInstall.NTamd64.Services]
+AddService=HelloDriver,,HelloDriver_Service_Inst
+
+[DestinationDirs]
+DriverCopy=11
+
+[DriverCopy]
+HelloDriver.sys
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+HelloDriver.sys=1
+
+[HelloDriver_Service_Inst]
+DisplayName   ="HelloDriver"
+ServiceType   =1
+StartType     =3
+ErrorControl  =1
+ServiceBinary =%11%\HelloDriver.sys
+
+[Strings]
+ManufacturerName="<Your manufacturer name>"
+DiskName="HelloDriver Source Disk"
+```
+
+Ce que l'on a modifié/ajouté:
+[DefaultInstall.NTamd64]
+CopyFiles=DriverCopy
+DefaultInstall.NTamd64 précise que c'est pour une architecture x64
+CopyFiles=DriverCopy renvoie dans la section [DriverCopy] et copie les fichiers
+listés.
+
+[DefaultInstall.NTamd64.Services]
+AddService=HelloDriver,,HelloDriver_Service_Inst
+DefaultInstall.NTamd64.Services indique à Windows qu'un service kernel doit
+être créé
+AddService=HelloDriver, c'est le nom du service, les deux virgules après
+indiquent que l'on ne veut pas d'argument, HelloDriver_Service_Inst c'est le nom
+d'une section définie plus bas pour créer et configurer le service.
+
+[DestinationDirs]
+DriverCopy=11
+DestinationDirs précise ou copier le fichier, "11" étant notre DirID pour
+%SystemRoot%\System32
+
+[DriverCopy]
+HelloDriver.sys
+cette section, c'est le fichier a copié, qui va être copié dans le dir défini
+par la section DestinationDirs.
+
+[SourceDisksNames] et [SourceDisksFiles] servent a décrire les supports 
+d'installation et/ou il se trouve (disque 1) c'est une relique du passé ou on
+installait des drivers depuis des CDROMs ou des disquettes, mais Windows utilise
+encore ce schéma et refuse de valider un .inf sans SourceDisksFiles.
+
+[HelloDriver_Service_Inst]
+DisplayName   ="HelloDriver"
+ServiceType   =1
+StartType     =3
+ErrorControl  =1
+ServiceBinary =%11%\HelloDriver.sys
+
+Ce bloc la configure notre service, on y retrouve son nom, le type de service
+"1" qui signifie SERVICE_KERNEL_DRIVER
+StartType, et le type de démarrage, "3" étant pour DEMAND_START, le démarrage
+manuel.
+ErrorControl, la réaction de Windows si le driver échoue au démarrage du service
+ServiceBinary =%11%\HelloDriver.sys, le chemin du driver à charger, on y
+retrouve %11% qui est son DirID pour %SystemRoot%\System32
+
+
+Voilà on a fait le tour du fichier inf, si vous avez des questions sur les
+différentes valeurs, demandez a google ou bien a un LLM.
+
+Maintenant qu'on a fait tout ça, dans Visual Studio depuis le menu du haut,
+aller dans «Générer» et cliquer sur «Générer la solution»
+
+========== Build : 1 réussite(s), 0 échec(s), 0 à jour, 0 ignorée(s) ==========
+
+
+
+
+-- 0x4: Le test ! --
+
+Prenez votre «HelloDriver.sys» fraichement compilé et déposez-le dans
+«C:\Windows\System32\»
+
+Ouvrez l'invite de commandes en administrateur et taper:  
+sc create HelloDriver type= kernel binPath= "C:\Windows\System32\HelloDriver.sys" start= demand
+
+Le message «[SC] CreateService réussite(s)» apparait.
+
+Génial, maintenant ouvrez DebugView en administrateur. Dans le menu allez dans
+«Capture» et cocher «Capture Kernel (Ctrl+K)» et «Enable Verbose Kernel Output»
+
+
+De retour sur votre invite de commande tapez:
+sc start HelloDriver
+
+Le message «Bonjour!» apparait dans DebugView.
+Ainsi que:
+Chemin du registre : \REGISTRY\MACHINE\SYSTEM\ControlSet001\Services\HelloDriver	
+
+Si vous voulez connaitre l'état de votre driver vous pouvez taper:
+sc query HelloDriver 
+
+Pour le stopper: sc stop HelloDriver
+Le message «Au revoir!» apparait alors dans DebugView.
+
+Pour supprimer le service: sc delete HelloDriver
+
+Si vous souhaitez l'installer depuis votre .inf alors vous pouvez faire:
+pnputil /add-driver HelloDriver.inf /install
+
+Pour le supprimer:
+pnputil /delete-driver HelloDriver.inf /uninstall
+
+
+
+-- 0x5: Le mot de la fin --
+
+Et voilà, vous venez d'écrire votre premier driver sous Windows 11.
+Ce n'est qu'un Hello World, mais l'important, c'est d'avoir mis les mains dans
+la mécanique. Et c'est aussi la porte d'entrée vers tout un univers...
+Dans le prochain numéro nous verrons comment communiqué avec l'user-land !
+
+     |       :::'/\ :::::: ::::   :::::: ::::   :::::: ::::   ::::::       |
+     | cWHQ! ::'/  \`::::: ::::   :::::: ::::   :::::: ::::   ::::::       |
+     |       :'/    \`:::: ::::   :::::: ::::   :::::: ::::   ::::::       |
+     :       '/      \ ::: ::::   :::::: ::::   :::::: ::::   ::::::
+  _ _______  /      //_._____ ___.      ___  _ ______ _ _ _/\ __.          |
+   \\_     \/     __/  |     \_  |_____(___)_.        /     \\  |_____     |
+    /               \_    ____/  |     \     |_  ____/  |     \ |     \    :
+   /       /\________/____|  __ _____ //____  /___| __________/_____ //    .
+   \      /                          \/ Noli turbare circulos meus! \/
+    \\   /     __ \    / __
+     \  /  .__\\   \  /   //_____________________________ _ ____
+     .\/   |        \/                                         //____ __ _
+     :
