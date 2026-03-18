@@ -1,0 +1,168 @@
+/------------------------------------------------------------------------------\
+|                          RtC Scan : a network mapper                         |
+|                              Créé par S/ash [RtC]                            |
+|               This is a part of the RtC Neset Project - RtC Tech             |
+| The RtC : http://www.rtc.fr.st             email : rtc@fr.st                 |
+| RtC Tech : http://www.rtctech.fr.st        S/ash : slash-rtc@fr.st           |
+\------------------------------------------------------------------------------/
+
+
+1. Général
+==========
+
+C'est un petit outils permettant de scanner les ports d'un ou plusieurs hôtes...
+Permet également de scanner une liste d'adresses pour voir quels sont les machines
+qui répondent.
+
+Il y a 6 méthodes pour scanner les ports :
+* Complete TCP Connection scanning (for non-root users) (T)
+* TCP Half-open scanning (SYN)                          (S)
+* TCP Stealth scanning with the FIN flag                (F)
+* TCP Stealth scanning with the ACK flag                (A)
+* TCP FTP Bounce Scanning (non-root users)              (B)
+* UDP Classic scanning                                  (U)
+* UDP Lame scanning (for non-root users)                (u)
++ ICMP Echo scanning                                    (E)
+
+Pour construire le programme : taper seulement : './configure; make'.
+Si vous voulez l'installer taper 'make install'
+Et pour finir './configure -r' pour nettoyer les répertoires sources.
+
+2. Utilisation de RtC Scan
+==========================
+Syntaxe :
+  ./rtcscan [-sM [host]] [-fuaen] [-d délai] [-i ip] [-t timeout] [-r scan_port|-H A-B]  \
+            [-m A-B|-p portfile] [-T tries] [-S packetsize] [-o file] [-h user pass] \
+            [-R port] -l iplist
+  ./rtcscan [-sM [host]] [-fuaen] [-d délai] [-i ip] [-t timeout] [-r scan_port|-H A-B]  \
+            [-m A-B|-p portfile] [-T tries] [-S packetsize] [-o file] [-h user pass] \
+            [-R port] ip
+  ./rtcscan -?         
+       où M peut être : S, T, F, A, B, U, u, E
+
+
+3. Détails des options
+======================
+
+  3.1 ip & iplist
+  ---------------
+    Spécifie l'ip à scanner ou un fichier contenant une liste d'ip...
+    Une IP peut-être soit spécifié par un nom enregistré d'un hôte (www.microsoft.com)
+    soit par une adresse ip (192.168.42.5) soit par un masque d'adresse ip (12.3.[2-7].*).
+    Un fichier contenant une liste d'ip est dans le format :
+    # Comment
+    {ip|ipmask|host}  commentaire (nom de l'hôte)
+    
+  3.2 -s
+  ------
+    Choisit la méthode de scan :
+        -sS : SYN : scanning de port connu le plus rapide (nécessite les droits root)
+        -sT : TCP connect() : scanning classique, lent et détecté facilement
+        -sF : FIN furtif : scan efficace contre les système UNIX (nécessite les droits root)
+        -sA : ACK furtif : Scan furtif qui ne fonctionne que sur certains hôte (nécessite les droits root)
+        -sB host : FTP Bounce attack : Scan de port via le FTP host qui permet de faire proxy
+                   (utile pour pas se faire tracer)
+        -sE : teste simplement les hôtes pour voirs s'ils sont connectés
+        -sU : Scan UDP (root)
+        -su : Scan UDP (non-root : lent)
+  
+  3.3 -f
+  ------
+    Attend que la réponse à un port soit reçu pour passer au suivant.
+    Pour les scans S, F, A, E, U.
+    L'option -f rend le scanning plus rapide pour les scan S, A et E dans le cas d'un
+    réseau local.
+
+  3.4 -d delai
+  ------------
+    Règle le temps d'attente entre l'envoie de chaque paquet.
+    (peut être utile pour ne pas bloquer l'envoie des paquets)
+    
+  3.5 -i ip
+  ---------
+    Donne l'ip du localhost. Si le scan vous répond "erreur : localhost introuvable."
+    alors vous devrez spécifier vous-même l'adresse ip du localhost avec cette option.
+    
+  3.6 -u
+  ------
+    Par défaut, sur les scan S, F, A, U, RtC Scan envoie un ping pour déterminé si l'hôte
+    est on. Cette option sert à désactiver ce test (utile contre certains firewalls qui bloque le
+    traffic ICMP : ex : microsoft.com)
+    
+  3.7 -t timeout
+  --------------
+    Règle le time out (ie le temps d'attente pour un scan avant de considérer qu'il n'y a pas de
+    réponse).
+    
+  3.8 -r scan_port
+  ----------------
+    Règle le numéro de port d'expédition à utiliser pour les scans S, F, A et U.
+    Tromper l'adversaire...
+
+  3.9 -H A-B
+  ----------
+    Règle le numéro de port d'expédition à utiliser de façon aléatoire entre A et B pour les scans
+    S, F, A et U. Tromper l'adversaire...
+    
+  3.10 -m A-B
+  -----------
+    Scan les ports entre A et B
+    
+  3.11 -p file
+  ------------
+    Spécifie les ports à scanner dans le fichier file. Par défaut le scan cherche dans /etc/services.
+    Ce fichier est du format suivant
+    # Comment
+    port         service
+    porta-portb  service
+    Deux fichiers nommés portfile.tcp et portfile.udp contienant une liste assez complète des ports
+    respectivement TCP et UDP sont fournies avec le scanneur.
+   
+  3.12 -T tries
+  -------------
+    Pour le scanning echo   : le nombre de requête ICMP Echo à envoyer
+    Pour le scanning bounce : nombre de tentative avant de considéré un refus définitif
+    
+  3.13 -S packetsize
+  ------------------
+    Taille des paquets ICMP Echo à envoyer (un petit peu de flood ?)
+    
+  3.14 (~ PI ;-) ) -o file
+  -----------------------
+    loggue les résultats dans le fichier file (que dire de plus ??)
+    
+  3.15 -h user pass
+  -----------------
+    Spécifie le nom d'utilisateur et le mot de passe pour le FTP dans le cas du scan B
+   
+  3.16 -R port
+  ------------
+    Port FTP de l'hôte (en général c'est 21)
+    
+  3.17 -a
+  -------
+    Montre les réponses de tout les ports/hôtes testés (même les ports fermé et hôtes down)
+    
+  3.18 -e
+  -------
+    Pas d'affichage sur stdout.
+    
+  3.19 -n
+  -------
+    Demande avant de tester chaque nouvel hôte
+
+  3.20 -?
+  -------
+    Affiche l'écran d'aide
+    
+    
+4. Hehe :-)
+===========
+
+Greetz to :
+    The RtC Crew, The Phrack Staff, Aktivist, Mandragore, Doxtor L., RaPass, Recursiver
+    The Mad Team, PlumbeR Eril', ReiKan, The BHZ, Seiferis, pugH, et tant d'autres...
+
+
+
+Long Live to the RtC...

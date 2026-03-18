@@ -1,0 +1,353 @@
+     -----------------  Programmation d'un Sniffer  ----------------
+					  /        ETHERNET   #1       \
+					  ______________________________
+	By RaPass | mailto : rapasss@multimania.com
+
+La comprehension de ce texte implique la conaissance du language C, et de la
+programmation reseau sous Unix/Linux. Si vous ne possedez rien de cela, je
+vous conseille d'aller lire d'autres textes sur le C, les sockets, les raw
+sockets et le TCP/IP. Ceci etant dis, on peut commencer...
+
+1 - Description
+----------------
+
+Un sniffer est un programme qui chope tout ce qui passe sur le reseau, on peut
+"intercepter" tout les trames ethernet qui transitent sur le reseau et meme
+(Et surtout!) ceux qui ne nous sont pas adresse (Je parle pour l'instant de 
+reseau ethernet).
+Un sniffer, ca sert a quoi? he ben ca peut servir a detecter des problemes et
+a maintenir le reseau ou a tester des programmes. Mais sa principal utilite
+pour nous et de choper des pass (sniffer les ports 21(FTP), 23(Telnet), 110
+(POP3)..) ou des infos(sniffer le port 25(SMTP)..)
+ 
+2 - Ze "promiscuous" mode
+--------------------------
+
+En tant "normal" lorsque l'on creer une socket et que l'on lit dessus, on ne
+recoit que les paquets qui nous sont adresse grace a notre adresse IP.
+Pour dire a la carte reseau de taiter tout les paquets qu'elle recoit(et 
+donc meme ceux qui ne sont pas pour nous) il faut la mettre dans un mode
+special, le mode "promiscuous". On peut faire cela manuellement :
+
+$ id
+uid=0(root), gid=0(root) group=0(root)   /* Bien sur, il faut etre root !*/
+$ ifconfig eth0 promisc
+
+Ou on peut utiliser cette fonction (que je n'ai pas faites donc je n'ai aucun
+merite la-dessus) : 
+
+----------------------------Cut here----------------------------------------
+#include <sys/types.h>            /* Y a pas besoins de tout ca mais */ 
+#include <sys/socket.h>		  /* J 'ai la flemme de trier :( */
+#include <netinet/in.h> 
+#include <netdb.h> 
+#include <string.h> 
+#include <linux/if.h> 
+#include <stdio.h> 
+#include <arpa/inet.h> 
+#include <linux/socket.h> 
+#include <linux/ip.h> 
+#include <linux/tcp.h> 
+#include <linux/if_ether.h>
+#include <sys/ioctl.h> 
+#include <sys/stat.h> 
+#include <fcntl.h> 
+    
+int setup_interface(char *device) 
+{ 
+	int fd; 
+	struct ifreq ifr; 
+	int s; 
+	 
+	//open up our magic SOCK_PACKET 
+	fd=socket(AF_INET, SOCK_PACKET, htons(ETH_P_ALL)); 
+	if(fd < 0) 
+	{ 
+		perror("cant get SOCK_PACKET socket"); 
+		exit(0); 
+	} 
+ 
+	//set our device into promiscuous mode 
+	strcpy(ifr.ifr_name, device); 
+	s=ioctl(fd, SIOCGIFFLAGS, &ifr); 
+	if(s < 0) 
+	{ 
+		close(fd); 
+		perror("cant get flags"); 
+		exit(0); 
+	} 
+	ifr.ifr_flags |= IFF_PROMISC; 
+	s=ioctl(fd, SIOCSIFFLAGS, &ifr); 
+	if(s < 0) perror("cant set promiscuous mode"); 
+	return fd; 
+}
+--------------Cut here-------------------------------------------------------
+
+Cette fonction prend comme argument le peripherique que l'on veut placer en
+mode "promiscuous" (Par exemple : eth0) et retourne une socket sur laquelle
+on pourra lire et donc voir ce qui transite sur le reseau :)
+Si vous ne voulez pas utilisez cette fonction et prefere utiliser la methode
+manuel, vous devrez creer une socket, regarder la source de la fonction l.26
+(man socket pour plus d'info).
+
+3 - Ze reception of the packets
+--------------------------------
+
+Pour l'instant, nous allons essayer de coder un sniffer TCP, lorsque nous
+allons faire un read() sur la socket, nous allons recevoir un datagramme
+TCP/IP encapsuler dans une trame ethernet, en fait nous allons recevoir un
+pacquet pouvant etre coder par la structure suivante :
+
+struct recvpacquet {
+  struct ethhdr eth; /* l'entete d'une trame ethernet voir <linux/if_ether.h>
+  struct iphdr ip; /* l'entete d'un datagramme ip voir <linux/ip.h>
+  struct tcphdr tcp; /* l'entete d'un pacquet tcp voir <linux/tcp.h>
+  struct data[8000]; /* emplacement des donnees */
+  }
+
+A) structure ethhdr
+####################
+La structure ethhdr (en-tete ethernet) ne nous interesse pas ici, elle est 
+definie dans <linux/if_ether.h>
+
+
+B) structure iphdr
+###################
+La structure iphdr (en-tete ip) est definie dans <linux/ip.h>:
+
+struct iphdr {
+#if defined(__LITTLE_ENDIAN_BITFIELD)
+	__u8	ihl:4,
+		version:4;
+#elif defined (__BIG_ENDIAN_BITFIELD)
+	__u8	version:4,
+  		ihl:4;
+#else
+#error	"Please fix <asm/byteorder.h>"
+#endif
+	__u8	tos;
+	__u16	tot_len;
+	__u16	id;
+	__u16	frag_off;
+	__u8	ttl;
+	__u8	protocol;
+	__u16	check;
+	__u32	saddr;
+	__u32	daddr;
+};
+
+Si on fait un plan du header ip, ca donne cela(20 octets) :
+                                                               
+ -------------------------------------------------------------------
+ |version| ihl   |    tos        |      tot_len                    | 
+ |  4    |   4   |     8         |       16                        | 
+ |_______|_______|_______________|_________________________________|
+ |           id                  |        frag_off                 |
+ |           16                  |          16                     |
+ |_______________________________|_________________________________|
+ |    ttl        |  protocole    |        check                    |
+ |     8         |      8        |         16                      |
+ |_______________|_______________|_________________________________|
+ |                         saddr                                   |
+ |                          32                                     |
+ |_________________________________________________________________|
+ |                           daddr                                 |
+ |                            32                                   |
+ |_________________________________________________________________|
+
+PS:le mot correspond au champ dans la structure iphdr et le chiffre a la
+taille de ce champ en bits.
+
+Pour savoir ce que veut dire chaque champ, lisez un livre sur le TCP/IP ou de
+la doc sur le ouaib. 
+
+C) structure tcphdr
+####################
+La structure tcphdr (en-tete tcp) est definit dans <linux/tcp.h>:
+
+struct tcphdr {
+	__u16	source;
+	__u16	dest;
+	__u32	seq;
+	__u32	ack_seq;
+#if defined(__LITTLE_ENDIAN_BITFIELD)
+	__u16	res1:4,
+		doff:4,
+		fin:1,
+		syn:1,
+		rst:1,
+		psh:1,
+		ack:1,
+		urg:1,
+		res2:2;
+#elif defined(__BIG_ENDIAN_BITFIELD)
+	__u16	doff:4,
+		res1:4,
+		res2:2,
+		urg:1,
+		ack:1,
+		psh:1,
+		rst:1,
+		syn:1,
+		fin:1;
+#else
+#error	"Adjust your <asm/byteorder.h> defines"
+#endif	
+	__u16	window;
+	__u16	check;
+	__u16	urg_ptr;
+};
+
+Le plan de l'entete tcp (20 octets):
+
+ ________________________________________________________________________
+ |           source                 |              dest                 |
+ |            16                    |               16                  |
+ |__________________________________|___________________________________|
+ |                                 seq                                  |
+ |                                 32                                   |
+ |______________________________________________________________________|
+ |                               ack_seq                                |
+ |                                32                                    |
+ |______________________________________________________________________|
+ |  doff   | RESERVE |    FLAGS     |              window               |
+ |   5     |   5     |     6        |                16                 |
+ |_________|_________|______________|___________________________________|
+ |          check                   |              urg_ptr              |
+ |           16                     |                16                 |
+ |__________________________________|___________________________________|
+
+Les champs en MAJUSCULES ne sont pas des champs de la structure.
+
+D)Ceux que nous allons recevoir:
+###############################
+Voici le schema de la structure recvpacquet commente plus haut:
+                                                                 
+                                                                . \                              .  .
+.              header ethernet(Je detaille pas parce que on en  .  .
+.                       a pas besoin)                           .  | ethhdr             
+.                                                               . /  14 octets
+|_______________________________________________________________|/
+|version| ihl   |      tos      |           tot_len             |\
+|  4    |  4    |       8       |             16                | \
+|_______|_______|_______________|_______________________________|  |
+|            id                 |            frag_off           |  |
+|            16                 |              16               |  | iphdr
+|_______________________________|_______________________________|  | 20 octets
+|     ttl       |   protocole   |           check               |  |
+|      8        |      8        |            16                 |  |
+|_______________|_______________|_______________________________|  |
+|                       saddr                                   |  |
+|                         32                                    |  |
+|_______________________________________________________________|  |
+|                        daddr                                  |  |
+|                         32                                    | /
+|_______________________________________________________________|/  
+|         source                |            dest               |\  
+|           16                  |             16                | \
+|_______________________________|_______________________________|  |
+|                              seq                              |  |
+|                              32                               |  |
+|_______________________________________________________________|  |
+|                           ack_seq                             |  | tcphdr
+|                             32                                |  | 20 octets
+|_______________________________________________________________|  |
+| doff    | RESERVE |  FLAGS   |             window             |  |
+|  5      |   5     |   6      |               16               |  |
+|_________|_________|__________|________________________________|  |
+|             check            |             urg_ptr            |  |
+|              16              |              16                | /
+|______________________________|________________________________|/
+|                                                               |\
+|                                                               | \
+|                Donnees ( 8000 octets de donnees, ca devrait   |  |
+|                         suffire )                             |  | data
+.                                                               .  .(8000
+.                                                               .  . octets)
+.                                                               . /
+.                                                               ./
+
+Donc pour recevoir les trames ethernet, nous allons faire un truc du genre :
+
+char buffer[4096];
+int octets_recus;
+.
+.   /* mise en "promiscuous" mode de la carte reseau  */
+.  /*   et creation de la socket (sock)             */
+.
+octets_recus = read(sock,(char *)&paquet, 4096);
+
+
+La valeur de octets_recus sera le nombre d'octets que la fonction read() a
+lu. La structure recvpacquet(trame ethernet) sera rempli.
+
+Pour examiner les differents champs des differentes entetes (ip et tcp dans
+notre cas) nous allons utiliser des pointeurs.
+
+char paquet[4096];
+int octets_recus;
+struct tcphdr *tcp;  /* Pointeur sur une structure tcphdr */
+struct iphdr *ip;  /* Pointeur sur une structure iphdr */
+
+tcp = (struct tcphdr *)(paquet + sizeof(struct ethhdr));   
+ip = (struct iphdr *)(paquet + sizeof(struct ethhdr) +sizeof(struct iphdr));    
+.
+.   /* mise en "promiscuous" mode de la carte reseau  */
+.  /*   et creation de la socket (sock)             */
+.
+octets_recus = read(sock,(char *)&paquet, 4096);
+printf("Ip version %d\n", ip->version); /*Utilisation des pointeurs qu'on a creer */
+
+Eh bien sur, le plus important, les donnees se trouvent apres l'entete TCP.
+Regarder le code que je file a la fin pour plus de renseignement mais si vous
+avez bien suivit vous pouvez le faire tout seul.
+
+3 - Traiter les pacquets recus
+-------------------------------
+Bon alors maintenant, on arrive a la partie qui necessite le plus de lignes
+de codes : filtrer et traiter les trames ethernet que l'on a recu.
+
+Des le debut, on verifie que c'est bien un datagramme TCP/IP, en testant la
+valeur du champ protocole du paquet IP :
+/*** Exemple ***/
+
+if (ip->protocole != 6) { /*** protocole 6 = TCP (voir /etc/protocols) ***/
+  fprintf(stderr, "Datagramme non TCP/IP :( \n");
+  return -1; 
+  }
+
+Apres, on regarde l'adresse source et l'adresse de destination, le port de 
+destination et le port source(Pas tres interressant).
+
+Ensuite, on regarde les flags pour voir si c'est un debut de connection 
+flags : SYN
+
+Une fin de connection 
+flags : FIN ou RST.
+...etc...
+
+Et enfin, on regarde les donnees pour les formater et les inscrires dans un
+fichier par exemple. 
+...
+Y a d'autres choses mais je ne vais pas tout vous dire quand meme ...:)
+
+4 - Exemple
+------------
+
+Voici l'exemple d'un sniffer TRRRREEESSSS basique :
+
+[ voir sniffer.c ]
+
+Ze end.
+--------
+
+Et ben voila...J'espere que j'aurais apris quelque chose a quelqu'un.
+Je vais me mettre a coder un sniffer(un de plus!) sous X(j'me suis pas 
+acheter un livre sur GTK+ pour rien..). 
+
+
+Si vous avez des remarques, des questions...
+mailto : rapasss@multimania.com
+
+RaPass <rapasss@multimania.com>
+

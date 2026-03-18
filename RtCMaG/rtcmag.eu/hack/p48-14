@@ -1,0 +1,591 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  IP-spoofing Demystified  ]
+---------[ in Phrack 48 ]
+
+----[  by daemon9 / route / infinity [Guild Productions] <route@infonexus.com> ]
+----[  Translated by S/ash [RtC] <slash-rtc@fr.st>  ]
+
+
+Note de S/ash : cette traduction est loin d'être exempt de défaut.
+Notamment, j'ai eu du mal à traduire certaines expressions anglaise.
+Je les ais donc laissé avec une traduction approximative entre 
+parenthèses. Certaines expression peuvent paraître maladroit 
+voir difficile à comprendre. Si vous avez de meilleur traduction, 
+merci de me prévenir : slash-rtc@fr.st
+NOTE : Je parle ici d'hote de confiance pour désigné 'trusted host'
+c'est-à-dire l'hote à qui la victime fait confiance
+
+                             ==Phrack Magazine==
+
+              Volume Seven, Issue Forty-Eight, File 14 of 18
+
+
+			 [ IP-spoofing Demystified ]
+		      (Trust-Relationship Exploitation)
+
+
+			by daemon9 / route / infinity
+			     for Phrack Magazine
+		      June 1996 Guild Productions, kid
+
+		       comments to route@infonexus.com
+		       
+		    Traducteur : S/ash <slash-rtc@fr.st>
+		                 RtC : www.rtc.fr.st <rtc@fr.st>
+
+
+        Le but de cet article est d'expliquer le spoofing IP à tout le
+monde. Pour le comprendre, il est nécessaire de posséder une petite 
+connaissance du fonctionnement de Unix et du TCP/IP. Oh, et d'avoir
+un minimun de cervelle.
+        Le spoofing IP est une attaque technique complexe qui est fait
+de plusieurs composentes. (En réalité, le spoofing n'est pas l'attaque,
+mais une des étapes de l'attaque. L'attaque est en fait l'exploitation
+les relations de confiance. Peut importe, dans cet article, le spoofing
+fera référence à l'attaque entière.) Dans cet article, j'expliquerai
+l'attaque en détail, y comprit les informations sur les systèmes
+d'exploitations et réseaux utiles.
+
+
+                [SECTION I.  INTRODUCTION]
+
+
+        --[ Les acteurs ]--
+
+
+        A:      la cible
+        B:      un hôte à qui la cible fait confiance
+        X:      Un hôte inaccessible
+        Z:      L'attaquant
+        (1)2:   Hôte 1 appairaissant comme l'hôte 2 (IP Masquerading)
+
+
+        --[ Les Schémas ]--
+
+          Il y a quelques schémas dans cet article et ils doivent
+tous être interprétés comme suit :
+
+ t     hôte a     contôle      hôte b
+ 1       A       ---SYN--->      B
+
+t :        Un instant (un tick).  Il n'y a pas de distinction faite sur le
+temps passé entre deux tick, c'est juste du temps passé. C'est en général
+pas beaucoup.
+hôte a :   Une machine participant à la conversation TCP.
+contrôle : Ce champs montre tout les bits de contrôle interessant mis à 1
+dans l'en-tête TCP et la direction du flux de données.
+hôte b :   Une machine participant à la conversation TCP.
+
+Dans ce cas, au premier instant référencié dans le temps l'hôte a envoie
+un segment TCP à l'hôte b avec le flag SYN. A moins que cela ne soit
+mentionné, nous ne sommes en général pas concerné par la portion de 
+données du segment TCP.
+
+
+        --[ Relations de confiance ]--
+
+        Dans le monde Unix, des relations de confiance peuvent etre
+facilement données à tous. Imaginez que vous possédez un compte sur
+la machine A et sur la machine B. Pour facilement aller d'une machine
+à l'autre avec un minimum de commandes, vous voulez établir une relation
+complète de confiance entre chaque hote. Dans votre home directory sur
+la machine A vous créez un fichier .rhost : `echo "B username" > ~/.rhosts`.
+Sur la machine B vous créez un .rhost : `echo "A username" > ~/.rhosts`.
+(Le root peut également mettre des règles similaires dans /etc/hosts.equiv
+à la place, la différence étants que les règles sont alors valables pour
+tout utilisateur de l'hote). A présent, vous pouvez utiliser toutes les
+commandes r* sans s'inquietez avec l'authentification par mot de passe.
+Ces commandes authorisent l'authenfication basée sur l'adresse, ce qui
+enclenchera la demande d'authentification selon l'adresse IP du client.
+
+
+        --[ Rlogin ]--
+
+        Rlogin est un protocol client-serveur simple qui utilise TCP
+comme protocol de transport. Rlogin authorise un utilisateur à se
+connecter d'un hote à un autre hote, et, si la machine cible fait
+confiance à l'autre, rlogin authorisera à ne pas demander de password.
+Donc, sur notre exemple précendent, nous pourrons utiliser rlogin pour
+se connecter de A vers B (et vice-versa) sans que l'on nous demande un
+mot de passe.
+
+
+        --[ Internet Protocol ]--
+
+
+        IP est le protocole réseau sans connexion et non sur de la
+suite TCP/IP. Il possède (NDT : dans la version IPv4) 2 champs 32 bits
+dans l'en-tete pour contenir les informations sur les adresses. IP
+est également le plus utilisé de tout les protocoles TCP/IP puisque
+presque tout le traffic TCP/IP est encapsulé dans des datagrams IP.
+Le role de l'IP est de diriger les paquets sur le réseau. Il ne fourni
+aucun méchanisme pour le décompte des paquets ou pour etre sur qu'un
+paquet est arrivé ; pour cela il compte sur les couches supérieures.
+L'IP envoie simplement des datagrams et espère qu'ils arriveront intact.
+Si ce n'est pas le cas, l'IP peut essayer de renvoyer un message d'erreur
+ICMP vers la source, mais ce paquet peut également etre perdu.
+(ICMP : Internet Control Message Protocol est utilisé pour informer
+de l'état du réseau et différentes erreurs de l'IP et des autres couches)
+IP n'est pas destiné à garantir qu'un paquet a été délivré. Puisque IP
+n'utilise pas de connexion, il ne conserve aucune information sur l'état
+d'une quelconque connexion. Chaque datagram IP est envoyé sans tenir
+compte du datagram précedent ou suivant. Ceci, combiné au fait qu'il est
+aisé de modifier la pile IP pour authoriser une adresse IP arbitraire dans
+le champs de l'adresse source (et destination), font que l'IP est facilement
+mystifiable.
+
+
+        --[ Transmission Control Protocol ]--
+
+
+        TCP est le protocol de transport orienté connexion et fiable de
+la suite TCP/IP. Orienté connexion signifie simplement que 2 hotes
+participant à une discution doivent d'abord établir une connexion avant
+que des données puissent etre échangées. La fiabilité est assurée par
+différents moyens mais seulement deux nous interessent : le séquencement
+des données et la notification. TCP assigne des numéros de séquence à chaque
+segment et notifie de la réception de chaque segment et de celle de tout les
+segments. (Les notifications (ACK) utilisent des numéros de séquence mais
+ne sont pas elle meme notifié). Cette fiabilité rend le TCP plus difficile à
+duper que l'IP.
+
+
+        --[ Numéro de séquence (SEQ), Notification (ACK) et autre flags ]--
+
+
+        Puisque TCP est fiable, il doit etre capable de s'y retrouver parmis
+les données perdues, dupliquées ou invalides. En assignant un numéro de
+séquence à chaque octet transféré, et en requièrant une notification de
+l'autre hote à la réception, TCP peut garantir une livraison fiable. Le
+recepteur utilise les numéros de séquence pour s'assurer de l'ordre correct
+des données et éliminer les données dupliquées.
+        Les numéros de séquence TCP peuvent etre imaginé simplement comme
+des compteurs de 32 bits. Leur valeur allant de 0 à 4,294,967,295. Chaque
+octet échangé à travers une connexion TCP (à part ceux avec certains flags)
+est séquencé. Le champ de numéro de séquence dans le header TCP contiendra
+donc le numéro de séquence du *premier* octet du segment de donnée du paquet.
+Le champs du numéro de notification (ACK)  contient la valeur du numéro
+de notification du prochain paquet *attendu*, et également atteste que *toutes*
+les données sont ok à travers ce numéro ACK. (minus one ???)
+        TCP utilise le concept de taille de fenetre pour le controle du flux.
+Il utilise une fenetre glissante (NDT : erghh) pour dire à l'autre hote quel
+taille de donnée il peut recevoir. Puisque la taille de fenetre est codé sur
+16 bits, un paquet TCP peut contenir au plus 65535 octets. La taille de
+fenetre peut-etre vues comme une information d'une machine à l'autre sur le
+numéro le plus élevées qu'un numéro de séquence peut avoir.
+        Les autres flags de l'en-tete TCP à remarquer sont RST (reset),
+PSH (push), et FIN (finish). Si un RST est reçu, la connexion est
+immédiatement arreter. RSTs sont normalement envoyé quand une machine reçoit
+un segment qui ne correspond pas à la connexion en cour (nous rencontrerons
+ce cas dans exemples plus loin). Le flag PSH dit au récepteur de passer les
+données à la couche d'application le plus rapidement possible. Le flag FIN est
+le moyens normal par lequel une application ferme une connexion (la fin d'une
+connexion se fait par un processus en 4 étapes). Quand une machine reçoit un
+FIN, il lui renvoie un ACK (notification), et n'attend plus aucune données
+(l'envoie est quand meme encore possible).
+
+
+        --[ Etablissement d'une connexion TCP ]--
+
+        Pour échanger des données en utilisant TCP, les hotes doivent
+établir une connexion. TCP établit une connexion par un processus en 3
+étapes appelé la '3-way handshake' (traduction littérale : la poignée de
+mains en 3 étapes). Si la machine A fait tourner un client rlogin et
+veut se connecter à un démon rlogin de la machine B, cela se fera
+sur le modèle suivant :
+
+                fig(1)
+
+1       A       ---SYN--->      B
+
+2       A    <---SYN/ACK---     B
+
+3       A       ---ACK--->      B
+
+  A l'étape (1) le client dit au serveur qu'il veut une connexion. C'est
+le seul but du flag SYN. Le client dit au serveur que le numéro de séquence
+fournit est valide, et doit etre vérifié. Le client mettra son ISN (initial
+sequence number) dans le champs de numéro de séquence. Le serveur, après la
+réception de ce segment (2) répondra par son propre ISN (donc le flag SYN est
+mis à 1) et il notifie (flag ACK mit à un) de la réception du premier segment
+du client (ISN du client + 1). Puis le client renvoie une notification ACK
+(NDT : je dirais maintenant seulement ACK) par le numéro ISN du serveur (3).
+A présent, le transfert de données peut etre effectué.
+
+
+        --[ L'ISN et l'Incrémentation du Numéro de Séquence ]--
+
+
+        Il est important de comprendre comment les numéros de séquences
+sont initialement choisi, et comment ils changent en fonction du temps.
+Le numéro de séquence initial, quand un hote est mis en service, est
+initialisée à 1. (TCP nomme en fait cette variable 'tcp_iss' comme le
+numéro de séquence d'*envoie* initial (initial *send* sequence number).
+L'autre variable de numéro de séquence est 'tcp_irs' qui est le numéro
+de séquence de *réception* initial (initial *receive* sequence number)
+et est connu pendant l'établissement d'une connexion en trois étapes.
+Nous nous embeterons pas avec la distinction entre ces deux variables.)
+Cette pratique est mauvaise, et cela est précisé dans un commentaire de la
+fonction tcp_init() (NDT : ???). Le numéro ISN est incrémentée toutes les
+128,000 seconde, ce qui fait que le compteur 32 bits ISN fait un tour complet
+en 9.32 heures si aucune connexion ne se produit. Dans l'autre cas, à
+chaque appel à connect(), le compteur est incrémenté de 64.000.
+        Une raison importante de cette prédictabilité est pour mimiser les
+chance que des données provenant d'une vieille incarnation périmée (C'est
+à dire avec les memes adresses IP et memes port TCP) de la connexion en
+cours n'arrivent et ne foute le bordel. Le concept du temps d'attente 2MSL
+s'applique ici, mais dépasse le but de cet article. Si les numéros de séquence
+étaient choisi au hasard quand une connexion se met en place alors rien ne
+garantirait que les numéros de séquenve devrait etre différent des connexions
+précédentes. Si certaines données restaient collées dans une boucle de routage
+quelque part et se libèraient plus tard pour arriver pendant une nouvelle
+connexion du meme type (ie meme port/ip), cela pourrait réellement faire tout
+planter.
+
+
+        --[ Ports ]--
+
+
+        Pour garantir un accès simultanée au module TCP, TCP fournit une
+interface utilisateur appelée port. Les ports sont utilisés par le noyau
+pour identifier les processus réseau. Il y a des couches de transport strictes
+(il est d'ailleur dit que IP pourrait s'en occuper plus). Avec l'adresse IP,
+le port TCP fournit un point de chute pour les communications réseaux. En fait,
+à tout moment, *toutes* les connexions Internet peuvent etre décrites par 4
+chiffres : l'adresse IP source, le port source, l'adresse IP de destination et
+le port de destination. Les (logiciels) serveurs sont 'liées' aux ports
+'bien-connus' et donc peuvent etre localisé sur les ports standard sur 
+différents systèmes. Par exemple, le démon rlogin s'installe sur le port TCP
+513.
+ 
+
+                [SECTION II.  L'ATTAQUE]
+
+
+        ...The devil finds work for idle hands....
+
+
+        --[ Rapidement... ]--
+
+
+        L'IP-spoofing repose sur différentent étapes, qui sont rapidement
+décrites ici, puis expliquées en détails. D'abord, la victime est choisie.
+Puis, un type de confiance est découvert, authorisant certains hotes. L'hote
+à qui la victime fait confiance est déconnecté, et les numéros de séquences
+TCP de la victime sont analysées. L'identité de l'hote de confiance est usurpé,
+les numéros de séquence devinés, et une tentative de connexion est réalisé
+sur un service qui se fie seulement à l'adresse IP. Dans le cas d'un succès,
+l'attaquant exécute une simple commande pour laisser une backdoor.
+
+
+        --[ Choses utiles ]--
+
+
+        Il y a une séries de choses dont vous aurez besoins pour mettre en
+place cette attaque (NDT : j'ai pas commpris à quoi correspondait sa 
+numérotation) :
+
+                (1) Un cerveaux, un esprit, ou tout autre périphérique
+                                             de réflexion
+                (1) Une victime
+                (1) Un hote de confiance
+                (1) Une machine d'attaque (avec un accès root)
+                    (NDT : norm, ta unix box (Linux, FreeBSD ou tout autre
+                     grille-pain fournissant un accès raw sockets).
+                (1) Un logiciel d'IP-spoofing
+
+En général, l'attaque est faite à partir du compte root de la machine
+d'attaque vers le compte root de la victime. Si l'attaquant s'emmerde
+avec tous ces problèmes, il serait stupide de ne pas le faire pour avoir
+le root (Bien que l'accès root et nécessaire pour réussir cette attaque,
+elle n'en est pas nécessairement l'issue).
+
+
+        --[ IP-Spoofing is a 'Blind Attack' ]--
+           (NDT : L'IP-Spoofing est une 'attaque aveugle')
+
+        Beaucoup comprenne l'ip-spoofing, mais le facteur critique
+est que l'attaque est aveugle. L'attaquant est sur le point d'usurper
+l'identité d'un hote de confiance dans le but de déjoué la sécurité
+de la victime. On rend l'hote de confiance incapable de réalisée la
+méthode décrite plus loin. Tant que la victime le croie, elle entretient
+une conversation avec un parti de confiance. En réalité, l'attaquant est
+assis dans certains coins sombre de l'Internet, frabriquant ses paquets
+supposés venant de l'hote de confiance alors qu'il est bloqué dans une
+bataille de DoS (denial of service). Les datagrammes IP envoyé avec l'adresse
+IP modifié arrive à la cible (rappelé vous que l'IP est un protocol sans
+connexion -- chaque datagramme est envoyé sans information sur l'autre hote)
+mais le datagramme de la victime est renvoyé (destiné à l'hote de confiance)
+fini dans le 'bitbucket' (NDT : what is bitbucket ??). L'attaquant ne les
+voient jamais. Ils sont supposés aller à l'hote de confiance. Autant que la
+couche réseau le sachent, c'est de la d'où ils viennent, et c'est là où les
+réponsent doivent etre envoyés. Bien sur, une fois que les datagrammes sont
+routé à leur destination, et atteigne la couche TCP, il sont supprimés
+(l'hote de confiance ne peut répondre - voir plus loin). Donc l'attaquant
+doit etre malin et *savoir* ce qui a été envoyé, et quel réponse le serveur
+attend. L'attaquant ne peut pas voir ce que l'hote à envoyer, mais il peut
+*prédire* ce qu'y va etre envoyé ; ceci ajouté à la connaissance de ce qui
+va etre envoyé, authorise l'attaquant à travailler dans l'obscurité.
+
+
+        --[ Relation de confiance ]--
+
+
+        Après qu'une cible a été choisie, l'attaquant doit déterminer
+les relations de confiance (pour ici, nous supposerons que la cible
+*fait* confiance à quelqu'un. Si ce n'est pas le cas, l'attaque ne
+peut se terminer ici). Savoir quel sont les hotes de confiance peut
+ etre ou ne pas etre facile. Un 'showmount -e' permet de voir où les
+systèmes de fichiers sont exportés, et un rpcinfo peut également donnés
+des informations interessantes. Si suffisamment d'information sont récupérés
+sur la victime, cela ne devrait pas etre trop difficile. Si tout cela échoue,
+essayer les adresses IP voisine en brute force peut etre une option
+interessante.
+
+
+        --[ Déconnecter les hotes de confiance part un SYN flood ]--
+
+
+        Une fois que l'hote de confiance est trouvé, il doit etre
+déconnecter. Puisque l'attaquant cherche à lui voler son identité, il
+(NDT: l'auteur mets toujours she, à croire que l'attaquant doit etre
+une fille, il est plus probable que l'autheur (daemon9 ? infinity ?) en
+soit une) doit s'assurer que l'hote ne peut recevoir de traffic réseau
+et foutre le merdier dans l'attaque. Il y a plusieur moyens de le faire,
+celui dont je vais discuter est le TCP SYN flooding. (NDT : autres moyens :
+DDoS divers (cf mon article), DoS spécifique à l'OS de l'hote).
+        Une connexion TCP est initialisée par une requete au serveur avec
+le flag SYN dans l'header TCP. Normalement le serveur doit répondre par
+un SYN/ACK au client identifié par l'adresse source 32 bits du header IP.
+Le client enverra alors un ACK au serveur (comme montré dans la figure 1
+au-dessus) et le transfer de données peut commencer. Il y a une limite aux
+nombres de requete SYN TCP peut gérer for une socket donnée. Cette limite
+est apelée le backlog, et est la taille de la queue où sont stocké les
+connexions rentrantes (et donc incomplètes). Cette limite de queue s'applique
+aussi bien aux nombres de connexions incomplètes (le processus en 3 étapes
+n'est pas fini) qu'aux nombres de connexions complètes qui n'ont pas été
+sortit de la queue par l'application par le biais du signale système accept().
+Si ce backlog est atteint, TCP refuse tout nouveau paquet SYN jusqu'à
+ce que les connexions en attentes puissent etre gérées. A partir de là
+l'attaque à réussi.
+        L'attaquant envoie plusieurs requete SYN au port TCP qu'il veut
+désactiver. L'hote d'attaque doit aussi etre sur que l'adresse IP source
+est fausse, spoofé d'un autre hote actuellement désactivé (La victime 
+répondra à cette adresse. IP informera TCP que l'hote est injoignable,
+mais TCP considère ces erreurs comme temporaire, laisse IP les résoudre
+(rerouter les paquets, etc) et les ignore). L'adresse IP doit etre injoignable
+car l'attaquant ne veut pas recevoir les SYN/ACKs qui viendrait de la victime
+(il en résulterait un renvoie de RST au TCP de la victime, ce qui foutrait
+en l'air l'attaque). Le processus est le suivant :
+
+                fig(2)
+
+1       Z(x)    ---SYN--->      B
+
+        Z(x)    ---SYN--->      B
+
+        Z(x)    ---SYN--->      B
+
+        Z(x)    ---SYN--->      B
+
+        Z(x)    ---SYN--->      B
+
+                ...
+
+2       X    <---SYN/ACK---     B
+
+        X    <---SYN/ACK---     B
+
+                ...
+
+3       X      <---RST---       B
+
+
+En (1), l'attaquant envoie une multitude de requete SYN à la victime
+(rapelé vous que la victime est l'hote de confiance) pour remplir
+la queue jusqu'au backlog avec des connexions en attentes. (2) La cible
+répond par des SYN/ACKs à ce qu'il croit etre la source des SYNs.
+Pendant ce temps tout autre connexion à ce port sera ignoré.
+        Les implémentations TCP différentes ont des tailles de backlog
+différentes. BSD a en général un backlog de 5 (Linux en a un de 6).
+Il y a aussi des marges de 'grace' de 3/2. TCP acceptera backlog*3/2+1
+connexions. Cela autorise une connexion sur une socket meme si le
+backlog est de 0.
+
+        AuthNote: [pour un traitement plus en profondeur du TCP SYN
+flooding, allez voir mon papier définitif sur le sujet. Cela couvre
+le processus en détail, aussi bien en théorie qu'en pratique. Il y
+contient un code robuste, un analyseur statistique, et un long article.
+voir dans l'issue 49 de Phrack. -daemon9 6/96] 
+
+
+        --[ Analyse et prédiction des numéros de séquence ]--
+
+
+        A présent, l'attaquant a besoin de se faire une idée sur
+la situation du numéro de séquence TCP de la victime. L'attaquant se
+connecte à un port TCP de la cible (SMTP est un bon choix) juste avant
+de lancer une attaque et de completer le processus de connexion en trois
+phases. Le processus est exactement le meme qu'en fig (1), exepté le fait
+que l'attaquant va enregistrer la valeur de l'ISN envoyé par la victime.
+Souvent, ce processus est répété plusieurs fois et l'ISN final envoyé est
+sauvegardé. L'attaquant a besoin de ce faire une idée sur la gueule du
+RTT (round-trip time) entre la cible et sa machine. (Le processus peut
+etre répété plusieurs fois et la valeur moyenne du RTT calculé). Le RTT
+est nécessaire pour etre capable de prédire le prochain ISN. L'attaquant
+possède maintenant les bases (le dernier ISN envoyé) et sait de combien
+le numéro de séquence est incrémenté (128.000/seconde et 64.000 par connexion)
+et a maintenant une bonne idée sur le temps que met un datagramme IP pour
+traversé l'Internet jusqu'à la cible (environ, la moitié du RTT, car la
+plupart du temps les routes sont symétriques). Après que l'attaquant ait en
+sa possession ces informations, il peut immédiatement procéder à la
+phase suivante de l'attaque (si une autre connexion TCP arrive sur n'importe
+quel port de la cible avant que l'attaque ne soit faite, l'ISN prédit par
+l'attaquant sera différent de 64.000 par rapport à l'ISN réel).
+        Quand le segment spoofé a fait son chemin vers la cible,
+plusieur choses peuvent se passer :
+- Si le numéro de séquence est EXACTEMENT celui que TCP esperait
+qu'il soit, les données seront placé sur la place suivante disponible
+dans le buffer de réception.
+- Si le numéro de séquence est PLUS PETIT que la valeur voulue, les
+données seront considérés comme une retransmission et seront ignoré.
+- Si le numéro de séquence et PLUS GRAND que la valeur voulue mais
+quand meme dans les limites de la taille de fenetre, les données
+seront considérés comme des données à venir après, et gardés par TCP,
+attendant l'arrivée des données manquante. Si un segment arrive
+avec un numéro de séquence PLUS GRAND que la valeur voulue et
+qui n'est plus dans les limites de la taille de fenetre, le segment
+sera supprimé et TCP renverra un segment avec le numéro de séquence
+*voulu*.
+
+
+        --[ Tromper... ]--
+
+
+        A ce momment commence l'essentiel de l'attaque par derrière commence :
+
+                fig(3)
+
+1       Z(b)    ---SYN--->      A
+
+2       B     <---SYN/ACK---    A
+
+3       Z(b)    ---ACK--->      A
+
+4       Z(b)    ---PSH--->      A
+
+                [...]
+
+
+L'attaquant spoof son adresse IP avec celle de l'hote de confiance
+(qui doit etre encore sous les effets de l'attaque DoS) et envoie ces
+requete de connexion au port 513 de la victime (1) (NDT : ici, il s'agit
+du port rlogin, mais on peut facilement le faire sur un protocol différent
+comme NFS). En (2), la victime répond à la requete de connexion spoofée par
+un SYN/ACK, qui fera son chemin jusqu'à l'hote de confiance (qui s'il
+*pouvait* s'occuper des segments TCP entrant, considèrerait ce segment comme
+une erreur, en enverrait immédiatement un RST à la cible). Si tout ce passe
+comme prévu, le SYN/ACK sera ignoré par l'hote de confiance débordé. Après (1),
+l'attaquant doit attendre un peu pour laisser la cible le temps d'envoyer
+le SYN/ACK (l'attaquant ne peut pas voir ce segment). Puis, en (3), l'attaquant
+envoie un ACK à la cible avec le numéro de séquence prédit (plus un, car
+nous le notifions (ACK)). Si l'attaquant a bien prédit l'ISN, la victime
+acceptera l'ACK. La cible est alors compromise et le transfert de données peut
+commencer (4).
+        En général, après l'avoir compromis, l'attaquant inserera une backdoor
+sur le system ce qui autorisera une intrusion plus simple. (souvent
+c'est 'cat + + >> ~/.rhosts' qui est fait. C'est une bonne idée pour plusieurs
+raisons : c'est rapide, efficace, et non-interactif. Rappelez-vous que
+l'attaquant ne peut voir aucun traffic venant de la cible, donc toutes les
+réponse seront envoyé vers l'oubli).
+
+
+        --[ Pourquoi ça marche ? ]--
+
+
+        L'IP-Spoofing marche parce que les services basés sur des relations
+de confiance repose sur une identification par adresse réseau. Comme IP est
+facile à tromper, la modification des adresses n'est pas difficile. Le plus
+difficile dans l'attaque est la prédiction du numéro de séquence, car c'est
+ici qu'entre en jeu le travail de prédiction. Réduire les inconnues et
+la prédiction au minimum, et l'attaque aura de meilleur chance de réussir.
+Meme une machine qui gérerai toute les connexions TCP entrante avec le TCP
+wrappers de Wietse Venema serait encore vulnérable à l'attque. Les wrappers
+TCP se repose uniquement sur un nom d'hote ou une adresse IP pour
+l'authentification...
+
+
+                [SECTION III. MESURES PREVENTITIVES]
+
+
+        ...A stich in time, saves nine...
+
+
+        --[ Ne pas faire confiance ]--
+
+
+        Une solution facile pour prévenir cette attaque est de ne pas
+utiliser d'authentification par adresse. De désactiver toute les r* commandes,
+de retirer tout les fichiers .rhosts et de vider le fichier /etc/hosts.equiv.
+Cela forcera tout les utilisateurs à utiliser d'autre moyens d'accès
+(telnet, ssh, skey, etc).
+
+
+        --[ Filtrage des paquets ]--
+
+
+        Si votre site possède une connexion directe à l'Internet,
+vous pouvez utilisez les routeurs pour vous aidez. D'abord assurez-vous
+que seul les hotes du réseau interne peuvent participer à des relations
+de confiance (aucun hote du réseau ne doit faire confiance à une machine
+externe). Les routeurs filtrerons simplement *tout* le traffic venant de
+l'exterieur (L'Internet) qui est supposé venir de l'intérieur (réseau
+interne).
+
+
+        --[ Méthodes Cryptographiques ]--
+
+
+        Une méthode trivial pour empécher l'IP-spoofing est de requerir
+que tout le traffic du réseau soit encryptée ou authentifié. Bien que
+plusieurs solutions existe, cela prendra du temps avant que de tel mesure
+soit employé en standard defacto.
+
+
+        --[ Initial Sequence Number Randomizing ]--
+
+
+        Comme les numéros de séquence ne sont pas choisi aléatoirement
+(ou incrémenté aléatoirement), cette attaque fonctionne. Bellovin a décrit
+une correction pour TCP qui consiste en la séparation des espaces de numéro
+de séquence. Chaque connexion aura son propre espace de numéro de séquence.
+Le numéro de séquence sera encore incrémenté comme auparavant, mais il n'y
+aura plus de relation entre les numérotations des différent espaces.
+La suggestion repose sur la formule suivante :
+
+        ISN=M+F(localhost,localport,remotehost,remoteport)
+
+Où M est le timer de 4 microseconde et F un hachage cryptographique.
+F ne doit pas etre calculable de l'extérieur ou l'attaquant pourrait
+encore deviné les numéros de séquence. Bellovin suggère que F soit
+un hachage du l'identifiant de connexion et d'un vecteur secret 
+(un nombre au hasard, ou un nombre en relation avec l'hote combiné
+avec l'heure d'installation (NDT : ou de lancement ? il s'agit de la
+traduction de boot, mais il reste plus probable que ce soit l'heure
+de mise en service de la machine)).
+
+
+                [SECTION IV.  SOURCES]
+
+
+        -Livre:         TCP/IP Illustrated vols. I, II & III
+        -RFCs:          793, 1825, 1948
+        -People:        Richard W. Stevens, and the users of the
+                        Information Nexus for proofreading
+        -Sourcecode:    rbone, mendax, SYNflood
+
+
+Cet article a été rendu possible grace à l'aide de la Guild Corporation.
+
+-------[  EOF

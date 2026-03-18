@@ -1,0 +1,396 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  L'enregistrement et la résolution des noms NetBIOS  ]
+---------[ in RtC mag 5 ]
+----[  by SnEaKie <sneakie-rtc@fr.st>  ]
+
+
+-------[  Introduction
+
+    Je ferais l'effort cette fois-ci de structurer mon article de façon à 
+ce que ceux qui veulent sauter des parties le puisse aisément. 
+Je propose donc de faire un petit sommaire de l'article dès l'intro pour que
+tout le monde s'y retrouve.
+
+    A- NOM D'HOTES ET NOMS NETBIOS.
+
+    B- NOMMAGE NETBIOS.
+        a- Les différentes methodes de résolution des noms;
+        b- Les différents types de noeuds NetBios;
+        c- Comment fonctionne l'enregistrement des noms NetBios;
+        d- Ce qu'est WINS;
+
+    C- SYSTEME DE NOMS DE DOMAINE.
+        a- Intro;
+        b- Les résolveurs;
+
+Voilà ça sera tout et je suis pas sûr que ça tienne en un article,
+- celui là fait 37ko et il y a que le A et B a) et b)- sinon je 
+divise en deux voire trois...
+
+#Speed Parade : Don't turn in on, just like a Speed Parade!
+#The Alien :    Just what the hell has happened here!
+                The CIA has got a file on everything I've done!
+                They'll never take Me Alive!
+# Slash's Snakepit "AIN'T LIFE GRAND" 
+My own Motivation...
+
+
+-------[  A-NOM D'HOTES ET NOMS NETBIOS
+
+
+Il existe deux methodes pour résoudre un nom d'hôte Inetrnet en une adresseIP
+    La première, c d'enregistrer, sur chaque station du réseau, un fichier 
+(texte) HOSTS qui contiendra alors une table des noms des hôtes et de leur 
+adresse IP respective. 
+
+    La seconde, quant à elle est appuyée sur le système Domain Name System, 
+très connu DNS..., c en fait les mêmes données qu'un fichier HOSTS mais au 
+niveau global puisqu'il couvre tout l'Internet.Pour obtenir une adresse IP 
+d'un hôte, il suffit d'envoyer une requête à un serveur DNS. S'il ne la 
+connaît pas directement, il contacte d'autres serveurs DNS, jusqu'à ce que 
+l'un d'entre eux puisse lui répondre par un mess Request au client demandeur.
+
+Depuis quelques temps, les réseaux locaux ausi se mettent à utiliser la 
+résolution des noms, notamment les réseaux locaux UNIX/LINUX qui utilisent un
+système DNS, même si les réseaux ne sont pas connectés à l'Internet.
+Même dans le cas d'un réseau Windows NT/9x, où pourtant les ordinateurs ne
+sont repérés que par des noms, en effet chaque machine peut être à la fois
+client et serveur, car c un système de réseau poste à poste, on utilise la
+résolution des noms en adresses IP à cause de TCP/IP.
+Vous connaissez les SMB, Server Message Blocks qui font partie d'une des
+trois piles de protocoles, qui peuvent gérer le partage Imprimantes et
+Disques, ces types de Messages sont contenus dans des paquets de messages
+de sessions NetBT (NetBios TCP/IP).
+Les réseaux Windows utilisent justement le système de noms NetBios.
+Ces noms ne sont reconnus que sur des réseaux privés.
+
+
+
+-------[  B-NOMMAGE NETBIOS
+
+
+Lorsque vous installez Windows9x à la suite d'un plantage (je suis une 
+mauvaise langue...) ou bien pour la première fois, vous devez donner un nom 
+d'ordinateur, et c'est ce nom qui est le nom NetBIOS qui va servir à 
+identifier cet ordinateur sur le réseau. L'espace de noms NetBIOS nécessite
+un nom de 16 caractères qui ne peut pas commencer par un astérisque "*".
+A savoir, le réseau Windows n'utilise que 15 caractères pour le nom, le 16ème
+est réservé pour définir un identificateur de ressource. Si mon nom NetBIOS 
+est SneakiesMachine, ça fait 15 caractères, si j'accède au disque de Par4noID
+(bien protégé MDR) , alors vu que son disque est exporté (terme LINUX avec 
+Showmount, désolé...), en terme Windows son disque est partagé alors, le
+16ème caractère sera 00. Avant de pouvoir accéder à ces ressources (celles de
+Par4), il faut que mon ordinateur résolve le nom NetBIOS de Par4 en adresse
+IP. C'est seulement ensuite que je pourrai lui adresser une request SMB,
+qu'il est en droit de refuser d'ailleurs...
+
+
+a- Les différentes méthodes de résolution des noms
+
+Tous les différents processus de résolution sont basés sur une table de 
+référence des noms NetBIOS avec leurs adresses IP associées.
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Le fichier LMHOSTS  
+
+La manière la plus simple, c'est de créer une table de référence qui soit 
+placée sur le disque local afin de pouvoir y avoir accès rapidement. Chez 
+Windows, ce fichier porte le nom de LMHOSTS. 
+
+Un petit schéma (va faire plaisir à Androgyne, y en aura plein HIHIHI...)
+
+|----------------------------------------------|    
+|                       -------------          |  TCP/IP    ----------------
+|                       |Application|================3====> |    SERVEUR   |
+|                       -------------          |            ----------------
+|           Nom NetBIOS   | |    / \  Adresse  |
+|                         |1|    |2|    IP     |
+|                         \ /    | |           |
+|                       -------------          |
+|                       |  LMHOSTS  |          |
+|                       -------------          |
+|                                              |
+|                                              |
+|----------------------------------------------|
+                     CLIENT
+
+Quand un utilisateur veut accéder à une ressource partagée d'un ordinateur 
+distant, son ordinateur accède au fichier LMHOSTS et recherche le nom indiqué
+par l'utilisateur. Ce nom est associé à une adresse IP qui est fournie au 
+programme, et l'ordinateur peut lancer la communication avec l'ordinateur 
+distant.
+Le fichier LMHOSTS possède un avantage indéniable, c que son enregistrement 
+serait sur un disque dur local, ce qui implique un temps d'accès réduit au 
+minimum. Seul bémol, pour que son fonctionnement soit correcte, le réseau
+doit disposer d'un fichier LMHOSTS très proche de l'état actuel du réseau en
+cours d'utilisation, en effet, le fichier LMHOSTS s'il veut remplir
+pleinement son rôle doit être mis  à jour très régulièrement, ce qui
+sous-entend un trafic intense de données sur le réseau, on fait apparaître
+ici la principale limite au fichier LMHOSTS: l'étendue du réseau, il est très
+fastidieu de le faire opérer correctement sans risquer d'entraver le bon 
+fonctionnement du réseau si celui-ci est de grande anvergure.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+La Diffusion
+
+Ceci représente la seconde méthode de résolution des noms.
+Quand une machine A du réseau à besoin de communiquer avec une autre machine
+B précise du réseau, alors la machine A va émettre un message de diffusion,
+soit à toutes les autres machines, contenant le nom NetBIOS de celui qu'elle
+recherche et va attendre sa réponse.
+Quand la machine portant le nom NetBIOSréclamé est contactée, elle renvoie un
+paquet monodestinataire à l'émettur en indiquant son adresse IP.
+Il est alors possible de lancer une connexion entre l'appelant et le
+récepteur.
+
+Sympa, mais on voit tout de suite que si on snif pas mal, il y a moyen de se 
+faire passer pour l'ordinateur qui doit recevoir, en analysant la structure
+du paquet émis pour récupérer le nom NetBIOS attendu, ensuite on lui donne
+notre adresse IP (après être passé par plusieurs PROXY, histoire de brouiller
+les pistes), et voilà, nous voilà sur le réseau... Petit bémol, si le prog
+(qui doit être un démon!) veut repérer le transit des paquets et veut pouvoir
+les intercepter, il faut qu'il soit sur le réseau local, sinon èa voudrait
+dire qu'on est déjà sur le réseau...
+Re-schéma:
+                                                  TCP/IP: communication          
+                                                 ---------3---------
+                                                 |                 |
+                 Nom    |------------------------|   Nom           |
+ ------------   NetBIOS |                        | NetBIOS    -----------
+ | MachineA | <=====1===|        APPLICATION     |=====1====> |Machine B|
+ ------------           |                        |<====2===== -----------
+                        |------------------------| Adresse IP
+                              |               |
+                              |               |
+              --------1--------               --------1--------
+              |  Nom NetBIOS                     Nom NetBIOS  |
+          -----------                                      -----------
+          |Machine C|                                      |Machine D|
+          -----------                                      -----------
+
+Cette méthode de diffusion construit dynamiquement une tablde référence sur
+la machine émettrice. Cette table est stockée dans un buffer mémoire cache de
+la machine, ainsi, à chaque coupure, le cache est détruit. De ce fait, il
+n'est pas nécessaire de maintenir une table de référence. Des lors qu'une
+nouvelle résolution des noms est lancée, les modifications sur le réseau sont
+enregistrées dans le cache. Le majeur problème de ce système est que lui 
+aussi génère un trafic intense, chaque ordinateur reçoit un paquet dont il
+n'a peut-être rien à faire, deplus, ce paquet doit passer toutes les couches
+de la pile de protocoles pour atteindre l'interface NetBIOS au côté des API
+et autres, au dessus de l'interface TDI... Toutes les couches sont donc
+monopolisées pour rien dans ce cas, tout ça pour que le message soit détruit
+s'il ne correspond à la machine désirée. Une autre limite est le fait que ce
+système ne soit opérant que dans le cas d'un réseau interconnecté en local, 
+puisque si le réseau est en deux parties et qu'il utilise une passerelle pour
+relier les deux parcelles du réseau, ces paquets soit se limiteront à la
+portion du réseau local concerné, soit irons sur une autre parcelle, si le
+routeur est cnfiguré pour, mais ceci aggravera le phénomène du flux trop
+important. Ce système est donc recommandé pour les petits réseaux, encore
+une fois.
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Serveur de noms NetBIOS (NBNS)
+
+La troisième méthode, concerne une application nommée NetBIOS Name Server 
+(NBNS). Windows NT Server comprend un NBNS nommé (WINS) Windows Internet Name
+Service. Le but de ce serveur de noms, est de créer un log de tous les noms
+et adresses IP des ordinateurs du réseau, puis il s'occupe de mettre à jour
+ce log dynamiquement. Pour pouvoir acceder à un serveur WINS, une station
+cliente doit être configurée avec les adresses IP de serveurs WINS primaire
+et secondaire situés sur le réseau. Dès que la machine est lancée, elle
+transmet un message monodestinataire au serveur WINS, avec son nom NetBIOS et
+son adresse IP, qui l'enregistre dans une base de données. Cette base de
+données peut être dupliquée, (vivement conseillé!) pour que soit mieux
+réparti le travail de routage entre plusieurs serveurs WINS et pour qu'en cas
+de panneun serveur puisse prendre la relève temporairement.
+
+Quand une machine veut résoudre un nom NetBIOS en adresse IP, elle envoie une
+requête au serveur WINS, qui cherche dans ses logs pour trouver qui est le
+nom NetBIOS que le client demande. Ensuite, le serveur WINS renvoie un
+message contenant l'adresse IP du nom NetBIOS demandé.Comme la méthode de
+diffusion, WINS ne demande pas de mise à jour manuelle. Le gros avantage de 
+cette méthode est qu'elle s'appuie sur des transmissions monodestinataires; 
+en plus de èa, cette méthode est capable parfaitement de gérer plusieurs 
+portions de réseau.
+Schéma:
+
+CLIENT |--------------------------------|   
+       |                                |
+       |                                |
+       |       |-------------|          |         
+       |       | Application |=======3=========> SERVEUR
+       |       |-------------|          |         
+       |--------------------------------|
+              ||            /\ 
+ Nom NetBIOS 1||            ||2 Adresse IP
+              \/            || 
+            |------------------|
+            |   Serveur WINS   |
+            |------------------|
+
+Le problème de ce type d'installation, c que chaque client doit renseigner
+les adresses de serveurs WINS qu'il utilise. Il est toutefois possible de
+résoudre ce problème en faisant agir et cohabiter un serveur DHCP et un
+serveur WINS. Car lorsque DHCP configure un client, il indique l'adresse des
+serveurs WINS et par la suite enregistre les adresses IP de tous les clients
+rattachés à la base de donnée des serveurs WINS.
+
+b- Les différents types de noeuds NetBIOS
+
+Dans la mesure où il existe plusieurs méthodes de résolution des noms sous 
+WinNT, il existe une façon de sélectionner la méthode à utiliser.
+Il est alors possible, et même recommandé de faire cohabiter toutes ces
+méthodes afin d'avoir un adressage optimal au sein du réseau.
+Le standard NetBT définit plusieurs types de noeuds indiquant les différentes
+combinaisons et l'ordre dans lequel doivent être effectuées ces méthodes.
+On remarque un avantage majeur: très versatile, la cohabitation de tous ces
+systèmes permet d'éviter que l'adressage échoue de la faute d'une panne d'une
+de ces méthodes.
+De ce fait, si panne il y a, toutes les méthodes sont essayées jusqu'à ce
+qu'enfin le destinataire soit contacté.
+Voici, les différents types de noeuds qui sont définis dans le standard
+NetBT:
+
++ BROADCAST NONE (b-node)==> Un système b-node utilise la méthode de 
+                             diffusion pour l'enregistrement et la
+                             résolution des noms.
+
++ POINT-TO-POINT MODE (p-node)==> Un système p-node utilise les
+                                  transmissions monodestinataires pour
+                                  les serveurs de noms NetBIOS (comme WINS)
+                                  pour l'enregistrement et la résolution 
+                                  des noms.
+
++ MIXED MODE NODE (m-node)==> Un système m-node utilise la méthode de
+                              diffusion pour l'enregistrement des noms.
+                              Pour la résolution des noms, m-node
+                              utilise en premier la diffusion, si il ne
+                              reèoit aucune réponse, il utilise les
+                              transmissions monodestinataires vers les
+                              serveurs de noms NetBIOS.
+
+Ce dernier mode est spécialement préconisé dans les gros réseaux composés de
+plusieurs segments, où il est nécessaire de communiquer d'un segment à
+l'autre tout en restant le plus souvent dans une boucle locale.
+Il est conseillé (parce qu'intéressant!) d'étudier 3 autres types de noeuds 
+définis dans WinNT et fourni avec l'OS:
+
++ B-NODE MODIFIED ==> Un système WinNT, qui n'est pas client WINS, peut être 
+                      configuré comme un b-node qui diffère légerement du 
+                      standard NetBT. Si le client ne peut résoudre un nom
+                      par des requêtes de diffusion, il consulte le fichier
+                      LMHOSTS sur son disque local.
+
++ NODE HYBRID (h-node)==> Un h-node utilise des transmissions
+                          monodestinataire vers un serveur WINS pour
+                          l'enregistrement et la résolution des noms. Si le
+                          système ne peut entrer en contact avec le serveur
+                          WINS (panne ou surchage du flux en local), il passe
+                          à la résolution des noms en broadcast, seulement
+                          jusqu'à ce qu'un serveur WINS soit disponible où il
+                          repasse alors en unicast.
+
++ MICROSOFT-ENHANCED ==> WinNT permet à des utilisateurs ou admin
+                         (chevronés MDR), de se permettre le luxe d'ajouter
+                         des posibilités aux types de noeuds déjà existants,
+                         comme par exemple avec la résolution des noms par
+                         LMHOSTS et des appels standard Windows Sockets à
+                         un serveur DNS et un fichier HOSTS.
+
+Par défaut, les WinNT distibués sont en h-node, ils sont en effet destinés à
+utiliser les serveurs WINS. Il existe deux options supplémentaires pour 
+configurer un client TCP/IP (Microcro), elles vous permettent d'activer DNS 
+pour la résolution des noms Windows et LMHOSTS. L'option DNS fournit les noms
+référencés dans le fichier HOSTS, sur le disque local, et les appels aux 
+serveurs DNS indiqués dans la configuration TCP/IP du client. Dans ce cas de 
+figure, si les deux premières méthodes échouent, l'option LMHOSTS permet le 
+lancement d'une recherche de noms NetBIOS dans le fichier LMHOSTS situé sur
+le disque local.
+Sur un système h-node - NODE HYBRID - configuré de telle manière que toutes 
+les options WinNT sont activées, la résolution des noms se passe comme suit:
+
+
+            |--------------------------------------|
+            |           MACHINE LOCALE A           |
+            |--------------------------------------|
+                              || Nom NetBIOS
+                              \/
+            |--------------------------------------|
+            |   (1)          DNS                   |
+            |        Si nom >15 caractères         |==|
+            |--------------------------------------|  |
+                              ||                      |
+                              \/                      |
+            |--------------------------------------|  |
+            |   (2)         Cache                  |  |
+            |           des noms NetBIOS           |==|
+            |--------------------------------------|  |
+                              ||                      |
+                              \/                      |
+            |--------------------------------------|  |
+            |   (3)     Mono-destinataires         |  |
+            |                WINS                  |==|
+            |--------------------------------------|  |
+                              ||                      |
+                              \/                      |=====> NOM RESOLU
+            |--------------------------------------|  |
+            |   (4)        Diffusion               |  |
+            |                                      |==|
+            |--------------------------------------|  |
+                              ||                      |
+                              \/                      |
+            |--------------------------------------|  |
+            |   (5)        LMHOSTS                 |  |
+            |                                      |==|
+            |--------------------------------------|  |
+                              ||                      |
+                              \/                      |
+            |--------------------------------------|  |
+            |   (6)          DNS                   |  |
+            |                                      |==| 
+            |--------------------------------------|
+                              ||
+                              \/
+                 Echec de la résolution du nom
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Détail des étapes:
+
+(1)> Si le nom comporte plus de 15 caractères, c'est un nom DNS. Le système 
+client lance un appel DNS avec la première méthode de résolution de noms. 
+
+(2)> Si le nom comporte 15 caractères ou moins ou si la résolution DNS
+échoue, le système client recherche le nom dans le cache NetBIOS.
+
+(3)> Si le cache ne contient pas le nom recherché, le client envoie une 
+requête de recherche de noms. Cette requête est envoyée en transmission mono-
+destinataire au serveur WINS primaire indiqué dans la config TCP/IP du
+client. Si, à son tour, le serveur WINS primaire ne répond, le client envoie
+la requête au serveur WINS secondaire.
+
+(4)> Si les deux serveurs WINS ne répondent toujours pas, le client envoie
+une requête par diffusion.
+
+(5)> Si le client ne reèoit toujours aucune réponse aux requêtes de
+diffusion, il recherche le nom dans le fichier LMHOSTS du disque local.
+
+(6)> Si le nom ne se trouve pas dans le fichier LMHOSTS (et si le nom possède
+15 caractères ou moins), le client transmet les requêtes DNS aux serveurs 
+indiqués dans la config TCP/IP du client.
+
+(7)> Si le DNS ne peut être contacté ou échoue dans la résolution du nom, le 
+processus de résolution a échoué et un message d'erreur est envoyé au client.
+
+Bon voilà pour cette fois, un article PartII (ps bidon cette fois!
+cfMag4...), est déjà programmé, si vous voulez savoir sur quoi,
+cf Sommaire de cet article...
+
+Conclusion:
+#They'll never take me Alive!
+RDV pour le part II...
+
+-------[  EOF

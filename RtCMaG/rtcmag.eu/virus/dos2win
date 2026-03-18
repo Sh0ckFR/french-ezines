@@ -1,0 +1,56 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  Adapter un virus DOS à Windows  ]
+---------[ in RtC mag 1 ]
+----[  by Androgyne <androgyne-rtc@fr.st>  ]
+
+
+
+-------[  Introduction
+
+    Cet article est tiré en partie du RtC mag 1, j'ai rajouté quelques paragraphes pour que ça ressemble à un vrai article...
+
+
+-------[  Méthode
+
+    Le mode DOS sous Windows n'est qu'une émulation de feu DOS. On ne peut dès lors quasiment rien faire en tant que virus (notamment installer un virus résidant). En fait, le seul moyen d'accéder à l'ensemble de la mémoire en mode DOS est de le faire avant le chargement de Windows, c'est à dire au moment où autoexec.bat s'éxecute ou alors au boot mais c'est une autre histoire :)
+
+    De là, plusieurs méthodes se dégagent :
+
+ * Rajouter directement une ligne dans l'autoexec.bat... c'est dangereux mais faisable. On ne va pas le faire ici, je le traite dans un autre article (voir Outro).
+
+ * Infecter un programme exécuté dans l'autoexec.bat... Et là, c'est plus intelligent : rien n'a changé aux yeux du pauvre utilisateur. Il suffit de rajouter dans le virus une routine spécifique qui infecte un de ces programmes comme par exemple keyb.com...
+
+--- INFECT_KEYB ---------------------------------------------------------------
+
+INFECT_KEYB:
+	mov dx,offset keyb_path
+	call infect_com
+	ret
+
+keyb_path db 'c:\windows\command\keyb.com$'
+
+--- INFECT_KEYB ---------------------------------------------------------------
+
+    Attention, il y a une chose à laquelle il faut faire attention : les faux .com ! Et oui, ça existe, ce sont des .exe déguisé en .com et le plus célèbre d'entre eux est command.com ! Comment les reconnaît-on alors ? Rien de plus facile, à l'oeil, s'il font plus de 64Ko, ce sont des .exe, les com sont limités à 64Ko (taille d'un segment). Ensuite, dans le code, il commence par les lettres magiques ZM ou MZ, comme les .exe donc la routine pour scanner les méchants faux com... En plus, cette routine permet de rechercher en même temps ZM et MZ et elle est anti-heuristique (Hi Billy!)
+
+--- IS_IT_EXE -----------------------------------------------------------------
+
+IS_IT_EXE:
+	mov al,byte ptr [header]
+	add al,byte ptr [header+1]
+	cmp al,"M"+"Z"
+	ret
+
+--- IS_IT_EXE -----------------------------------------------------------------
+
+    Mais il reste un problème de taille. On ne peut pas devenir résidant (au sens viral du terme, c'est à dire en détournant l'int 21h) à partir de l'autoexec.bat... Donc, à quoi ça sert ? Ben, là, c'est à chacun d'y voir son intérêt ; pour les virus, on est très limité, mais pour d'autres types de programme, il en va autrement... ;)
+
+    Voilà, c'est tout !
+
+
+-------[  Outro
+
+    Concernant les attaques de l'autoexec.bat, allez voir le code de No-Boot dans les bombes.
+
+-------[  EOF

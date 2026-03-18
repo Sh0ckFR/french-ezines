@@ -1,0 +1,124 @@
+La cryptographie - Le cryptage RSA
+---------------------------------- by S/ash (sl4sh@ifrance.com)
+
+RSA est un systŠme de cryptage relativement s–r par son systŠme de clef
+asym‚trique : il faut une clef pour crypter et une autre pour d‚crypter.
+Bon ben, tout d'abord, on va faire un peu de math...
+On commence par prendre 2 nombres premiers p et q (si possible trŠs grands).
+On note n=p*q. Et on prend e de tel sorte qu'il soit premier avec (p-1)*(q-1).
+e admet ainsi un inverse dans l'anneau Z/(p-1)(q-1)Z ; c'est-…-dire qu'il 
+existe d tel que e*d mod (p-1)(q-1) = 1. On a ainsi nos 2 clefs : (e,n) et 
+(d,n). On a alors X^(ed) mod n = X. On d‚truit maintenant p et q pour que e 
+ou d ne puisse ˆtre retrouv‚.
+Si on note M le message … crypter alors le message crypter sera : 
+C = X^e mod n et on retrouvera M par : M = C^d mod n.
+
+Concrˆtement, ce cryptage est trŠs efficace d– … la quasi-impossibilit‚ de
+retrouver d … partir de (e,n) si p et q sont choisis trŠs grand (env 512 
+bits).
+
+Let's go cracking...
+Les sc‚narios d'attaques du RSA :
+* Le brute force cracking : on essaie toutes les combinaisons possible pour
+trouver p et q (on essai de factoriser le nombre n) : bon courage. Allez voir
+sur le site de l'INRIA, ils font de la recherche sur la factorisation de grand
+nombre.
+* D'autres sc‚narios d'attaque du RSA sont connus mais font appelle … ce que
+le destinataire du message d‚crypte une version modifi‚ de celui-ci. Il s'agit
+ensuite de r‚cup‚rer le message d‚crypt‚ (un peu dur). Ces d‚cryptages font
+appelle … des notions d'arithm‚tiques avanc‚e donc si quelqu'un est 
+interress‚, qu'il m'e-mail.
+
+Si vous trouvez une m‚thodes s–r de d‚crypter un message C crypt‚ en RSA rien
+que avec e et n si ceux-ci sont grands alors vous ˆtes un homme dangereux et 
+les services secret de la plupart des ‚tats voudront vous avoir avec eux...
+
+Tiens, un petit message … d‚crypter (… l'aide d'un ordinateur cela ce fait en 
+15 minutes par un langage interpr‚t‚). e = 7, n = 937169. Les messages 
+original est cod‚ par l'ordre alphab‚tique (a=01, b=02... et espace=00) et le
+message est regroup‚ par groupe de 6 chiffre (c'est-…-dire 3 caractŠre par 
+nombre). Le message crypt‚ est : 917063 414124 019270 093776 210133 872294
+137460 882399 263351 001661 117940. (me contacter pour la r‚ponse).
+
+A remarquer que ce proc‚der de cryptage est utilis‚ dans PGP.
+
+Et la pratique dans tous ‡a ?
+Il faut d'abord d‚terminer les clefs RSA (comme avec PGP).
+ * On g‚nŠre 2 nombres premiers p et q le plus al‚atoirement possibles.
+ * Maintenant, on a n=pq et ont veut prendre e un inversible de Z/(p-1)(q-1)Z.
+   Donc on cherche un nombre e premier avec (p-1)(q-1). Bon, ben on va mettre
+   en application l'arithm‚tique classique. On sait qu'un nombre e est premier
+   avec un nombre m=(p-1)(q-1) si et seulement si aucun des termes de la
+   d‚composition en nombre premier de e ne divise m. Concretement, pour 
+   g‚n‚rer e, on prend une s‚rie de nombre premier (tir‚ tout droit des 
+   sources de PGP), et on les tirent au hasard, pour chaque nombre tir‚ on 
+   v‚rifie qu'il ne divise pas m. On prend finalement, le produit de ces 
+   nombres de fa‡on … ce que e ne soit ni trop grand ni trop petit (dans les
+   environ de racine n)
+ * Bon ben maintenant, il nous faut g‚n‚rer d (l'inverse de e). On a 
+   (ed mod m) = 1. Donc il existe k appartenant … Z tel que ed + km = 1.
+   On d‚finit 3 suites de nombres d(i), k(i) et g(i). On veut que, pour tout i
+   appartenant … N, d(i)*e + k(i)*m = g(i). On sait que si on prend g(0) = m,
+   d(0) = 0, k(0) = 1 et g(1) = e, d(1) = 1, k(1) = 0, alors la condition est
+   v‚rifi‚ pour i=0 et i=1. On prend, pour tout i!=0, 
+   g(i+1) = g(i-1) mod g(i). Par l'algorithme D'Euclide, il existe i tel que 
+   g(i)=0. De plus, si on prend i0 le plus petit possible tel que g(i0)=0,
+   alors g(i0-1) = pgcd(g(0), g(1)). Or pgcd(g(0), g(1)) = pgcd(e,m) = 1 car 
+   e et m sont premiers entre eux. Donc, en prenant g(i) de cet fa‡on, on va
+   arriver … un instant o— d(i0-1)*e + k(i0-1)*m = g(i0-1) = pgcd(e,m) = 1. 
+   Donc (d(i0-1)*e) mod m = 1, on a ainsi un inverse de e (d(i0-1)).
+   Bon, ben maintenant, il faut d‚terminer d(i) et k(i). On pose, pour tout
+   i appartenant … N\{0}, y(i) = g(i-1)/g(i) (division entiŠre ici).
+   On a ainsi, pour tout i!=0, g(i+1) + y(i)*g(i) = g(i-1). On traduit cette
+   ‚galit‚ avec celle voulue et on obtient : e * ( d(i+1) + y(i) * d(i) ) +
+   m * ( k(i+1) + y(i) * k(i) ) = e*d(i-1) + m*k(i-1). Ainsi, il nous suffit
+   de prendre  d(i) tel que : d(i+1) + y(i) * d(i) = d(i-1) et de mˆme pour
+   k(i). On peut maintenant calculer d(i0-1).
+Ainsi, on a trouv‚ e, d et n, on peut d‚truire p, q et m.
+puis on travaille en base n : ils nous faut donc cr‚er nos propres fonctions
+de multiplications et d'additions.
+A remarquer que l'exponentiel (C^e) risque d'ˆtre trŠs lent si on prend l'algo
+naif (de l'ordre d'un brute force cracking de la clef). Heureusement que 
+l'algo d'exponentiation rapide nous permet de le diminuer, on passe ainsi
+d'un algo d'ordre e … un algo d'ordre log2(e) (soit d'ordre du nombre de bit
+de e). Cet algo est bas‚ sur le fait que x^2m = (x^2)^m.
+
+La g‚n‚ration de nombres premiers
+---------------------------------
+Je n'en ai pas parl‚ plus t“t car c'est un problŠme plus compliqu‚.
+Tout d'abord quand on a trouv‚ un nombre, il faut v‚rifier qu'il est premier.
+Pour cela, on ne vas pas s'amuser … tester chaque diviseur possibles (merci
+le boulot quand le nombre fait 512 bits) mais on va utilis‚ le test
+probabiliste de Miller-Rabin. Le petit th‚orŠme de Fermat nous donne que si p
+est premier alors, pour tout a appartenant … Z, a^(p-1) mod p = 1 (kewl !!!).
+
+Bon ce test d‚compose p-1 = m*(2^b) o— b est le plus grand possible.
+On prend a en random.
+On calcul z = (a^m) mod p. Si z = 1 ou z = p-1 (-1) alors p a pass‚ le test.
+On calcul z = z^2 mod p,  b-1 fois. A chaque fois si z=1 alors p n'est pas
+premier. Si z = (p-1) alors p a passer le test.
+Sinon Il n'a pas passer le test.
+
+ConcrŠtement, ce test n'est pas s–r … 100% : on est pas s–r … 100% que p soit 
+premier … la sortie du test. Cepandant, si on le r‚pŠte environ 5-6 fois, la
+proba que p ne soit pas premier est trŠs faible.
+
+La g‚n‚rations de nombre premier, se fait pratiquement … tous les coups en
+testant les nombres trouv‚s avec cet algorithme. Pour ma part, j'ai choisi 
+un algorithme lent de g‚n‚ration de nombre premier mais qui a l'avantage 
+d'ˆtre facile et efficace : On g‚n‚re un nombre al‚atoire assez haut, puis 
+on test, de 2 en 2, si le nombre est premier.
+Il existe ‚videmment d'autre g‚n‚rateur mais ils ont le problŠme que cr‚er
+des nombres factorisables plus facilement avec une m‚thode sp‚cifique (faut
+pas r‚ver quand mˆme le record … ce niveau est pour les nombres autour de 155
+chiffres en utilisant plusieurs supercalculateurs en parallŠle (actuellement
+les clef sont choisie autour de 1024 bits ce qui est 2 fois plus de chiffre
+soit 10^155 fois plus de temps).
+Je suis bien sur preneur de tous g‚n‚rateurs de nombre premiers rapides et
+efficaces.
+
+Bon voil… c'est fini.
+Puis, si vous voulez le code d'un crypteur RSA : y'a les sources de PGP et 
+j'ai mis les sources d'un crypteur RSA dans la RtC TecH.
+<--                          File by S/ash                                 -->
+[EOF]

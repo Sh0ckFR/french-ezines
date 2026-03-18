@@ -1,0 +1,179 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  Projet K-os, une trilogie qui s'arrête ?  ]
+---------[ in RtC mag 2 & 4 ]
+----[  by Androgyne <androgyne-rtc@fr.st>  ]
+
+
+-------[  Introduction
+
+
+    Le projet K-os est né en même temps que la RtC. Au départ, il consistait à créer une série de virus mais après 3 virus, la série s'arrête... Explications : Les virus du Projet K-os sont des virus DOS, or maintenant, les virus DOS ne servent plus à rien sinon à apprendre.
+    Je tenais donc à clore cette série (provisoirement ?) sur cet article qui reprend les 3 virus du Projet K-os et les explique largement...
+
+
+-------[  Ce dont vous avez besoin
+
+
+    Pour pouvoir compiler un virus, vous aurez besoin de TASM/TLINK (fourni ?). Ensuite, vous pouvez utiliser un batch pour automatiser les opérations. En voilà un exemple, il s'utilise en tapant "comp16 nomdufichier" sans mettre l'extension .asm :
+
+--- COMP16.BAT ----------------------------------------------------------------
+
+echo off
+tasm %1.asm > %1.lst
+tlink /t %1 >> %1.lst
+del %1.obj
+del %1.map
+notepad %1.lst
+
+--- COMP16.BAT ----------------------------------------------------------------
+
+    Sinon, pour pouvoir comprendre les virus, vous aurez besoin, en plus d'un cerveau, de la liste des fonctions de l'interruption 21h (cf fichier int21h). Et enfin, toutes les sources des virus sont disponibles dans /src.
+
+
+-------[  Les tests
+
+
+    Vous allez pouvoir tester ces virus sans _aucun_ danger, il suffit de savoir ce qu'on fait... En fait, les différentes version de K-os ne recherchent leurs victimes que dans le répertoire courant, on peut donc créer un programme de test qui servira de témoin. Voilà un code simple qui pourra vous aider.
+
+--- TEST.ASM ------------------------------------------------------------------
+
+.model tiny
+.code
+
+        ORG 100h
+
+Start:
+        mov ah,09h
+        mov dx,offset chaine
+        int 21h
+
+        mov ax,4C00h
+        int 21h
+
+chaine db 'OK! Virus is operationnal!$'
+
+end start
+
+--- TEST.ASM ------------------------------------------------------------------
+
+    Vous pouvez également "automatiser" l'infection en créant un batch. Celui qui suit crée un répertoire /test, y recopie 5 fois le programme test.com, appelle le virus dessus et fait 5 autres copies de test.com. Si tout se passe bien, les 5 premiers devrait avoir grossi. Et si vous cliquez sur l'un d'eux, les 5 derniers grossiront également...
+
+--- TEST.BAT ------------------------------------------------------------------
+
+md test
+cd test
+copy ..\test.com 01.com
+copy ..\test.com 02.com
+copy ..\test.com 03.com
+copy ..\test.com 04.com
+copy ..\test.com 05.com
+..\k-os
+copy ..\test.com 06.com
+copy ..\test.com 07.com
+copy ..\test.com 08.com
+copy ..\test.com 09.com
+copy ..\test.com 10.com
+
+--- TEST.BAT ------------------------------------------------------------------
+
+    Voilà pour la partie test, maintenant, on passe aux virus...
+
+
+-------[  Trivial K-os
+
+
+    Trivial K-os est le virus le plus simple que l'on puisse faire, c'est un infecteur de com. C'est le type de virus que tout auteur de virus écrit quand il commence. Je vais tenter de vous en expliquer brièvement le principe en vous donnant l'algorithme. La source du virus se trouve avec le mag.
+
+    1. changer l'adresse de la DTA
+    2. réparer l'hôte en replaçant les 3 octets du début.
+    3. rechercher un fichier, si aucun, allez à 9.
+    4. ouvrir le fichier
+    5. vérifier s'il est déjà infecté, si déjà infecté, allez à 7.
+    6. infecter le fichier
+    7. fermer le fichier
+    8. rechercher d'autres fichier; si trouvé, allez à 4.
+    9. exécuter l'hôte
+
+    Trivial K-os est un virus à action directe, c'est à dire qu'il recherche directement ses victimes (dans le répertoire courant ici) à l'aide des fonctions Find First (4Eh) et Find Next (4Fh) de l'int 21h. Pour infecter les fichiers, il utilise une technique classique : il sauvegarde les premiers octets de la victime, se colle à la fin et place un jmp au début de la victime pointant sur le début du virus.
+    La source de ce virus est commentée ligne à ligne, toutes les explications y sont données. Mais si vous ne comprenez pas tout, écrivez moi, je vous expliquerai.
+
+
+-------[  Polymorphic K-os
+
+
+    Polymorphic K-os est un virus polymorphe. Le temps est venu de vous expliquer ce que sont les virus polymorphes et ce qu'est un moteur de polymorphisme.
+
+
+ {Necessité et principe du polymorphisme}
+
+    Le polymorphisme est une technique anti antivirus. Un petit retour en arrière s'impose : en 1992, tous les antivirus fonctionnaient selon le principe du scanner (aujourd'hui, beaucoup utilisent encore cette technique), c'est à dire qu'ils recherchaient dans les codes une chaîne caractéristique du virus. Jusqu'à ce qu'un Bulgare du nom de Dark Avenger invente le premier moteur de polymorphisme. Les développeurs d'antivirus ont cru un instant faire faillite car ils n'arrivaient pas à trouver une chaîne caractéristique du virus vu qu'il changeait de forme à chaque réplication... Comment ? C'est tout l'intérêt du polymorphisme.
+
+
+ {Le chiffrement}
+
+    Car en fait, un virus polymorphe est un virus crypté. L'algorithme de chiffrement est souvent très simple (XOR) pour deux raisons : ça prend moins de place et la routine de chiffrement est plus simple. Ensuite, c'est simple, avant de recopier le virus dans le nouvel hôte, on le chiffre quelque part en mémoire, on copie la routine de déchiffrement adéquate (c'est à dire avec la bonne clé) puis le virus chiffré et voilà, le tour est joué. Seulement, on ne résoud pas le problème du scanner... En effet, il suffit d'avoir un morceau de chaine de la routine de décryptage et on peut contrer le virus à l'aide d'un simple scan. C'est alors qu'est arrivé LA solution.
+    Le chiffrement n'est pas la partie essentielle du polymorphisme, on peut très bien concevoir une routine de chiffrement triviale qui mettra en défaut bon nombre d'antivirus. Mais cette partie ne doit pas être négligée.
+
+
+ {Le générateur de code}
+
+    En fait, l'idée essentielle du polymorphisme est de générer une routine de déchiffrement différente à chaque fois. Comment ? Une routine de déchiffrement est constituée généralement de quelques lignes de codes, le but est de rajouter aléatoirement entre ces lignes de codes du code qui ne fait rien, c'est à dire du code qui n'a aucune incidence sur le fonctionnement de la routine. Exemple :
+
+    xor ax,dx
+
+fera exactement la même chose que :
+
+    nop
+    mov cx,cx
+    xor ax,dx
+    or ax,0
+
+    Voilà en gros le principe.
+
+    Maintenant, techniquement, on construit un générateur de code aléatoire, c'est à dire une routine capable de générer du code fonctionnel mais qui n'a aucune incidence sur le générateur. On peut générer toute sorte d'instruction, du "nop" au "mov" en passant par des "or" et des "and"... Les meilleurs moteurs sont même capables de générer des "jmp" ou des appels interruption !
+    Le générateur de code est le noyau du moteur, plus on génère d'instructions différentes, meilleur est le moteur, et plus il est important en taille. DAME (Dark Angel Multiple Encryptor) par exemple fait environ 1500 lignes de codes et 2Ko une fois compilé... La prouesse technique est sans nul doute spectaculaire mais je doute qu'un tel moteur soit gérable dans un virus de quelques centaines d'octets.
+
+
+ {Androgyne's polymorphism engine}
+
+    Mon moteur ne génère qu'un petit nombre d'instructions mais je pense que cela est suffisant pour comprendre le fonctionnement d'un moteur de polymorphisme. Voilà donc la liste des instructions que mon moteur génère (si une instruction contient deux registre, ce sont les mêmes, ce qui implique que le code n'a aucune incidence sur ce registre) :
+    nop
+    push reg / pop reg
+    mov reg,reg
+    xchg reg,reg
+    or reg,reg
+    and reg,reg
+    or reg,0000h
+    and reg,0FFFFh
+    cmp reg,*
+
+    Le code du moteur est fourni avec le mag, il est très peu commenté mais je ne pense pas qu'il soit incompréhensible. Si il y a des passges peu clair, dites moi lesquels, et je rajouterai les commentaires adéquats. Cependant, je pense que si vous avez compris le principe du polymorphisme, il n'y aura pas de problème de compréhension.
+
+
+ {Bugs}
+
+    Rien n'est parfait, mon moteur contient un bug difficile à trouver de sorte que, inclus dans un virus, ça ne marche pas. En revanche, le générateur de code fonctionne correctement. Toute personne prête à débugger est la bienvenue...
+
+
+-------[  Genetical K-os
+
+
+{Necessité et principe du polymorphisme lent}
+
+    Le polymorphisme est une arme puissante. Mais nos amis les développeurs d'antivirus ont trouvé des parades : des émulateurs de code, des analyseurs heuristiques... Mais le pire n'est pas là. En fait, au début du polymorphisme, on pensait que plus génèrait de routines de déchiffrement, mieux c'était. Erreur ! Car les développeurs d'antivirus répliquait le virus des milliers de fois pour voir toutes les possibilités et ainsi adapter leurs armes au moteur. En réponse, les vxers ont introduit une technique simple : le générateur de nombre aléatoire est en fait le cerveau du moteur, c'est lui qui prend les décisions, tout dépend de lui. Le problème venait du fait qu'on changeait la valeur initiale du moteur à chaque réplication, ce qui faisait que l'on changeait de routine à chaque fois. Alors est arrivé le polymorphisme lent. Au lieu de changer cette valeur initiale à chaque fois, les vxers ont fait des routines pour la changer une fois toutes les semaines ou tous les mois. Ainsi, les développeurs d'antivirus avaient beau infecter des milliers de leurres, ils obtenaient toujours la même routine de déchiffrement.
+    Il y a plusieurs manières de faire du polymorphisme lent : la première est d'initialiser le générateur de nombres aléatoires avec une valeur dépendant de la date. Mais on peut aussi l'initialiser avec une valeur dépendant de l'environnement (pays, version de l'OS, ...). Ça revient au même. Mark Ludwig, dans _Du virus à l'antivirus_ propose une autre technique de polymorphisme lent : le polymorphisme génétique.
+
+
+{Une technique parmi d'autres : les virus génétiques}
+
+    Pourquoi génétique ? Parce qu'on va copier le système de gène que l'on trouve dans la nature, chez les virus biologiques par exemple, hehe. On va créer un tableau de nombres, le gène, que l'on va remplir de nombres tirés au hasard, et qui va nous servir de base de décision. Au lieu de tirer un nombre au hasard pour prendre une décision, il nous suffit de prendre les nombres du tableau un par un. Ainsi, tant que le gène ne change pas, le virus ne change pas. Il suffit donc de modifier le gène, de le faire muter, pour que le virus change de forme. Genetical K-os est basé sur ce principe. En fait, la seule partie à modifier est la partie concernant le générateur de nombres aléatoires, tout le reste est identique.
+
+
+-------[  Les codes
+
+
+    Je vous ai mis les codes de Trivial K-os (trivial.asm), du moteur de polymorphisme (andro.engine.asm) et du générateur de nombres aléatoires modifié en ajoutant le gène (andro.genetic.asm). Si il y a la moindre chose que vous ne compreniez pas, dites le moi, je tâcherai d'éclaircir mon propos.
+
+
+-------[  EOF

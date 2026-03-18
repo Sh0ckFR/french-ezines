@@ -1,0 +1,99 @@
+                  IIII RRRRRR    CCCCC    BBBBBB
+                   II  RR   RR  CC        BB    B       t
+                   II  RR   RR CC         BB    B       t
+                   II  RRRRRR  CC         BBBBBB   ooo  ttt
+                   II  RR   RR CC         BB    B o   o t
+                   II  RR   RR  CC        BB    B o   o t
+                  IIII RR   RR   CCCCC    BBBBBB   ooo   ttt
+
+<--                      Partie III : le CTCP                              -->
+<--                  Par S/ash (sl4sh@ifrance.com)                         -->
+
+
+Ceci est une explication de la partie sur le CTCP de l'article pr‚c‚dent.
+
+I. Le Quoting CTCP
+------------------
+Le problŠme dans l'irc est que l'on ne peut pas envoyer de caractŠres comme CR
+(carrier return), NL (New Line) ou NUL (0). Donc le quoting CTCP sert …
+envoyer des caractŠres qui seront interpr‚t‚ tel quel.
+On choisit doncun caractŠre que l'on nommera M-QUOTE, il s'agit du caractŠre 
+'\020' (comprendre 20 en octal soit 16 d‚cimal).
+Ben maintenant on envoie ce caractŠre suivit de '0' et … l'arriv‚e, on aura 
+le NUL.
+en gros pour envoyer un caractŠre NUL, on envoie '\020', '0'.
+Voil… les trames pour chaque caractŠre sp‚cial :
+NUL      -> M-QUOTE '0'
+NL       -> M-QUOTE 'n'
+CR       -> M-QUOTE 'r'
+M-QUOTE  -> M-QUOTE M-QUOTE
+Et oui, il faut aussi quoter le M-QUOTE (car il interpr‚t‚ de fa‡on sp‚cial).
+Cela resemble ‚norm‚ment au quoting C (vous savez quand vour taper '\n' pour
+CR) en remplacant le backs\ash par le M-QUOTE.
+Si vous mettez un caractŠres non reconnue comme servant au quoting derriŠre
+un M-QUOTE, le M-QUOTE sera ignor‚.
+
+II. Les donn‚es TAGGED (litt‚ralement ‚tiquet‚)
+-----------------------------------------------
+Pour envoyer n'importe quelle donn‚e … un autre client on va utilis‚ un autre
+type de quoting nomm‚ X-DATA Quoting (X pour extended).
+En gros, on choisit le caractŠre X-DELIM par '\001' (ie le caractŠre 1)
+et on entoure le message (qui ne pourra contenir le X-DELIM) par 2 X-DELIM.
+Le tag est la premiŠre partie d'un message X-DATA jusqu'au premiŠre espace.
+Ce tag est utilis‚ entre les client pour des messages sp‚cifique et est case
+sensitive (les majuscule ou miniscule sont importantes).
+Nous reparleront des Tags plus loin.
+Ce quoting n'est valable qu'avec les message PRIVMSG et NOTICE
+
+III. Le quoting au niveau CTCP
+------------------------------
+On definit encore un nouveau caractŠre de quoting nomm‚ X-QUOTE d‚finit
+par le caractŠre '\134' (le backs\ash).
+Ben ouais, pour le X-DELIM au niveau CTCP il faut bien le coder, donc
+on utilise X-QUOTE 'a' pour X-DELIM ('\\a') et X-QUOTE X-QUOTE pour X-QUOTE.
+Donc ca c'est le quoting utilis‚e pour les messages CTCP qui transite sur le
+r‚seau. X-QUOTE r‚git de la mˆme fa‡on pour les caractŠres qu'il ne connait
+pas que M-QUOTE dans un message CTCP.
+
+IV. L'ordre du quoting
+----------------------
+Tous d'abord il y a 3 niveaux de messages
+Le niveau High (H) : quand le client discute avec l'utilisateur
+Le niveau Middle (M) : le CTCP Quoting a ‚t‚ apliqu‚ au message de niveau H
+(on a quot‚ les caractŠres M-QUOTE, CR, NL et NUL : c'est le niveau CTCP).
+Le niveau Low (L) : le niveau client vers serveur (les messages qui circulent
+sur le r‚seau) : c'est le dernier quoting dont on a parl‚.
+En gros on affichera les messages en niveau H et on les enverra en niveau L.
+
+V. Les commandes CTCP
+---------------------
+Il s'agit des tag dans le quotage de bas niveau.
+Ce sont les suivantes :
+* FINGER  : renvoie l'idle de l'utilisateur
+    on y r‚pond par un "FINGER :info" evidemment quoter par des \001
+* ERRMSG  : pour envoyer un messages d'erreurs ("ERRMSG msg");
+* VERSION : le message pour demander la version (r‚ponse :
+    "VERSION nom:version:environnement")
+* SOURCE : pour obtenir une version du client (r‚ponse : plusieurs lignes
+du type "SOURCE host:dir:files" termin‚ par un message "SOURCE")
+* USERINFO : information sur l'utilisateur (r‚ponse : "USERINFO :info")
+
+Je passe sur CLIENTINFO qui est ininterressant.
+Tous ces messages sont envoyer en notice.
+
+VI. Ce qui nous interresse...
+-----------------------------
+Bon on veut r‚pondre … plusieurs info : VERSION, SOURCE, USERINFO.
+(Pour camoufler le bot par exemple).
+De plus on veut g‚rer des listes de users donc on va introduire de
+nouvelles commandes CTCP comme LOG, HELP (Liste les commandes du bot),
+LOGOUT...
+on utilise whois pour voir si un user est d‚connect‚ (ping est trop lent).
+
+Dans le prochain article on parlera du protocole DCC (Direct Client to Client)
+permettant l'envoie de fichier et la gestion d'un serveur de fichier.
+
+Le bot 0.3 avec les explications dans le fichier README, est ou sera sur 
+le site de la RtC TecH.
+<--                          File by S/ash                                 -->
+[EOF]

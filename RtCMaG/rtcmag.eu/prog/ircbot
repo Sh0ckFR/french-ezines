@@ -1,0 +1,542 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  IRC Bot  ]
+---------[ in RtC mag 3,4,5 ]
+----[  by S/ash [RtC] <slash-rtc@fr.st>  ]
+
+
+-------[  Part I : Basis
+
+Qu'est-ce qu'un bot irc ? Il s'agit d'un automate
+(entendez par là un programme) qui va se comporter
+comme n'importe quel utilisateur connecté à l'irc.
+L'intérêt d'un bot est multiple : garder le chanop
+d'un channel (que l'on a récupéré par irc split),
+créer des clones, créer un irc file server, flooder
+un chan...
+
+Le principe est simple il consiste à ouvrir une
+socket en mode texte sur le serveur irc puis à 
+respecter le protocole irc.
+
+En gros on commence par ouvrir une socket sous forme
+d'un fichier, puis on répond au requete PING par un
+message PONG.
+
+Voici un exemple de bot tout simple : il va dans un
+chan passer en argument et execute toute les lignes
+envoyer dans ce chan commençant par !.
+
+Explication du code source :
+
+  * la fonction socket_connection effectue une banal
+connection réseau au serveur.
+
+  * la fonction init_irc_connection envoie les
+commandes de connections au serveur irc.
+Ces commandes sont :
+
+_ "NICK <nickname>" : donne simplement au serveur le nom
+du bot. Elle permet également de changer son nickname
+au cours d'une session irc.
+
+_ "USER <username> <hostname> <servername> :<realname>" :
+donne au serveur differentes donnée : le nom de
+l'utilisateur, son ip, le server sur lequel il est
+connectee et le nom reel du bot. Les paramètres
+hostname et servername ne serve en réalité que pour
+les connection serveur irc vers serveur irc.
+Bon ici on envoie partout le nick du bot
+
+A noter que les deux commandes NICK et USER constitue
+l'enregistrement du client auprès du serveur : ce sont
+des étapes obligatoire : à partir dela on est client irc.
+
+_ "PING :<addr>" -> "PONG :<addr>" : la fonction ping sert à
+tester si le client est présent en l'ocurrence il l'effectue
+une fois l'enregistrement passé. A un message ping on repond
+logiquement pong avec la meme addresse.
+
+_ "JOIN <chan>[,<chan1>...] [<key1>[,<key2>...]]" : Cette
+fonction sert à joindre et si besoin créer un ou plusieurs
+channel avec ou sans mot de passe. Ici on join un pauv chan
+basic sans rien de plus...
+
+  * la fonction irc_action : c'est celle qui constitue
+réellement le bot : elle est executé sans fin.
+Cette fonction attends des lignes venant du serveur, les
+affiche et les interprète. Les réactions possiblent sont :
+
+_ A un message PING : Il PONG
+
+_ A un message du style "PRIVMSG <chan> :!" où <chan> est le
+nom du channel par défaut : il interprète la suite du message
+comme une commande à envoyer au serveur.
+La commande "PRIVMSG <receiver>[,<receiver2>...] :<text>" : envoie
+le text <text> au(x) channel(s) ou utilisateur(s) <receiver>(, 
+<receiver2>...).
+
+A noter que si la commande passer apres le '!' est QUIT alors la fonction
+le détecte et quitte.
+
+<-- begin bot1.c -->
+<-- cut here     -->
+/********************************************
+ *            bot1.c by S/asH               *
+ * It's just a little irc bot with bases    *
+ * commands.                                *
+ * for making : gcc bot1.c -o bot1          *
+ * Greetz to : RTCG4ng                      *
+ *   and the one who has teached me all     *
+ *   about irc bot : he will recognize      *
+ *   himself.                               *
+ ********************************************/
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+
+/* default irc port */
+#define IRCPORT 6667
+
+/* Command type */
+#define HD_CMD_TYPE    "PRIVMSG %s :!"
+
+/* IRC Commands List */
+#define PING_CMD       "PING :%s\n"
+#define PONG_CMD       "PONG :%s\n"
+#define NICK_CMD       "NICK %s\n"
+#define USER_CMD       "USER %s %s %s :%s\n"
+#define JOIN_CMD       "JOIN %s %s\n"
+#define QUIT_CMD       "QUIT\n"
+
+
+/********************************************
+ * socket_connection : connect to server    *
+ *  Input  : sa : sockaddr_in structure     *
+ *  Output : s  : socket number             *
+ ********************************************/
+int socket_connection(char *host, int port, struct sockaddr_in *sa)
+{
+  int s;
+  struct hostent *he;
+
+  /* socket connection to server */
+  s = socket(PF_INET, SOCK_STREAM, 0);
+  sa->sin_family = AF_INET;
+  sa->sin_port = htons(0);
+  inet_aton("0.0.0.0", &(sa->sin_addr));
+
+  if (bind(s, (struct sockaddr *) sa, sizeof (*sa))) 
+    {
+      perror("bind");
+      exit(1);
+    }
+
+  he = gethostbyname(host);
+  if (!he)
+    {
+      herror("looking up server");
+      exit(2);
+    }
+
+  sa->sin_addr.s_addr = *((u_int32_t *) he->h_addr);
+  sa->sin_port = htons(port);
+  printf("server address is %s\n", inet_ntoa(sa->sin_addr));
+  
+  if(connect(s, (struct sockaddr *)sa, sizeof (*sa)))
+    {
+      perror("connect");
+      exit(1);
+    }
+  /* connected to server */
+  return s;
+}
+
+/********************************************
+ * init_irc_connection : initialize irc     *
+ *  Input  : s  : socket number             *
+ *           sa : addresse structure        *
+ *           socklen : size of sa           *
+ *           nick : bot's nickname          *
+ *           channel : chan to join         *
+ ********************************************/
+void init_irc_connection(int s, struct sockaddr *sa, long socklen, char *nick, char *channel)
+{
+  int n; char buf[10000];
+  /* sending nick/user */
+  sprintf(buf, NICK_CMD, nick);
+  if(sendto(s, buf, strlen(buf), 0, sa, socklen) < 0)
+    {
+      perror("sendto");
+      exit(1);
+    }
+  sprintf(buf, USER_CMD, nick, nick, nick, nick);
+  if(sendto(s, buf, strlen(buf), 0, sa, socklen) < 0)
+    {
+      perror("sendto");
+      exit(1);
+    }
+
+  /* PING ? -> PONG ! */
+  if((n=recvfrom(s, buf, sizeof(buf), 0, NULL, NULL)) < 0)
+    {
+      perror("recvfrom");
+      exit(-1);
+    }
+  if(!strncasecmp(buf, PING_CMD, 4)) 
+    {
+      buf[1] = 'O';
+      if(sendto(s, buf, strlen(buf), 0, sa, socklen) < 0)
+	{
+	  perror("sendto");
+	  exit(-1);
+	}
+    }
+  else /* Quit if error */
+    {
+      write(1, buf, n);
+      if(sendto(s, QUIT_CMD, strlen(QUIT_CMD), 0, sa, socklen) < 0)
+	{
+	  perror("sendto");
+	  exit(-1);
+	}
+      exit(2);
+    }
+  /* Joining channel */
+  sprintf(buf, JOIN_CMD, channel, "");
+  if(sendto(s, buf, strlen(buf), 0, sa, socklen) < 0)
+    {
+      perror("sendto");
+      exit(1);
+    }
+}
+
+/********************************************
+ * irc_action : action to do in the irc     *
+ *  Input  : s  : socket number             *
+ *           sa : addresse structure        *
+ *           socklen : size of sa           *
+ *           actionstr : request format str *
+ *  Output : 1 : quit, 0 : continue         *
+ ********************************************/
+int irc_action(int s, struct sockaddr *sa, long socklen, char *actionstr)
+{
+  int n;
+  char buf[10000]; 
+  char *tmp;
+  if((n=recvfrom(s, buf, sizeof(buf), 0, NULL, NULL)) < 0)
+    {
+      perror("recvfrom");
+      exit(-1);
+    }
+  buf[n] = 0; /* removing everything after the CR */
+  write(1, buf, n);
+  /* PING Message */
+  if(!strncasecmp(buf, "PING", 4)) 
+    {
+      buf[1] = 'O';
+      if(sendto(s, buf, strlen(buf), 0, sa, socklen) < 0)
+	{
+	  perror("sendto");
+	  exit(-1);
+	}
+    }
+  /* Action requesting by user */
+  else if(strstr(buf, actionstr))
+    {
+      tmp = strstr(buf, actionstr) + strlen(actionstr);
+      if(sendto(s, tmp, strlen(tmp), 0, sa, socklen) < 0)
+	{
+	  perror("sendto");
+	  exit(-1);
+	}
+      if(strncasecmp(tmp, QUIT_CMD, strlen(QUIT_CMD)-1)==0)
+	{
+	  printf("Exiting...\n");
+	  return 1;
+	}
+    }
+  return 0;
+}
+
+/********************************************
+ * main : the main procedure                *
+ *  Input  : argc : arguments counter       *
+ *           argv : arguments list          *
+ ********************************************/
+int main(int argc, char* argv[])
+{
+  int s;
+  struct sockaddr_in sa;
+  char actionstr[100];
+  if((argc<=3) || (argc>=6))
+    {
+      printf("Syntax : bot1 servname nickname channel [port]\n",argc);
+      exit(-1);
+    }
+
+  sprintf(actionstr, HD_CMD_TYPE, argv[3]);
+
+  /* connection to server */
+  s = socket_connection(argv[1], (argc != 4) ? atoi(argv[4]) : IRCPORT, &sa);
+
+  /* Initializing irc connection */
+  init_irc_connection(s, (struct sockaddr *) &sa, sizeof(sa), argv[2], argv[3]);
+
+  /* main loop */
+  while (!irc_action(s, (struct sockaddr *) &sa, sizeof(sa), actionstr));
+  return 0;
+}
+
+<-- cut here     -->
+<-- end bot1.c   -->
+
+Alors si vous voulez tester des commandes irc je
+vous conseille d'utiliser telnet sur le port irc
+(normalement 6667).
+
+Il est bô ce bot mais qu'est-ce-qu'on peut en faire ?
+-> irc flood mais n'en abuser pas trop (faite le sur
+#neo-nazis ou sur #teen)
+etc... 
+
+Ressources : ircd : serveur irc sous unix
+             RFC 1459 : RFC du protocol IRC (fournit en annexe)
+
+
+---[ Suite des commandes IRC classique
+
+Je vais, pour l'instant, continuer le descriptif des commandes. (elles sont 
+lister dans le fichier constant.hpp) :
+ 
+ * NOTICE : pareille que PRIVMSG mais on recoit pas de renvoie du serveur
+		(pratique pour flooder qq1)
+ * QUIT [:<msg>] : quitte le serveur avec le message msg
+ * PART <chan>[,<chan>...] : quitte un ou plusieurs channels
+ * MODE <user> {[+-]i|w|s|o} : change les mode d'un user
+		i : mettre un utilisateur invisible (on voit plus ce qu'il 
+		raconte)
+		w : wallops : recoit les messages destine a tout les ops
+		s : recoit les messages notice du serveur
+		o : se met (ou met qq1) irc op (en pratique seul le serveur ou
+		les ircs op peuvent le faire)
+ * MODE <chan> {[+-]o|p|s|i|t|n|m|l|b|v|k} [<limit>] [<user>] [<ban mask>] :
+		change les mode du chan. je ne vait expliquer ici que les modes
+		interessants.
+		o : droit chanop pour l'user
+		k : met un pass au chan
+		v : donne le droit voice a qq1 (c mesquin de le filer a qq1 :
+		ca donne aucun droit en part)
+		i : fait que le chan est invite only
+		b : sert a bannir qq1 du chan (un ex-chanop par ex (genre bot))
+ * KICK <chan> <user> [:<msg>] : vire user de chan pour la raison msg
+
+Bon c'est finit pour les commandes irc clasiques (allez voir la rfc si besoin :
+a noter que la rfc 1459 sur l'irc est presente en version francaise dans le
+hackoff 17 du Serial Savate System).
+On commence plus interressant : les commandes CTCP (Client To Client Protocol).
+Le CTCP permet d'envoyer differentes commandes a un client IRC d'un autre client
+IRC (par exemple un PING). Pratiquement cela sert a tester si un utilisateur est
+la en le pinguant (pratique pour voir si qq1 a deconnecter quand on est un bot).
+Cela peut aussi servir a se renseigner sur la cible (eh eh).
+Bon le texte qui explique le quoting CTCP est fournit en appendice.
+
+
+-------[ Part II : CTCP
+
+Ressource : ctcp.txt : descriptif en anglais du protocol CTCP
+
+I. Le Quoting CTCP
+------------------
+Le problème dans l'irc est que l'on ne peut pas envoyer de caractères comme CR
+(carrier return), NL (New Line) ou NUL (0). Donc le quoting CTCP sert à
+envoyer des caractères qui seront interprété tel quel.
+On choisit doncun caractère que l'on nommera M-QUOTE, il s'agit du caractère 
+'\020' (comprendre 20 en octal soit 16 décimal).
+Ben maintenant on envoie ce caractère suivit de '0' et à l'arrivée, on aura 
+le NUL.
+en gros pour envoyer un caractère NUL, on envoie '\020', '0'.
+Voilà les trames pour chaque caractère spécial :
+NUL      -> M-QUOTE '0'
+NL       -> M-QUOTE 'n'
+CR       -> M-QUOTE 'r'
+M-QUOTE  -> M-QUOTE M-QUOTE
+Et oui, il faut aussi quoter le M-QUOTE (car il interprété de façon spécial).
+Cela resemble énormément au quoting C (vous savez quand vour taper '\n' pour
+CR) en remplacant le backs\ash par le M-QUOTE.
+Si vous mettez un caractères non reconnue comme servant au quoting derrière
+un M-QUOTE, le M-QUOTE sera ignoré.
+
+II. Les données TAGGED (littéralement étiqueté)
+-----------------------------------------------
+Pour envoyer n'importe quelle donnée à un autre client on va utilisé un autre
+type de quoting nommé X-DATA Quoting (X pour extended).
+En gros, on choisit le caractère X-DELIM par '\001' (ie le caractère 1)
+et on entoure le message (qui ne pourra contenir le X-DELIM) par 2 X-DELIM.
+Le tag est la première partie d'un message X-DATA jusqu'au première espace.
+Ce tag est utilisé entre les client pour des messages spécifique et est case
+sensitive (les majuscule ou miniscule sont importantes).
+Nous reparleront des Tags plus loin.
+Ce quoting n'est valable qu'avec les message PRIVMSG et NOTICE
+
+III. Le quoting au niveau CTCP
+------------------------------
+On definit encore un nouveau caractère de quoting nommé X-QUOTE définit
+par le caractère '\134' (le backs\ash).
+Ben ouais, pour le X-DELIM au niveau CTCP il faut bien le coder, donc
+on utilise X-QUOTE 'a' pour X-DELIM ('\\a') et X-QUOTE X-QUOTE pour X-QUOTE.
+Donc ca c'est le quoting utilisée pour les messages CTCP qui transite sur le
+réseau. X-QUOTE régit de la même façon pour les caractères qu'il ne connait
+pas que M-QUOTE dans un message CTCP.
+
+IV. L'ordre du quoting
+----------------------
+Tous d'abord il y a 3 niveaux de messages
+Le niveau High (H) : quand le client discute avec l'utilisateur
+Le niveau Middle (M) : le CTCP Quoting a été apliqué au message de niveau H
+(on a quoté les caractères M-QUOTE, CR, NL et NUL : c'est le niveau CTCP).
+Le niveau Low (L) : le niveau client vers serveur (les messages qui circulent
+sur le réseau) : c'est le dernier quoting dont on a parlé.
+En gros on affichera les messages en niveau H et on les enverra en niveau L.
+
+V. Les commandes CTCP
+---------------------
+Il s'agit des tag dans le quotage de bas niveau.
+Ce sont les suivantes :
+* FINGER  : renvoie l'idle de l'utilisateur
+    on y répond par un "FINGER :info" evidemment quoter par des \001
+* ERRMSG  : pour envoyer un messages d'erreurs ("ERRMSG msg");
+* VERSION : le message pour demander la version (réponse :
+    "VERSION nom:version:environnement")
+* SOURCE : pour obtenir une version du client (réponse : plusieurs lignes
+du type "SOURCE host:dir:files" terminé par un message "SOURCE")
+* USERINFO : information sur l'utilisateur (réponse : "USERINFO :info")
+
+Je passe sur CLIENTINFO qui est ininterressant.
+Tous ces messages sont envoyer en notice.
+
+VI. Ce qui nous interresse...
+-----------------------------
+Bon on veut répondre à plusieurs info : VERSION, SOURCE, USERINFO.
+(Pour camoufler le bot par exemple).
+De plus on veut gérer des listes de users donc on va introduire de
+nouvelles commandes CTCP comme LOG, HELP (Liste les commandes du bot),
+LOGOUT...
+on utilise whois pour voir si un user est déconnecté (ping est trop lent).
+
+
+-------[ Part III : Les commandes DCC
+
+Ressource : dcc.txt : specification du DCC
+
+
+Bon, tout d'abord, qu'est-ce que le DCC ? C'est une série de commande rajouté
+au CTCP qui permettent de gérer des connexions directes entre clients (Direct
+Client to Client) via IRC. Le DCC a été conçu pour les clients IrcII et n'avait
+pas la prétention d'etre porté à d'autre clients.
+
+Le DCC permet en fait de gérer deux types de connexion :
+* Connexion pour transfer de fichier (DCC SEND)
+* Connexion pour chat privé.
+
+
+I. Fonctionnement du DCC
+------------------------
+
+Ben, c'est très con : on envoie la commande CTCP suivante :
+"DCC type argument address port"
+où :
+type     = SEND, CHAT (il peut y en avoir d'autre (style TALK))
+argument = un argument
+address  = adresse ip de l'expéditeur en numérique
+port     = port où doit s'effectuer la connexion
+
+et on ouvre une socket passive où on attend la connexion sur le bon port
+
+Quelques détails :
+ * address doit etre l'ip qui sert à la connection vers le serveur IRC (donc
+   en principe la plus proche du réseau)
+ * port doit etre un port libre de la machine
+
+A ce moment là, l'autre client irc va se connecter au premier sur le port
+donné et les transferts vont s'effectuer
+
+
+II. DCC SEND
+------------
+
+Bon le DCC SEND sert à envoyer un fichier entre deux ordi via IRC.
+
+En pratique voilà ce qui se passe :
+
+L'expéditeur :
+  * Envoie la commande CTCP : "DCC SEND fichier address port filesize"
+    par exemple [x]chat envoie pour un fichier "essai" de 1622 octet
+    à partir de l'ordi localhost (127.0.0.1) la commande :
+    "DCC SEND essai 2130706433 1030 1622"
+     ce qui veut bien dire que l'hote 127.0.0.1 offre le fichier essai (taille
+     1622 octets) sur le port 1030 
+      ( ((((127*256+0)*256)+0)*256+1) = 2130706433)
+  * Ouvre une socket passive sur le port 0 de type INADDR_ANY (accepte toutes
+    les adresses IP)
+  * Attend...
+  * A la connection : accepte la connexion et ferme la socket passive
+
+Le récepteur :
+  * envoie la trame CTCP DCC REQUEST RECEIVE
+  * si l'accepte le fichier se connecte à l'hote sur le port fournit
+
+Dans le transfert de fichier à chaque réception de paquets, le client doit
+renvoyer la taille totale déjà reçu du fichier. L'expéditeur ne peut fermer la
+connexion que lorsqu'il a reçu la confirmation que le destinataire a reçu la
+totalité du fichier.
+
+Vous voilà près à faire un beau bot de dl...
+
+
+III. DCC CHAT
+-------------
+
+Ben ça sert à faire des chat entre deux ordi que les IRC op ne pourront pas
+espionné :) (en fait un chat sans passer par le serveur IRC).
+
+Bon ben le dialogue entre les deux machines est presque le meme que pour
+un DCC SEND :
+
+L'expéditeur :
+  * Envoie la commande CTCP : "DCC CHAT chat address port"
+    par exemple [x]chat envoie pour un chat à partir de l'ordi localhost
+    (127.0.0.1) la commande :
+    "DCC CHAT chat 2130706433 1029"
+     ce qui veut bien dire que l'hote 127.0.0.1 offre un chat sur le port 1029
+  * Ouvre une socket passive sur le port 0 de type INADDR_ANY (accepte toutes
+    les adresses IP)
+  * Attend...
+  * A la connection : accepte la connexion et ferme la socket passive
+
+Le récepteur :
+  * envoie la trame CTCP DCC REQUEST RECEIVE
+  * si l'accepte le fichier se connecte à l'hote sur le port fournit
+
+Le transfert se passe ligne par ligne (ie chaque paquet envoyer ne contient
+qu'une ligne) tout comme lors du dialogue avec un serveur IRC.
+
+DCC CHAT peut servir dans un bot pour... l'administration du bot en ligne, le
+controle du bot sans passer par le serveur IRC, l'identification bien sur (plus
+sécurisé), mais également... vous ne voyez pas ?? au backdoor : on peut
+implémenter un shell avec :)))
+
+
+Reste un petit problème avec le protocol DCC : il est nécessaire d'etre
+connecté directement au réseau pour l'utiliser ce qui interdit l'usage de
+l'ip masquerade ou d'un proxy...
+
+
+Voilà c'est fini... Un bot assez avancé est fournit avec le mag
+
+-------[  EOF

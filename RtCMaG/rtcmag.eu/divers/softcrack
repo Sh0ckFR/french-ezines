@@ -1,0 +1,424 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  Quick and Dirty SoftCracking  ]
+---------[ in RtC mag 4 & 5 ]
+----[  by S/ash [RtC] <slash-rtc@fr.st>  ]
+
+
+-------[  Part I : How To Easy Crack, WebExpert anti-cracking protection is lame
+
+
+Bon le soft dont il s'agit est WebExpert 2000. Un chouette outils
+d'édition HTML (vous pouvez le trouver sur www.visic.com).
+Tout d'abord, on va lancer le soft pour voir comment il fonctionne :
+Les info s'affiche... Tiens un bouton s'enregistrer. On clique
+dessus... La fenêtre d'enregistrement... bon on lui envoie n'importe
+quoi (je lui ai dit que mon chien était mort, il a pas apprécié).
+Bon, ben maintenant, avec SoftIce en fond (très bon outils de
+deboggage de NuMega), je refait la même chose avec un chtit Ctrl-D
+au bon momment (juste après l'appuis sur le bouton ok) nous permet
+de déclencher SoftIce. Bon on se retrouve dans un sale module du
+type USER32!dll (c'est marqué en-dessous de la fenêtre de code de
+SoftIce)... Pas grave en faisant du Step Over (F10 ou p) on
+retourne dans le module WEXPERT4 (celui qui nous interresse).
+On est donc juste derrière un call :
+ 0167:00461607 CALL 0045B7D4
+ 0167:0046160C MOV  EAX, [EBP-0C]
+ 0167:0046160F MOV  EDX, [EAX]
+>0167:00461611 CALL [EDX+0000D8]< Ici
+ 0167:00461617 MOV  [EBP-08], EAX
+ 0167:0046161A XOR  EAX, EAX
+
+Bon, on met un break point à cet endroit par bpx 0167:00461611
+(faite pas gaffe aux adresses, il se peut que vous n'ayez pas les
+mêmes. Bon, Ctrl-D, on revient à la boîte d'enregistrement, rebelote
+et bingo on retombe dessus à chaque appel. Il s'agit donc de
+l'affichage de la boîte. Bon, ben on continue les F10, après chaque
+instructions RET, on regarde le call qui correspond et on pose des
+breakpoints. Voila donc les deux autres breakpoints que j'ai posé :
+ 0167:004615AB MOV  DL, [EBP-01]
+>0167:004615AC CALL 00460FDC      < Ici
+ 0167:004615B1 MOV  [EBP-0C], EAX
+
+et
+ 0167:0067511B MOV  DL, 02
+>0167:0067511D CALL 0046154C      < Ici
+ 0167:00675122 XOR  EAX, EAX
+
+Bon, après quelque relance je me rends compte que c'est les bons. Donc
+j'espionne le code autour du 2ème call (le premier appelé). Et je trouve
+deux sauts. Dont l'un passe au-dessus de l'autre que passe au-dessus
+du call. C'est le suivant :
+ 0167:00675009 CALL 00460FDC           
+>0167:0067500E JNZ  006750F0     < Ici
+ 0167:00675014 MOV  EAX, [00707578]
+Ben, je pose un breakpoint. Je remarque qu'il est toujours appelé dans
+les bonnes conditions.
+bon maintenant, je fais Ctrl-D sous WebExpert.
+je tape BL pour obtenir la liste des breakpoints, ca me donne :
+(00)  BPX   0167:00461611
+(01)  BPX   0167:004615AC
+(02)  BPX   0167:0067511D
+(03)  BPX   0167:0067500E
+Bon ben je veut que le seul breakpoint actif soit le 04, ben je tape
+bd 00 <enter> bd 01 <enter> bd 02 <enter> (bd est pour désactiver un
+breakpoint, be pour faire l'inverse et bc pour le supprimer)
+voilà maintenant quand je tape bl les breakpoint 00, 01 et 02 on une
+étoile à côté pour indiquer qu'ils sont désactivés.
+Bon maintenant on va éditer la ligne du saut pour qu'elle se comporte
+à l'inverse de ce qu'elle devrait faire pour cela on tape
+A 0167:0067500E pour l'éditer. et là on tape le nouveau code :
+JZ 006750F0
+Et enter à la ligne suivante pour dire qu'on à terminer. On fait Ctrl-D
+et on va clique pour l'enregistrement, on met n'importe quoi... Ok...
+On fait Ctrl-D pour passer le breakpoint... Bingo... ca marche...
+Bon maintenant, on va chercher les modifs a faire dans le fichier
+pour que ca marche. Déjà par défaut le saut fonctionne. ben on va le
+remplacer par des non operand (nop : ne fait rien : 0x90).
+on voit grâce aux addresses qu'il fait 6 octets, ce sera donc 6 nops
+(0x014 - 0x00E = 0x006)
+Bon maintenant faut pouvoir le trouver... Donc on veut voir le code
+hexa du saut et des alentours, on fait D 0167:006750CE (pour voir un peu
+avant), ca nous donne (seulement la partie qui nous interresse) :
+E8 6D 1C DD FF 8B 55 B4-8B 45 FC E8 12 F2 D8 FF
+0F 85 DC 00 00 00 A1 78-75 70 00 C6 00 00 8D 45
+^^^^^^^^^^^^^^^^^
+FC 50 8D 55 B0 8B 83 D4-02 00 00 E8 42 1C DD FF
+Donc ce sont les 6 octets soulignés qu'il faut remplacé par des 90
+C'est bon maintenant, on peut désactiver le breakpoint et partir de
+Soft-Ice.
+Mais je relance WebExpert et il ne bronche pas, je suis toujours
+enregistrer. Merde, il sauvegarde pas la clef ? Bon ben kewl..
+J'ai chercher dans les fichiers de conf de WebExpert, y'a nada.
+Bon ben la base de registre. Wouah... Deux valeurs toutes seules
+dans la clef : 
+HKEY_LOCAL_MACHINE\SOFTWARE\Visicom Media\WebExpert v4\WebExpert
+Elles sont nommée Usager et Format. Bon regarde ce qu'il y a dedans :
+Cool, le nom de l'usager en binaire et un truc qui ressemble à une
+clef d'enregistrement en binaire. Il s'agit en effet de la clef
+d'enregistrement correspondant à l'usager stocker dans Usager.
+Bon, Je reparle de ca après. Pour modifier le fichier, on recherche
+la trame hexa précedente (ou seulement un bout), dans le fichier 
+wexpert4.exe (attention il faut qu'il n'y ait aucune ambiguité, c'est
+à dire que la chaine hexa recherchée ne se trouve qu'à un endroit dans
+le fichier). Pour ma part j'utilise UltraEdit-32 pour faire ça.
+Bon, et on remplace 0F 85 DC 00 00 00 par 90 90 90 90 90 90.
+Cette trame se trouve au 2573326ème octets dans le fichier.
+Voilà le fichier à merger dans RTC Patcher pour pouvoir patcher WebExpert4
+avec RTC Patcher :
+<-- begin wexpert4.dat -->
+[WebExpert 2000 (4.00.5) Crack by S/asH]
+NbFile=1
+File0=WExpert4.exe
+BackupFile0=WExpert4.bak
+NbChange0=1
+ChangeLocation0_0=2573326
+Change0_0=909090909090
+<-- end wexpert4.dat -->
+
+Bon, revenons aux codes stocker dans la registry. Il se trouve que wexpert
+se fie à son premier jugement et stoque donc la chaine qui lui à permis de
+voir si l'utilisateur était ok. C'est une très mauvaise méthode de protection
+(et dire que je me suis emmerdé sur des softs 10 fois plus merdiques que celui-là).
+
+Bon, ben grâce à celui-là j'ai généré toute une série de clefs, qui peuvent nous
+permettre de faire du RE et créer un keygenerator. Une autre solution pour
+faire ce RE est de regarder dans le code (je n'ai pas eu le temps de le faire
+et à quoi bon...), il s'agit de la fonction appelée juste avant notre fameux saut.
+
+Voilà la liste des codes :
+Nom                                     key
+0                                       CFDN-PFDJ-PZAZ-ZZZZ
+1                                       3SWA-VKNH-KF2Z-ZZZZ
+2                                       F8C4-UL3H-XCCZ-ZZZZ
+3                                       XZKW-MJGE-J3UZ-ZZZZ
+4                                       HMBP-BPHA-VK2Z-ZZZZ
+5                                       AEGQ-MX2A-XNMZ-ZZZZ
+6                                       VCSJ-MMZF-7VPZ-ZZZZ
+7                                       DHVW-CHG5-DAYZ-ZZZZ
+8                                       HZPJ-RT6D-ZRMZ-ZZZZ
+9                                       HQVM-RXBH-PMWZ-ZZZZ
+a                                       HSHH-VSCW-4BQZ-ZZZZ
+b                                       GUKZ-RSET-HTEZ-ZZZZ
+c                                       TNW5-4ATN-9MYZ-ZZZZ
+d                                       VFPF-ABZU-PMGZ-ZZZZ
+e                                       PRTY-XDNR-EA6Z-ZZZZ
+f                                       HRMT-SADM-FE2Z-ZZZZ
+g                                       522E-CALJ-Z8AZ-ZZZZ
+h                                       AMVV-TVHU-IPAZ-ZZZZ
+i                                       QGVJ-JPNF-HXYZ-ZZZZ
+j                                       BUQV-K7CE-WR2Z-ZZZZ
+k                                       PDRS-ZSMC-A8UZ-ZZZZ
+l                                       ZBKW-KYBD-5FAZ-ZZZZ
+m                                       B4M3-XSCD-FYMZ-ZZZZ
+n                                       P9V2-PNLJ-TR2Z-ZZZZ
+o                                       HTLG-NXSL-CTKZ-ZZZZ
+p                                       VNBN-R4CT-AUYZ-ZZZZ
+q                                       R9U2-LLAE-VEQZ-ZZZZ
+r                                       JAVT-LEYA-KRCZ-ZZZZ
+s                                       FQRB-8MI2-YVCZ-ZZZZ
+t                                       VL3R-SCBD-YZKZ-ZZZZ
+u                                       VH4C-7WLS-RCCZ-ZZZZ
+v                                       NNC6-E6GM-QVAZ-ZZZZ
+w                                       M8JS-VTNJ-C2EZ-ZZZZ
+x                                       5NVS-HLRK-KZ6Z-ZZZZ
+y                                       VUVB-TC7S-A2AZ-ZZZZ
+z                                       JB5K-SGHH-SHAZ-ZZZZ
+RtC                                     2VNH-YGRN-QRSZ-ZZZZ
+ab                                      DG9W-XWL2-VCCZ-ZZZZ
+Visic                                   BNWD-CRUU-N7UZ-ZZZZ
+Visicom                                 SFYC-8UKK-FIHZ-ZZZZ
+Visicom Média                           HRTW-Z9EV-AZZW-MNBR
+WebExpert                               YHLW-TEEL-BCJQ-CN6F
+abcdefghijklmnopqrstuvwxyz0123456789/\. PFRM-Q8XW-ZVEK-C8Q6
+abcdefghijklmnopqrstuvwxyz0123456789/\  PFRM-Q8XW-ZVEK-C8Q6
+abcdefghijklmnopqrstuvwxyz0123456       PFRM-Q8XW-ZVEK-C8Q6
+abcdefghijklmnopqrstuvwxyz              PFRM-Q8XW-ZVEK-C8Q6
+abcdefghijklmnopqrst                    PFRM-Q8XW-ZVEK-C8Q6
+abcdefghijklmno                         PFRM-Q8XW-ZVER-DHPT
+abcdefghijklmnop                        PFRM-Q8XW-ZVEK-C8Q6
+
+Ce que nous apprends ces clefs :
+* Case insensitive pour les clefs ou les noms.
+* Non utilisation des O, 0 et 1 pour les clefs
+* 16 premiers caractères utilisés (dernières clefs)
+* Utilisations des caractères dans l'ordre (Z-ZZZZ qui
+  finissent les clefs associée à des noms cours).
+* Clef sans doute initialisé à ZZZZ-ZZZZ-ZZZZ-ZZZZ
+
+Si vous faite d'autres clef, envoyez-les moi.
+C'est tout. Le code du dumper de clef (sert à récupérée la
+clef dans la registry et à l'effacer)
+<-- begin we4kdump.cpp -->
+/******************************************************************************
+ *                we4kdump.cpp : WebExpert 2000 Key Dump                      *
+ *                    Author : S/asH (member of RtC)                          *
+ * for use under Borland C++ 5 (must work under other win32 compilators)      *
+ * You can freely distribute this software but I decline all responsability   *
+ * for the use of this software.                                              *
+ * RtC TecH - July 2000                                                       *
+ ******************************************************************************/
+
+#include <stdio.h>
+#include <conio.h>
+#include <string.h>
+#include <windows.h>
+#include <winbase.h>
+
+/* Constants */
+#define WEXPERT4_REGKEY    "SOFTWARE\\Visicom Media\\WebExpert v4\\WebExpert"
+#define WEXPERT4_KEYNAME   "Format"
+#define WEXPERT4_USERKNAME "Usager"
+#define CANT_OPENFILE      "Cannot open output file %s !\n"
+#define CANT_READVALUE     "Cannot dump WebExpert 4 key.\n"
+#define PROMPT_BEFOREDUMP  "Ready to dump..."
+#define PROMPT_DUMP        "Another dump (y/n) ? "
+
+#define VERSTR             "/------------------------------------------------------------------------------\\\n"\
+                           "|                     we4kdump : WebExpert 2000 key Dump                       |\n"\
+                           "|          Author : S/asH (member of RtC).  RtC TecH - July 2000               |\n"\
+									"| You can freely distribute this software but I decline all responsability for |\n"\
+                           "| the use of this software.                                                    |\n"\
+								  "\\------------------------------------------------------------------------------/\n"
+
+#define SYNTAXSTR          "Syntax is : we4kdump [-e] file\n"\
+ 									"    file is the filename to dump\n"\
+                           "    -e is for getting no echo\n"
+
+/******************************************************************************
+ * Function valuedump : dump a registry binary value into a string            *
+ * Input  : rootKey : the root key in the registry                            *
+ *          key     : the key where find value                                *
+ *				value   : value to dump                                           *
+ * Output : return  : value dumped (null if error)                            *
+ ******************************************************************************/
+char *valuedump(HKEY rootKey, LPSTR key, LPSTR value)
+{
+	DWORD Type; HKEY hKey; char *res; unsigned long i;
+	if(RegOpenKeyEx(rootKey, key, 0, KEY_ALL_ACCESS, &hKey)!=ERROR_SUCCESS)
+   	return NULL;
+   res = new char[65535]; i = 65535;
+	if(RegQueryValueEx(hKey, value, NULL, &Type, (LPBYTE)res, &i)!=ERROR_SUCCESS)
+   {
+    	delete res;
+      return NULL;
+   }
+   if(Type!=REG_BINARY)
+   {
+    	delete res;
+      return NULL;
+   }
+
+   RegCloseKey(hKey);
+   res[i] = 0;
+   return res;
+}
+
+/******************************************************************************
+ * Function main  																				*
+ * Input  : argc    : the arguments counter                                   *
+ *          argv    : the arguments vector                                    *
+ ******************************************************************************/
+void main(int argc, char *argv[])
+{
+	FILE *fout;
+	printf(VERSTR);
+   char c = 'y';
+   char *key, *name;
+	if((argc<2) || (argc>3))
+   {
+   	printf(SYNTAXSTR);
+      return;
+   }
+   if((argc==3) && strcmp(argv[1],"-e"))
+   {
+   	printf(SYNTAXSTR);
+      return;
+   }
+   if((fout = fopen(argv[argc-1], "a"))==NULL)
+   {
+   	printf(CANT_OPENFILE, argv[argc-1]);
+      return;
+   }
+   while((c=='y') || (c=='Y'))
+   {
+   	printf(PROMPT_BEFOREDUMP);
+		getch();
+      printf("\n");
+      key = valuedump(HKEY_LOCAL_MACHINE, WEXPERT4_REGKEY, WEXPERT4_KEYNAME);
+      name = valuedump(HKEY_LOCAL_MACHINE, WEXPERT4_REGKEY, WEXPERT4_USERKNAME);
+      if((!key) || (!name))
+      	printf(CANT_READVALUE);
+      else
+      {
+      	RegDeleteKey(HKEY_LOCAL_MACHINE, WEXPERT4_REGKEY);
+      	fprintf(fout, "%s\t%s\n", name, key);
+         if(argc==2) printf("%s\t%s\n", name, key);
+      }
+      if(key) delete key;
+      if(name) delete name;
+      printf(PROMPT_DUMP);
+      c=getch();
+      printf("\n");
+   }
+   fclose(fout);
+}
+<-- end we4kdump.cpp -->
+
+
+-------[ Part II : The main anti-cracking protections
+
+Bon, ici les techniques de base anti-cracking à connaitre :
+
+I. Les clefs d'enregistrements
+------------------------------
+Les clefs d'enregistrements est la technique la plus utilisé par les auteurs
+de shareware. Ces clefs répondent, dans la plupart des cas, à un algorithme
+en fonction en générales d'une autre chaîne de caractère (en générale le
+nom). Il se peut cependant que la clef soit fixe (comme pour les soft de m$).
+Les techniques pour en venir à bout sont nombreuses : patcher le logicielle
+pour enlever la vérification de la clef (cf article précédent), recréer
+l'algorithme de génération de clef ou encore aller chercher en mémoire lors
+de l'exécution la chaîne avec laquelle la clef sera comparé... Pour les clef
+fixe, cette dernière méthode est la plus élégante et pour les clef généré,
+la méthode la plus élégante est le Key Generator (cependant il est chiant à
+réaliser).
+
+II. La protection par mot de passe
+----------------------------------
+La protection par mot de passe est souvent utilisé dans les jeux (en général
+les vieux). Pour la contrer, plusieur méthodes existent : modifier le test
+pour qu'il accepte n'importe qu'elle mot de passe, sauter la vérification du
+mot de passe (la plus élégante), faire en sorte que ce soit toujours le même
+mot de passe (enlever la partie génération aléatoire), et afficher le mot de
+passe à taper à l'écran.
+
+III. La protection par support de donnée
+----------------------------------------
+J'entend par cette protection, une protection contre la copie. Il s'agit d'une
+chaîne de donnée écrite à un emplacement particulier du support (boot, partie
+caché de la table iso9660...). Il existe bien sur des programmes qui
+effectuent des copies complètes des supports mais cela est fastidieux. La
+solution la plus pratique est de retiré la vérification de la protection.
+
+VI. La protection par Dongle
+----------------------------
+C'est une protection très efficace mais couteuse. En effet on ne peut pas 
+comme les codes, le recopier sur un bout de papier. On peut cependant en 
+émuler mais cela est également couteux. La meilleur solution est de retiré 
+la vérif du dongle.
+
+V. Les techniques anti-debugging
+--------------------------------
+Je parle ici des techniques cherchant à nous empêcher de réalisé le crack.
+Ces techniques sont censé faire planté le debugger.
+
+  a. Faire joujou avec l'interrupt 3
+  ¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨
+  Maintenant, peu de codeur le font car c'es chiant à mettre en oeuvre : il 
+s'agit de modifier l'interrupt 3 qui sert au débugage. Cette méthode n'est 
+plus utilisé pour plusieur raison : peu de gens code en assembleur, cette
+protection est incompatible avec Windows et des logiciels comme Soft-Ice ne 
+sont pas affecté par celle-ci.
+
+  b. Faire joujou avec le mode protégé
+  ¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨
+  Cette méthode consiste à passer successivement du mode non protégé au mode 
+protégé et vice-versa. Cela à un effet redical sur certain debugger : il 
+plante car il ne supporte pas le mode protégé. Pour éviter cela ? utiliser
+SoftIce ou Turbo Débugger. Un truc drole est que Windows supporte aussi très
+mal cela :)
+
+  c. Faire joujou avec la mémoire
+  ¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨
+  Ben si c'est un programme DOS, réservé toute la mémoire basse à pour effet
+d'empecher un debugger de tourner.
+
+  d. Le coup de la PIQ
+  ¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨
+  Bon, toutes les techniques précédentes ne nous emmerde pas car elles sont
+inéfficace sur les debuggers actuels. Le coup de la PIQ est là pour empêcher
+le débugage pas à pas. Il consiste à modifier la vérification de la version 
+de DOS dans le code en instruction d'arrêt. Il n'a pas d'incidence dans le
+cas d'une éxécution classique car le code normal sera déjà chargé mais à pour
+effet de planter le débuggeur en mode pas à pas. Il suffit de sauter
+l'instruction quand on la rencontre. C'est technique est peu connus donc peu
+utilisé (kewl !!!)
+Voici le code asm correspondant :
+PIQ_Stop_System proc near
+   push ds
+   push ax
+   push bx
+   push cs
+   pop  ds
+   mov  cs:word ptr [@int_21_fonct],4cb4h  ; c'est le code de modification
+                                           ; fonction arrêter
+@int_21_fonct:
+   mov  ah, 30h                            ; fonction de version du DOS
+   int  21h
+   pop  bx
+   pop  ax
+   pop  ds
+   ret
+PIQ_Stop_System endp
+
+  e. L'encodage des données
+  ¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨
+  Cela consiste à coder le programme et à le décoder à l'éxécution. Bof, 
+empêche d'utiliser WDasm (désassembleur) mais pas SoftIce. Technique peut 
+utilisé car dérangeante.
+
+  f. Le checksum
+  ¨¨¨¨¨¨¨¨¨¨¨¨¨¨
+  C'est la technique la plus chiante à enlever, surtout si elle est appliqué à
+plusieur reprise. Cette technique est sans doute la seule encore utilisé. Elle
+consiste à effectué une somme de contrôle de certaine partie du code. Si un
+logiciel patché s'arrête, il y a de forte chance que ce soit à cause de cela.
+La seule solution est d'aller modifier la somme de contrôle (attention il
+peut y en avoir plusieurs !!!).
+
+Conclusion : ne vous inquiétez pas trop pour ces techniques anti-debugging,
+elles sont rarement mise en oeuvre !!!
+
+
+-------[  EOF

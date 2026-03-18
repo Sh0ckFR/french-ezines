@@ -1,0 +1,536 @@
+
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  NT Web Technology Vulnerabilities  ]
+---------[ in Phrack 54 ]
+
+----[  by rain.forest.puppy [WT] <rfpuppy@iname.com> ]
+----[  Translated by S/ash [RtC] <slash-rtc@fr.st>  ]
+
+Note du traducteur : cette traduction est loin d'être parfaite. Notamment,
+à certains endroits où je ne savait pas trop par quoi traduire, des
+expressions peuvent sembler maladroites, voir difficile à comprendre.
+Si vous trouvez de meilleurs traductions pour ces défauts. merci de me
+prevenir (sl4sh@ifrance.com)
+
+---[  Phrack Magazine   Volume 8, Issue 54 Dec 25th, 1998, article 08 of 12
+
+
+-------------------------[  NT Web Technology Vulnerabilities
+
+              
+--------[  rain.forest.puppy / [WT] <rfpuppy@iname.com>
+
+
+----[  traduit par S/asH <sl4sh@ifrance.com> de la RtC <www.rtc.fr.st>
+ 
+ 
+*Note : la plupart des failles décrites dans ce documents n'ont pas encore été
+rendu public. Elles ont été découvertes par rain.forest.puppy et d'autres 
+membres de WT. De nombreux nouveaux outils seront dispo sur Internet plus
+tard. Il semblerait que le web soit le moyen habituel de le faire, et tous
+les logiciels de test sont demandés à être dispo sur le web. Baucoup
+réinvente la roue, construisant leur propre serveur web pour géré leurs html
+et leurs interfaces Java.
+
+Mais cet article ne parle pas de ces serveurs. Ils y en a trop, et il est
+trop facile d'exploiter des cibles vulnérables. Ils est plus intéressant de
+chercher l'aiguille dans la botte de foin, donc je vais me restreindre à
+quelques configs habituelles. C'est partit.
+
+ 
+----[  IIS 4.0
+ 
+IIS n'est pas si mauvais en tant que serveur web. Il n'est toujours pas
+comparable à Apache mais il a une gestion de script flexible et un côté
+serveur assez complet.
+Mais, bien sûr, tout a son prix...
+ 
+Un problème intéressant (et sûrement le seul qui n'a pas été publié avant cet
+article) est que rajouter l'extension '.idc' à la fin d'un URL provoque une
+tentative de la part d'IIS d'essayer de lancer le script .IDC avec les
+connecteurs DLL de la base de données. Si le script .IDC n'existe pas, alors
+IIS retourne une page d'info disant qu'il ne peut ouvrir
+'%documentroot%\<bogus name>.idc'. Par exemple :
+
+    "Cannot open c:\inetpub\wwwroot\index.html.idc"
+
+Super, le path entier du site sur le serveur. Très intéressant. Que va-t-on en
+faire? Bon, cela vous donne quelques info. Si vous tentez d'exploiter un CGI
+ou un autre programme serveurs, savoir sur quel disque vous êtes quand vous
+essayez d'accéder à des données peut vous aidez énormément. Pour exemple, si
+la requête IDC retourne :
+ 
+ 	f:\webs\1\index.html.idc
+ 
+alors vous savez que vous aurez probablement à spécifier 'c:\' pour obtenir
+n'importe quel fichiers de Win NT; Vous ne pouvez plus faire un truc barbare
+du genre:
+ 
+ 	../../../../winnt/system/repair/sam._
+ 
+car vous rester en adressage relatif, et donc sur le disque F. Une autre
+réponse classique est quelque chose du genre :
+ 
+ 	"Cannot open d:\20x.140.3x.25\index.html.idc"
+ 
+Où l'IP est l'adresse IP complète du serveur. Cela indique souvent que le
+serveur est sur un système qui habrite probablement plusieurs site web.
+ 
+Aussi, habituellement, le site du répertoire \inetpub\wwwroot est le site 'par
+défaut' et il peut y avoir d'autres choses associés au répertoire (comme des
+exemples, etc... Nous y viendront plus tard). Il est important de s'en
+rappeler.
+
+
+----[  FrontPage Webbots
+ 
+Un très rapide récapitulatif du fonctionnement des webbots: Frontpage insère
+quelques commentaires HTML qui spécifie les paramètres du webbot. Alors le
+formulaire et l'url de la page sont fournits à /_vti_bin/shtml.dll. shtml.dll 
+lit alors la page donnée, et interprète le code en commentaire HTML du webbot.
+ 
+Après, tous les paremètres nécessaires pour les (la plupart) webbots sont mis
+dans la page HTML. Prenons un exemple pour un site qui fait une suite FTP
+très populaire (c'est du code HTML):
+ 
+ 	<!--webbot BOT="GeneratedScript" endspan -->
+ 	<form method="POST" action="../_vti_bin/shtml.dll/downloads/ftp.html" 
+ 	name="FrontPage_Form1" webbot-action="--WEBBOT-SELF--">
+ 	<!--webbot bot="SaveResults" 
+ 	u-file="d:\us\product_downloads\download_log.csv"
+ 	s-format="TEXT/CSV" s-label-fields="FALSE" s-builtin-fields="Date Time" 
+ 	s-form-fields u-confirmation-url="../_confirmations/ftp.html"
+ 	startspan -->
+ 
+Remarquez que ce site sauve les résultats dans un fichier (et le fait qu'il
+y a "d:\.." montre que c'est un server windows). Mais le plus important est
+de noter ce qu'il y a dans le champs 'u-confirmation-url'. Cette page contient
+un long formulaire à remplir. Quand vous le validez, ce que vous entrez est
+enregistré dans 'u-file', et après vous êtes redirigés vers
+'u-confirmation-url'. Bon, vous ne voulez pas donner toutes vos
+renseignements personnel, allez seulement verz 'u-confirmation-url'. Dans ce
+cas, il sagit d'une page d'enregistrement pour downloader l'évaluation du
+soft. Puisque je suis fatigué de remplir toutes les info à longueur de temps,
+je vais maintenant directement à l'URL de confirmation et je download, 
+passant outre le formulaire.
+
+Un point en rapport est, si bot="SaveResults", et u-file est dans 
+l'arborescence du site (ce qui semble être beaucoup pour des comptes
+hébergés), vous pouvez voir le contenu du document. Par exemple,
+ 
+	<!--webbot bot="SaveResults" 
+	u-file="/_private/download.log"
+	s-format="TEXT/TEXT" s-form-fields startspan -->
+
+signifie que vous pouvez allez à http://site/_private/download.log et voir
+toutes les info que n'importe qui d'autre a rentré.
+ 
+
+----[  IIS 3.0 to IIS 4.0
+ 
+Il y a eu plusieurs changements entre IIS 3.0 et IIS 4.0. Evidemment, MMC en
+est un important, mais il y a quelque chose de mieux: il y a des associations
+par défauts faites entre certaines extensions et les DLLs. Regardons un
+exemple...
+
+Dans IIS 3.0, vous devenez administrateur du site web en allant sur
+http://site/iisadmin/, ce qui va ouvrir une boîte de dialogue en utilisant
+/scripts/iisadmin/ism.dll, et en redirigeant les différents fichiers .HTR
+dans ce répertoire. Les fichiers .HTR sont relativement inutile sans ism.dll
+pour les traiter, et ism.dll possède un système d'authentification dans son 
+code.
+
+Maintenant, upgradez IIS 3.0 par la version 4.0. Vous êtes à présent admin
+de votre site en passant par http://localhost:5416/. Que sont devenus tout
+ces .HTRs dans /scripts/iisadmin ? Ils y sont encore, tant que vous ne les
+enlevez pas. Le problème ? IIS 4.0 associe tout les .HTRs avec un nouveau
+ism.dll amélioré, qui ne contient pas de système d'authentification. Donc,
+quand vous faites à présent la requête d'un fichier .HTR, IIS va
+gentiment le traiter pour vous, sans se soucier de l'authentification.
+Vous pouvez désormais utiliser les fichiers .HTR de /scripts/iisadmin à
+votre volonté. Bien. Aucun d'entre eux ne fonctionne, dû à tellement de
+changement. SAUF UN: bdir.htr. bdir.htr semble continuer à fonctionner et
+afficher tranquillement pour vous tous les répertoires de n'importe quel
+disque. Vous pouvez naviguez dans tous les disques du serveur (et les
+disques réseaux), mais tout ce que vous réussirez à voir sont les
+répertoires (sans les fichiers). Dans le cas où vous le voudriez, vous
+pouvez dire à bdir.htr où regarder en faisant
+ 
+ 	/scripts/iisadmin/bdir.htr??<path>
+ ie:
+ 	/scripts/iisadmin/bdir.htr??d:\webs\
+ 
+Je n'ai pas trop jouer avec d'autre extensions, mais il y en a une
+demi-douzaine ou plus que IIS va désormais être heureux de traiter (les usuels
+sont ceux comme .ASP, .IDC, .HTR et les autres, moins usuels, sont .HTW,
+.IDQ, .IDA, .CER, etc).
+
+
+----[  Sample Page
+
+Bien que ce ne soit pas une bonne idée d'inclure des samples sur un serveur
+publique, il y a encore plusieurs endroits où cela est fait. IIS 4.0 inclus
+un assez large et complet site de démo nommé 'Exploration Air' qui utilise
+plusieur technologies web d'IIS 4.0. Une fonctionnalité interessante est le
+bouton 'How It Works' sur le bas de chaque page qui vous donne un scripts
+qui analyse le code de la page et colore les tags. Il a cependant un problème.
+
+Il utilise Scripting.FileSystemObject pour obtenir la page. Heureusement,
+cela vous laisse seulement utiliser des paths virtuels; malheureusement (sic),
+cela autorise l'utilisation de /../ pour aller vers les répertoires plus haut
+dans l'arborescence, y compris dans le répertoire racine. Cela permet d'ouvrir
+n'importe quel fichier se trouvant sur le même disque. En utilisant le bug
+des fichiers .IDC décrit plus haut pour déterminer où se situe les fichiers
+que vous avez obtenus, vous permet de savoir si vous pouvez accéder aux
+fichiers systèmes. On peut également voir le code de toute les page script
+(.ASP, .CFM, .IDC, etc). Par exemple:
+
+http://site/iissamples/exair/howitworks/codebrws.asp?source=/../../boot.ini
+
+peut affichier le fichier boot.ini de WinNT. Ce script est utilisé dans le 
+site de démo ExAir, comme dit précédement, mais également dans le SDK qui se 
+situe (s'il est installé) à l'adresse :
+http://site/iissamples/sdk/asp/docs/codebrws.asp
+
+
+----[  Cold Fusion app.server 3.1
+
+Cold Fusion est un langage de script assez créatif; c'est un bon front end
+pour les connections aux bases de données ODBC. Mais je ne l'aurait pas
+mentionné s'il n'y avait aucun problème.
+
+Comme IIS 4.0, il y a quelques petites choses alarmantes avec les pages
+d'exemple incluses avec CF. Une d'entre elles est Expression Evaluator situé
+à:
+
+	http://site/cfdocs/expeval/eval.cfm
+
+Il y a un test de sécurité appelé check_ip.cfm qui autorise l'accès seulement
+à partir de 127.0.0.1 (localhost). Merde ! on ne peut pas faire tourner du
+code binaire sur le serveur. Mais, regardons un peu:
+
+	http://site/cfdocs/expeval/exprcalc.cfm
+
+Il ne fait toujours rien de bien car il utilise encore eval.cfm pour traiter
+l'expression (ou les expressions) que nous avons entré. Mais il y a quelque
+chose de plus intéressant: le gestionnaire d'expression nous laisse
+enregistrer ou charger des fichiers d'expressions à évaluer. Et justement,
+exprcalc.cfm est le script permettant de CHARGER les fichiers, et il nous
+laisse voir tout les fichiers que l'on veut. Par exemple:
+
+	http://site/cfdocs/expeval/exprcalc.cfm?OpenFilePath=c:\boot.ini
+
+affichera le contenu de boot.ini dans la fenêtre. Comme le script IIS 
+codebrws.asp, nous pouvons utilisé exprcalc.cfm pour voir le fichier que
+l'on souhaite mais, alors que codebrws.asp est limité au disque courant,
+exprcalc.cfm nous permet de spécifier le disque que l'on souhaite.
+
+
+----[ Mail Anonyme
+
+Très simple et rapide,
+ 
+	/cfdocs/expeval/sendmail.cfm?MailFrom=&MailTo=&Subject=&Message=
+
+permet d'envoyer un email. Pas exactement une faille de sécurité, mais pas
+plaisant (sic) pour autant. Vous devez remplir les valeurs des variables
+(NDT : après les '=').
+
+
+----[ Problèmes du Proxy
+
+C'est un problème interessant de se soucier non seulement de CF, mais
+également des logiciels de proxy en général. CF inclu une application
+'client http' dans
+	/cfdocs/examples/httpclient/mainframeset.cfm
+
+qui vous autorise à taper une URL qui sera afficher dans le code HTML de
+la fenêtre du bas. Bon, j'essaie à présent d'administrer un serveur IIS 4.0
+où CF tourne en allant à http://site:5416/. J'obtient une erreur disant que
+je dois être en local (127.0.0.1). Maintenant, je vais sur le client-http
+de CF sur le même serveur. Pour l'URL, je tape "http://localhost:5416"
+et j'obtient la bonne page en retour. J'ai effectivement contourné le test
+de sécurité. En utilisant la commande GET dans le client-http de CF, je peux
+administrer le serveur.
+
+Ce qui est vraiment intéressant en théorie est que les applications comme
+celle-ci, et les proxys en général, peuvent-être utilisé pour abuser de la
+confiance entre différentes machines et contourner les sécurités 'localhost
+only' (NDT : il s'agit ici de non-blind spoofing consistant à exploiter des
+redirecteurs (proxy); l'exemple le plus connus en France est le moyens de lire
+les emails d'abonnés Wanadoo). Il peut être intéressant d'entendre ce que 
+d'autres personnes ont trouvé en allant dans cette direction. Un exemple:
+
+Je surf sur le firewall/proxy web d'une société à partir de l'"extérieur".
+J'obtient une erreur du genre 'Denied/Unauthorized Access'. C'est alors que
+je demande à leur proxy 'GET http://localhost/': je suis à présent sur la page
+'intérieure' avec les instructions sur la façon d'utiliser correctement le 
+proxy pour sortir. Bien sur, il y a un problème de configuration évident
+(autorisant les requêtes externes), mais ce n'est pas la question...
+
+
+----[  ODBC and MS SQL server 6.5
+
+Ok, le sujet change encore. Bien que nous ayons atteint les service web et
+le contenu des bases de données, jouons avec le server ODBC et MS SQL 6.5.
+
+Je travaillais avec un type du WT sur son problème. Il fit le bon truc et
+appela Microsoft: leur réponse fut hilarante. Selon eux, ce que vous êtes sur
+le point de lire n'est pas une faille et donc ne chercher pas à faire quoi
+que ce soit pour l'arrêter.
+ 
+- QUEL EST LE PROBLEME?  MS SQL server autorise les commandes batch.
+
+- CE QUI VEUT DIRE?  On peut faire quelque chose comme:
+
+	SELECT * FROM table WHERE x=1 SELECT * FROM table WHERE y=5
+
+Exactement comme ça, et ça marche. Cela retourne 2 enregistrements contenant
+chacun le résultat de chaque SELECT.
+
+- QUE CELA VEUT-IL VRAIMENT DIRE?  Des personnes peuvent probablement
+détourner les commandes SQL vers vos données. Imaginons que vous ayez:
+
+	SELECT * FROM table WHERE x=%%criteria from webpage user%%
+
+et si la valeur %%criteria de la page user%% vaut:
+
+	SELECT * FROM sysobjects
+(NDT : je n'ai pas essayer mais je suppose que c'est plûtot:
+        1 SELECT * FROM sysobjects)
+
+Cela sera transcrit par:
+
+	SELECT * FROM table WHERE x=1 SELECT * FROM sysobjects
+
+qui sera une requête SQL valide et sera exécutée (les deux commandes). Mais
+il y a plus. Imaginez qu'il y ait:
+
+	SELECT * FROM table WHERE x=%%criteria%% AND y=5
+
+Si nous utilisons notre précédent exemple, on obtiendrait:
+
+	SELECT * FROM table WHERE x=1 SELECT * FROM sysobjects AND y=5
+
+qui n'est valide en SQL et ne marchera pas. Bon, il y a un indicateur de
+commentaire qui signale au serveur MS SQL d'ignorer le reste de la ligne. Si
+criteria est "1 SELECT * FROM sysobjects --", alors le '--' fera ignorer le
+reste de la ligne ("AND y=5").
+
+- QUEL SONT MES FICHIERS AFFECTES? Bien, les fichiers ASP et IDC sont
+problématiques. Même si vous arrivez à corriger les fichiers ASP, il peuvent
+être encore détournés avec les fichiers IDC.
+
+- COMMENT, EXACTEMENT, SONT LES IDCs AFFECTES? Si nous voulions interroger une
+base de données noms=tel où l'utilisateur donne un nom et nous renvoyons
+tous les numéros de tél correspondants, alors une requête SQL du type
+
+	SELECT * FROM phonetable WHERE NAME='namewewant'
+
+pourrait marché. De toute manière, nous avons besoin de spécifier "namewewant"
+pour être le nom de la personne voulu. Donc, si nous écrivons la ligne SQL 
+suivante:
+
+	SELECT * FROM phonetable WHERE NAME='%name%'
+
+et que, dans notre formulaire HTML, on a une boîte de texte nommée 'name'.
+Si ce .idc est appelé 'phone.idc', nous le lanceront par:
+
+	http://site/phone.idc?name=rfp
+
+Le serveur placera alors "rfp" à la place de %name% et demandera au server
+SQL de selectionner * où name='rfp'.
+
+A présent, utilisons plus de commandes en ligne. Exécuter notre phone.idc
+comme précédemment:
+
+	phone.idc?name=rfp select * from table2
+
+conduirait à une requête Sql, dans le .idc, étendue à
+
+	SELECT * FROM phonetable WHERE name='rfp select * from table2'
+
+On y est presque, mais l'apostrophe fait que tout ce qui suit soit
+l'argument. Que se passerait-til si nous mettions NOTRE PROPRE apostrophe?
+
+	phone.idc?name=rfp' select * from table2 --
+
+donnerait
+
+	SELECT * FROM phonetable WHERE name='rfp' select * from table2 --'
+
+Nous avons besoin de rajouter le commentaire pour sortir de l'apostrophe.
+MAIS... les .idc sont intelligents...ils vont échapper à l'apostrophe à
+l'intérieur de deux apostrophes, ce qui indiquera une donnée entre
+apostrophes. I.e.
+
+	phone.idc?name=rfp' command
+
+deviendra
+
+	SELECT * FROM phonetable WHERE name='rfp'' command'
+
+Et tant que 2 '' ferons qu'une donnée est entre ', la table sera appelée
+pour une colonne qui correspond à:
+
+	"rfp' command"
+
+A présent, attendez, si les .idc protègent contre ceci, alors pourquoi
+diable j'en parle? Vous voyez, ils sont encore vulnérables. Ils nous
+emmerdent lorsqu'ils mettent secrètement des apostrophes en plus dans la
+chaîne SQL. Mais... lorsque que vous demandez une valeur numérique, vous
+n'utilisez pas d'apostrophe; elles sont seulement là pour les chaînes. Donc,
+imaginons que nous voulions utiliser notre base de données de numéro de
+téléphone, donner un numéro de téléphone et chercher le nom associé.
+Disons également que les numéro de téléphone sont stokés comme des
+'long int' (valeurs numériques), plûtot que par des chaînes de caractères.
+Nous avons besoin d'une entrée numérique pour cet exemple.
+
+Donc, je veux savoir qui a le numéro de téléphone 5551212. Une requête SQL
+pourrait être:
+
+	SELECT * FROM phonetable WHERE phone=5551212
+
+Et la version avec variable (dans un .idc):
+
+	SELECT * FROM phonetable WHERE phone=%phonenum%
+
+Wouaou! Pas d'apostrophe à gérer. Maintenant, nous faisont simplement:
+
+	phone.idc?phonenum=5551212 select * from table1
+
+Et c'est étendu à
+
+	SELECT * FROM phonetable WHERE phone=5551212 select * from table1
+
+- Y-A-T-IL DES .IDCs QUE QUELQU'UN PEUT UTILISER CONTRE MOI? Ravi que vous
+demandiez. Il y a un fichier inclu avec IIS 3.0 dans le répertoire
+/scripts/tools appelé ctss.idc, qui se commande par une ligne SQL du genre:
+
+	CREATE TABLE %table% (...table defs...)
+
+Il est simple à exploiter. Tant que vous conservez le 'CREATE TABLE' initial,
+vous devez faire passer ça pour être une commande valide. Donner un nom de
+table et une définition d'une simple colonne devrait être suffisant. Et alors
+nous entrons nos commande puis un '--' pour que le reste de la définition de
+la table soit ignoré. Donc,
+
+	ctss.idc?table=craptable (f int) select * from table1 --
+
+Nous donnera
+
+	CREATE TABLE craptable (f int) select * from table1 -- \
+		(...table defs...)
+
+(De toute façon, avec ctss.irc, vous avez besoin de connaître le DSN, l'UID et
+le PWD avant d'agir... donc il est moins vulnérables qu'il n'en a l'air)
+
+
+- MAIS COMMENT SONT EXACTEMENT LES ASPs AFFECTES? Un code ADODB typique
+ressemble à quelque chose comme:
+
+	<% SQLquery="SELECT * FROM phonetable"
+	Set Conn = Server.CreateObject("ADODB.Connection")
+	Conn.Open "DSN=websql;UID=sa;PWD=pwd;DATABASE=master"
+	Set rec = Server.CreateObject("ADODB.RecordSet")
+	rec.ActiveConnection=Conn
+	rec.Open SQLquery %>
+
+Ce qui réalise essentiellement un SELECT * FROM phonetable dans le DSN du
+websql, utilisant user=sa, pwd=pwd, sur database=master. Alors vous utilisez
+un formatage fantaisique de 'rec' pour afficher la sortie par ASP.
+
+Bon, rentrons des données dans un compte utilisateur.
+
+	<% SQLquery="SELECT * FROM phonetable WHERE name='" & _
+	request.querystring("name") & "'"
+	Set Conn = Server.CreateObject("ADODB.Connection")
+	Conn.Open "DSN=websql;UID=sa;PWD=pwd;DATABASE=master"
+	Set rec = Server.CreateObject("ADODB.RecordSet")
+	rec.ActiveConnection=Conn
+	rec.Open SQLquery %>
+
+Donc, notre variable "name" est à présent stockée dans la chaîne de la
+requête SQL, entre deux ' '. Devinez quoi?! ASP se contrefout des
+apostrophes. Il n'est pas aussi intelligent qu'un .IDC et prends l'apostrophe
+supplémentaire pour transformer la commande ' en une apostrophe de donnée.
+Donc, a quoi ressemble la chaine de commande SQL quand nous l'appelons comme
+phone.idc? Reprenons le phone.asp précédent:
+
+	phone.asp?name=rfp' select * from table1 --
+
+Nous donnera une requête SQL comme ceci:
+
+	SELECT * FROM phonetable WHERE name='rfp' select * from table1 --'
+
+qui marchera. Pas de problème.
+
+
+Je suis sûr que quelques questions interessantes vous viennent à l'esprit
+
+- MAIS JE NE CONNAIS PAS LE DSN, LE LOGIN OU LE PASS! Vous n'en avez pas
+besoin. Les dévellopeurs de la page qui contient le code SQL ferons toujours
+attention à cela. Nous détournerons les commandes SQL vers des commandes qui
+fonctionnerons (sinon la page/application ne voudra jamais fonctionner). Si la
+page normale peut atteindre le serveur SQL à travers un firewall, VPN, etc,
+alors ces commandes également. Elles peuvent aller n'importe où peuvent aller
+les pages classiques et le SQL, et elles le ferons.
+
+- MAIS SI NOUS NE POUVONS VOIR LE DEUXIEME ENREGISTREMENT RETOURNE! En effet,
+c'est un problème la plupart du temps. Il y a peu d'applications construites
+pour gérer plusieurs enregistrements en retour, donc elle ne coopère pas 
+d'habitude. Mais laissez-moi dire qu'il y a une procédure d'E/S dans SQL
+qui permet d'envoyer la réponse par email vers n'importe où...vous n'avez pas
+besoin de voir le résultat dans le navigateur web.
+
+- MAIS EN QUOI EST-ILS INTERRESSANTS DE LANCER PLUS DE COMMANDES SQL? Mes 
+amis, mes amis. Pensez plus grands. Refléchissez mieux. Ce sont des procédures
+d'E/S. Je ne vais pas inclure des exemples d'exploits, parce que ce n'est
+pas le sujet. Il est plus simple de montrer que le problème existe.
+
+- MAIS, ET SI ILS ONTS DES COMMANDES SQL COMPLEXES? C'est vrai, cela peut être
+délicat, mais ça reste possible. Pensez que c'est comme écrire un buffer
+overflow. ;-) Si nous avons:
+
+	SELECT * FROM table WHERE ((x=%%criteria) AND (y=5))
+
+alors nous avons des parenthèses à gérer. Mais c'est encore faisable. Le but
+est de fermer toute les autres parenthèses ouverte avant la commande SQL
+ignoré, et d'utiliser -- (commentaire) pour ignorer tout ce qui suit.
+
+- COMMENT PUIS-JE ME PROTEGER? Mettez des apostrophes atour de toute chaînes
+venant de l'utilisateur web et utilisées dans vos requêtes SQL, et également
+changé toutes les apostrophes (') par deux apostrophes ('') -- cela protégera
+de tout. Dans le cas de paramètres numériques, vérifiez si la chaîne numérique
+envoyée ne contient bien, en réalité, que des chiffres. Et même si vous ne
+pouvez exploiter aucun des IDCs décrits précédemment, passez au scripts ASP.
+N'autoriser l'accès vers aucune des procédures étendues du serveur SQL. Le
+mieux est encore de ne pas utiliser de SQL compilé dans vos application web;
+d'appelé des procédures d'E/S de votre cru, et de passer les données web
+dynamique de l'utilisateur en tant que paramètres.
+
+Note: on a seulement eu le temps (et les moyens) de parler des vulnérabilités
+SQL batch contre le serveur MS SQL 6.5. Nous aurions pu nous intéresser aux
+autres plateforme de base données (Oracle, Informix, etc) qui sont également
+vulnérables.
+
+
+----[  Conclusion
+
+Bon, il s'agit de conseils valides pour l'instant. Quel est la morales
+de tout ceci?
+
+- N'utilisez pas des samples sur des serveurs publique ou de production.
+- N'utilisez pas le type de sécurité 'local-host only', spécialement sur
+les proxys.
+- Regardez ce qui change exactement quand vous upgradez les softs.
+- Ne supposer d'avance pas que l'entrée utilisateur d'une requête SQL est
+exacte.
+
+En attendant, utilisez votre cervau. Avant la prochaine fois, amusez-vous
+bien.
+ 
+rain.forest.puppy / [WT]         rfpuppy@iname.com
+ 
+----[  EOF

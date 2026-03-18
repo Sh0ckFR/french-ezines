@@ -1,0 +1,56 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  Time to Live  ]
+---------[ in RtC mag 1 ]
+----[  by Par4noID <rtcparanoid@yahoo.fr>  ]
+
+
+
+  Dans cet article, je ferais souvent reference à la structure des headers IP
+ainsi si vous ne la connaissez pas je vous conseille d'aller lire par exemple
+l'article de Kewl dans noroute1 (ou tout autre article sur les datagrammes IP).
+  
+  Cet article porte sur le champ TTL (time to live) des headers IP. 
+D'abord une petite explication :
+  chaque paquet IP porte un numero code sur un octet dit time to live (TTL) qui 
+traduit la duree de vie du paquet. A chaque fois que le paquet passe au travers
+d'un routeur le TTL est decremente de 1 , s'il tombe à 0 le paquet est detruit.
+  Le probleme est que la plupart des DOS (ou autre programme utile ;-) )
+envoie des paquets dont le TTL est initialisé à 255 (c'est a dire au max)!
+  Prenons un exemple, j suis trankyyyyyl sur un reseau local styl 195.169.0.0
+et on m'attaque par une DOS classique . Etant sous linux je 
+compile trankylou un prog c ouvrant une socket et tapant un petit 
+read(rawsocket,&paquet,sizeof(paquet)) pour pouvoir observer les paquets qu'on
+m'envoie. Et la qu'est-ce que j vois ? IPsource : 199.167.25.56 TTL:255 .
+Clairement l'ip ne veut rien dire, en effet les dos sont spoofée puisque les
+paquets ne reviennent pas à l'expediteur.Par contre on remarque un TTL de 255
+c'est a dire au max, le paquet n'est donc passe par aucun autre systeme que
+le notre : le paquet vient donc du reseau local ! On scan alors l'ensemble des
+machines du reseau pour remonter jusqu'au coupable!
+
+  Mais il y a pire : prenons le logiciel de scan nmap, celui-ci (qu'utilise 
+nombre de hacker) envoie des paquets dont le TTL est mis à 255 et dont le port
+source est toujours de 49724 ! 
+Imaginons alors un sympathique defenseur de la liberte du net utilisant nmap 
+pour scanner les ports d'une machine,disons...judiciaire noté FCK. Grossiere
+erreur ! En effet FCK, ecoutant ses ports, remarque un paquet de port source 
+49724 qui arrive à sa machine. FCK sait alors que quelqu'un tente de faire un 
+nmap sur ses ports. Il note le TTL moyen (moyenne des TTLs des differents 
+paquets de port source 49724) et sachant que nmap met le TTL initialement à 255
+il sait par un rapide calcul (255-TTL moyen) la distance en nombre de systemes 
+(ou routeur) qui le separe du hacker. Bon maintenant si le hacker utilise 
+regulierement nmap sur des machines judiciaires, par recoupement (en utilisant 
+une carte des systemes comme en dispose nos amis les V) on peut remonter 
+jusqu'au premier systeme qu'utilise le hacker c'est a dire son fournisseur 
+d'acces ! Bon la suite j crois que j ai pas besoin de l'expliquer! BUSTED !
+ 
+Conclusion: initialisez vos TTL à une valeur comprise entre 150 et 200 dans vos
+progs c, le mieux etant bien sur de pouvoir choisir son TTL à chaque lancement
+du prog (pour trois lignes de programmation en plus vous pouvez peut etre un 
+petit effort) !
+        utilisez toujours la combinaison wingate proxy shell qui rallonge les
+routes et qui rend ainsi l'ecart type entre les valeurs des TTL suffisamment 
+grand pour rendre ceux-ci inutilisables!
+
+
+-------[  EOF

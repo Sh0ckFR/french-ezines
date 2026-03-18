@@ -1,0 +1,175 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  Les bases du TCP/IP  ]
+---------[ in RtC mag 1 ]
+----[  by SnEaKie <sneakie-rtc@fr.st>  ]
+
+
+-------[  Introduction
+
+    Cet article se veut totalement éducatif, vous ne trouverez dans son contenu aucunes allusions explicites à de quelconques mises en application de ces théories. Ne comptez pas sur moi pour vous montrer comment se servir de tel ou tel logiciel qui fait le boulot à votre place : BO, WinNuke, etc... enfin, de tout ce ramassi de logiciels de merde ! (dont je venere l'inventeur pour son génie!). Mon but, ou plutôt celui de l'article est d'expliquer comment marchent les protocoles de liaison internet afin d'analyser les processus mis en oeuvre lors de connexions internet ou réseaux. Cet article se veut purement théorique mais prend toutes les bases nécessaires à la compréhension de certains procédés, Spoofing, Connexion server Proxy, Wingate, - qui allient non seulement la maîtrise de certaines bases de TCP/IP mais aussi des bases en programmation C - et les rend publiques dans le seul but d'amorcer la compréhension de ces derniers.    
+
+
+-------[  A. Introduction sur le TCP/IP
+
+
+    Les protocoles TCP/IP one été définis à partir des années 1960 et servaient à cette époque à délocaliser un systeme informatique de la defense americaine. Le departement de la defense americaine appele DARPA (= Defense Advanced Research Projects Agency) mit alors au point un systeme de reseau base sur la transmission de paquets. Cette tentative devait avoir pour effet de se proteger en cas d'une eventuelle attaque sur le centre nerveu du dispositif. Ce reseau de paquets signifie que chaque message est decoupe selon sa taille en plusieurs paquets qui seront tous transmis au destinataire souvent dans un ordre different de celui d'origine, car les paquets ont tendance a emprunter des "routes" tres differentes sur le reseau. Ce reseau developpe par la DARPA fut connu sous le nom de ARPANET. Il fut conçu bien avant l'ére des PCs.
+
+    TCP/IP doit etre capable de fonctionner sous n'importe quelle plate-forme. De ce fait, on peut communiquer avec un ordinateur totalement different du sien afin de relier des machines entre elles. Cela signifie aussi que l'independance vis à vis des plates-formes, peut permettre aux ordinateurs de se connecter par n'importe quel support physique disponible, comme une ligne louée, un réseau X25, ou une connexion a distance. De par cette fonctionnalite, TCP/IP isole les applications qui tournent sur les ordinateurs en reseau de la partie physique des reseaux. Cependant, certaines conditions devaient etre accomplies pour permettre la communication entre deux ordinateurs :
+    
+ - Chaque ordinateur doit posseder une identification unique qui lui permet d'etre reconnu par les autres sur le reseau.
+ - Chaque systeme doit creer une interface entre le nouveaux protocoles et le support physique utilise pour connecter le systeme au reseau.
+ - Chaque ordinateur doit posseder programme permettant de lancer des requetes destinees aux ressources reseau.
+ - L'evolution potentielle de reseau ne doit pas etre limitee par les nouveaux protocoles.
+ - Les standards definissant les nouveaux protocoles doivent etre consruits pour s'adapter facilement aux nouvelles plates-formes.
+ - Les standards de ces nouveaux protocoles ne peuvent etre limites par des marques, copyrights ou autres restrictions.
+
+    Dans un reseau, les ordinateurs dans la tache difficile de connexion, sont assistes par differents protocoles de reseaux contenus dans la pile de protocoles. Cette meme pile est capable de regir toutes les operations effectuees que ce soit une requete de session, une fin de connexion, une erreur de connexion, un mail entrant ou sortant, etc... 
+    Cependant, sur le reseau, pour que tout le monde s'y retrouve, il faut que chacun sache avec qui il dialogue, un peu comme celui qui envoie une carte postale a quelqu'un. C'est a ce propos, que je vais vous parler des different types d'adressabilite. En effet, il en existe plusieurs, qui sont utilises dans differents types de transmissions :
+
+ - Type DIFFUSION (Broadcast) Les donnees sont envoyees a toutes les machines du reseau.
+ - Type MULTIDESTINATAIRE (Multicast) Les donnees sont envoyees a un groupe de machines.
+ - Type MONODESTINATAIRE (Unicast) Les donnees ne sont envoyees qu'a une seule machine.
+
+    Vous voyez alors apparaitre le probleme d'adressage, car comment envoyer des donnees a une seule machine, en monodestinataire donc, sans savoir comment l'identifier. De meme pour les donnees voulant etre envoyees en multidestinataire, comment savoir a qui l'envoyer car le groupe d'ordinateurs n'a pas d'adresse proprement dite. Un ancien protocole appele ARCnet identifiait les machines par une adresse purement numerique comprise entre 1 et 256, codee sur 1 octet donc. Vous imaginez bien que ce systeme a tres rapidement trouve ses limites, sur un reseau de 20 machines, ca va meme pas quand 1000 reseaux sont interconnectes et que donc des centaines de milliers de machines sont connectees entre elles.
+    C'est alors que Dieu crea l'adresse IP. Elle est a l'Internet ce que l'adresse postale est au facteur. C'est a dire indispensable si l'on veut communiquer. Un nombre code en binaire sur 32 bits est appele ADRESSE IP. Elle est attribuee a chaque ordinateur du reseayu independamment de celle physique existante. Cette adresse appelle hote, tout ordinateur possedant une carte reseau conectee a un reseau TCP/IP. Un ordinateur possedant plusieurs cartes reliant plusieurs reseaux entre eux est aussi un hote mais il est special et appele routeur. Car il permet le routage IP, c'est a dire le relais en quelque sorte d'un reseau à un autre.
+
+
+-------[  B. La Pile de Protocoles
+
+
+    L'application qui genere une requete pour se connecter a un reseau TCP/IP est alors situe en haut de la pile et le bas de cette pile constitue l'interface avec le media lui-meme. Ce qui veut dire que le media dans ce cas est la liaison physique, ou plutot la carte reseau elle meme. Chaque couche possede un protocole ou des protocoles qui sont charges d'effectuer certaines taches bien specifiques qui sont necessaires pour la communication sur le reseau. La transmission generee par le dessus de la pile traverse toute la pile jusqu'en bas afin de se charger des informations specifique a chaques couches qui se doivent de specifier les options qu'elles utilisent par exemple, la vitesse de transmission des donnees propre au modem, le nombre de routeur que le paquet peut traverser avant d'etre detruit, etc... Pour traiter la requete, l'ordinateur cible doit posseder une pile reseau identique a celle de l'ordinateur emetteur et comporter les memes protocoles. La requete remonte cette fois-ci les couches et les memes processus sont effectues dans l'ordre inverse jusqu'a ce que le signal code atteigne l'application. L'ordinateur cible, grace a son application de traitement des informations envoyees, va se charger de repondre a l'ordinateur emetteur apres avoir traiter la requete. Il y a renvoie d'un accuse de reception seulement dans le cas ou le protocle emetteur et recepteur est oriente connexion qu'il soit fiable ou non-fiable. Nous verrons ceci dans un autre chapitre. Voici un schema tres simple de la correspondance entre le systeme de reference OSI (Open Systems Interconnection) et TCP (Transmission Control Protocol):
+    
+       Modele OSI                      TCP/IP
+    -----------------             -------------------
+    I  Application  I    ----->   I                 I
+    -----------------      +      I    Application  I
+    I Presentation  I    ----->   I                 I
+    -----------------             -------------------
+    I   Session     I    ----->   I                 I
+    -----------------      +      I    Transport    I
+    I   Transport   I    ----->   I                 I
+    -----------------             -------------------
+    I    Reseau     I    ----->   I    Internet     I
+    -----------------             -------------------
+    I  Liaison des  I    ----->   I    Liaison      I
+    I   donnees     I             I                 I
+    -----------------             -------------------
+    I   Physique    I
+    -----------------
+
+    Ces couches sont totalement fictives seulement, elles sont tres utiles a l'etude de chaque tache effectuees par la machine dans l'echange des donnees car chacune de ces couches represente une fonctionnalite propre au domaine auquelle elle se rapporte. Par exemple, dans la couche Transport de TCP/IP, il y a des services de communication sous la forme de deux protocoles : TCP et UDP. Si ils n'etaient pas replace de leur contexte, cad, dans la bonne couche leur etude serait alors impossible. Les couches ne sont la que pour mieux se represente le fonctionnement du TCP/IP. Decrivons un peu ce que veut dire ces couches. Je vous passe l'explication du modele OSI, il est trop long et en plus, ce qui interesse c'est le TCP/IP, j'ai donne la correspondance pour ne pas rester ignorant car quand on parle de TCP/IP, on se doit de savoir quel est le modele qui lui sert de reference. Pour le TCP/IP donc, prenons les couches une par une :
+    
+ - Application - Ce sont des API comme winsock2.0 ou 1.1 qui ne sont pas des applications qui tournent sur l'ordinateur mais plutot des programmes qui sont l'intermediaire indispensable au dialogue entre OS(systeme d'exploitation) et le media (la carte reseau).
+ - Transport - Comme dans le modele OSI, Transport fournit les services de communication sous forme de deux protocoles, comme je le disais tout à l'heure, sont TCP, et UDP (User Datagram Protocol).
+ - Internet - Cette couche contient le protocole IP(Internet Protocol). Ce protocole est responsable de pleins de choses : decoupage, adressage et du routage des donnees vers leur destinataire. Deux autres protocoles operent au niveau de cette couche : ICMP(tres bien : Internet Control Message Protocol), et IGMP (Internet Group Management Protocol).
+ - Liaison - Cette couche contient les protocoles qui favorisent l'acheminement des donnees IP sur le media. TCP/IP ne defini pas les fonctionnalites des couches Liaison des donnees et Physique de OSI mais integre des protocoles comme ARP et RARP qui fournit une inteface entre TCP/IP et le réseau physique. En effet, ARP est capable de convertir une adresse IP en une adresse materielle et RARP(Reverse ARP) fait l'inverse, a partir d'une adresse materielle donne une adresse IP.
+
+    Il existe cependant plusieurs formats de donnees pouvant transiter sur le reseau et selon les protocoles qui les generent, car les couches differents ne generent pas les memes formats de donnees, on peut les appeler de differentes sortes, en voici un exemple :
+
+    On parle de Segment TCP, de Paquet UDP.
+        Contenus dans un Datagramme IP
+        Contenus tous dans une Trame Ethernet. 
+ 
+SChematiquement:
+ ----------------------------------------------       
+ I                                            I
+ I     ---------------------------------      I
+ I     I  -----------      ----------  I      I
+ I     I  I Segment I      I Paquet I  I      I
+ I     I  I   TCP   I      I  UDP   I  I      I
+ I     I  -----------      ----------  I      I
+ I     I                               I      I
+ I     I                               I      I
+ I     I                               I      I 
+ I     I          Datagramme IP        I      I
+ I     ---------------------------------      I
+ I                Trame Ethernet              I
+ ----------------------------------------------
+
+           
+                         
+-------[  C. L'encapsulation.
+
+    Lorsque des donnees sont envoyees, elles doivent traverser chaques couches du haut vers le bas comme on l'a vu tout a l'heure. A chaque fois que les donnees traversent une couche, des donnees propres a chaque couche leur sont ajoutees ainsi, chaque couche peut faire part de ses exigences pour l'ordinateur cible qui devra respecter ces conditions. Le fait que chaque protocole ajoute son propre controle aux donnees, est appele encapsulation. En fait chaque protocole un en-tete aux donnees de la couche superieure. Cet en-tete contient les donnees importantes et relatives a chaque protocole. Cet en-tete est forme de plusieurs octets et se rajoute "devant" les donnees utiles. Ex :
+
+                    --------------------------------------------------
+                    I   En-Tete    I          Donnees utiles         I
+                    I Application  I            Application          I
+                    --------------------------------------------------
+
+    Cette structure sera donnee a la couche directement inferieure soit, la couche Transport qui fera de meme avec ce qu'elle aura recu, ce qui fait que le protocole inferieur encapsule l'encapsulation du protocole superieur.Ainsi, l'en-tete Transport devient : 
+
+                    --------------------------------------------------
+                    I   En-Tete    I          Donnees utiles         I
+                    I Application  I            Application          I
+                    --------------------------------------------------
+ ---------------------------------------------------------------------
+ I  En-Tete  I                    Donnees utiles                     I
+ I Transport I                      Transport                        I
+ ---------------------------------------------------------------------
+
+    Chaque en-tete est formee d'un certain nombre de champs, de differente taille, utilise par le protocole pour implementer les ervices necessaires a la transmission des donnees. Les donnees des champs peuvent effectuer plusieurs taches dont l'adressage, la fragmentation, la verification des erreurs et le controle de flux. En voici une courte description.
+
+- ADRESSAGE -
+
+    Il apparait dans les en-tetes des protocoles, l'adresse de celui a qui vous envoyez les donnees, soit le destinataire. Quand un message est envoye a l'ordinateur distant, il doit etre dirige vers le bon protocole de chaque couche pour qu'il puisse atteindre l'application pour lequel il est destine. La structure peut se comparer alors a une arborescence. Un petit schema explicatif est alors interessant :
+
+               FTP     HTTP    DNS     SMTP    SNMP    
+                |        |      |        |       |
+                ----------------------------------
+                         |               |
+                         |               |
+                         --------IP-------
+                                  |
+                                  |
+IPX/SPX <--------------------- Ethernet ---------------------> Appletalk
+
+    Seulement pour que les protocoles puissent correspondre via la transmission, il faut alors que les chemins d'acces soient specifies et a ce propos, les chemins sont specifies dans les en-tetes des protocoles qui sont transmis. Pour etre exact ils sont enregistres dans un champ special de l'en-tete.  
+
+- FRAGMENTATION -
+
+    Dans un grand nombre de transmissions, le message est trop important pour tenir en un seul paquet, c'est pourquoi a ete cree la fragmentation des messages permettant d'envoyer des messages assez gros en plusieurs morceaux. Chaque morceau est determine par le type de support reseau utilise et chaque paquet nouvellement cree se voit assigner un numero qui lui sert d'intificateur. De ce fait tous les paquets arrivent et sont tres souvent reorganises car ils etaient dans le desordre. L'ordinateur distant possede un certain nombre de verifications a effectuer afin de verifier l'integrite des paquets qui lui ont ete envoye. Par exemple la taille de toutes les donnees contenues dans le paquet sont codees grace a un algorithme complexe et la valeur ainsi obtenue est placee dans un champ de l'en-tete. Apres reception et verification du bon nombre de paquets, il reste a l'ordinateur de verifier la taille du paquet reconstitue. Il trouve pour l'aider la valeur codee dans l'en-tete et la compare avec ce qu'il obtient en operant de la meme facon.
+
+- VERIFICATION DES ERREURS -
+
+    Comme je l'ai deja dit, il existe plusieurs manieres de verifier l'integrite des paquets. Ces manieres sont baptisees processus de verification d'erreurs. Ces processus sont alors bases sur des techniques de calcul d'une valeur portant sur les donnees envoyees par l'emetteur. Cette valeur est alors sauvegardee sous un champ de l'en-tete. Lorsque le paquet arrive, le destinataire recalcule cette meme valeur et si les valeurs sont differents, alors cela signifie que les donnees ont ete changees en cours de route et donc que le paquet n'est plus l'original. Ceci n'est qu'une protection minimale, qui peut etre epaulee par un systeme plus performant qui fonctione avec le protocole Ethernet. Celui-ci calcule un CRC (Cyclical Redundancy Check) pour l'ensemble des donnees et l'envoie dans l'en-tete. A l'arrivee du paquet, le CRC est recalcule et meme si un seul bit des donnees a ete modifie, la valeur du CRC change.
+
+- CONTROLE DE FLUX -
+
+    Ceci est la specification de la vitesse a laquelle un ordinateur destinataire peut recevoir les donnees qui lui sont envoyees. C'est un processus tres utilise dans la tansmission de plusieurs paquets, en effet, chaque paquet envoie un accuse de reception qui contient une valeur indiquant la quantite de donnees que peut recevoir le destinataire en un certain temps. Cette valeur peut alors varie pendant la transmission des donnees et il en resulte que l'emetteur devra reduire son taux d'envoi pour eviter un plantage du au surencombrement de la pile de protocoles du destinataire.
+
+-------[  D. Les adresses Internet (adresses IP)
+
+    Lorsqu'un ordinateur souhaite envoyer des donnees a un de ses amis, il se doit de savoir ou il se situe. C'est alors qu'il fait reference a des adresses un peu speciales que l'ont appelle adresses internet mais plus communement, adresses IP. Ces adresses sont codees sur 32 Bits. Pour etre rapide, il en existe plusieurs classes qui sont A,B,C,D,E. Ces differentes classes different en fonction de leurs nombres maximum d'hotes mais aussi par leurs ecritures. Sur 32 Bits, ce qui veut dire qu'elles possedent quatre chiffres, representant chacun un octet, soit 8 Bits donc 8*4=32(pour ceux qui ne maitrise pas tres bien le passage du binaire au decimal qui est pourtant primordial en informatique!). Ces adresses peuvent donc a cet effet varier entre 0.0.0.0 et 255.255.255.255. Car un nombre binaire de 8 Bits exprime en decimal peut prendre une valeur de 0 a 255. Cette adresses represente alors l'adresse du reseau, l'adresse du sous-reseau et l'adresse de l'hote.
+
+Les classes d'adresses:
+
+ * Classe A = Dans une adresse de classe A, le premier bit de l'adresse est toujours a 0. Par defaut, les 8 premiers Bits definissent l'adresse reseau et les 24 Bits restant l'hote sur le reseau.
+
+ * Classe B = Dans une adresse de classe B, les deux premiers Bits de l'adresse ont toujours pour valeur 0 et 1. Par defaut, les 16 premiers Bits definisent l'adresse reseau et les 16 autres l'adresse de l'hote.
+
+ * Classe C = Dans une adresse de classe C, les trois premiers Bits de l'adresse ont toujours pour valeur 1,1 et 0. Par defaut, les 24 premiers Bits definisent l'adresse reseau et les 8 autres l'adresse de l'hote. 
+
+Les classes A,B,C sont dites "monodestinataires", car elles identifient un seul hote.
+
+ * Classe D = La classe D n'identifie pas d'hotes mais un groupe d'ordinateurs qui ne sont pas necessairement situes sur le meme reseau mais qui recevront les memes paquets. Elle est dite multidestinataire.
+
+ * Classe E = Ces adresses sont reservees pour des usages futurs.                   
+
+
+-------[  D. Les Interfaces de programmation d'applications
+
+    Encore appelees API, elles servent a l'application pour communiquer avec les protocoles. Cela permet entre autres, aux developpeures de ne pas avoir a modifier leurs applications en fonction de chaque protocole.
+
+WINDOWS SOCKETS
+
+    Les applications TCP/IP se servent en majeur partie de cette API Windows. A l'heure actuelle, toutes les applications TCP/IP clientes comme les browsers, les lecteurs de news, FTP, les clients de messagerie et les utilitaires standards comme PING s'addressent directement a ces API afin de mener a bien leur tache. Cette API est basee sur l'interface socket de l'OS UNIX de Berkeley :)). Windows NT et Windows 95 possedent leurs propres implementations TCP/IP.
+
+    ==> Un standard a ete mis au point portant le nom Windows Sockets Version 1.1. Il definit une interface comme les DLL Windows appelee Winsock.dll. Cette DLL est appelee afin d'acceder au systeme de transport des protocoles. De ce fait, tout programme compatible Winsock peut tourner sur toutes piles TCP/IP compatible.
+    Winsock fournit deux types de sockets pour les requetes des applications. Pour les services orientes connexion, un stream socket qui utilise TCP, et pour les services sans connexion, un datagram socket utilisant UDP.
+
+PS : Fin dans le numéro2 de l'article du TCP/IP. Suite de ce cours avec en plus quelques explications sur certaines méthodes utiles au Hacking : pour l'instant, c'est très théorique!!
+
+
+-------[  EOF
