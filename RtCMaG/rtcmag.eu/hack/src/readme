@@ -1,0 +1,183 @@
+
+/_/      /_/  /_/_/_/_/  /_/_/_/_/  /_/_/_/_/  /_/    /_/  /_/  /_/_/_/_/
+  /_/  /_/    /_/   /_/  /_/   /_/  /_/        /_/_/  /_/       /_/
+    /_/       /_/_/_/_/  /_/_/_/_/  /_/_/_/_/  /_/  /_/_/  /_/  /_/_/_/
+  /_/ /_/     /_/ /_/    /_/   /_/        /_/  /_/   /_/_  /_/  /_/
+/_/    /_/    /_/   /_/  /_/   /_/  /_/_/_/_/  /_/    /_/  /_/  /_/
+Version BeTa 0.3
+
+    By RaPass                              mailto: rapass@gmx.net
+
+
+Si vous avez des questions, des bugs a signaler, des suggestions, des projets...
+N'HESITEZ SURTOUT PAS UN M'ENVOYER UN MAIL. MERCI
+
+
+L'auteur(RaPass) n'est pas responsable des dommages que ce programme peut causer
+Je previens tout le monde que toutes ces idees de spoofing ne sont pas de moa,
+elle ont ete tiree du texte de Brecht Claerout (auteur de sniffit entre autre) 
+et du programme Hunt de Kra.
+En revanche les source sont a 100% de moi!!
+
+Pourquoi(pour qui?) refaire quasiment pareil qu'un programme qui existe deja me
+direz-vous(Je parle de hunt pour ceux qui suivent mal)?
+Et bien je vous repondrai que xRaSnif n'est pas un outil de hacking mais plutot
+de demonstration du sniffing et de qqs techniques de spoofing,il fonctionne sous
+X (GTK+ Rulez). Enfin, a l'origine, j'ai commence a code xRaSnif pour moi, pour
+mieux comprendre le TCP/IP est ses failles puis je me suis dit qu'il serait peut
+etre bon de le distribuez....Voila comment il est arrive entre tes mains....
+Souvent les programmes sous X sont moins puissant que ceux sous le terminal 
+mais la, je suis assez content de moi, xRaSnif est un peu lent a l'affichage
+(petit bug au plus profond du GTK+) mais il est plus rapide de reseter une
+connexion avec xRaSnif qu'avec Hunt...
+Et pis un (bon) programme de demonstration de spoofing en francais, ca peut pas
+faire mal...isn't it? 
+
+
+I/ Compilation
+~~~~~~~~~~~~~~~
+
+xRaSnif fonctionne sous X et a ete code avec des librairies GTK+ 
+il vous faut une distrib Linux qui gere les threads avec un server X et les
+librairies GTK+ d'une version assez recente si possible.
+
+	Si vous n'avez pas les libraires GTK+.
+
+souvent, GTK+ est fournit dans l'installation par default des distributions
+linux, sinon installer-la a partir de votre CD ou si elle n'y est pas,
+telecharger les soures ou les RPMS sur 
+ftp://ftp.gtk.org/pub/gtk/v1.2 (ou tout autre site miroir).
+Vous devrez telecharger 4 RPMS:(prenez les dernieres versions)
+-glib-1.2.x.i386.rpm
+-glib-devel-1.2.x.i386.rpm
+-gtk+.1.2.x
+-gtk+-devel-1.2.x.i386.rpm
+ou downloader les sources:
+-glib-1.2.x.tar.gz
+-gtk+-1.2.x.tar.gz
+et compilez-les.
+
+	Compilation de xRaSnif
+
+Bon ben pour compiler c'est pas tres dur, c'est comme tout les autres programmes
+si vous avez tout ce qui faut (librairies) ca devrait poser aucun problemes:
+
+placer vous dans le repertoire ou vous avez extraie l'archive et:
+
+$ make
+
+SI vous avez des erreurs c'est que soit les librairies sont pas assez recentes
+ou soit que vous ne les avez pas. mail moi si tu veux que je t'aides.
+ensuite pour le lancer(faut etre root bien entendu)
+
+# xrasnif eth0 
+
+Le 2eme argument(eth0 for me) est l'interface ethernet sur laquelle xRaSnif
+devra travailler(sniffing + spoofing).
+
+La, la fenetre principale de xRaSnif devrait apparaitre(Wahooommmm!!)
+
+
+II/ Presentation of Ze technique
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+xRaSnif est un sniffer/spoofer/hijacker.
+Je ne vais pas re-expliquer ce qu'est un sniffer parce que ca commence a me
+casser les couilles (Vous trouverez facilement de la doc la dessus sinon liser
+mon texte paru dans RtcMag No 5 (http://www.rtcgang.fr.st) hey hop un coup de 
+pub!
+
+
+Les techniques de spoofing TCP/IP implementer dans xRaSnif sont les suivantes
+(non blind spoofing == ben oaui on sniffe donc on n'est poa aveugle)
+
+- Killing de connection au flag RST : On envoie paquet RST en se faisant passer
+pour l'autre hote.(La il faut juste choper le bon numero de sequence(tcp->seq)
+ce qui n'est pas tres difficle pusiqu'il correspod au No ACK du dernier paquet
+envoyer par l'autre hote).
+
+-Killing de connection au flag FIN: On envoie un paquet avec le flag FIN en se 
+faisant passer pour l'autre hote.(La il faut choper le numero de sequence et
+calculer le No ACK).
+L'avantage de cette technique compare au RST c'est que ici on peut verfier que
+l'operation a bien marche(on recevra un paquet ACK).
+
+-Hijacking: Bon la, c'est un peu plus dur(quoique), on envoie un paquet en se 
+faisant passer pour l'autre en envoyant des donnees ce qui peut nous permettre
+de lancer des commandes lors d'une connection telnet ou rlogin(mais d'autre 
+aussi que je vous laisse decouvrir).
+Le paquet doit etre valide pour que le destinataire le comprenne(SEQ + ACK).
+Pour voir ce que notre commande a donne (cat /etc/shadow par exemple :)
+il suffira de sniffer.
+Par contre une fois que tu auras lancer une "attaque" par hijacking, les deux
+hotes seront desynchronises et ne pourront plus dialoguer ensemble [Tu pourras
+toujours lancer des commandes, toi]. Je te conseille vivement de Reseter la 
+connexion apres une attaque par hijacking car sinon, les deux hotes
+desynchronise vont s'envoye pleins de paquet qui peuvent a la longue (chez moi,
+au bout de 10 minutes) creer un encombrement total du reseau voir meme un
+DOS sur l'un des hotes(interessant nan?).
+Apres une attaque par hijacking, je recommande de killer la connection au flag
+RST.
+NOTE: Les sytemes reagissent quasiment tout differament apres une
+desynchronisation d'une connection TCP, a vous de tester.
+ 
+
+III/ Utilization du programme (baouh) 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Des que la fenetre s'affiche, le sniffing commence, xRaSnif sniffe tout les 
+paquets tcp/ip et icmp/ip qui transite sur le reseau ethernet, les paquets
+ICMP sont inscrit dans la Liste ICMP(onglet ICMP) avec leurs principaux 
+champs(1 ligne pour chaque paquet recu).
+Tout les connections TCP/IP sont enregistres dans des fichiers dans le
+repertoire log/, vous pouvez donc revoir les donnees echage apres la fin de
+la connection(avec 'cat' par exemple).
+
+Les connexions(ou devrais-je dire les sens de connection : 2 par connexions)
+sont inscrit dans la liste tcp(onglet tcp).
+
+Toutes les options s'affiche lorque vous selectionnez la ligne
+d'une connexion TCP avec laquelle vous voulez jouer :
+
+
+------->SNIFFING
+
+--> Afficher les entetes IP et TCP 
+Quand vous appuyez sur ce bouton, une fenetre contenant la valeur des champs 
+des paquets IP et TCP va apparaitre, reappuyer sur le bouton pour rafraichir.
+
+--> Afficher les donnees sniffees(dans un sens)
+Quand vous appuyer sur ce bouton, une fenetre contenant toutes les donnees que
+se sont echangees les hotes depuis le premier paquet sniffe s'affiche. Pour 
+rafraichir, reappuyer sur le Bouton. Tout les donnees sont inscrit dans le
+repertoire log/ (faudrait peut-etre le vider qqs fois...).
+
+
+------->SPOOFING
+
+-->Killer au flag RST
+Deja expliques, la connexion est kille la fenetre se ferme et les 2 lignes de la
+connections disparaissent de la liste.
+
+-->Killer au flag FIN
+idem que RST(dans l'utilisation).
+
+-->Hijacker la connection
+Mettez la chaine de caractere que vous voulez envoye dans le petit cadre blanc
+et appuyer sur le bouton "Hijacker la connection".
+Un caractere de retour('\n' ou 10) va etre envoye a la fin de votre chaine de 
+caractere.
+Si vous cochez la case 'Ajouter un octet 13 apres la chaine' eh ben....Ca 
+ajoutera un octet 13 a la fin de la chaine(hehe?)...Cette option sert pour
+certaine application reseau ou il faut 2 caracteres pour passer a la ligne
+(comme sous DOS/WIndows). 
+
+
+Et voila, une seul chose a dire : "Have a lot of pppphhhhhuuuun..."
+
+Sinon, bien sur, ce programme est gratuit et les sources peuvent etre imprimes,
+modifies, manges et fumes. 
+
+Si vous avez pas compris cette doc n'hesitez surtout pas a me contacter pour
+des precisions.
+
+RaPass <rapass@gmx.net>

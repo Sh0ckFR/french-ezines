@@ -1,0 +1,414 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  Network Mapping  ]
+---------[ in RtC mag 4 & 5 ]
+----[  by S/ash [RtC] <slash-rtc@fr.st>  ]
+
+
+-------[  Sommaire
+
+I.   Complete TCP Scanning
+II.  Half-Open Scanning : Scanning with the SYN flag ON
+III. Stealth Scanning
+  III.1 FIN Scanning
+  III.2 ACK Scanning
+IV.  UDP Scanning
+V.   FTP Bounce Attack
+VI.  ICMP Echo scanning
+*    RtC Scan
+
+-------[  I.   Complete TCP Scanning
+
+Lors des communications TCP (et UDP), un port est demandé.
+Ce port correspond à un service qui va écouter ce port. Un port
+est en réalité un nombre qui permet d'identifier un service : chaque
+service (ou client) écoute les paquets IP et récupère ceux qui lui
+sont destinés pour les traiter (ceux qui on comme port de destination
+le port ouvert).
+Il est très interessant de connaitre les ports ouverts sur une machine :
+ils représentent les services disponibles et donc attaquable sur la
+machine.
+
+Le premier scanning classique est le scanning de port TCP, son principe
+est symple : lors d'une communication réseaux via TCP/IP, le programme
+client demande une connexion à l'hote qui va lui répondre si un programme
+serveur écoute sur le port.
+Pour scanner la machine, on a juste à demander une connection sur le port
+à scanner.
+
+Ceci ce fait par la fonction connect(socket, struct sockaddr*, int).
+la fonction qui fait cela est :
+
+<-- snip snip snip -->
+sock=socket(AF_INET,SOCK_STREAM,0); /* on crée la socket           */
+addr.sin_port=htons(port);          /* on stocke le numéro du port */
+rc=connect(sock,(struct sockaddr*)&addr,sizeof(addr));
+                                    /* on se connecte et stockons  */
+                                    /* le résultat dans rc         */
+close(sock);                        /* on ferme la connexion       */
+<-- snip snip snip -->
+
+On a maintenant : rc<0 -> port fermé
+                  rc>0 -> port ouvert
+
+Ce scanning est très simple et implémentable sur toutes les machines avec
+n'importe quel droit donc très usité mais il pose des problèmes de rapidité
+et d'anonymat (un simple port ouvert en écoute permet de le repéré)
+
+-------[  II.  Half-Open Scanning : Scanning with the SYN flag ON
+
+Le SYN scanning est le scanning sans doute le plus usité et le plus rapide.
+Mais surement pas le plus discret. Il reste bien sur plus discret que le
+scanning à connexion complète mais à le désavantage de devoir l'implémenter
+en construisant ses propres paquets TCP et d'utiliser les droits root pour
+le faire tourner (sous Windows, l'implémentation WinSock ne permet pas
+la création de RAW Socket mais il est possible de créer sa propre librairie
+pour pouvoir envoyer des paquets IP construit complètement).
+
+Une connection TCP se fait en trois étapes. Tout d'abord la demande de
+connexion qui se fait par l'envoie d'un paquet avec le flag SYN. Ensuite la 
+réponse de l'hôte qui est soit, si le port est ouvert, un paquet avec les flags
+SYN et ACK, soit un paquet avec le flag RST. Puis le troisième, envoie qui ouvre
+la connexion est un paquet envoyé par le client avec le flag ACK.
+Lors d'un SYN scanning on envoie un paquet SYN et on attend le paquet SYN+ACK ou
+RST. Cela permet de ne pas avoir à ouvrir une connexion et donc ne pas avoir à
+la fermer.
+
+Explication de la construction du paquet TCP.
+Un paquet TCP est fait de la façon suivante :
+0                                   15|16                                     31
+|------------------------------------------------------------------------------|
+| Numéro du port source (16 bits)     | Numéro du port de destination (16 bits)|
+|------------------------------------------------------------------------------|
+|                         numéro de séquence sur 32 bits                       |
+|------------------------------------------------------------------------------|
+|                       numéro d'acquittement sur 32 bits                      |
+|------------------------------------------------------------------------------|
+| longueur de l'entête 4| 6 | flags 6 |      taille de fenêtre sur 16-bits     |
+|------------------------------------------------------------------------------|
+|         checksum sur 16-bits        |        pointeur urgent sur 16-bits     |
+|------------------------------------------------------------------------------|
+|                          options (s'il y en a)                               |
+|------------------------------------------------------------------------------|
+|                          données (s'il y en a)                               |
+|------------------------------------------------------------------------------|
+
+les flags sont, dans l'ordre : URG, ACK, PUSH, RST, SYN, FIN.
+URG est la pour indique que le pointeur urgent est valide (il sert a indique la
+fin des données urgentes dans le paquet)
+ACK est la pour indique que le numéro d'acquittement est valide (numéro de
+sequence du prochain paquet).
+PUSH : pour que le gestionnaire réseau passe la trame le plus vite possible au
+soft.
+RST : réinitialise la connexion.
+SYN : signal de synchronisation pour les numéro de séquence
+FIN : fin de la connexion.
+
+bon ben en gros on vas envoyer un paquet avec le port source et le port de dest
+et avec le flag SYN. Et on va attendre un paquet avec le flag RST ou avec les
+flags ACK et SYN (avec les bon numéro de port).
+
+
+Le code :
+
+<-- snip snip snip -->
+int scan_port(long port, struct sockaddr_in *host, long scanport, long timeout)
+{
+  int rc, tcpsock, rawsock;
+  fd_set rset;
+  struct timeval cur_time, beg_time;
+  struct sockaddr_in addr;
+  char buf[3000];
+  struct iphdr *ip = (struct iphdr *) buf;
+  struct tcphdr *tcp = (struct tcphdr *) (buf + sizeof(struct iphdr));
+  host->sin_port = htons(port);
+  
+  /* SYN scanning */
+  FD_ZERO(&rset);
+  rawsock=socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+  tcpsock=socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
+  FD_SET(tcpsock, &rset);
+  /* sending a SYN packet */
+  memcpy(&addr, host, sizeof(addr));
+  gettimeofday(&beg_time,NULL);
+  tcp_send(tcpsock,&addr,             /* send a customized TCP packet */
+	   localhost_addr,addr.sin_addr.s_addr,
+	   scanport,port,
+	   TH_SYN,
+	   lrand48()+1, lrand48(),
+	   512,
+	   NULL,
+	   0);
+  /* check for reply */
+  if(FD_ISSET(tcpsock,&rset))
+    {
+      gettimeofday(&cur_time, NULL);
+      while(
+	   (recvfrom(tcpsock,&buf,3000,0, NULL,0)>0) 
+	   && (timeout > DIFFTIME(beg_time, cur_time))
+	   )
+        {
+	  if ((ip->saddr == host->sin_addr.s_addr) && (ntohs(tcp->th_sport)==port) && (ntohs(tcp->th_dport)==scanport)) /* got a reply */
+	    {
+               close (tcpsock); close (rawsock);
+	       if(tcp->th_flags & TH_RST) return 0;         /* port closed */
+	       else if(tcp->th_flags & TH_SYN && tcp->th_flags & TH_ACK) return 1; /* port opened */
+	       else return -2; /* port error */
+	    }
+	  gettimeofday(&cur_time, NULL);
+	}
+    }
+  else rc = -1;
+  close(tcpsock);
+  close(rawsock);
+  if(rc>0) return -1; /* time out */
+  else return -2;     /* error */
+}
+<-- snip snip snip -->
+
+Bien sur, le plus rapide reste de ne pas attendre la réception de paquets entre deux envois :
+on envois un paquet SYN sur la machine et on teste sans attendre de réponse si l'on a reçu un
+paquet, et on recommence jusqu'à avoir envoyé tout les paquets SYN ; il ne nous reste plus
+qu'à écouter les paquets arrivant pendant un court instant.
+
+Ce scanning reste cependant détectable : il suffit d'écouter les paquets rentrant et de
+vérifier que l'on a pas affaire à un scan.
+
+-------[  III. Stealth Scanning
+
+Le stealth scanning est un scanning de port TCP utilisant des bugs des
+implémentation TCP. Le gros avantage de cette méthodes est qu'elle est
+difficilement détectable et qu'elle passe à travers plusieurs firewalls. Son
+gros désavantage est que c'est une méthode qui ne marche pas à tout les coups
+(cela dépend des systèmes).
+
+La première méthode est l'envoie d'un paquet avec le flag FIN. Si le port est
+fermé, alors un paquet avec le flag RST sera retourné sinon le paquet sera
+ignoré. Cette méthode marche sur la plupart des systèmes.
+
+La deuxième méthode est l'envoie d'un paquet avec le flag ACK et on attend le
+paquet avec le flag RST. Si le champs window du paquet est différent de 0 ou 
+si le champs TTL est faible (<=64) alors le port est probablement ouvert. 
+Ce bug marche essentiellement sur les anciennes implémentation BSD.
+
+
+-------[  IV.  UDP Scanning
+
+L'UDP est un protocol de merde (pas de vérification de la réception des paquets)
+mais reste utile dans certains cas (faille ???).
+
+Pour scanner les port UDP d'ouvert, le principe est très con : on envoie un
+paquet UDP sur le port et si l'on recoit une réponse ICMP Port Unreachable
+alors le port est fermé, sinon le port est ouvert.
+On est cependant pas obligé de construire les paquets : en effet, il suffit de
+tester la fonction recvfrom qui retourne ECONNREFUSED si le port est fermé...
+
+Bien sur, il est préférable de construire ses propres paquets pour accélèrer
+le scan.
+
+-------[  V.   FTP Bounce Attack
+
+Ma préférée :). Elle permet d'utiliser un serveur FTP comme d'un "proxy" pour
+le scanning de port (et d'autres chose également mais qui ne nous interesse pas
+ici).
+
+Le principe ?
+Le protocole FTP prévoie la possibilité d'effectuer des transferts de serveur
+à serveur avec un client séparé pour controler les transferts.
+Ceci ce fait en pratique en spécifiant l'adresse d'un autre serveur avec la
+commande PORT.
+
+Par exemple, sur le serveur FTP, avant l'envoie d'une commande, on a :
+PORT 172,52,36,4,10,1
+qui spécifie d'utiliser le port 2561 (=10*256+1) sur la machine 172.52.36.4
+pour le transfert de données.
+Ensuite si l'on envoie la commande LIST au ftp, il renverra le résultat sur
+le port 2561 de la machine 172.52.36.4.
+
+Donc pour faire un scan de port TCP en version FTP Bounce Attack, il suffit
+de se connecter à un serveur FTP (non modifié donc qui accepte que l'on spécifie
+n'importe quel IP). Puis d'envoyer si a.b.c.d est l'ip à scanner, d'envoyer les
+commandes "PORT a,b,c,d,p1,p2" où p1,p2 désigne le port et "LIST".
+Il répondra alors "425 Can't build data connection: Connection refused." si le
+port est fermé et sinon le transfert réussira (réponse 150 ou 226).
+
+L'avantage est bien sur un "plus grand anonymat" dans le scan (plus
+difficile à tracer). Il permet également de contourner les firewall (spoofing).
+LE desavantage de ce scanning est la lenteur (connexion complète, transfert de
+données...).
+
+
+-------[  VI.  ICMP Echo scanning
+
+L'ICMP (Internet Control Message Protocol) permet d'envoyer des messages de
+contrôles (notamment lorsqu'une route est fermée il nous le dit).
+Je pourrais m'étendre plus avant ici sur le protocole ICMP mais ce n'est pas le
+sujet de plus il y a de très bon articles dessus (notamment celui de feu CoD4
+dans NoRoute 3 et de Sneakie 'ICMP My Friend').
+Je vais simplement expliquer ici le message echo et echo reply.
+0                  7|8              15|16                                     31
+|------------------------------------------------------------------------------|
+|   type (0 ou 8)   |    code (0)     |           checksum                     |
+|------------------------------------------------------------------------------|
+|          identificateur             |       numéro de séquence               |
+|------------------------------------------------------------------------------|
+|                       données optionnelles (s'il y en a)                     |
+|------------------------------------------------------------------------------|
+Donc un message ICMP Echo request est identifié par le type 8 et le code 0.
+L'identificateur est là pour identifier l'échange echo et le numéro de séquence
+pour dire à quel paquet on est (c'est le champ icmp_seq lors d'un ping).
+A un message echo est normalement renvoyé un message echo reply identifié par le
+type 0 et le code 0 avec les mêmes champs que le message echo (numéro 
+d'identification et de séquence).
+
+Faire de l'ip scanning par message ICMP Echo
+--------------------------------------------
+Le principe est simple pour chaque ip on envoie un paquet echo et on attend
+un paquet echo reply avec les mêmes champs.
+On récupèrera un paquet icmp unreacheable (destination indisponible) si l'hôte
+n'existe pas et un time out s'il est indisponible.
+Ainsi on peut scanner une série d'ip assez rapidement.
+Voilà le code des fonctions réalisant le ping dans l'IP-scan de la RtC :
+
+<-- begin icmpping.c -->
+/******************************************************************************
+ *                    icmpping.c by S/asH (member of RtC)                     *
+ *                     IP Scanning - ICMP Ping Request                        *
+ *                        This is a tOOl of RtC TecH                          *
+ ******************************************************************************/
+
+#include "rtcipscan.h"
+
+/******************************************************************************
+ * in_chksum --                                                               *
+ *  Checksum routine for Internet Protocol family headers (C Version)         *
+ ******************************************************************************/
+unsigned short in_chksum(addr, len)
+    u_short *addr;
+    int len;
+{
+    register int nleft = len;
+    register u_short *w = addr;
+    register int sum = 0;
+    u_short answer = 0;
+ 
+    /*
+     * Our algorithm is simple, using a 32 bit accumulator (sum), we add
+     * sequential 16 bit words to it, and at the end, fold back all the
+     * carry bits from the top 16 bits into the lower 16 bits.
+     */
+    while (nleft > 1)  {
+        sum += *w++;
+        nleft -= 2;
+    }
+ 
+    /* mop up an odd byte, if necessary */
+    if (nleft == 1) {
+        *(u_char *)(&answer) = *(u_char *)w ;
+        sum += answer;
+    }
+ 
+    /* add back carry outs from top 16 bits to low 16 bits */
+    sum = (sum >> 16) + (sum & 0xffff);   /* add hi 16 to low 16 */
+    sum += (sum >> 16);                   /* add carry */
+    answer = ~sum;                        /* truncate to 16 bits */
+    return(answer);
+}
+
+
+/******************************************************************************
+ * send_icmp_echo -- Send an icmp echo request                                *
+ * Input  : sock   : socket descriptor                                        *
+ *          dest   : destination address                                      *
+ *          ident  : icmp ident                                               *
+ *          seq_nb : icmp sequence number                                     *
+ *          data   : optional data                                            *
+ *          sdata  : size of data                                             *
+ * Output : return : success or failed                                        *
+ ******************************************************************************/
+int send_icmp_echo(int sock, struct sockaddr_in dest, u_short ident, u_short seq_nb, char *data, int sdata)
+{
+  char packet[2048];
+  struct icmphdr *icmp     = (struct icmphdr*)packet;
+  unsigned char  *datagram = (unsigned char*)(packet + 8);
+
+  /* making the icmp header */
+  memcpy(datagram, data, sdata);
+  memset(packet, 0, 8);
+
+  icmp->type = ICMP_ECHO;
+  icmp->code = 0;
+  icmp->un.echo.id = ident;
+  icmp->un.echo.sequence = seq_nb;
+
+  /* calculate the checksum */
+  icmp->checksum = in_chksum((u_short*)packet, sdata+8);
+
+  return sendto(sock, packet, 8+sdata, 0, (struct sockaddr*)&dest, sizeof(struct sockaddr));
+}
+
+/******************************************************************************
+ * ping -- Send an icmp echo request and stand the reply                      *
+ * Input  : sock     : socket descriptor                                      *
+ *          dest     : destination address                                    *
+ *          timeout  : time out for echo request                              *
+ *          packsize : size of packet to send                                 *
+ *          ident    : icmp ident                                             *
+ *          seq_nb   : icmp sequence number                                   *
+ * Output : return   : see section 'ping return values' in rtcipscan.h        *
+ ******************************************************************************/
+int ping(int sock, struct sockaddr_in dest, int timeout, int packsize, u_short ident, u_short seq_nb)
+{
+  int             rc;
+  fd_set          rset;
+  struct timeval  cur_time, beg_time, tv;
+  char            buf[2048];
+  struct iphdr   *ip   = (struct iphdr *) (buf);
+  struct icmphdr *icmp = (struct icmphdr*)(buf + sizeof(struct iphdr));
+
+  for(rc=0; rc<packsize-8; rc++) buf[rc] = rc; /* initialize packets */
+  /* sending a ICMP echo request */
+  gettimeofday(&beg_time,NULL);
+  send_icmp_echo(sock,dest,ident,seq_nb, buf, packsize-8);
+  tv.tv_sec = timeout / 1000; 
+  tv.tv_usec = timeout * 1000; 
+
+  /* check for reply */
+  FD_ZERO(&rset);
+  FD_SET(sock, &rset);
+  tv.tv_sec = timeout / 1000; 
+  tv.tv_usec = timeout * 1000;
+  gettimeofday(&cur_time,NULL);
+  while(timeout > DIFFTIME(beg_time, cur_time))
+    {
+      if ((rc=select(sock + 1, &rset, NULL, NULL, &tv)) == 0) 
+	return HOST_TIMEDOUT;  /* time out */
+      else if (rc < 0) return PING_ERROR;
+      else 
+	{
+	  rc = read(sock,buf,2048);
+
+	  if(rc==-1) return PING_ERROR; /* error in reading */
+	  else if(rc>0)
+	    {
+	      if (ip->saddr == dest.sin_addr.s_addr) /* got a reply */
+		{
+		  if((icmp->type == ICMP_ECHOREPLY) && (icmp->un.echo.id == ident) && (icmp->un.echo.sequence == seq_nb))
+		    return HOST_ANSWER;
+		}
+	      else if(icmp->type == ICMP_DEST_UNREACH) return HOST_UNREACHABLE;
+	      gettimeofday(&cur_time, NULL);
+	    }
+	}
+    }
+  return HOST_TIMEDOUT; /* time out */
+}
+<-- end icmpping.c -->
+
+
+-------[  *    RtC Scan
+
+Bon le code du scanner implémentant toutes ces méthodes est fournit avec
+ce mags...
+
+-------[  EOF

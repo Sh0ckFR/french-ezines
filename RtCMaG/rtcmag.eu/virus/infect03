@@ -1,0 +1,282 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  Infection Win32 : Part 3  ]
+--------------[  Introduction au format Portable Executable  ]
+---------[ février 2001 ]
+----[  by Doxtor L. <>  ]
+
+
+-------[  Sommaire
+
+    Voici le troisième volet de notre série d'articles consacrés aux programmes auto-reproducteurs (aussi appelés virus informatiques) sous Win32.
+
+Voila ce que vous trouverez dans cet article :
+    1)  Préambule
+    2)  Introduction
+    3)  En-tête Msdos et le Dos stub
+    4)  En-tête PE
+    5)  En-tête optionnel
+    6)  En-têtes des sections
+    7)  Sections   
+    8)  Conclusion
+
+
+-------[  1) Préambule
+
+
+    Au tout début de l'ère PC (Personnal computer) de IBM, les programmes non écrits en langage batch, ce langage dont on voit des commandes dans le fichier autoexec.bat étaient pour la plupart des fichiers ".com". On peut se demander à quoi ressemble l'intérieur d'un tel fichier. La structure est simple, il n'y en a tout simplement pas ! L'organisation d'un fichier ".com"  est du ressort du programmeur, pour Msdos, à priori, le contenu est du code pur.
+    La simplicité d'un fichier ".com" a un revers important, Msdos ne tolère pas que ce type de fichier contienne plus de 64 Kilo octets! Pour des questions de gestions de la mémoire, les fichiers exécutables ont fini par avoir une structure pour pouvoir contenir plus de 64 Kilos octets et pour bénéficier de la sécurité induite par le passage du mode réel au mode protégé, ce dernier mode étant le mode de prédilection de Windows.
+
+    Nous nous intéressons aux fichiers exécutables seulement sous Win32. Nous voulons pouvoir modifier ce genre de fichiers pour leur ajouter des fonctionnalités. Après modification nous voulons que l'exécutable soit encore fonctionnel. Pour ce faire, nous devons respecter la structure du fichier pour que Windows soit encore capable de l'exécuter après l'intervention du programme auto-reproducteur qui l'a pris pour cible.
+    Pour que l'opération soit un succès il n'il y a pas de grand mystère, nous devons en savoir suffisemment pour pouvoir faire des modifications tolérées par Windows. Nous devons examiner le format des fichiers exécutables sous Win32, ceci sont appelés aussi P.E, Portable Exécutable (Ce format est utilisé sur d'autres plateformes, où par exemple, Win NT a été porté par Microsoft).
+
+    Ici je voudrais souligner une chose essentielle qui fait qu'un programme infecté ne peut être garantie 100% stable, c'est à dire avoir gardé toutes ses fonctionnalités d'avant l'infection. Si dans un fichier .com vous remplacez les 5 premiers octets par les codes ASCII des lettres composant le mot: "DEBUT", vous êtes assuré d'un joli crash. Pourtant du point de vue de Msdos, à priori, le fichier modifié est un .com régulier. Il en est de même pour un fichier P.E. Un fichier modifié en respectant le format de celui-ci peut, même s'il ne provoque pas d'erreur, au moment du chargement en mémoire, lorsque Windows teste sa validité, s'avérer être inutilisable. Il peut y avoir une multitude de raisons à cela, par exemple le code du programme peut contenir une routine qui teste l'intégrité du fichier et ainsi refuser de fonctionner si le fichier a été modifié. Sans connaissance très précise du contenu d'un fichier on ne peut être sûr de ne pas le rendre inutilisable si on le modifie, même "proprement".
+
+    Ecrire des programmes auto-reproducteurs n'est pas une science exacte mais empirique. Ce qui suit est un peu plus théorique que le contenu des articles précédants même si je l'ai limité à ce qui est vraiment utile pour notre propos.
+
+
+-------[  2) Introduction
+
+
+    Un fichier PE a une organisation comparable à un disque dur. Voici un schéma qui montre cette organisation :
+
+
+              +-----------------------------------+
+              |           en-tête MsDos           |
+              +-----------------------------------+
+              |             Dos stub              |
+              +-----------------------------------+
+              |            en-tête PE             |
+              +-----------------------------------+
+              |        en-tête optionnel          |
+              |     en-tête des répertoires  (*)  |
+              +-----------------------------------+                       
+              | tables des (en-tête des) sections |
+              +-----------------------------------+
+              |             section 1             |
+              +-----------------------------------+
+              |             section 2             |
+              +-----------------------------------+
+              |               (...)               |
+              +-----------------------------------+
+              |         dernière section          |
+              +-----------------------------------+
+
+
+    (*) La plupart des descriptions publiées du format P.E regroupent ces deux parties en une seule : en-tête optionnel. Nous ne dérogeront pas à cette "tradition".
+
+    Il faut faire attention à une chose importante, un fichier P.E chargé en mémoire n'occupe pas le même nombre d'octets sur le disque et en mémoire. Lorsque je fais référence à ce qui ce passe sur le disque dur, j'utilise le modèle naïf suivant : Un fichier est stocké sur disque en un seul groupe d'octets qui se suivent. On peut numéroter les octets d'un fichier de telle façon que le premier octet ait le numéro 0 et ainsi de suite. (En fait un fichier est rarement stocké sur disque en un seul morceau et l'espace réellement occupé est plus important que la taille réelle du fichier !)
+    En général, la taille en octets d'un fichier P.E sur disque est un multiple de 512. Alors qu'en mémoire la taille est en général un multiple de 4096. Est-ce besoin de préciser qu'un fichier aussi bien sur disque qu'en mémoire contient beaucoup d'octets qui ne servent à rien pour l'exécution du programme ? C'est du remplissage ! On parle d'alignement.
+    On l'avait déja constaté en assemblant notre premier programme qui ne "faisait rien" et qui occupait, pourtant, 4096 octets sur le disque !
+
+    La mémoire vive est vue par un programme comme étant constituée d'un énorme bloc de 4 Giga octets, numérotés par un nombre qui tient dans un double mot. On appelle ce numéro ADRESSE VIRTUELLE. Pourquoi virtuelle ? en fait l'organisation réelle de la mémoire est différente on peut s'en convaincre facilement : La DLL, Kernel32.dll est toujours présente en mémoire puisqu'elle contient les fonctions fondamentales du système d'exploitation, chaque programme chargé en mémoire croit qu'il dispose de sa propre copie de cette DLL en fait cette DLL existe qu'en un seul exemplaire dans la mémoire vive, cela prouve bien que le modèle D'ADRESSE VIRTUELLE n'est pas "réel".
+    Et puis qui possède 4 GIGA octets de mémoire vive ? En fait, la mémoire virtuelle n'est pas que de la mémoire vive! Lorsque par exemple la mémoire vive est saturée le système d'exploitation va utiliser de l'espace disque pour combler le manque de mémoire vive (phénomène de swapping). C'est transparent pour un programme. Celui-ci ne se rend pas compte 
+que la mémoire utilisée n'est pas de la mémoire vive, là encore c'est le miracle des ADRESSES VIRTUELLES qui opère !
+
+    Il nous faut mentionner un autre concept celui d'ADRESSE VIRTUELLE RELATIVE. Un fichier P.E contient différentes informations sur le fichier, entre autre l'adresse où doit être chargé en mémoire le fichier P.E. Les informations relatives à la structure d'un fichier P.E qui sont incluses dans celui-ci, contiennent des références à des adresses en mémoire. Ces références sont en fait des ADRESSES VIRTUELLES RELATIVES.
+    Initialement, le format P.E devait permettre la relocation en mémoire, c'est à dire que le fichier pouvait être chargé à un autre emplacement que celui prévu par le champ qui le specifie dans ce fichier. Cela permet de simplifier la tâche de Windows dans le calcul des adresses nécessaires pour charger un fichier P.E en mémoire.
+    Pour obtenir une ADRESSE VIRTUELLE à partir d'une ADRESSE VIRTUELLE RELATIVE rien de plus simple il suffit de lui ajouter l'ADRESSE DE BASE du fichier P.E. Cette adresse est celle où sera chargé le fichier en mémoire. Dans la pratique, cette relocation n'a jamais lieu pour un fichier P.E .exe  dû à la manière dont est gérée la mémoire par Windows. Dans le cas contraire, la section (voir plus loin pour ce concept), souvent nommée .reloc par les compilateurs contient tous les ajustements à faire pour que le fichier P.E soit correctement chargé en mémoire et prêt à fonctionner.
+
+    Un fichier P.E est le plus souvent chargé à l'adresse prévue. Lorqu'un exécutable P.E est créé sans spécification particulière pour l'ADRESSE DE BASE, celle-ci est mise à la valeur par défaut: 401000h. Ceci dit, vous ne pouvez spécifier n'importe qu'elle adresse. Elles doivent au moins être alignées sur 1000h (4096 octets) c'est à dire multiple de 1000h. Néammoins, Windows n'autorise pas qu'un fichier P.E soit chargé à n'importe qu'elle adresse, même multiple de 1000h. Sous NT, par exemple, certaine zones mémoire sont réservées pour les DLL (Dynamic Link Library) autres fichiers P.E.
+
+
+-------[  3) L'en-tête Msdos et le Dos stub
+
+
+    Pour garder une compatibilité ascendante, un fichier P.E contient aussi une structure d'exécutable .exe de Msdos. Les deux premiers octets sont les codes ASCII des caractères M et Z dans cet ordre. Ce qui suit, juste après, est l'en-tête .exe Msdos du fichier. Nous n'avons pas besoin de connaitre le contenu de cet en-tête en détail.
+    On trouve à la suite: le Dos stub. C'est du code qui est exécuté lorsque le fichier est dans un environnement 
+Msdos pur. Ce code consiste en général en l'affichage d'un message qui dit en subtance : "Ce programme requiert Win32". En fait, ce code pourrait être conçu pour faire autre chose. C'est le concepteur du programme qui choisit, au moment du développement.
+    Le seul champ qui nous importe ici est situé à la fin de l'en-tête Msdos. Il contient une adresse de fichier vers l'en-tête PE. Cette adresse est située à l'offset 3ch du début du fichier. Une adresse de fichier est la position d'un octet dans un fichier compté à partir du début, c'est un double mot. On rappelle que le premier octet dans un fichier est à l'offset 0 c'est à dire que son adresse de fichier est 0.
+
+
+-------[  4) En-tête PE
+
+
+    Comme nous venons juste de le voir, l'adresse de fichier du début de cet en-tête peut être lu dans l'en-tête Msdos.
+    L'en-tête PE commence par la chaine de caractères: "PE",0,0 (il s'agit bien de 0 et pas de "0" !). Voici un tableau qui détaille les champs de cet en-tête:
+
+
++-------+----------------------+----+-----------------------------------+
+| offs. |    nom du champ      | D? |           signification           |
++-------+----------------------+----+-----------------------------------+
+|  00h  | PE_Magic             | DD | "PE",0,0                      (1) |
+|  04h  | Machine              | DW | Type de machine               (2) |
+|  06h  | NumberOfSections     | DW | Nombre de sections            (3) |
+|  08h  | TimeDateStamp        | DD | Date et Temps                 (4) |
+|  0ch  | PointerToSymbolTable | DD | Utilisé pour déboguer         (5) |
+|  10h  | NumberOfSymbols      | DD | Utilisé pour déboguer         (6) |
+|  14h  | SizeOfOptionalHeader | DW | Taille de l'en-tête optionnel (7) |
+|  16h  | Characteristics      | DW | Caractéristiques du fichier   (8) |
++-------+----------------------+----+-----------------------------------+
+taille totale=18h   (24 en écriture décimale)
+
+
+    Remarque : les nombres de la colonne offsets sont calculés par rapport au début de l'en-tête et non pas, par rapport au début du fichier.
+
+
+    ** Explication des champs **
+
+(1) la chaine "PE",0,0 permet d'identifier un fichier de type P.E
+
+(2) le type de plateforme pour lequel est destiné cet exécutable c'est à dire le type de microprocesseur (intel, alpha...).
+
+(3) Comme nous le verrons plus loin, les données et le code inclus dans un fichier PE sont regroupés dans plusieurs parties du fichier appelées sections.
+       
+(4) Date et heure de création du fichier.
+
+(5) (6) Ces champs font référence à quelque chose qui simplifie la mise au point et le débogage d'un programme, inutiles pour notre propos.
+
+(7) L'en-tête optionnel contient la plupart des informations qui nous sont utiles comme nous allons le voir. Sa taille est en fait souvent fixe.
+
+(8) Précise la nature du fichier : ce peut être un fichier .exe mais pas seulement, cela peut être aussi une .dll. Ces deux types de fichiers sont un peu différents. Seul ici nous intéresse les fichiers .exe PE.
+
+
+    Parmi tout ces champs seulement (1),(3),(7) seront utiles pour notre but :
+
+(1) Va servir à nous assurer que nous sommes bien en présence d'un fichier PE et non pas d'un fichier .exe Msdos ou d'un fichier .exe de Windows 3.x
+
+(3) Pour avoir facilement le nombre de sections.
+
+(7) Permet de connaitre avec précision la taille de l'en-tête optionnel.
+
+
+-------[  5) En-tête optionnel
+
+
+    Malgré son nom, il n'est pas optionnel du tout. La plupart des informations utiles pour notre but sont contenues dans cet en-tête. Il est situé juste après l'en-tête PE déja vu.
+
+    Voici un tableau avec les champs pour cet en-tête : (tous les champs ne sont pas commentés, c'est inutile pour notre propos)
+
++-------+--------------------------------+----+------------------------------+
+| offs. |        nom du champ            | D? |          description         |
++-------+--------------------------------+----+------------------------------+
+|  00h  | OH_Magic                       | DW |                              |
+|  02h  | OH_MajorLinkerVersion          | DB |                              |
+|  03h  | OH_MinorLinkerVersion          | DB |                              |
+|  04h  | OH_SizeOfCode                  | DD |                              |
+|  08h  | OH_SizeOfInitializedData       | DD |                              |
+|  0ch  | OH_SizeOfUninitializedData     | DD |                              |
+|  10h  | OH_AddressOfEntryPoint         | DD | Point d'entrée           (1) |
+|  14h  | OH_BaseOfCode                  | DD |                              |
+|  18h  | OH_BaseOfData                  | DD |                              |
+|  1ch  | OH_ImageBase                   | DD | Base de l'image          (2) |
+|  20h  | OH_SectionAlignment            | DD | Alignement de la section (3) |
+|  24h  | OH_FileAlignment               | DD | Alignement du fichier    (4) |
+|  28h  | OH_MajorOperatingSystemVersion | DW |                              |
+|  2ah  | OH_MinorOperatingSystemVersion | DW |                              |
+|  2ch  | OH_MajorImageVersion           | DW |                              |
+|  2eh  | OH_MinorImageVersion           | DW |                              |
+|  30h  | OH_MajorSubsystemVersion       | DW |                              |
+|  32h  | OH_MinorSubsystemVersion       | DW |                              |
+|  34h  | OH_Win32VersionValue           | DD |                              |
+|  38h  | OH_SizeOfImage                 | DD | Taille de l'image        (5) |
+|  3ch  | OH_SizeOfHeaders               | DD | Taille des en-tête       (6) |
+|  40h  | OH_CheckSum                    | DD |                              |
+|       | OH_Subsystem                   | DW |                              |
+|       | OH_DllCharacteristics          | DW |                              |
+|       | OH_SizeOfStackReserve          | DD |                              |
+|       | OH_SizeOfStackCommit           | DD |                              |
+|       | OH_SizeOfHeapReserve           | DD |                              |
+|       | OH_SizeOfHeapCommit            | DD |                              |
+|       | OH_LoaderFlags                 | DD |                              |
+|       | OH_NumberOfRvaAndSizes         | DD |   Nombre de répertoires      |
++-------+--------------------------------+----+------------------------------+
+
+    Remarques : Les nombres figurant dans la colonne offsets sont calculés par par rapport au début de la section. Les champs que nous n'utiliseront pas ne sont pas décrits.
+
+
+    ** Description des champs **
+
+(1) Point d'entrée :  ADRESSE VIRTUELLE RELATIVE de la première instruction, du microprocesseur, à être exécuter lorsque le programme démarre.
+
+(2) Base de l'image : ADRESSE VIRTUELLE de début du fichier P.E en mémoire.
+
+(3) Alignement de la section : La taille de chacunes des sections chargées en mémoire est un multiple de ce nombre. Le plus souvent il s'agit de 1000h (4096 octets).
+
+(4) Alignement du fichier : La taille du fichier, sur disque, est un multiple de ce nombre. Les sections, sur disque, ont aussi une taille multiple de ce nombre. Le plus souvent c'est 200h (512 octets).
+
+(5) Taille de l'image : C' est la taille en mémoire de tout le fichier P.E Pour que le fichier soit reconnu comme valide, après modification, par Windows NT, vous devez prendre soin de bien renseigner ce champ.
+
+(6) Taille des en-tête, la taille totale de tous les en-têtes d'un fichier P.E. 
+
+
+    ** Table des répertoires **
+
+    Un répertoire est un ensemble de groupes d'octets qui sont utiles aux fonctionnement du fichier P.E. Il ne peut y'en avoir qu'au plus 16. Chaque répertoire a sa propre struture interne suivant sa fonction. Un répertoire peut se situer à l'intérieur d'une section qui lui a été réservée ou bien être inclus dans une autre section. Un répertoire n'est pas une section ! Même si très souvent, un répertoire est une section en lui-même.
+
+    Le répertoire qui est toujours présent dans un fichier P.E est le répertoire IMPORT. Il contient les informations nécessaires à l'obtention dynamique des adresses de fonctions issues d'autres DLL nécessaires au bon fonctionnement du fichier P.E. Ce répertoire a souvent une section pour lui tout seul, qui porte en général le nom: .idata. Parfois ce répertoire se trouve inclus dans la section code du programme. Une DLL contient une section EXPORT. Elle contient la liste des fonctions exportées.
+
+    La fin de l'en tête optionnel est constitué d'un groupe de 16 sous-parties contenant chacunes 2 double mots. Voici le détail des 2 doubles mots:
+
+    dd  Adresse Virtuelle relative du répertoire.
+    dd  Taille du répertoire en mémoire.
+
+
+    Voici l'enchaînement de cette table de répertoires:
+
++-------+----------+-----------------+
+| offs. |  taille  |       nom       |
++-------+----------+-----------------+
+|  00h  | 8 octets | Table d'export. |
+|  08h  | 8 octets | Table d'import. |
+| (...) |   (..)   |      (...)      |
++-------+----------+-----------------+
+total= 256 octets occupés par cette table
+  
+    Remarque : Même si un répertoire n'existe pas, il a tout de même une entrée dans la table. Les deux champs correspondants sont nuls.
+ 
+
+-------[  6) Table des en-tête des sections
+
+
+    Une section reflète la division d'un programme entre données et code. Dans un fichier P.E on trouve en général qu'une section contenant du code. Mais il peut y'avoir plusieurs sections différentes contenant des données.
+
++-------+-------------------------+-------+-------------------------------------+
+| offs. |      nom du champ       |  D?   |            signification            |
++-------+-------------------------+-------+-------------------------------------+
+|  00h  | SH_Name                 | DB(8) | Nom de la section               (1) |
+|  08h  | SH_VirtualSize          |  DD   | Taille de la section en mémoire (2) |
+|  0ch  | SH_VirtualAddress       |  DD   | Son ADRESSE VIRTUELLE RELATIVE  (3) |
+|  10h  | SH_SizeOfRawData        |  DD   | Taille de la section sur disque (4) |
+|  14h  | SH_PointerToRawData     |  DD   | Offset dans le fichier          (5) |
+|  18h  | SH_PointerToRelocations |  DD   |                                     |
+|  1ch  | SH_PointerToLinenumbers |  DD   |                                     |
+|  20h  | SH_NumberOfRelocations  |  DW   |                                     |
+|  22h  | SH_NumberOfLinenumbers  |  DW   |                                     |
+|  24h  | SH_Characteristics      |  DD   | Attributs de la section.        (6) |
++-------+-------------------------+-------+-------------------------------------+
+
+    Remarque : seuls les champs utiles à connaitre pour notre propos sont commentés.
+
+
+    ** Explication des champs **
+
+(1) Le nom de la section, souvent les noms commencent par un point. le point est compté dans la taille du nom. Si le nom possède moins de 8 caractères, les octets restants sont mis à zéro. Dans un fichier P.E on trouve souvent les noms de sections suivants: ".code" ,".text"  pour la section code.
+
+(2) Taille de la section, une fois chargée en mémoire. C'est un multiple de la valeur contenue dans le champ "Alignement d'une section" comme on l'a vu lors de l'étude de l'en-tête optionnel. Ainsi, c'est le plus souvent un multiple de 1000h (4096 octets).
+
+(3) ADRESSE VIRTUELLE RELATIVE de la section en mémoire. C'est son adresse en mémoire, dont on a soustrait l'ADRESSE DE BASE du fichier P.E.  
+
+(4) Taille de la section sur disque, c'est une taille en octets multiple de la valeur contenue dans le champ "Alignement du fichier" dans l'en-tête optionnel. C'est ainsi, Le plus souvent un multiple de 200h (512 octets).
+
+(5) Offset dans le fichier. La section sur le disque commence à cette valeur. Rappelons que si un octet est à l'offset 0 dans un fichier, c'est le premier octet du fichier, sur le disque.
+    
+(6) Attributs de la section. Nous l'avons déja évoqué dans un article précédant. Il y'a plusieurs sortes d'attributs, ceux qui nous intéressent sont "LECTURE", "ECRITURE". Pour pouvoir écrire dans une section celle-ci doit avoir l'attribut ECRITURE, sinon gare à la faute de page ! Pour pouvoir lire dans une section, celle-ci doit avoir l'attribut LECTURE sinon risque de faute de page si tentative de lecture. L'attribut ECRITURE permet d'exécuter du code placé dans n'importe quelle section. (c'est une remarque essentielle!). Quand je dis exécuter, il faut evidemment que l'on ait aussi que, soit le point  d'entré du fichier P.E corresponde à une adresse dans cette section ou bien que la section code qui contient le point d'entrée contienne également un "jump" vers la section dont on a mis l'attribut ECRITURE et que ce "jump" soit exécuté ! Ils existent d'autres attributs mais nous n'en avons pas besoin pour notre propos.
+    
+
+-------[  7) Sections
+
+
+    Les sections contiennent la subtance du programme comme déja mentionné. Une section peut être totalement virtuelle. c'est à dire qu'elle n'a pas d'équivalent sur le disque. En effet rien n'interdit de renseigner les champs correspondants à l'offset de fichier et à la taille sur disque de la section avec zéro !
+    La place d'une section repérée dans la table des en-tête de section est un reflet de sa position en mémoire. Si une section est déclarée après une autre dans cette table, en mémoire son adresse sera plus élevée que la section qui est déclarée juste avant dans la table. Par contre, on ne peut rien déduire de leur enchainement réel dans le fichier sur le disque ! Même si en général, il y a correspondance, il ne faut pas considérer que c'est une obligation.
+
+
+-------[  8) Conclusion
+
+
+    J'espère que vous serez parvenu sans raccourci jusqu'à ce point de l'article, que je sais aride. J'ai essayé de ne considérer que les points essentiels dans la description du format P.E en faisant l'impasse sur les choses qui ne jouent pas un rôle direct pour notre but. Il est vrai que nous ne pouvons faire l'impasse sur tout, afin que la suite ne soit pas une suite de recettes obscures. Je vous donne rendez-vous dans le prochain article de notre série où nous allons encaisser les dividendes de ce que nous avons appris jusqu'à ce point.
+
+     A bientôt.
+
+
+-------[  EOF

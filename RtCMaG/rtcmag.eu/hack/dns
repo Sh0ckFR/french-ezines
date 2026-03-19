@@ -1,0 +1,154 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  KnOw yOur Ennemy : Dns repression  ]
+---------[ in RtC mag 3 ]
+----[  by Par4noID <rtcparanoid@yahoo.fr>  ]
+
+  Le g4ng a ces derniers temps recu beaucoup de mails quant à l'attaque d'un système. Il semble en effet que certains d'entre vous aient installés linux et connaissent les failles SATAN plus quelques autres sans pour autant savoir par ou commence l'atHACK d'un réseau. Cet article est écrit en réponse à ces personnes...
+
+--------[I DNS
+
+  Lors d'une atHack, la première étape consiste à obtenir des informations sur le systeme victime. Une bonne méthode pour cela va être le dnsquery. Prenons un exemple simple, l'attaque de la sncf...
+
+Le site de la sncf étant www.sncf.fr, on va essayé d'attaquer par là. Lorsque vous vous en prenez à une grosse boîte il y a de très grande chance que le site soit hébergé par l'ordinateur d'un réseau interne à la boîte. Ainsi la sncf posséde un réseau derriere son site(dont le nom de domaine est sncf.fr). On va donc essayé d'obtenir la liste et les adresses des ordinateurs du réseau.
+
+Par4noID# dnsquery sncf.fr
+
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 52850
+;; flags: qr rd ra; QUERY: 1, ANSWER: 8, AUTHORITY: 4, ADDITIONAL: 9
+;;  sncf.fr, type = ANY, class = IN
+sncf.fr.        11h25m10s IN NS  lys.sncf.fr.
+sncf.fr.        11h25m10s IN NS  dns.sncf.fr.
+sncf.fr.        11h25m10s IN NS  ns0.oleane.net.
+sncf.fr.        11h25m10s IN NS  ns1.oleane.net.
+sncf.fr.        11h25m10s IN MX  15 paquerette.sncf.fr.
+sncf.fr.        11h25m10s IN MX  20 smtp.oleane.net.
+sncf.fr.        1d9h11m33s IN A  195.25.238.132
+sncf.fr.        1d10h48m50s IN SOA  dns.sncf.fr. dnsmaster.sncf.fr. (
+                    2000140301  ; serial
+                    6H      ; refresh
+                    1H      ; retry
+                    1W      ; expiry
+                    2D )        ; minimum
+
+sncf.fr.        11h25m10s IN NS  lys.sncf.fr.
+sncf.fr.        11h25m10s IN NS  dns.sncf.fr.
+sncf.fr.        11h25m10s IN NS  ns0.oleane.net.
+sncf.fr.        11h25m10s IN NS  ns1.oleane.net.
+lys.sncf.fr.        22h53m35s IN A  194.167.100.1
+dns.sncf.fr.        23h45m54s IN A  195.25.238.134
+ns0.oleane.net.     1h1m2s IN A 194.2.0.30
+ns1.oleane.net.     1h35m11s IN A   194.2.0.60
+paquerette.sncf.fr. 9h1m10s IN A    195.25.238.140
+smtp.oleane.net.    1h27m27s IN A   195.25.12.3
+smtp.oleane.net.    1h27m27s IN A   195.25.12.10
+smtp.oleane.net.    1h27m27s IN A   195.25.12.14
+smtp.oleane.net.    1h27m27s IN A   195.25.12.15
+  
+  Interprétons ces diverses infos:
+
+* ; introduits les commentaires.
+
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 52850
+;; flags: qr rd ra; QUERY: 1, ANSWER: 8, AUTHORITY: 4, ADDITIONAL: 9
+;;  sncf.fr, type = ANY, class = IN
+
+* l'enregistrement NS = name serveur
+
+sncf.fr.        11h25m10s IN NS  lys.sncf.fr.
+sncf.fr.        11h25m10s IN NS  dns.sncf.fr.
+sncf.fr.        11h25m10s IN NS  ns0.oleane.net.
+sncf.fr.        11h25m10s IN NS  ns1.oleane.net.
+
+Chaque ligne est ici de la forme:
+zone        [ttl]       [classe]    NS  nom d'ordinateur
+où nom d'ordinateur désigne un ordinateur qui a authorité sur la zone spécifié (comment ça j suis pas clair?)
+En gros, le réseau que nous attaquons(sncf.fr) dispose de 4 serveur de noms :
+lys.sncf.fr,    dns.sncf.fr,    ns0.oleane.net,     ns1.oleane.net
+Ces 4 ordinateurs permettent aux ordinateurs du réseau sncf.fr d'obtenir les adresses IP de leur pair, nous y reviendrons :-)
+
+* l'enregistrement SOA (start of authority)
+
+sncf.fr.        1d10h48m50s IN SOA  dns.sncf.fr. dnsmaster.sncf.fr. (
+                    2000140301  ; serial
+                    6H      ; refresh
+                    1H      ; retry
+                    1W      ; expiry
+                    2D )        ; minimum
+ 
+sncf.fr est le nom de la zone, dnsmaster.sncf.fr est le serveur du responsable du réseau, ensuite on se tape les différentes valeurs de time out.
+
+la 1ere valeur est le numéro de série, il s'agit d'un entier incrémenté à chaque modifications des données.
+la valeur refresh est la durée au bout de laquelle le serveur secondaire vérifie si le numéro de série du serveur primaire a changé.
+la valeur retry est la durée au bout de laquelle le serveur secondaire essaye de recontacter le serveur primaire s'il y a echec à la connection.
+la valeur expiry indique la durée durant laquelle le serveur secondaire remplacera le primaire si celui-ci est indisponible.
+la valeur minimum time to live par défaut.
+
+* l'enregistrement MX = mail exchanger
+
+sncf.fr.        11h25m10s IN MX  15 paquerette.sncf.fr.
+sncf.fr.        11h25m10s IN MX  20 smtp.oleane.net.
+
+On obtient les deux serveurs de mails du réseau.
+
+* l'enregistrement A = adresse
+
+lys.sncf.fr.        22h53m35s IN A  194.167.100.1
+dns.sncf.fr.        23h45m54s IN A  195.25.238.134
+ns0.oleane.net.     1h1m2s IN A 194.2.0.30
+ns1.oleane.net.     1h35m11s IN A   194.2.0.60
+paquerette.sncf.fr. 9h1m10s IN A    195.25.238.140
+smtp.oleane.net.    1h27m27s IN A   195.25.12.3
+smtp.oleane.net.    1h27m27s IN A   195.25.12.10
+smtp.oleane.net.    1h27m27s IN A   195.25.12.14
+smtp.oleane.net.    1h27m27s IN A   195.25.12.15
+
+L'enregistrement A permet la résolution nom d'ordinateur- Adresse IP.
+Par exemple, on observe ici que l'ordinateur ns0.oleane.net a pour adresse IP 194.2.0.60.
+
+--------[II Et maintenant j fais quoi???
+
+Les ordinateurs qui nous intéressent sont les serveurs de nom. En effet, en les interrogeant on va pouvoir récupérer des infos sur les ordinateurs qui les utilisent, c'est-à-dire sur les ordinateurs du réseau.
+Pour cela on utilise la commande nslookup qui permet d'interroger les serveurs de nom.
+
+On a vu que la machine ns0.oleane.net était un name serveur, de plus on sait que son adresse IP est 194.2.0.60 d'ou:
+
+Par4noID# nslookup - 194.2.0.60
+
+Default Server:  ns0.oleane.net
+Address:  194.2.0.30
+
+> ls -t sncf.fr (on regarde quels sont les ordinateurs de sncf.fr qui utilisent ce                  serveur de nom)
+
+> [ns0.oleane.net]
+$ORIGIN sncf.fr.
+@           2D IN A     195.25.238.132
+localhost   2D IN A     127.0.0.1
+toulouse    2D IN A     195.25.238.131
+trantor     2D IN A     195.101.72.1
+aranea      2D IN A     194.167.100.2
+anemone     2D IN A     195.25.238.136
+jasmin      2D IN A     171.16.0.7
+web         2D IN A     195.25.238.132
+dns         2D IN A     195.25.238.134
+rose        2D IN A     195.25.238.133
+ntp         2D IN A     171.16.0.3
+pensee      2D IN A     195.25.238.130
+firewall    2D IN A     195.25.238.154
+paquerette  2D IN A     195.25.238.140
+proxy1      2D IN A     171.16.0.6
+surve       2D IN A     195.25.238.135
+news2       2D IN A     171.16.0.1
+proxy2      2D IN A     171.16.0.5
+proxy3      2D IN A     171.16.0.1
+proxy4      2D IN A     171.16.0.19
+proxy5      2D IN A     171.16.0.20
+lys         2D IN A     194.167.100.1
+voyages     2D IN A     195.101.72.2
+voeux       2D IN A     195.25.238.144
+
+Et voila une joli liste des ordinateurs du réseau avec leur adresse IP!
+A noter la présence d'un firewall, de quoi vous amusez pendant vos vacances.(à vos risques et périls bien sûr :-)))  ) 
+
+
+-------[  EOF

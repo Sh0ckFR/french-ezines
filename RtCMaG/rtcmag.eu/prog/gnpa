@@ -1,0 +1,324 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  Les générateurs de nombres pseudo-aléatoires  ]
+---------[ in RtC mag 3 ]
+----[  by Androgyne <androgyne-rtc@fr.st>  ]
+
+
+-------[  Introduction
+
+    Pourquoi faire un article sur les générateurs de nombres pseudo-aléatoires (GNPA) ? Sachez que ces générateurs servent beaucoup aux virus polymorphes. Pas de générateurs, pas de polymorphisme. Toutes les "décisions" que le moteur de polymorphisme prend viennent du GNPA. Il est donc nécessaire d'avoir un bon générateur et les bons générateurs sont rares. Aussi ai-je décidé de porter mon attention sur les GNPA.
+
+
+-------[  Qu'est-ce qu'un GNPA ?
+
+    L'appellation "pseudo aléatoire" vient du fait qu'il est impossible de créer des nombres aléatoires de manière algorithmique. C'est comme ça. Un générateur doit donc s'efforcer de créer une suite de nombres qui n'ont apparemment aucun lien entre eux. Pour mesurer si un générateur est bon, il faut :
+  - veiller à ce qu'il n'y ait aucune boucle. Si le GNPA entre dans une boucle, le virus polymorphe ne pourra exister que sous un nombre réduit de forme, le polymorphisme est alors inutile.
+  - veiller à ce que la fréquence des nombres tirés soit globalement la même pour tous les nombres. Quand je dis "globalement", cela veut dire qu'il ne faut pas que certains nombres soient tirés à une fréquence 2 ou 3 fois plus élevée que d'autres.
+
+    A partir de ces principes, on peut imaginer toutes sortes d'algorithmes. Je vais vous en donner quelques uns dont certains sont très classiques.
+
+
+-------[  Des exemples de GNPA
+
+
+> Les GNPA congruentiels linéaires d'ordre 1
+
+    Ce sont les plus courants et les plus faciles à faire. la suite de nombres obéit à une récurrence linéaire d'ordre 1 congruentielle (un peu barbare comme appellation mais c'est pas moi qui l'ai inventé). En gros, la relation de récurrence qu'ils utilisent est de la forme :
+        X(n+1) = (A * X(n) + C) mod M
+où A, C et M sont des nombres bien choisis (généralement les nombres premiers donnent de bons résultats). Ces générateurs sont assez simples à coder en assembleur. Allez voir dans la deuxième partie de cet article. Evidemment, vous pouvez choisir d'autres valeurs pour A, C et M. Des valeurs bien choisie donneront une boucle d'au plus M élément (par définition même de la relation congruentielle). C'est déjà pas mal...
+    Pour tester des valeurs, je vous conseille de créer un petit programme Pascal qui fait tourner le générateur (ou une procédure semblable). Voici deux exemples pour vérifier les deux critères qui nous intéressent. Le premier Loop calcule la longueur d'une boucle à partir d'une entrée aléatoire, le second Freq trace un graphe de fréquence.
+
+--- LOOP.PAS ------------------------------------------------------------------
+
+program Loop;
+uses crt,graph;
+
+const
+  m=43691;
+  a=13;
+  c=14449;
+
+var
+  Rand_Seed:longint;
+  i,start,First:longint;
+
+function Get_Random(number:longint):longint;
+  begin
+    Get_Random:=(a*number+c) mod m;
+  end;
+
+begin
+  clrscr;
+  randomize;
+  First:=random(m);
+  Rand_Seed:=Get_random(First);
+  i:=2;
+  while (Rand_Seed<>First) do begin
+    Rand_Seed:=Get_Random(Rand_Seed);
+    inc(i);
+  end;
+  write('avec ',First,', la boucle a une longueur de ',i,'.');
+  readkey;
+end.
+
+--- LOOP.PAS ------------------------------------------------------------------
+
+
+--- FREQ.PAS ------------------------------------------------------------------
+
+program Freq;
+uses crt,graph;
+
+const
+  m=43691;
+  a=13;
+  c=14449;
+
+var
+  Rand_Seed:longint;
+  i,start:longint;
+  tablo:array [0..m div 4] of longint;
+
+procedure VGAGraph;
+  var driver,mode:integer;
+  begin
+    driver:=9;
+    mode:=2;
+    initgraph(driver,mode,'d:\pascal\bgi');
+  end;
+
+function Get_Random(number:longint):longint;
+  begin
+    Get_Random:=(a*number+c) mod m;
+  end;
+
+begin
+  clrscr;
+  randomize;
+  Rand_Seed:=random(m);
+  for i:=1 to 436 do tablo[i]:=0;
+  for i:=1 to 2000000 do begin
+    Rand_Seed:=Get_Random(Rand_Seed);
+    inc(tablo[Rand_Seed div 4]);;
+  end;
+  VGAGraph;
+  setbkcolor(0);
+  for start:=1 to (m div 4)-640 do begin
+    for i:=Start to Start+640 do begin
+      putpixel(i-Start+1,480-tablo[i-1],0);
+      putpixel(i-Start,480-tablo[i],15);
+    end;
+    if keypressed then begin
+      closegraph;
+      halt;
+    end;
+  end;
+  readkey;
+end.
+
+--- FREQ.PAS ------------------------------------------------------------------
+
+    Vous pourrez utilisez ces deux programmes pour tester tous les autres GNPA en changeant simplement la fonction Get_Random.
+
+
+> Les GNPA congruentiels linéaires d'ordre 2
+
+    Ils sont un peu plus puissant que leurs camarades d'ordre 1. Les programmes tests devraient vous en convaincre. Ils obéissent à une récurrence linéaire d'ordre 2 congruentielle du type :
+        X(n+2) = (A1 * X(n+1) + A2 * X(n) + C) mod M
+où A1, A2, C et M sont toujours bien choisis. J'ai essayé la combinaison A1=13, A2=111, C=14449 et M=43691 qui donnent de très bons résultats. En essayant la fonction Random du Pascal, on observe sensiblement la même courbe de fréquence. Je n'ai pas fait de recherches de ce côté, je ne sais pas comment est construit le Random du Pascal mais je parierais sur ce type de générateur.
+    En revanche, si on prend A2=113 à la place de 111, c'est très mauvais... Il y a 5 "couches de fréquences" qui apparaissent très nettement. C'est typiquement ce que l'on ne veut pas. Comme quoi les nombres premiers ne donnent pas toujours forcément les meilleurs générateurs.
+    Pour tester ces générateurs, il faut modifier Get_Random et l'affectation à Rand_Seed comme ça :
+
+-------------------------------------------------------------------------------------------
+
+(...) { Attention! il y a des trucs à changer aussi avant mais je vous le laisse. }
+
+function Get_Random(number1,number2:longint):longint;
+  begin
+    Get_Random:=(a1*number1 + a2*number2 + c) mod m;
+  end;
+
+(...)
+
+    Temp:=Rand_Seed1;
+    Rand_Seed1:=Get_Random(Rand_Seed1,Rand_Seed2);
+    Rand_Seed2:=Temp;
+
+(...)
+
+-------------------------------------------------------------------------------------------
+
+    Pour l'implémentation en assembleur, allez voir à la fin de cet article.
+
+
+> D'autres GNPA
+
+    Imaginons que vous ayez besoin dans un de vos programmes d'un nombre aléatoire. Est-il nécessaire de développer un GNPA complet ? Non, bien sûr. Il existe des méthodes faciles pour obtenir un nombre aléaoire. Il est très courant d'utiliser le port 40h par un simple appel "in al,40h". C'est simple, ça prend une ligne. On peut également utiliser le compteur d'horloge dont l'adresse est 0000:046Ch. Ou encore faire un appel à l'interruption 1Ah... Bref, il ne faut pas oublier que nous sommes dans un environnement informatique et qu'il faut l'utiliser...
+
+
+-------[  Les codes de deux GNPA
+
+> un générateur congruentiel linéaire d'ordre 1 : LCG32
+
+    Ce premier générateur n'est pas de moi. Je l'ai trouvé dans un bouquin mais il marche. Il s'appelle LCG32 car il utilise des registres 32 bits pour plus de facilité. Il peut s'utiliser avec tous les types de programmes, il "reloge" lui même ses variables et ne bouffe aucun registre sauf ax.
+    On peut appeler deux routines : Random_Seed qui initialise Rand_Seed avec le compteur d'horloge dont l'adresse mémoire est 0000:046C, et Get_Random qui renvoie un nombre aléatoire dans ax.
+
+--- LCG32.ASM -----------------------------------------------------------------
+
+;LCG32
+;a 32 bit Linear Congruential Pseudo-Random Number Generator
+;  X(n+1) = (A * X(n) + C) mod M
+
+.model tiny
+.code
+.386
+
+    public RANDOM_SEED
+    public GET_RANDOM
+
+M dd 134217729
+A dd 44739244
+C dd 134217727
+
+RAND_SEED dd 0
+
+RANDOM_SEED proc near
+    push si
+    push ds
+    push dx
+    push cx
+    push bx
+    push ax
+    call RS1
+  RS1:
+    pop bx
+    sub bx,offset RS1
+    xor ax,ax
+    mov ds,ax
+    mov si,46Ch
+    lodsb
+    xor edx,edx
+    mov ecx,M
+    div ecx
+    mov cs:[bx][RAND_SEED],edx
+    pop ax
+    pop bx
+    pop cx
+    pop dx
+    pop ds
+    pop si
+    retn
+RANDOM_SEED endp
+
+
+GET_RANDOM proc near
+    push bx
+    push cx
+    push dx
+    call GR1
+  GR1:
+    pop bx
+    sub bx,offset GR1
+    mov eax,[bx][RAND_SEED]
+    mov ecx,[bx][A]
+    mul ecx
+    add eax,[bx][C]
+    adc edx,0
+    mov ecx,[bx][M]
+    div ecx
+    mov eax,edx
+    mov [bx][RAND_SEED],eax
+    pop dx
+    pop cx
+    pop bx
+    retn
+GET_RANDOM endp
+
+--- LCG32.ASM -----------------------------------------------------------------
+
+
+> un générateur congruentiel linéaire d'ordre 2 : Androgynerator
+
+    Celui ci est totalement de moi, je n'ai fait que la routine Get_Random mais il est bien évident qu'on peut rajouter la routine Random_Seed ci-dessus. J'ai utilisé les registres 16 bits classiques. Il est fondé sur une récurrence linéaire d'ordre 2 congruentielle, très efficace. A mon avis, ce générateur fait partie de la crème des GNPA. Son implémentation n'est pas trop différente d'un générateur d'ordre 1.
+
+--- ANDROGYNERATOR.ASM --------------------------------------------------------
+
+;Androgynerator
+;an Advanced 16 bits Pseudo Random Number Generator
+; X(n+2) = (A1 * X(n+1) + A2 * X(n) + C) mod M
+;
+;entrée :
+;  ax=plafond max
+;sortie :
+;  ax=nombre aléatoire compris entre 0 et (plafond max-1)
+;
+;by Androgyne
+;
+
+.model tiny
+.code
+.386
+
+    public GET_RANDOM
+
+M  equ 43691
+A1 equ 13
+A2 equ 111
+C  equ 14449
+
+RAND_SEED1 dw 1
+RAND_SEED2 dw 2
+TEMP       dw 0
+
+GET_RANDOM proc near
+    push bp                             ;
+    push bx                             ;
+    push cx                             ;
+    push dx                             ;
+    push ax                             ;celui là, on se le garde pour
+                                        ;plus tard
+
+    call GET_ADD                        ;
+  GET_ADD:                              ;
+    pop bp                              ;on calcule le décalage et on
+    sub bp,offset GET_ADD               ;le met dans bp
+        
+    mov ax,[bp + RAND_SEED1]            ;
+    mov word ptr [bp + TEMP],ax         ;
+    mov cx,[bp + A1]                    ;A1 * RAND_SEED1
+    mul cx                              ;
+    mov dx,ax                           ;on met le résultat dans dx
+    mov ax,[bp + RAND_SEED2]            ;
+    mov cx,[bp + A2]                    ;A2 * RAND_SEED2
+    mul cx                              ;
+    add ax,dx                           ;on additionne les deux
+    xor dx,dx                           ;
+    add ax,[bp + C]                     ;on additionne C
+    adc dx,0                            ;
+    mov cx,[bp + M]                     ;et voilà comment on fait
+    div cx                              ;un modulo
+    mov ax,dx                           ;on met le résultat dans ax
+
+    mov word ptr [bp + RAND_SEED1],ax   ;on conserve tous les
+    push ax                             ;nouveaux résultats
+    mov ax,[bp + TEMP]                  ;
+    mov word ptr [bp + RAND_SEED2],ax   ;
+    pop ax                              ;
+
+    pop cx                              ;on pop ax qu'on a pushé au début
+    xor dx,dx                           ;
+    div cx                              ;on renvoie ax mod (plafond)
+    mov ax,dx                           ;
+
+    pop dx                              ;
+    pop cx                              ;
+    pop bx                              ;
+    pop bp                              ;
+    ret                                 ;c'était vraiment pas dur!
+GET_RANDOM endp
+
+--- ANDROGYNERATOR ------------------------------------------------------------
+
+
+-------[  EOF

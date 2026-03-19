@@ -15,6 +15,7 @@ The sources have been slightly tweaked for immediate use. And unfortunately, som
 | Noway | 1994 | Hacking, Phreaking, Network, 💣 |
 | Secu-info | 1994-1999 | Hacking |
 | Cybpunk | 1995 | Ethic, Chronics |
+| Core Dump | 1997 | Phreaking, News, Hacking |
 | Hack 25 | 1996 | Phreaking, Virus |
 | MJ13 | 1996 | Crypto,  Coding, Cracking |
 | HVU | 1996-2004 | Radio, Phreaking |
@@ -24,8 +25,10 @@ The sources have been slightly tweaked for immediate use. And unfortunately, som
 | Mobilisation Virtuelle Minoritaire | 1997 | Cracking, Phreaking, Virus |
 | NoFutur | 1997 | Phreaking, Hacking |
 | Noroute | 1997 | Phreaking, Hacking, Drugs |
+| NoPasswd | 1997 | Hacking |
 | Row | 1997 | Warez |
 | Total Control | 1997-1998 | Phreaking, Coding, Drugs, Hacking |
+| 2020Hacker | 1997-1998 | Hacking, Virus, Coding |
 | Pretty Good Keys | 1997-1999 | Phreaking, Ethic, 💣, Coding, Hacking, Cracking, Crypto |
 | Cybz | 1998 | Phreaking, Hacking, Virus, Countercultures |
 | Fantom | 1998 | Hacking |
@@ -49,12 +52,17 @@ The sources have been slightly tweaked for immediate use. And unfortunately, som
 | 912 Hacking Departement | 1999 | Infosec, Hacking, Social Engineering, Phreaking, 💣 |
 | Alcibiade | 1999 | Phreaking, Drugs, Carding, Coding |
 | Alternative | 1999 | Infosec, Hacking, Phreaking, Hardware |
-| Busted | 1999 | Infosec, Hacking, Cracking, Busted |
+| Anathema | 1999 | Hacking, Cracking, Coding, Phreaking, Crypto |
 | AOH | 1999 | Phreaking, Hacking |
+| Busted | 1999 | Infosec, Hacking, Cracking, Busted |
 | Black Lotus | 1999 | Infosec, Hacking, Web Pentesting, Warez, Development |
 | Cyber Hackers Guide | 1999 | Phreaking, Trashing, Hacking, Interview, Ethic |
+| GSM Codes | 1999 | Phreaking |
+| HCB | 1999 | Coding, Reverse Engineering | 
 | hccc | 1999 | Cracking, Hacking, Virus, Coding |
+| Intrusion HD | 1999 | Hacking, Virus |
 | Kult Dead Bill | 1999 | Cracking, Hacking, Drugs, 💣 |
+| Know Your Enemy | 1999 | Cracking, Hacking, Trad |
 | MacMilliam | 1999 | Hacking |
 | MorbideDark | 1999 | Hacking |
 | Nightz | 1999 | Cracking |
@@ -95,6 +103,7 @@ The sources have been slightly tweaked for immediate use. And unfortunately, som
 | Lightning Jokers | 2000 | Hacking, Protocols, 💣, Carding, Coding |
 | Nowall | 2000 | Hacking, Phreaking |
 | Polio | 2000 | Hacking, Phreaking |
+| RtCMaG | 2000 | Hacking, Cracking, Coding, Virus, News |
 | Shogun | 2000 | Hacking |
 | Silmarillon | 2000 | Phreaking, Hacking, 💣 |
 | UnderDark | 2000 | Hacking, Network, Warez, Cracking |

@@ -1,0 +1,370 @@
+Distrubuted Denial Of Service
+============================= S/ash [RtC]
+
+Ceci est une compilation des diff‚rentes m‚thodes de smurf dont la RtC a d‚j…
+parl‚.
+
+Sommaire :
+I.    Introduction
+II.   Bases de l'IP, du TCP et de l'UDP utilis‚ ici
+   II.1 ICMP Echo
+   II.2 Connexion TCP
+   II.3 Un petit peu d'UDP
+III.  Une exploitation des faiblesses des serveurs : le SYN flood
+IV.   Une exploitation des faiblesses de l'IP : le Smurf
+V.    R‚cup‚r‚ des adresses de broadcast … travers Internet
+VI.   Les nouvelles m‚thodes de smurf
+   VI.1 Le SYN Smurfing
+   VI.2 L'UDP Unreach Smurf
+   VI.3 L'ICMP Unreach Smurf
+VII.  Un DDOS pour le mail-bombing
+VIII. Une aper‡ue de l'avenir : le smurfing et l'IPv6
+IX.   Le code d'un smurfer
+
+
+I. Introduction
+---------------
+Les failles de l'IP ont ‚t‚ utilis‚e … plusieurs reprises dans le but de
+couper l'accŠs … certains services ou de faire crasher des systŠmes. Une de
+ces m‚thodes est le SYN flood (DOS) et une autre est le Smurf (un DDOS). En
+r‚fl‚chissant sur l'‚tablissement des connexions TCP, j'ai reli‚ les deux
+m‚thodes pr‚c‚dentes pour cr‚er un nouveau DDOS que j'ai nomm‚ le SYN Smurf.
+Puis, quelques autres methodes de smurf me sont venus … l'esprit tout comme
+une m‚thode de mail-bombing. Ces m‚thodes n'ont pas ‚t‚, … ma connaissance,
+rendues publique avant le mag 4 de la RtC.
+
+Les informations contenues dans cet article ne sont pas l… dans un but
+immoral mais seulement pour le savoir et l'int‚ret de celles-ci (si vous
+voulez les test‚es, utilis‚es-les contre des sites fascistes ou racistes
+comme www.kkk.com).
+
+
+
+II. Bases de l'IP, du TCP et de l'UDP utilis‚ ici
+-------------------------------------------------
+
+II.1 L'ICMP Echo
+
+Un message ICMP est paquet IP avec un header du style :
+
+0                 7|8              15|16                                    31
+|----------------------------------------------------------------------------|
+|     type         |       code      |          checksum                     |
+|----------------------------------------------------------------------------|
+|                ident               |        num‚ro de sequence             |
+|----------------------------------------------------------------------------|
+|                      donn‚es optionnel (si n‚cessaire)                     |
+|----------------------------------------------------------------------------|
+
+Le message ICMP Echo request est la requete ICMP type 8 code 0 qui ne fait que
+demander … la destination dde r‚pondre par un message ICMP Echo Reply (ICMP
+type 0 code 0). Ce message … ‚t‚ cr‚‚ pour l'entretien des r‚seaux et la 
+v‚rification de la disponibilit‚ d'une machine de destination.
+
+Donc, pour faire un ICMP Echo, on se contente d'envoyer un paquet IP contenant
+l'header pr‚c‚dent avec le type mit … 8 et le code mis … 0. puis nous
+attendons la r‚ponse qui est un paquet IP avec l'en-tete pr‚c‚dent avec le
+type et le code mis … 0.
+
+
+II.2 Connexion TCP
+
+L'en-tete TCP :
+
+0                                  15|16                                    31
+|----------------------------------------------------------------------------|
+| Num‚ro du port source (16 bits)    | Num‚ro du port de destination (16bits)|
+|----------------------------------------------------------------------------|
+|                        num‚ro de s‚quence sur 32 bits                      |
+|----------------------------------------------------------------------------|
+|                      num‚ro d'acquittement sur 32 bits                     |
+|----------------------------------------------------------------------------|
+| longueur de l'entˆte 4| 6 | flags 6|     taille de fenˆtre sur 16-bits     |
+|----------------------------------------------------------------------------|
+|         checksum sur 16-bits       |       pointeur urgent sur 16-bits     |
+|----------------------------------------------------------------------------|
+|                         options (s'il y en a)                              |
+|----------------------------------------------------------------------------|
+|                         donn‚es (s'il y en a)                              |
+|----------------------------------------------------------------------------|
+
+o— les flags sont :
+URG : le pointeur urgent est valide 
+ACK : le num‚ro d'acquittement est valide
+PUSH : pour que le gestionnaire r‚seau passe la trame le plus vite possible au
+soft.
+RST : r‚initialise la connexion.
+SYN : signal de synchronisation pour les num‚ro de s‚quence
+FIN : fin de la connexion.
+
+Une connexion TCP se fait en trois ‚tapes :
+
+- Tout d'abord, le client demande une connexion … l'hote en envoyant un paquet
+dont le flag SYN (paquet SYN) est activ‚.
+
+- Ensuite, l'hote r‚pond soit par un paquets dont les flags SYN et ACK sont
+activ‚s (paquet SYN+ACK) si la connexion est accept‚e, soit par un paquet
+RST si la connexion est refus‚e.
+
+- Enfin, le client doit r‚pondre avec un paquet ACK pour ouvrir la connexion.
+
+Un point … retenir est que, si un ordinateur re‡oit un paquet SYN+ACK alors
+qu'il n'a pas demand‚ une connexion, il doit r‚pondre par un paquet RST.
+
+ 
+II.3 Un petit peu d'UDP
+
+Bon, d'abors, l'en-tete UDP :
+
+0                                  15|16                                    31
+|----------------------------------------------------------------------------|
+|      num‚ro de port (16 bits)      | num‚ro de port de destination (16bits)|
+|----------------------------------------------------------------------------|
+|      UDP length -  16-bits         |           checksum - 16-bits          |
+|----------------------------------------------------------------------------|
+|                         donn‚es (s'il y en a)                              |
+|----------------------------------------------------------------------------|
+
+Ensuite, expliquons comment un hote r‚agit lors de la r‚ception d'un paquet
+UDP sur un port ferm‚ : il r‚pond simplement par un message ICMP Port
+Unreachable (ICMP type 3 code 3) si le port est ferm‚.
+
+
+
+III.  Une exploitation des faiblesses des serveurs : le SYN flood
+-----------------------------------------------------------------
+Le SYN flood est bas‚ sur l'exploitation de faiblesse des serveurs dans
+l'impl‚mentation TCP.
+
+Son principe est d'envoyer ‚norm‚ment de demande de connexions TCP au serveur
+pour le flooder.
+
+En fait, si vous envoyer un paquet SYN, le serveur doit vous r‚pondre pour 
+dire si la connexion est accept‚e ou non. Donc, cette m‚thode repose sur
+l'envoie d'un grand nombre de paquets SYN … l'hote sur un port (en g‚n‚ral
+ouvert), celui-ci sera alors flooder par le nombre de r‚ponse … envoyer.
+
+Sur certain serveurs, le problŠme a ‚t‚ r‚solue par l'arret de la gestion des
+demande de connexion aprŠs un certain nombre de paquets SYN venant de la meme
+machine dans un certain laps de temps. Sur d'autre serveurs, les messages ne
+sont plus g‚r‚s aprŠs un grand nombre de paquets SYN re‡u : sur ceux-ci, on
+obtient alors un DoS qui ferme un port. Mais, sur la plupart des machines,
+corriger cette faille est devenu inutile de par la mont‚e en puissance des
+ordinateurs.
+
+
+
+IV. Une exploitation des faiblesses de l'IP : le Smurf
+------------------------------------------------------
+
+Le Smurf est une variante de l'ICMP Ping flood. Cette m‚thode de flood a ‚t‚
+‚norm‚ment utilis‚ par le 'hacker' (lamer est un meilleur mot pour lui)
+appel‚ MafiaBoy lors du crash de Yahoo et consort.
+
+L'ICMP Ping flood est une vieille m‚thode de flood ne fonctionnant que sur
+des ordinateurs faibles (le lamer habituel utilisant Windows 9x et AOL). Pour
+utilis‚ cette m‚thode, nous nous contentons d'envoyer une masse de requete
+ICMP Echo contenant beaucoup de donn‚es. Bien sur, une bonne bande passante
+est n‚cessaire pour exploiter ce flood.
+
+Le Smurf consiste … envoyer vers un grand nombre d'hote une requete ICMP Echo
+contenant l'IP de la victime dans le champs IP de l'exp‚diteur. Puis, toutes
+les machines recevant la requete ICMP Echo vont r‚pondre par un ICMP Echo
+Reply vers la victime qui sera overflood‚ par le nombre de r‚ponse. Pour cela,
+il faut utilis‚ des adresses de broadcast pour la destination des ICMP Echo
+request.
+
+                                    VOTRE MACHINE
+              envoyant des requete ICMP Echo avec l'adresse de la victime
+                                        |    |
+                                        |    |
+                                        |    |
+                                        |    |
+          BROADCAST <--------------------    --------------------> BROADCAST
+           |||||||              Toutes les machines des             |||||||
+           |||||||                    broadcasts                    |||||||
+           |||||||          renvoient des reponse ICMP Echo         |||||||
+           |||||||   … la victime pour r‚pondre … la requete echo   |||||||
+           |||||||             venant de votre machine              |||||||
+           |||||||                                                  |||||||
+           ||||||--------->-------------|  |---------<---------------||||||
+           |||||---------->------------||  ||--------<----------------|||||
+           ||||----------->-----------|||  |||-------<-----------------||||
+           |||------------>----------||||  ||||------<------------------|||
+           ||------------->---------|||||  |||||-----<-------------------||
+           |-------------->--------||||||  ||||||----<--------------------|
+           --------------->-------|||||||  |||||||---<--------------------
+                                  |||||||  |||||||
+                                  |||||||  |||||||
+                                  |||||||  |||||||
+                                  |||||||  |||||||
+                                  |||||||  |||||||
+                                  |||||||  |||||||
+                       victime recevant beaucoup de r‚ponse
+                               echo et qui a trŠs mal
+
+Une solution qui a ‚t‚ propos‚ est de d‚sactiv‚ l'ICMP Echo sur les
+adresses de broadcast au niveau des routeurs.
+ 
+
+
+V. R‚cup‚r‚ des adresses de broadcast … travers Internet
+---------------------------------------------------------
+
+Bon, avant de faire une attaque smurf, il nous faut r‚cup‚rer des adresses
+de broadcast. Bien sur, il n'est pas facile d'en trouver des efficaces mais
+il y a un moyen de faire.
+Cette m‚thode donn‚ par Craig A. Huegen consiste … pinger simplement des
+adresses de broadcast et de garder seulement celle qui renvoyent plus
+d'un certain nombre de r‚ponse ping. Cette m‚thode reste valable pour les
+autres attaques smurf dont je vais parler mais n‚cessite cependant d'etre
+l‚gŠrement chang‚e (on ne peut, par exemple, plus utiliser de script).
+
+Alors, voil… les scripts de Craig A. Huegen. Bien sur, je ne garantie pas
+que les scripts fonctionnent ou non (je ne les ai pas test‚) :
+
+[Voir les fichiers bips.sh et chekdup.sh]
+
+Il y a un problŠme dans ce scan : si vous pingez un gros broadcast, vous
+r‚cupŠrerez ‚norm‚ment de r‚ponse et votre connection risque de lacher.
+Un autre problŠme est que ces scripts ne permettent pas d'obtenir de
+nouvelles adresses de broadcast mais nous dit seulement si un broadcast
+vaut la peine d'etre utilis‚.
+
+
+VI.   Les nouvelles m‚thodes de smurf
+-------------------------------------
+
+VI.1 Le SYN Smurf
+
+Une nouvelle maniŠre que j'ai d‚couvert d'overflooder des ordinateurs
+repose sur l'envoie … travers des adresses de broadcast de paquet TCP
+SYN sur des seveurs (comme les serveur Web sur le port 80) qui r‚pondront
+soit par un paquet RST soit par un paquet SYN+ACK.
+
+Un paquet RST floodera simplement la pile TCP, mais un ACK+SYN est plus
+interssant car il n‚cessite une r‚ponse de la victime et floodera ainsi
+les process TCP.
+
+Cette m‚thode est donc trŠs simple : vous r‚utilisez la m‚thode de Smurf
+classique mais avec des paquets SYN (d'o— son nom SYN Smurf).
+
+Je pense pas qu'il y existe des ordinateurs ou des routeurs qui interdisent
+le broadcasting de paquets TCP mais cela se peut.
+
+
+VI.2 L'UDP Unreach Smurf
+
+Un autre moyen que je pense plus efficace pour flooder est l'utilisation
+de la r‚ponse … un paquet UDP sur un port ferm‚. AprŠs avoir re‡u le paquet
+UDP (sur un port ferm‚), la machine hote doit r‚pondre par un message ICMP
+Port unreachable (ICMP type 3 code 3).
+
+Si vous utilisez cette m‚thode sur un broadcast, une tonne de message ICMP
+Port unreachable seront renvoy‚ … la victime qui crashera probablement.
+
+Pour cette m‚thode, la seule solution que je voie est de configurer tout les
+hotes du r‚seaux pous ne pas r‚pondre automatiquement au paquet UDP 
+broadcast‚. Bien sur, il y a peu de chance d'y arriver vu le nombre
+d'ordinateurs sur Internet.
+
+VI.3 L'ICMP Unreach Smurf
+
+Cette m‚thode est totallement th‚orique. Elle consiste … envoyer des paquets
+(de n'importe quel type) sur des machines n'existant pas. Tout les routeurs
+r‚pondront par un message ICMP Destination unreachable (ICMP type 3 code 0-1).
+Bien sur, il y a peu de chance que cela marche sur adresse de broadcast 
+(aucune en fait) car la seule solution est alors d'utiliser le tunneling
+(un r‚seau entier avec le tunneling activ‚ ??).
+
+Cette m‚thode est seulement un aper‡u, je pense qu'il n'y a aucun moyen de 
+l'utiliser. C'est seulement pour dire que beaucoup de m‚thodes de smurf
+peuvent etre exploit‚ en utilisant les r‚ponses automatiques des ordinateurs
+… certains messages. Je pense que le smurf a encore une longue vie devant
+lui...
+
+
+
+VII.  Un DDOS pour le mail-bombing
+----------------------------------
+
+Il s'agit d'un mail-bombing. Quel est le lien avec le smurf ? Il s'agit juste
+de la meme id‚e : vous envoyez un long mail avec une tonne d'adresses de
+destination fausse. Bien sur, ce mail contient l'adresse de la victime au lieu
+de la votre (pour cela, allez voir un article sur la maniŠre d'envoyer des
+mail anonyme : il y a en a une tonne dans l'underground). Le r‚sultat sera
+que le serveur de mail r‚pondra par votre long mail et un en tete disant que
+l'adresse sp‚cifi‚ n'existe pas.
+Je n'ai pas fait code pour faire ‡a : c'est tellement facile de le faire
+… la main.
+
+Bon, immagibnez que vous voulez flooder la boite de victim@lamer.org. Une
+m‚thode habituelle est d'envoyer un grand nombre de mail. Une meilleur
+m‚thode est d'envoyer un mail avec plusieurs fausses adresses, comme
+ceci (en utilisant le server mail de isp.net).
+
+---------------------------------
+evil% telnet mail.isp.net 25
+Trying ...
+Connected to mail.isp.net
+Escape caracter is '^]'.
+220 mail.isp.net Sendmail 8.8.5-8.8.7 ready at Mon, 15 Nov 93 13:35:11 EST
+helo
+250 mail.isp.net Hello (evil.domain.com), pleased to meet you
+mail from: victim@lamer.org
+rcpt to: victim@lamer.org
+data
+From: victim@lamer.org
+to: xxx@random.ble, xxy@random.ble, xyx@random.ble, yxx@random.ble, xyy@random.ble, yxy@random.ble, yyx@random.ble, yyy@random.ble, xyz@random.ble, aza@random.ble, dsq@random.ble, dst@random.ble, iga@random.ble, mad@random.ble, taz@random.ble, qha@random.ble, jer@random.ble, rtc@random.ble, leo@random.ble, red@random.ble, oxx@random.ble, drm@random.ble, fbi@random.ble, cia@random.ble, kgb@random.ble, dea@random.ble, fgh@random.ble, dos@random.ble, win@random.ble, bil@random.ble, mic@random.ble, ros@random.ble, oft@random.ble, mac@random.ble, ppp@random.ble, net@random.ble, gov@random.ble, edu@random.ble, fuc@random.ble, kto@random.ble, the@random.ble, bhz@random.ble, cri@random.ble, pin@random.ble, hui@random.ble, hhh@random.ble, ggg@random.ble, iii@random.ble, jjj@random.ble, lll@random.ble
+Subject: I want to flood you
+
+   Yeah, it's just a flooding message. make it as long as possible.
+
+   Bye, bye and enjoy my message...
+.
+250 Ok
+quit
+221 mail.isp.net closing connection
+Connection closed by foreign host.
+------------------------------------
+
+AprŠs ceci, victim@lamer.org recevra environt 50 messages disant que
+l'adresse de destination est invalide...
+
+La solution … ce problŠme est trŠs simple : configurer les serveurs mail
+pour ne pas r‚pondre aprŠs un certain nombre d'email dans la destination...
+
+
+
+VIII. Une aper‡ue de l'avenir : le smurfing et l'IPv6
+-----------------------------------------------------
+
+L'IPv6 est maintenant d‚fini et sur le point d'etre utilis‚ sur Internet. Donc,
+la question naturelle est quels sont les corrections apport‚es contre le 
+smurf ? La r‚ponse est simple : plus d'adresse de broadcast.
+
+C'est une bonne m‚thode contre le smurf car les adresses de broadcast sont
+trŠs simple … r‚cup‚rer (elles ont toujours le meme format). Et il y a peu de
+personnes qui en ont encore besoin. Bien sur, il y a encore le multicast (on
+ne peut le retirer … cause de son utilit‚), mais obtenir des adresses de
+multicast est plus difficile que d'obtenir des adresses de broadcast.
+
+Mais la meilleur protection contre le smurf reste de retirer des
+impl‚mentations de l'IP les r‚ponses automatiques … des paquets broadcast‚ 
+(comme les r‚ponse ICMP, les paquets TCP SYN+ACK ou RST, ICMP Unreachable 
+etc...).
+
+
+
+IX.   Le code d'un smurfer
+--------------------------
+
+Maintenant, un petit code r‚alisant diff‚rent smurf (pour compiler mettez tout
+les fichier dans le meme repertoire et taper 'make') : 
+
+Les fichiers sont fournis avec le mag (Makefile rtcsmurf.h rtcsmurf.c ipraw.c
+ipraw.h).
+
+C'est termin‚.
+
+- file by S/ash [RtC] <sl4sh@ifrance.com>

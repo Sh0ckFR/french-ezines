@@ -1,0 +1,243 @@
+****************************************************
+Cet article a été traduit de l'anglais par OUAH (OUAH_hotmail.com), http://www.multimania.com/ouah. La version originale est de Lance Spitzner (lspitz@ksni.net) et peut-être obtenue à http://www.enteract.net/~lsiptz.  Pour tout commentaire, venez sur le channel de  hacking français : #root sur irc.kewl.org
+****************************************************
+
+Know Your Enemy II: Traquer leurs mouvements
+
+Cet article est le deuxième d'une série de trois articles.  Dans le premier, Know Your Enemy,
+nous avons parlés des outils et des méthodes du Script Kiddie.  Particulièrement, comment ils sondent à la recherches des vulnérabilités et puis passent à l'attaque. Le troisième article parle de ce que font les script kiddies une fois le statut root obtenu. En particulier comment ils dissimulent leurs traces et ce qu'ils font après. Cette article-ci, le deuxième, nous explique comment traquer leurs mouvements. Exactement comme les militaires, vous voulez traquer les méchants et savoir ce qu'ils font. Nous parlerons de ce que vous pourrez et ne pourrez apprendre pas avec vos logs systèmes. Vous devez être capable de voir que vous êtes en train d'êtres scanné, de savoir pourquoi vous l'êtes. Les exemples donnés s'intéresse à Linux mais peuvent s'appliquer à presque n'importe quelle autre déclinaison d'Unix. Gardez à l'esprit qu'il n'existe aucune méthode sure pour traquer tous les actes de votre ennemie. Cependant, cet article est un bon début.
+
+
+Sécuriser ses logs
+
+Cet article ne porte pas sur la détection d'intrusion (IDS), il existe déjà beaucoup de très bons
+articles qui parlent de cela. Si vous êtes intéressé par la détection d'intrusion, je recommande de jeter un coup d'oeil à "Network Flight Recorder" ou snort. Cet article s'intéresse aux recherches de l'intelligence. Particulièrement, comment savoir ce que fait l'ennemi en passant en revue vos logs système. Vous serez surpris de savoir toues les informations que vous trouverez dans vos propres logs systèmes. Cependant, avant que nous puissions parler de passer en revue vos logs, nous devons d'abord parler de la manière de sécuriser vos logs. Vos fichiers logs sont sans valeur si vous ne pouvez pas avoir confiance en leur intégrité. La première chose que la plupart des hackers font sur un système qui vient d'être compromis est de modifier les fichiers log. Il existe plein de rootkits qui élimineront leur présence des fichiers logs (comme cloak) ou les modifient (comme l'exécutable de syslog trojaned). Donc la première chose à faire avant de passer en revue vos logs est de les sécuriser.
+
+Cela veut dire que vous devrez utiliser un serveur de log distant. Indépendamment de la façon de sécuriser votre système vous ne pouvez pas avoir confiance en vos logs dans un système compromis. Si vous ne faites rien le hacker pourra simplement faire un rm - rf / * sur votre système pour le formater complètement. Ceci rendra la récupération des logs un peu difficile. Pour vous protéger contre cela, vous aurez besoin que vos systèmes log le trafic à la fois localement et sur un serveur distant. Je vous recommande de faire de votre log server un système consacré, càd que la seule chose qu'il devrait faire serait de rassembler les logs des autres systèmes. Si l'argent est un problème vous pouvez installer un ordinateur Linux qui agisse en tant que log server. Ce serveur devra être hautement sécurisé, avec tous les services désactivés, permettant seulement un accès à la console. (voir l'Armoring Linux pour un exemple).  En outre, assurez-vous que le port UDP 514 soit bloqué ou filtré par un firewall de votre connexion au net. Ceci protège votre log server de la réception d'information mauvaise ou non autorisée de l'Internet.
+
+Pour ceux parmi vous qui aiment être plus malin, quelque chose que moi j'aime bien faire, c'est de recompiler syslogd pour qu'il lise un fichier de configuration différent comme  /var/tmp/.conf. Ainsi le hacker ne se rendra pas compte de où se trouve le vrai fichier de configuration. Cela se fait simplement en changeant l'entrée "/etc/syslog.conf" dans le code source par le fichier que vous voulez. Nous configurons alors notre nouveau fichier de  configuration pour logger à la fois localement et sur le log server (voir l'exemple). Assurez vous de garder une copie standard de /etc/syslog.conf qui log l'activité locale. Quoique ce fichier de configuration soit maintenant inutile, ceci enlèvera des soupçons du hacker sur l'existence de notre log distant. Une autre possibilité pour votre système est d'utiliser une méthode de log sécurisée. Une méthode est de remplacer votre exécutable syslogd par quelque chose qui a un contrôle d'intégrité et une plus grande palette d'options. Syslog-ng est une possibilité et vous pouvez le trouver à http://www.balabit.hu/products/syslog-ng.html
+
+La plupart des logs que nous utiliserons sont ceux qui sont stockés sur le log server distant. Comme on l'a dit plus haut, nous pouvons être assez confiants de l'intégrité de ces logs puisqu'ils sont sur un système sécurisé et distant. En outre, puisque tous les systèmes loggent depuis une source unique, on a ainsi une vue plus générale et donc plus claire. Nous pouvons rapidement passer en revue ce qui arrive à tous les systèmes depuis une seule source. Le seul cas où vous voudriez passer en revue les logs stockés localement sur un système serait pour les comparer avec les résultats du log server. Vous pouvez déterminer si les logs locaux ont été modifiés en les comparant aux logs distants.
+
+
+Identification
+
+En regardant les entrées de vos logs, vous pouvez normalement voir si vous êtes victimes d'un scanner de port. La plupart des Script Kiddies scannent un réseau pour une vulnérabilité donnée.
+Si vos logs montrent que la plupart de vos systèmes ont des connexions du même système distant, sur le même port, il y a beaucoup de chance que ce soit un scan pour un exploit. En fait l'ennemi a un exploit pour une certaine vulnérabilité et fait des scans en espérant la retrouver chez vous. Quand ils la trouvent, ils l'exploitent. Pour la plupart des systèmes Linux, TCP Wrappers est installé par défaut.  Ainsi, nous trouverions la plupart de ces connexions dans /var/log/secure. Pour les autres systèmes Unix, nous pouvons logger toutes les connexions d'inetd en lançant inetd avec le flag "-f" ", démon de service. Un scan à la recherche d'exploit typique ressemblerait à ce qu'il y a ci-dessous.  Ici nous avons un scannage source pour la vulnérabilité de wu-ftpd.
+
+/var/log/secure 
+Apr 10 13:43:48 mozart in.ftpd[6613]: connect from 192.168.11.200 
+Apr 10 13:43:51 bach in.ftpd[6613]: connect from 192.168.11.200 
+Apr 10 13:43:54 hadyen in.ftpd[6613]: connect from 192.168.11.200 
+Apr 10 13:43:57 vivaldi in.ftpd[6613]: connect from 192.168.11.200 
+Apr 10 13:43:58 brahms in.ftpd[6613]: connect from 192.168.11.200 
+
+Ici nous voyons la source 192.168.11.200 scanner notre réseau. Remarquez comme cette source
+scanne séquentiellement chaque IP (cela n'est pas toujours le cas). C'est l'avantage d'avoir un serveur de log, vous pouvez plus facilement identifier des choses dans votre réseau puisque toutes les logs sont centralisés. Les connexions répétéss au port 21, ftp, ont indiqué qu'ils recherchaient particulièrement la vulnérabilité de wu-ftpd. Nous avons juste déterminé ce que le hacker recherchait.  Souvent, les scans s'effectuent par phases. Quelqu'un publie le code pour un exploit sur imap et vous verrez soudainement un assaut de scan sur imap dans vos log. Le mois suivant vous serez frappés par le ftp. Une excellente source pour les exploits récents est http://www.cert.org/advisories/ Parfois, des outils scanneront pour plein d'exploits en même temps, ainsi vous verrez une source unique se connecter à plusieurs ports.
+
+Gardez à l'esprit que si vous ne loggez pas les connexions d'un service, vous ne saurez pas si vous êtes scanné pour celui-ci. Par exemple, la plupart des connexions rpc ne sont pas loggées. Cependant, beaucoup de services peuvent simplement être ajoutés à /etc/inetd.conf pour le logging avec TCP Wrappers. Par exemple, vous pouvez ajouter une entrée dans /etc/inetd.conf pour NetBus. Vous pouvez configurer TCP Wrapper pour simplement refuser le service et logger les connexions (voir "Intrusion Detection" pour plus d'information sur ce sujet).
+
+
+Quels ont les outils?
+
+Parfois vous pouvez vraiment déterminer les outils utilisés pour scanner votre réseau. Certains des outils les plus basiques scannent pour un certain exploit comme ftp-scan.c. Si un seul port ou une seule vulnérabilité est scannée par les hackers, c'est qu'ils utilisent probablement un de ces programmes "single mission". Mais il existe des outils qui scannent pour une variété de vulnérabilités ou de faiblesses, les deux outils très populaires sont sscan de jsbach et nmap de Fyodor. J'ai choisi ces deux outils parce qu'ils représentent les deux catégories d'outils de scan. Je vous recommande fortement d'utiliser ces outils contre votre propre réseau, vous pourrez êtres surpris des résultats:)
+
+	sscan représente l'outil de scan "qui fait tout"  des Script Kiddie et c'est probablement 	un des meilleurs qui existent. Il scanne rapidement un réseau pour une variété de 		vulnérabilité (dont les cgi-bin). Il est facilement configurable, vous permettant 		d'ajouter des scans pour de nouveaux exploits.  Vous donner simplement au programme un 		réseau et un masque de réseau, et lui fait tout le reste pour vous.  Cependant, 		l'utilisateur doit être root pour l'utiliser. Les résultats sont extrêmement faciles à 		interpréter (c'est pourquoi il est si populaire): il donne un résumé concis de beaucoup 	de services vulnérables. Tout que vous avez à faire est de lancer sscan contre un réseau 	et chercher le mot "VULN" dans la sortie et puis lancer l'"exploit du jour" (NdT: en 		français dans le texte). Ci-dessous un exemple de sscan contre le système mozart 		(172.17.6.30).
+
+        otto #./sscan -o 172.17.6.30 
+
+          --------------------------<[ * report for host mozart * 
+          <[ tcp port: 80 (http) ]>       <[ tcp port: 23 (telnet) ]> 
+          <[ tcp port: 143 (imap) ]>      <[ tcp port: 110 (pop-3) ]> 
+          <[ tcp port: 111 (sunrpc) ]>    <[ tcp port: 79 (finger) ]> 
+          <[ tcp port: 53 (domain) ]>     <[ tcp port: 25 (smtp) ]> 
+          <[ tcp port: 21 (ftp) ]> 
+          --<[ *OS*: mozart: os detected: redhat linux 5.1 
+          mozart: VULN: linux box vulnerable to named overflow. 
+          -<[ *CGI*: 172.17.6.30: tried to redirect a /cgi-bin/phf request. 
+          -<[ *FINGER*: mozart: root: account exists. 
+          --<[ *VULN*: mozart: sendmail will 'expn' accounts for us 
+          --<[ *VULN*: mozart: linux bind/iquery remote buffer overflow 
+          --<[ *VULN*: mozart: linux mountd remote buffer overflow 
+          ---------------------------<[ * scan of mozart completed *
+
+	Nmap est un programme de "données brutes": il ne vous dit pas quelles vulnérabilités 		existent, il vous dit plutôt quels ports sont ouverts, vous en déterminez les 			conséquences. Nmap est rapidement devenu le scanner de ports de choix, et pour cause. Il 	prend le meilleur de plusieurs scanners de port et met toutes ces fonctionnalités dans un 	seul outil, dont la détection de l'OS, plusieurs options d'assemblage de paquet, le scan 	à la fois de UDP et de TCP, randomization, etc. Cependant, vous avez besoin des 		qualifications de gestion de réseau pour utiliser ce programme et pour interpréter les 		données. Ci-dessous, un exemple de nmap lancé contre le même système.
+
+	  otto #nmap -sS -O 172.17.6.30 
+
+          Starting nmap V. 2.08 by Fyodor (fyodor@dhp.com, www.insecure.org/nmap/) 
+          Interesting ports on mozart (172.17.6.30): 
+          Port    State       Protocol  Service 
+          21      open        tcp        ftp 
+          23      open        tcp        telnet 
+          25      open        tcp        smtp 
+          37      open        tcp        time 
+          53      open        tcp        domain 
+          70      open        tcp        gopher 
+          79      open        tcp        finger 
+          80      open        tcp        http 
+          109     open        tcp        pop-2 
+          110     open        tcp        pop-3 
+          111     open        tcp        sunrpc 
+          143     open        tcp        imap2 
+          513     open        tcp        login 
+          514     open        tcp        shell 
+          635     open        tcp        unknown 
+          2049    open        tcp        nfs 
+
+          TCP Sequence Prediction: Class=truly random 
+                                   Difficulty=9999999 (Good luck!) 
+          Remote operating system guess: Linux 2.0.35-36 
+
+          Nmap run completed -- 1 IP address (1 host up) scanned in 2 seconds
+
+En passant en revue vos logs, vous pouvez déterminer lequels de ces outils ont été utilisés  contre vous. Pour faire cela, vous devez comprendre comment ces programmes fonctionnent. D'abord, un scan de sscan sera loggé comme suit (c'est un scan normal avec aucune modification d'aucun fichier de configuration):
+
+/var/log/secure 
+Apr 14 19:18:56 mozart in.telnetd[11634]: connect from 192.168.11.200 
+Apr 14 19:18:56 mozart imapd[11635]: connect from 192.168.11.200 
+Apr 14 19:18:56 mozart in.fingerd[11637]: connect from 192.168.11.200 
+Apr 14 19:18:56 mozart ipop3d[11638]: connect from 192.168.11.200 
+Apr 14 19:18:56 mozart in.telnetd[11639]: connect from 192.168.11.200 
+Apr 14 19:18:56 mozart in.ftpd[11640]: connect from 192.168.11.200 
+Apr 14 19:19:03 mozart ipop3d[11642]: connect from 192.168.11.200 
+Apr 14 19:19:03 mozart imapd[11643]: connect from 192.168.11.200 
+Apr 14 19:19:04 mozart in.fingerd[11646]: connect from 192.168.11.200 
+Apr 14 19:19:05 mozart in.fingerd[11648]: connect from 192.168.11.200 
+
+/var/log/maillog 
+Apr 14 21:01:58 mozart imapd[11667]: command stream end of file, while reading line user=???
+host=[192.168.11.200] 
+Apr 14 21:01:58 mozart ipop3d[11668]: No such file or directory while reading line user=???
+host=[192.168.11.200] 
+Apr 14 21:02:05 mozart sendmail[11675]: NOQUEUE: [192.168.11.200]: expn root 
+
+/var/log/messages 
+Apr 14 21:03:09 mozart telnetd[11682]: ttloop:  peer died: Invalid or incomplete multibyte or
+wide character 
+Apr 14 21:03:12 mozart ftpd[11688]: FTP session closed 
+
+sscan fait aussi des scans à la recherche des bugs cgi-bin. Ces scans ne seront pas loggés par syslogd, vous les trouverez dans access_log. J'ai décidés de les inclure quand même pour votre apprentissage:)
+
+/var/log/httpd/access_log 
+192.168.11.200 - - [14/Apr/1999:16:44:49 -0500] "GET /cgi-bin/phf HTTP/1.0" 302 192 
+192.168.11.200 - - [14/Apr/1999:16:44:49 -0500] "GET /cgi-bin/Count.cgi HTTP/1.0" 404 170 
+192.168.11.200 - - [14/Apr/1999:16:44:49 -0500] "GET /cgi-bin/test-cgi HTTP/1.0" 404 169 
+192.168.11.200 - - [14/Apr/1999:16:44:49 -0500] "GET /cgi-bin/php.cgi HTTP/1.0" 404 168 
+192.168.11.200 - - [14/Apr/1999:16:44:49 -0500] "GET /cgi-bin/handler HTTP/1.0" 404 168 
+192.168.11.200 - - [14/Apr/1999:16:44:49 -0500] "GET /cgi-bin/webgais HTTP/1.0" 404 168 
+192.168.11.200 - - [14/Apr/1999:16:44:49 -0500] "GET /cgi-bin/websendmail HTTP/1.0" 404 172 
+192.168.11.200 - - [14/Apr/1999:16:44:49 -0500] "GET /cgi-bin/webdist.cgi HTTP/1.0" 404 172 
+192.168.11.200 - - [14/Apr/1999:16:44:49 -0500] "GET /cgi-bin/faxsurvey HTTP/1.0" 404 170 
+192.168.11.200 - - [14/Apr/1999:16:44:49 -0500] "GET /cgi-bin/htmlscript HTTP/1.0" 404 171 
+192.168.11.200 - - [14/Apr/1999:16:44:49 -0500] "GET /cgi-bin/pfdisplay.cgi HTTP/1.0" 404 174 
+192.168.11.200 - - [14/Apr/1999:16:44:49 -0500] "GET /cgi-bin/perl.exe HTTP/1.0" 404 169 
+192.168.11.200 - - [14/Apr/1999:16:44:49 -0500] "GET /cgi-bin/wwwboard.pl HTTP/1.0" 404 172 
+192.168.11.200 - - [14/Apr/1999:16:44:50 -0500] "GET /cgi-bin/ews/ews/architext_query.pl
+HTTP/1.0" 404 187 
+192.168.11.200 - - [14/Apr/1999:16:44:50 -0500] "GET /cgi-bin/jj HTTP/1.0" 404 163 
+
+Notez comme la connexion a été faite en entier (SYN, SYN-ACK, ACK) pour tous les ports, puis fermée. C'est parce sscan veut déterminer ce qui se passe sur les services. Non seulement sscan veut savoir si votre port ftp est ouvert, mais aussi QUEL daemon ftp est actif. La même chose
+peut être dite pour les ports imap, pop, etc.  Cela se remarque dans les traces de sniffing avec sniffit, un programme souvent utilisé pour sniffer des mots de passe.
+
+mozart $ cat 172.17.6.30.21-192.168.11.200.7238 
+220 mozart.example.net FTP server (Version wu-2.4.2-academ[BETA-17](1) Tue Jun 9 10:43:14 EDT
+1998) ready. 
+
+Comme on l'a vue plus haut une connexion complète a été faite pour déterminer quelle version de wu-ftpd était exécutée. Quand vous voyez des connexions complètes dans vos logs c'est que vous avez certainement été scanné par un programme d'exploit. Ces programmes font des connexions complètes pour déterminer ce que vous êtes en train d'exécuter.
+
+Nmap comme la plupart des scanners de port, s'en fout de savoir CE QUE vous exécuter,  mais veut savoir SI vous exécuter des services particuliers. Pour cela, nmap a un puissant ensemble d'options, vous laissant déterminer quelle sorte de connexion ouvrir, dont SYN, FIN, Xmas, Null, etc. Pour une description détaillée de ces options, jetez un coup d'oeil à http://www.insecure.org/nmap/nmap_doc.html. En raison de ces options, vos logs seront différents suivant les options choisies par l'utilisateur à distance. Une connexion faite avec le flag -sT est une connexion complète donc les logs seront similaires à sscan, toutefois par défaut nmap
+scan plus de ports.
+
+/var/log/secure 
+Apr 14 21:20:50 mozart in.rlogind[11706]: connect from 192.168.11.200 
+Apr 14 21:20:51 mozart in.fingerd[11708]: connect from 192.168.11.200 
+Apr 14 21:20:51 mozart ipop2d[11709]: connect from 192.168.11.200 
+Apr 14 21:20:51 mozart in.rshd[11710]: connect from 192.168.11.200 
+Apr 14 21:20:51 mozart gn[11711]: connect from 192.168.11.200 
+Apr 14 21:20:51 mozart gn[11711]: error: cannot execute /usr/sbin/gn: No such file or directory
+
+Apr 14 21:20:52 mozart in.timed[11712]: connect from 192.168.11.200 
+Apr 14 21:20:52 mozart imapd[11713]: connect from 192.168.11.200 
+Apr 14 21:20:52 mozart ipop3d[11714]: connect from 192.168.11.200 
+Apr 14 21:20:52 mozart in.telnetd[11715]: connect from 192.168.11.200 
+Apr 14 21:20:52 mozart in.ftpd[11716]: connect from 192.168.11.200 
+ 
+Une chose à retenir est l'option -D (ou decoy). Cette option de nmap permet à l'utilisateur de spoofer son adresse source. Il est possible que vous voyez des scans  de 15 sources différentes en même temps, mais que seulement une d'entre elles est la vraie. Il est extrêmement difficile de déterminer laquelle des 15 était la vraie adresse source. Mais le plus souvent, les utilisateurs choisiront le flag -sS pour le scannage. C'est une option de scan de port furtif car seulement un paquet SYN est envoyé.  Si le système disant répond, la connexion est immédiatement stoppée avec un RST. Les logs de ce genre de scans ont l'apparence de ce qui est retranscrit plus bas (NOTE: seulement les cinq premières entrées ont été notées ici).
+
+/var/log/secure 
+Apr 14 21:25:08 mozart in.rshd[11717]: warning: can't get client address: Connection reset by
+peer 
+Apr 14 21:25:08 mozart in.rshd[11717]: connect from unknown 
+Apr 14 21:25:09 mozart in.timed[11718]: warning: can't get client address: Connection reset by
+peer 
+Apr 14 21:25:09 mozart in.timed[11718]: connect from unknown 
+Apr 14 21:25:09 mozart imapd[11719]: warning: can't get client address: Connection reset by
+peer 
+Apr 14 21:25:09 mozart imapd[11719]: connect from unknown 
+Apr 14 21:25:09 mozart ipop3d[11720]: warning: can't get client address: Connection reset by
+peer 
+Apr 14 21:25:09 mozart ipop3d[11720]: connect from unknown 
+Apr 14 21:25:09 mozart in.rlogind[11722]: warning: can't get client address: Connection reset
+by peer 
+Apr 14 21:25:09 mozart in.rlogind[11722]: connect from unknown 
+
+Remarquez toutes les erreurs dans les connexions. Puisque la séquence SYN-ACK est stoppée avant qu'une connexion complète puisse être établie, le démon ne peut pas déterminer le système source. 
+Les logs montrent que vous avez été scannés mais malheureusement vous ne savez pas par qui. Ce qui est bien plus alarmant, c'est que sur la plupart des autres systèmes (y compris les nouveaux noyaux Linux) aucune de ces erreurs n'aurait été loggée. Pour citer Fyodor "...basé sur tous les messages 'connection reset by peer'". C'est une singularité de Linux 2.0.XX -- pratiquement tous les autres système (dont le noyau 2.2 et les plus récent noyaux 2.1) ne montreront rien. Ce bug (accept() qui retourne une valeur avant l'accomplissement de la connexion en 3 temps (NdT: la fameuse 3-way handshake) a été réparé.
+
+Nmap inclut d'autres options furtives, comme -sF, -sX, -sN où différents flags sont utilisés.
+Ceci est ce à quoi ressemblent les logs pour de tels scans:
+
+/var/log/secure 
+
+Remaquez ici qu'il n'y a aucun logs! Hum effrayant, vous venez d'être scanné et ne pouvez même pas le savoir. Chacun des trois types de scans donne les mêmes résultats, toutefois vous pouvez loggez entièrement le scan seulement du premier type, -sT (connexion complète). Pour détecter ces scans furtifs vous devrez utiliser un autre programme de log comme tcplogd ou ippl. Certains firewalls commerciaux détecteront aussi et loggeront tous ces scans (J'ai confirmé cela dans
+"Checkpoint Firewall 1") 
+
+
+Ont-ils eu l'accès?
+
+Une fois que vous avez remarqué avoir été scanné et déterminer ce qu'ils recherchaient, la grande question qui suit est "Sont ils entrés?". La plupart d'exploits à distance d'aujourd'hui sont
+basées sur des buffer overflow (aussi connu sous écrasement de pile). En gros un buffer overflow
+arrive quand un programme (souvent un daemon) reçoit plus d'entrées qu'il ne l'avait prévu, de ce fait recouvrant des zones critiques de la mémoire. Un certain code est alors exécuté, qui normalement donne le statut root à l'utilisateur. Pour plus d'information sur les buffers overflows, lisez l'excellent article de Aleph1 à ftp://ftp.technotronic.com/rfc/phrack49-14.txt. 
+
+Vous pouvez normalement identifier des attaques par buffer overflows dans le fichier log 
+/var/log/messages (ou /var/adm/messages pour d'autres systèmes Unix) pour des attaques comme mountd. Vous verrez également des logs similaires dans maillog pour de telles attaques contre
+imapd. Une attaque par buffer overflow ressemblerait à ceci:
+
+Apr 14 04:20:51 mozart mountd[6688]: Unauthorized access by NFS client 192.168.11.200. 
+Apr 14 04:20:51 mozart syslogd: Cannot glue message parts together 
+Apr 14 04:20:51 mozart mountd[6688]: Blocked attempt of 192.168.11.200 to mount 
+~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~ 
+P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~ 
+P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~ 
+P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~ 
+P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~ 
+P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~ 
+P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~ 
+P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~ 
+P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~ 
+P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~ 
+P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~ 
+P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~ 
+P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~ 
+P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~ 
+P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~P~ 
+P~P~P3Û3À°^[Í~@3Ò3À~KÚ°^FÍ~@þÂuô1À°^BÍ~@~EÀubëb^V¬<ýt^FþÀt^Këõ°0þÈ~HFÿëì^°^B~ 
+I^FþÈ~IF^D°^F~IF^H°f1ÛþÃ~IñÍ~@~I^F°^Bf~IF^L°*f~IF^N~MF^L~IF^D1À~IF^P°^P~IF^H° 
+fþÃÍ~@°^A~IF^D°f³^DÍ~@ë^DëLëR1À~IF^D~IF^H°fþÃÍ~@~HÃ°?1ÉÍ~@°?þÁÍ~@°?þÁÍ~@¸.bin@~ 
+I^F¸.sh!@~IF^D1À~HF^G~Iv^H~IF^L°^K~Ió~MN^H~MV^LÍ~@1À°^A1ÛÍ~@èEÿÿÿÿýÿPrivet 
+ADMcrew~P(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(Apr 14 04:20:51 
+mozart ^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^ 
+E^H(-^E^H-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E 
+^H(-^E^H-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^ H(-^E^H(-^E^H(-^E^H(-^E^H(-^E^H(-^E 
+^H(-^E^H(-^E 
+
+Si vous voyez quelque chose de la sorte dans vos fichiers logs, cela veut dire que quelqu'un a essayé d'exécuter un exploiter sur votre système. Il est difficile de déterminer si l'exécution de l'exploit a été couronée de succès.  Une façon de savoir après la tentative d'exploit est de regarder s'il y a des connexions d'une source distante sur votre système. S'ils se sont loggés sans problème depuis le système distant, alors ils ont accès à votre système. Un autre indice est 
+de regarder s'il  y a des comptes "moof", "rewt", "crak0", ou "w0rm" qui ont été ajoutés à votre fichier mot de passe /etc/passwd. Ces comptes, d'uid 0, sont ajoutés par certains des scripts d'exploits les plus connus. Une fois qu'un hacker obtient un accès, normalement la première chose qu'ils font est de nettoyer vos logs et de trojaner votre programme de log (syslogd), pour plus d'information allez voir Know Your Enemy III. À partir de ce moment, vous ne recevrez aucun log de votre système vu que tout a été compromis. Ce que vous pouvez faire après est le sujet d'un autre article :). En attendant je vous recommande de lire: http://www.cert.org/nav/recovering.html
+
+Pour m'aider à trouver des anomalies dans mes fichiers logs, j'ai développé un shell script qui scan mes logs pour moi. Pour des information plus détaillées sur comment analyser des fichiers logs, lisez ceci envoyé par Marcus Ranum (Bourne shell script ou Korn shell script)
+ 
+
+Conclusion
+
+Vos fichiers logs peuvent vous dire beaucoup au sujet de l'ennemi. Mais la première chose à faire est de garantir l'intégrité de vos fichiers logs. Un des meilleurs moyens de faire cela est d'utiliser un serveur de log distant qui reçoit et stocke le logs des autres systèmes. Une fois sécurisé vous pourrez identifier les anomalies dans vos fichiers logs. En se basant sur les entrées des logs vous pouvez déterminer ce que le hacker recherche et potentiellement quels outils ils utilisent. Avec cette connaissance vous pourrez mieux sécuriser et protéger votre réseau.

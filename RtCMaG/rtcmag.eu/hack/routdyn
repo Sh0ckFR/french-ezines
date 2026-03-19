@@ -1,0 +1,262 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  Routage Dynamique  ]
+---------[ in RtC mag 4 ]
+----[  by SnEaKie <sneakie-rtc@fr.st>  ]
+
+
+-------[  Introduction
+
+Premièrement, qu'est ce que le routage?
+Pour faire pas trop compliqué, lorsqu'une machine se connecte à Internet, alors 
+elle se connecte à un serveur. Jusque là ça va... Lequel serveur possède une 
+base de données que l'on appelle Table de Routage. Cette table possède différentes 
+entrées et sorties. Vous n'êtes pas sans savoir que dans chaque datagramme IP, se 
+situe l'adresse IP de l'envoyeur et du destinataire. Le serveur à cette occasion,
+lorsqu'il aura reçu un paquet envoyé par A, va vérifier si l'adresse destinatrice 
+B est contenue dans sa table de routage. En général non, donc le serveur renvoie 
+le paquet à un autre serveur, en s'étant assurer au préalable que ce serveur était
+situé sur la même portion du réseau que la cible du datagramme IP. 
+Prenons un petit exemple:
+
+      A       ----------------------------------------->     B 
+(198.23.25.36)                                         (145.23.89.78)
+Dans ce cas, il existe un détail (et même de nombreux) de cette connexion simple.
+	A    	  -------------------> Routeur ------------>     B 
+(198.23.25.36)			   (125.56.85.96)		 (145.23.89.78)
+En gros, c'est ça, seulement là où je ne met que 1 Routeur, il y en a généralement 
+5 ou 6 voir plus en fonction de la cible.
+
+Note:
+A ce propos, lorsque vous utilisez TRACERT.EXE qui est un utilitaire de traçage de
+route basé sur des transissions ICMP: (cf ICMP my Friend from SnEaKie) vous verrez 
+si vous spécifiez une adresse au hasard que celle ci n'existe pas, la réponse 
+négative des routeurs se fera au bout de, 8 voir même plus, routeurs. Ceci étant 
+dû au fait que les tables de routages se redirigent, ce qui implique qu'une machine 
+cible peut être joignable au bout de 30 routeurs si celle-ci est peu utilisée, 
+située sur une portion de réseau qui figure dans peu de tables de routage.
+
+On distingue cependant plusieurs types de routages, le routage dynamique dont on  
+va parler ici, le routage statique, le routage direct ou indirect. Le routage 
+statique ne s'opère qu'entre les routeurs, c'est à dire que l'on l'appelle routage 
+dans le sens où il y a échange de données entre différents routeurs, en fait ils 
+échangent des informations régulières sur l'état des réseaux. Ce qui a pour but de 
+déceler toute annomalie dans les transmissions. Imaginons que A veuille joindre B 
+et que pour cela, Le Routeur R1 doit joindre R2, qui doit joindre à son tour R3, etc 
+jusqu'à R10 qui est en panne: résultat pas de paquet pour B, grâce au routage 
+dynamique, R9 sera averti que R10 est en panne, il va mettre (R9) une croix sur 
+momentanée sur R10 dans sa table de routage et va travailler sans lui. Cependant, 
+pour fournir un service satisfaisant, R9 va chercher un R10 de remplacement que 
+possède l'adresse cibleB (145.23.89.78) dans sa table de routage, quite à devoir 
+joindre un R10 puis un R11, jusqu'à R19 si il le faut.
+
+Remarque: il aurait pû être possible d'envoyer un message ICMP à R10 par R9 pour 
+connaître l'état de sa connexion, seulement les routeurs sont limités en ce qui 
+concerne les messages ICMP car ceux-ci entraîneraient un trafic trop important sur 
+le réseau et feraient saturer les connexions. 
+
+On distingue trois protocoles de routage dynamique; RIP le plus ancien, OSPF, et BGP.
+
+
+-------[  A) RIP, Routing Information Protocol
+
+
+Celui-ci est très utilisé dans le routage de passerelle interne. RIP a été développé 
+pour être opérationnel sous UNIX de Berkeley: pas mal! Un routeur RIP envoie des 
+diffusions UDP sur le port 520 pour échanger des informations de routage avec les 
+autres routeurs. On distingue deux types de messages dans RIP: les requêtes et les 
+réponses. Quand un routeur s'initialise, il fait une diffusion de requêtes RIP à 
+partir de chaque interface réseau. Ces requêtes demandent tout simplement aux autres 
+routeurs de répondre dans un message réponse qui contiendra leurs tables de routage.
+
+	Système Autonome 1
+|-----------------------------|  
+| |------|           |------| |
+| |  P1  |==========>|  P2  | |
+| |------|           |------| |
+|    |                  |     |
+|    |  Protocoles de   |     |
+|    |   passerelles    |     |=================>Protocoles de passerelles 
+|    |     internes     |     |                           externes
+|    |                  |     |                              |
+|    |                  |     |                              |
+|    |                  |     |                              |
+| |------|              |     |                              |
+| |  P3  |==============|     |                              |
+| |------|                    |                              |
+|                             |                              |
+|-----------------------------|                              |
+                                                             |-|
+                                                       Système | Autonome 2
+                                                 |-----------------------------|
+                                                 | |------|           |------| |
+                                                 | |  P4  |==========>|  P5  | |
+                                                 | |------|           |------| |
+                                                 |    |                  |     |
+                                                 |    |                  |     |
+                                                 |    |  Protocoles de   |     |
+                                                 |    |   passerelles    |     |
+                                                 |    |     internes     |     |
+                                                 |    |                  |     |
+                                                 |    |                  |     |
+                                                 | |------|              |     |
+                                                 | |  M1  |==============|     |
+                                                 | |------|                    |
+                                                 |                             |
+                                                 |-----------------------------|   
+
+Rem: RIP ne sert qu'à ces passerelles internes c'est à dire à l'intérieur des 
+domaines, alors que les protocoles de passerelles externes servent eux au 
+routage externe: c'est à dire entre les domaines.
+
+
+
+Un seul message RIP (de la version 1) peut contenir 25 routes, chacune de ces 
+routes augmente de 20 octets la taille du paquet.
+ 
+|------------------------------------------------------------------------------|
+| Commande (1 octet)| Version (1 octet) |        Non utilisé (2 octets)        |
+|------------------------------------------------------------------------------|
+| Identificateur d'adresse (2 octets)   |        Non utilisé (2 octets)        |
+|------------------------------------------------------------------------------|
+|                           Adresse IP (2 octets)                              |
+|------------------------------------------------------------------------------|
+|                           Non Utilisé (4 octets)                             |
+|------------------------------------------------------------------------------|
+|                           Non Utilisé (4 octets)                             |
+|------------------------------------------------------------------------------|
+|                              Metrique (4 octets)                             |
+|------------------------------------------------------------------------------|
+
+Voici l'en-tête ou le header d'un paquet RIP version1.0. 
+J'ai le sentiment que quelques petites explications sont à apporter, tout ne 
+parle pas de lui-même!
+
+Commande (1 octet) : VALEUR 1 ==> REQUETE : Ce code est utilisé pour une requête
+                                            d'infos de table de routage.
+                     VALEUR 2 ==> REPONSE : Permet de transmettre les infos de
+		 	                          routage ou de mise à jour.  
+                     VALEUR 3 ==> TRACEON : Marche plus!
+                     VALEUR 4 ==> TRACEOFF: Marche plus non plus!
+                     VALEUR 5 ==> POLL    : Utilisé par quelques utilitaires et
+                                            est utilisé pour des tests ou des
+                                            dépannages: bon à essayer!
+                     VALEUR 6 ==> POLL-ENTRY : Idem POLL.
+
+Identificateur d'adresses (2 octets) : Le format des messages RIP permet des 
+infos de routage pour d'autres protocoles que IP. Ce champ contient un code 
+identifiant le protocole (valeur 2 pour IP).  
+
+Adresse IP (4 octets) : CE champ identifie un réseau ou un hôte atteint par le 
+trafic de routage à travers le système de passerelle générant le message RIP.
+
+Métrique (4 octets) : Ce champ indique le nbre de sauts nécessaires pour 
+atteindre la destination indiquée dans le champ de l'adresse IP. 
+
+	Voilà pour RIP, mais il faut savoir qu'il en existe 2 versions; RIP v.1 
+ainsi que RIP v.2. Alors là quelle est la question qu'on se pose, " Quelle est 
+la différence entre les deux?"
+Simple, pour répondre à cette question, on regarde le fonctionnement de RIPv.1 
+et celui de RIPv.2 ==> En fait RIPv.1 est totalement incapable d'inclure les 
+masques de sous-réseau pour les adresses IP qui sont indiquées dans les routes. 
+Le pb réside dans le fait qu'un routeur est dans l'impossibilité (logique 
+d'ailleurs) de faire la différence entre une adresse IP d'1 hôte simple comme 
+moi, ou une IP d'un réseau avec un masque de sous-réseau.
+De plus, RIPv.2 apporte quelques solutions aux pbs de la v.1. Le format de 
+paquets de RIPv2 est le même que RIPv1 à l'exception près que RIPv2 tend à 
+utiliser les données libres se trouvant dans le champ de données non-utilisées.
+De ce fait les systèmes ne pouvant recevoir que les RIPv1 reçoivent RIPv2 en 
+ignorant les données supplémentaires. RIPv2 a aussi été développé dans
+l'optique d'éviter les pbs de transmissions excessives: par ex, il active les 
+transmissions multicast (multi-destinataires) de façon a éviter que les 
+systèmes non-RIP envoient les messages de routage.
+
+Bon, je vais qd même vous filer le format du message RIPv2, (mais faites-en 
+bon usage,MDR!)
+
+|------------------------------------------------------------------------------|
+| Commande (1 octet)| Version (1 octet) |   Domaine de routage (2 octets)      |
+|------------------------------------------------------------------------------|
+| Identificateur d'adresse (2 octets)   |    Marqueur de route (2 octets)      |
+|------------------------------------------------------------------------------|
+|                           Adresse IP (2 octets)                              |
+|------------------------------------------------------------------------------|
+|                        Masque de sous-réseau (4 octets)                      |
+|------------------------------------------------------------------------------|
+|                    Adresse IP du saut suivant (4 octets)                     |
+|------------------------------------------------------------------------------|
+|                              Metrique (4 octets)                             |
+|------------------------------------------------------------------------------|
+
+Petite explication des nouveaux champs de données:
+
+Domaine de routage(2octets): Ce champ contient une valeur identifiant le 
+processus de routage utilisé par ce message. Un système recevant un mess RIP 
+avec une value de domaine de routage différente du sien détruit le paquet. 
+Par défaut value = 0.
+
+Marqueur de route(2 octets): Ce marqueur transporte un numéro de système 
+autonome qui permet à RIP d'interagir avec les protocoles de passerelles 
+externes comme EGP ou BGP.
+
+Masque de sous-réseau(4 octets); Le masque de sous-réseau est appliqué au champ 
+adresse IP pour que les système soit capable d'identifier le sous-réseau.
+
+Adresse IP du saut suivant(4octets): Ce champ identifie l'interface de 
+passerelle par laquelle le trafic (destiné au système indiqué par le champ 
+adresse IP) doit être envoyé.
+
+RIPv2 contient aussi une option qui oblige les messages de routage à être 
+authentifiés avant d'être envoyés.          
+
+
+
+-------[  B) OSPF, Open Shortest Path Protocol
+
+
+Pour faire simple, disons que RIP v1 et v2 sont efficaces mais sont 
+contreversés. Disons qu'ils sont efficaces dans la mesure où le calcul 
+d'une route basée sur le nombre de sauts est souvent correcte mais peut se 
+révéler très contraignante. Je m'explique enfin, disons que grâce à RIP vos 
+paquets vous arrivent mais il se peut très bien que ce type de routage soit 
+très problématique en ce qui concerne la bande passante. Pour un seul saut 
+peut correspondre par ex., 2 segments Ethernet, un PPP lent ou encore tout 
+autre type de réseau qui oblige les MTU a être remis à jour perpétuellement... 
+Résultat, fiable mais non-fiable!
+
+Pour resoudre ce pb, on parle alors de "routage à état de liens", cette 
+méthode permet d'informer régulièrement les routeurs d'autres réseaux 
+interconnectés. Disons que les routeurs testent les connexions avec les 
+autres routeurs et sauvegardent les infos dans une base données qui est 
+ensuite envoyée gracieusement sur les réseaux interconnectés. De ce fait, 
+quand les informations sur l'état des liens sont transmises aux autres 
+routeurs, le chemin le plus court est facilement déterminé. Par lasuite chaque 
+routeur construi sa table de routage d'après les infos reçues. OSPF, par 
+rapport à RIP, est bien meilleur en ce qui concerne les changements de route 
+de dernière minute due à une panne de seuveur ou autre. Non seulement ça, mais 
+il a aussi d'autres avantages:
+
+   Equilibrage des charges: Quand deux ou plusieurs routes vers la même 
+destination possèdent la même métrique, OSPF répartit le trafic sur ces 
+différentes routes pour éviter un goulet d'étranglement sur l'une des routes.
+
+   Authentification: Tous les messages OSPF sont tenus d'être authentifiés par 
+défaut avant d'être traités par le destinataire. Un champ type d'authentification
+définit le type d'authentification à utiliser.
+
+   Sous-réseau: OSPF comporte un masque de sous-réseau pour les adresses IP de 
+chaque route.
+
+   Zone OSPF: Un système autonome peut contenir des sous-ensembles de réseaux 
+appelés zones OSPF. Ils sont traités comme des domaines de routage, séparés du 
+rste du système autonome.
+
+   Infos de routage externe: OSPF peut assimiler les infos de routage obtenues 
+par des sources externes comme des routes statiques. Les donées de routage 
+externe sont envoyées vers tous les autres routeurs OSPF.
+
+   Routage basé sur TOS: Les bases de données OSPF peuvent gérer des infos de
+routage pour chaque type de services indiqués dans l'en-tête IP.
+
+
+-------[  EOF

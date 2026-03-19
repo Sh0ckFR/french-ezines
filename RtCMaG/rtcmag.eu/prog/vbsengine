@@ -1,0 +1,79 @@
+-------[  RtC Mag, At the end of the unniverse  ]
+
+--------------[  Polymorphisme en VBScript  ]
+---------[ in RtC mag 3, 4 ]
+----[  by SLy <sly-rtc@fr.st>  ]
+
+
+-------[  01) Introduction
+
+    La dernière tendance est aux worms .vbs (Visual Basic Scripting) et aux autres scripts(.js par exemple) car les utilisateurs s'en méfient moins que les exe ou les com et ils sont plus facile à programmer. On peut trouver ces scripts sur n'importe quelle page web. Certains ordi ne préviendront donc pas au lancement d'un script qui peut être sympa :)
+
+    Les antivirus reconnaisent en général la signature d'un virus (son code) même pour les virus script. Donc la comme le code du virus script est accessible par tous le monde, il est très facile de le changer. C'est pour cela que l'on a vu apparaitre de nombreux dérivé d' "ILOVEYOU".
+On peut utiliser la technique de polymorphisme qui consiste à modifier le code d'un virus à chaque copie de celui-ci sans changer ses fonctions. Par exemple , vous prenez le code de "ILOVEYOU" et vous lui rajoutez un moteur de polymorphisme et les antivirii ne le reconnaitront pas comme le virus "ILOVEYOU". 
+
+    J'en ai donc construit un assez rudimentaire en vbs. Mais avant d'attaquer le code il faut avoir qqq base en vbs ou alors en Visual Basic.
+
+    Le VBScript ressemble au Visual Basic mais il a de nombreuses commandes en moins, importantes ou pas (comme IIf , Choose, ...).
+    Les commandes I/O (Input/Output) sont totalement différentes. Elles ont été remplacé en utilisant le programme avec l'objet FileSystemOject (FSO). Le FSO objet est contenu dans la biblothèque de type scripting qui est localisé dans le fichier scrrun.dll dans le dossier system du système d'exploitation utilisé.
+
+    En premier, crée un FSO objet en utilisant la métode CreateObject. 
+On le fait en VBScript avec :
+        Dim fso
+        Set fso = CreateObject(Scripting.FileSystemObject)
+
+    Dans cette exemple, Scripting est le nom de la bibliothèque de type et FileSystemObject est l'objet que tu veux créer.
+
+    En deuxième, il faut utilisé la méthode apppropriée de l'objet FileSystemObject.
+Par exemple pour créer un nouveau objet, il faut utiliser CreateTextFile. Ce qui donne :
+    Dim fso
+    Set fso = CreateObject(Scripting.FileSystemObject)
+    fso.CreateTextFile "Polymorphisme.vbs"
+Par exemple pour lire ou écrire dans un fichier, il faut d'abord l'ouvrir grâce à OpenTextFile (en utilisant comme premier argument le nom du fichier à ouvrir et en deuxième argument le mode d'ouverteur )ou à OpenAsTextStream. Ce qui donne:
+    Dim fso
+    Const Lecture = 1, Ecriture = 2 , Random = 3
+    Set fso = CreateObject(Scripting.FileSystemObject)
+    Set ts = fso.OpenTextFile("Polymorphisme.vbs", Lecture)
+ou
+    Dim fso, f, ts
+    Const Lecture = 1, Ecriture = 2 , Random = 3
+    Set fso = CreateObject(Scripting.FileSystemObject)
+    f = fso.GetFile("Polymorphisme.vbs")
+    Set ts = f.OpenAsTextStream(Ecriture,0)
+
+Puis on utilise les méthodes Write, WriteLine, ReadLine, Read, ReadAll.
+ensuite on ferme les fichiers ouverts avec la proprièté Close.
+
+Au fait vous pouvez trouver la doc sur le vbs sur :
+http://msdn.microsoft.com/scripting/vbscript/download/vbsdoc.exe
+
+
+Bon, maintenant que vous avez les bases, on va voir comment marche mon moteur. 
+Il crée un fichier de nom aléatoire avec des caractères ASCII compris entre 65 et 90 (c'est à dire les lettres de l'alphabet en majuscules )et de longueur comprise entre 3 et 11 lettres. En gros, il prend ensuite la première ligne de votre virus ou worm et la copie dans le nouveau fichier créé. Il fait la même chose pour la deuxième ligne de votre code mais entre temps il aura rajouté des arguments (c'est à dire des lignes commençant par le caractère ' ) ou des entrées ou des espaces.
+
+-------[  02) Comment ca marche
+
+    Il crée un fichier cible. A chaque fois qu'il lit une ligne dans le fichier source, il vérifie si c'est une ligne de code (en regardant en faites si ce n'est pas une ligne d'arguments commençant par ' ou une ligne d'espaces ou ligne avec aucun caractère correspondant en fait à un [entrée]) avant de la recopier dans le fichier cible. Sinon il lit la prochaine ligne du fichier source et vérifie. Il fait cela jusqu'à quand il trouve une ligne de code qui recopie dans le fichier cible . 
+    Mais dans la fichier cible je ne recopie pas que le code du virus : en effet j'y met aussi des arguments (c'est à dire des lignes commençant par le caractère ' ) ou des entrées ou des espaces.
+C'est assez déconcertant pour un anti-virus, non ?
+
+-------[  03) Explications plus appronfondis
+
+D'abord le nom fichier cible est crée grâce aux fonctions :
+- NomHasard
+- Recent
+En fait je cherche un fichier dans le dossier \Recent (qui m'est donné grâce à la fonction Recent) et je lui prend son nom (sans son extension)+ ".vbs". S'il n'a pas de fichier dans le dossier \Recent (dossier caché), il crée un nom aléatoire avec des caractères ASCII compris entre 65 et 90 (c'est à dire les lettres de l'alphabet en majuscules )et de longueur comprise entre 3 et 11 lettres.
+
+Ensuite je fais une boucle principale (qui choisi aléatoirement d'appeler une des fonctions suivantes :
+- Enter
+- Code
+- Argument
+- SpaceFunc
+Chacune des ces fonctions écrit dans le fichier cibles mais seule la fonction Code écrit les vrais lignes de code du virus dans le fichier cible.
+La boucle se termine quand la fonction code a écrit tous le code source du virus.
+
+Maintenant vous avez plus qu'à regarder le code.
+
+    Vous pouvez bien sûr l'adapter à votre guise (comme enlever les fonction NomHasard et Recent pour que le code soit plus petit).
+
+-------[  EOF

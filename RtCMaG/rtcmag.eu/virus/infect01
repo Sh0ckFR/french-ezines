@@ -1,0 +1,413 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  Infection Win32 : Part 1  ]
+--------------[  Premiers pas dans la programmation Windows en asm  ]
+---------[ janvier 2001 ]
+----[  by Doxtor L. <>  ]
+
+
+-------[  Introduction et Sommaire
+
+
+    Cet article est le premier article d'une serie qui se propose de traiter les bases nécessaires à la compréhension et la réalisation de programmes auto-reproducteurs fonctionnant dans un environnement Windows 32 bits comme windows98.  
+
+    Dans ce qui suit vous trouverez quelques informations qui peuvent vous aider à débuter dans la programmation de Windows en assembleur.
+
+    Matériel nécessaire:
+
+Les programmes et fichiers suivants sont indispensables:
+  - Tasm32.exe version 5.0    De chez inprise/borland
+  - Tlink32.exe            
+  - Import32.lib
+     
+Ce qui suit n'est pas nécessaire, mais conseillé:
+  -Un débuggeur peut s'avérer très utile, je vous conseille td32 pour débuter, même si celui-ci s'avère être rapidement insuffisant à l'usage. Si vous décidez d'approfondir le sujet, optez pour softice.
+  -Une liste documentée des APIs (voir plus loin pour la signification de ce sigle) standard utilisées par Windows. En général fournit avec tous les compilateurs (Vc++,c++ de Borland,..) qui produisent du code exécutable sous Windows.
+
+
+Voila ce que vous trouverez dans cet article: 
+    1)  Comment batir un fichier exécutable à partir d'un listing contenant du code source en assembleur.
+    2)  Premier programme en assembleur.
+    3)  Deuxième exemple : afficher une fenêtre.
+    4)  Troisième exemple : afficher en hexadécimal (conversion décimale-Hexa)
+    5)  Conclusion
+    Annexe : Exemple de fichier .bat pour automatiser le processus de compilation.
+
+
+
+-------[  1) Comment batir un fichier exécutable à partir d'un listing
+
+    Pour batir un programme, c'est à dire en ce qui nous concerne un fichier avec l'extension ".exe", a partir d'un fichier contenant des instructions écrits en assembleur (celui-ci a l' extension ".asm"). Il faut procéder en deux étapes :
+
+    On utilise tasm32.exe en premier, cela va nous batir un fichier dont l'extension est ".obj". Puis on utilise tlink32.exe pour obtenir notre fichier exécutable. Si vous voulez batir un programme appelé monprog.exe à partir du fichier source monprog.asm, qui contient des instructions en langage assembleur, vous pouvez procédez comme suit :
+
+    Vous mettez  tasm32.exe, tlink32.exe, import32.lib dans le même répertoire que votre fichier monprog.asm à compiler. Pour débuter le plus simple est de tout faire dans une session Msdos que vous avez ouvert apres le chargement de Windows. Pour ceux qui savent ce qu'est le path, mettez les fichiers necessaires à la création du programme dans un répertoire qui est dans le path.
+
+    Sur la ligne de commande dos, tapez :
+
+tasm32.exe /m /ml monprog.asm
+
+    Vous allez obtenir, si le listing ne contient pas d'erreurs un fichier appelé monprog.obj.
+
+    /m et /ml sont des options de compilations.
+    * /m : signifie une passe, parfois il sera nécessaire de remplacer par /m2 ou /m3. Une passe signifie que tasm32 compile tout en une seule fois. En général l'option /m est suffisante.
+    * /ml : signifie que les majuscules et minuscules sont considérées comme différentes par tasm32. Cela veut dire par exemple que les chaînes de caractères "MICROSOFT" et "mIcrOsofT" ne seront pas considérés comme identiques par tasm32.
+
+
+    Si tasm32 trouve une erreur il l'indique, en précisant la ligne où a été trouvé l'erreur. En cas d'erreur le fichier monprog.obj ne sera pas créé bien sûr. Il vous faut corriger l'erreur et recommencer cette étape.
+
+    Une fois le fichier monprog.obj  créé il faut taper la ligne de commande:
+
+tlink32.exe /Tpe /aa /c monprog,monprog.exe,,import32.lib
+
+    Ce qui précède doit être tapé tel quel c'est à dire, en respectant exactement les majuscules et minuscules pour les options.
+
+    Les options utilisées:
+    * /Tpe : indique que ce qui va être construit est un fichier ".exe".
+    * /aa : indique que l'on va utiliser les ressources mises à disposition du programmeur par Windows 9x.
+    * /c : indique que l'on tient compte de la différence entre minuscules et majuscules.
+    * monprog,monprog.exe : indique qu'à partir du fichier monprog.obj, on va batir le programme monprog.exe.
+    * ,,import32.lib : est le fichier où tlink32 prend connaissance des ressources mises à disposition par Windows. Ce fichier est indispensable pour nos applications.
+
+
+-------[  2) Premier programme en assembleur
+
+
+    Voici le listing d'un programme écrit en assembleur, c'est un programme très simple puisqu'il ne fait rien!
+
+--- DO_NOTHING.ASM ------------------------------------------------------------
+
+.386p               
+.model flat         
+
+
+.data              
+
+db 0              
+
+.code
+
+    extrn ExitProcess:Proc  
+
+
+DEBUT:
+
+    push 0
+    call ExitProcess
+
+end DEBUT
+
+
+--- DO_NOTHING.ASM ------------------------------------------------------------
+
+
+    Si vous recopiez ce listing dans un fichier monprog.asm, la compilation du  programme, en suivant la méthode indiquéee, va créer un fichier monprog.exe dont la taille est de 4096 octets.
+
+    Commentaires sur le listing:
+
+    .386p
+
+    indique que les instructions utilisées appartiennent au jeu fournit par le processeur 80386 de Intel. Ces instructions sont bien sur exécutables sur n'importe quel processeur de type pentium ou clone/compatible le p indique que le programme fonctionne en mode protégé. Tous les programmes conçus exclusivement pour Windows fonctionnent de cette façon.
+
+    .model flat
+
+    indique le modèle mémoire utilisé. Pour un programme Windows, la mémoire est un bloc qui peut faire jusqu'à 4 GiGa octets en théorie, chaque octet a une adresse. Une adresse mémoire est un groupe de 4 octets appelé aussi double mot (DWORD). Chaque programme a son propre espace mémoire, deux programmes ne partagent pas le même espace de travail. Pour avoir une idee approximative de la façon dont marche les choses, ouvrez deux sessions Msdos sous Windows simultanément, démarrer un programme Msdos dans l'une des fênetres, vous pourriez vérifier que dans l'autre session le programme n'est pas dans la mémoire utilisée par cette copie de Msdos! Les deux sessions Msdos s'ignorent superbement!
+
+    .data
+
+    est la zone du listing ou vous devez declarer les variables qui seront initialisés pendant le déroulement du programme. tasm32 ne permet pas de laisser cette partie vide. Le "db 0" est là pour eviter ca. Cela signifie que la zone des données contient un octet initialisé à 0.
+
+    .code
+    
+    est la zone du listing qui contient le code du programme proprement dit. Si vous déclarez une variable dans cette partie et que celle ci est initialisée au cours de l'exécution du programme, vous allez obtenir une superbe erreur lorsque Windows va exécuter votre code. Ce problème doit être surmonter pour qu'un exécutable puisse greffer son code dans un autre. Dans certaines conditions on peut résoudre ce problème. On aurra l'occasion d'y revenir dans un prochain article.
+
+    extrn ExitProcess:Proc
+    
+    signifie que l'on va importer un sous-programme externe à notre listing qui est appelé aussi API (Application Programming Interface) dans notre programme. La grande force de Windows est liée a la notion l'importer-exporter des fonctions. Pour éviter qu'un fichier exécutable contienne tout le code qui est réellement nécessaire pour son bon fonctionnement, un fichier exécutable IMPORTE des fonctions d'autres modules de Windows qui sont en général des fichiers .dll. Ce sont des librairies de fonctions qui sont EXPORTEES à l'attention d'autres modules de Windows, un module étant un fichier qui contient du code. L'IMPORTATION de ces fonctions se fait DYNAMIQUEMENT. Cela veut dire que les modules qui EXPORTENT des APIs ne sont pas tous présents en mémoire à un moment donné. Une dll est chargée en mémoire lorsqu'un module qui est déja en mémoire a besoin d'une fonction qu'elle EXPORTE. Certaines .dll, comme kernel32.dll, EXPORTE des APIs qui sont très souvent utilisées, elles résident en permanence en mémoire. Chaque dll regroupe des fonctions dédiées à une tâche. Windows met a notre disposition des centaines d'API pour nous aider à développer des programmes. ExitProcess est le nom d'une de ces APIs. Remarquez bien la façon dont son nom est écrit, car ne l'oubliez pas les minuscules sont différentes des majuscules. Si vous écrivez exitprocess, à la place, dans le listing tasm32 et tlink32 seront incapables de créer le programme attendu. N'ommétez pas non plus ":Proc", sinon vous allez voir apparaître l'écran bleu d'erreur de Windows à l'exécution du programme fraichement compilé. Comme déja indiqué, le fichier import32.lib est nécessaire pour que
+l'importation de l'API se fasse dans notre programme. ExitProcess sert à revenir à Windows c'est à dire à quitter
+le programme qui appelle cet API. Notez bien la facon de faire l'appel:
+
+    push  0
+    call ExitProcess
+
+    Le "push 0" sert à passer un paramètre à l'API ExitProcess 0 est considéré comme un double mot ici. "push 0" met la valeur 00 00 00 00 sur la pile. La pile est un endroit que Windows met a notre disposition dans le mémoire pour sauvegarder des valeurs. Cette pile est comme une pile d'assiettes entassées les unes sur les autres. Pour pouvoir récupérer l'assiette qui est tout en bas de la pile, on doit enlever une par une les assiettes du dessus. L'instruction "push" permet de mettre sur le sommet de la pile un nouvel élément. Ne chercher pas de label "ExitProcess:" dans le listing il n'y en a pas, pour appeler un API, on utilise la syntaxe: "call Nom_De_L'api". Les paramètres utilisés par l'API sont passés à Windows dans un ordre convenu par l'intermédiaire de la pile. Pour connaitre la liste des API , leur noms, les paramètres nécessaires à leur bonne exécution et l'ordre dans lequel ceux ci doivent être mis sur la pile, il vous faut une liste de référence.
+
+    Le label "DEBUT:" et "end DEBUT" indiquent que votre code se trouve entre ces deux balises.
+
+    Pour commencer à programmer, ce listing est un bon modèle qui s'avère tres utile pour écrire un programme. Vous pouvez le réutiliser pour écrire vos propres applications.
+
+
+-------[  3) Deuxième exemple : afficher une fenêtre
+
+
+--- WINDOW.ASM ----------------------------------------------------------------
+
+.386p
+
+.model flat
+
+
+.data
+
+Titre      db "mon programme",0             ;titre de la fenêtre
+Message    db "Chouette une fenêtre!",0     ;message à afficher
+
+
+.code
+
+    extrn MessageBoxA: Proc
+    extrn ExitProcess: Proc
+
+
+DEBUT:
+ 
+    push 0                                  ;style de la fenêtre
+    push offset Titre 
+    push offset Message
+    push 0
+
+    call MessageBoxA                        ;créer la fenêtre
+
+    push 0                                  ;sortie du programme
+    call ExitProcess
+
+end DEBUT
+
+--- WINDOW.ASM ----------------------------------------------------------------
+
+
+    Commentaires sur le listing:
+
+    Si vous voulez ajouter des commentaires dans un listing utiliser le symbole ";" ce qui suit est ignoré par tasm32.
+    Dans ce programme nous utilisons une API de plus, MessageBoxA. Cette API a besoin de quatre paramètres qui sont tous des doubles mots c'est à dire composé de 4 octets chacun.
+    * Le premier paramètre à passer est le "style", il indique de quel type sera la fenêtre à afficher et quelle icône sera utilisée parmi la liste des icones fournies par Windows. Ici, on a choisit une fenêtre simple, pas d'icône affichée.
+    * Le deuxieme paramètre est un pointeur vers le début de la chaîne de caractères qui compose le titre de la fenêtre. Remarquez que les chaînes de caractères se terminent par l'octet 0, pour pouvoir être affichées. Le 0 indique la fin de la chaîne de caractères. Les " " sont indispensables, elles indiquent à tasm32 que ce qui est placé entre est du texte. Noter bien que c'est l'instruction "push offset Titre" qui est utilisé et pas "push [Titre]". C'est un pointeur vers le début d'une chaine de caractères que requiert l'API, MessageBoxA et pas le contenu des 4 premiers octets de cette chaine!
+    * Troisieme paramètre, c'est un pointeur vers la chaine de caractères qui contient le message à afficher.
+    * Le quatrieme paramètre est un handle qui indique quelle application est propriétaire de cette fenêtre, 0 = aucun propriétaire. Un handle est en général un double mot, utilisé par Windows pour son bon fonctionnement. Windows attribue des handles pour tout.
+ 
+
+-------[  4) Troisième exemple : affichage hexadécimal.
+
+    On veut écrire un programme capable de visualiser dans une fenêtre  le contenu du registre eax, en hexadécimal. Que signifie hexadécimal? Il existe plusieurs systèmes de numération possible pour compter. Le plus utilisé est le système décimal. Il est dit décimal car nous utilisons dix symboles pour écrire un nombre dans ce système : 0,1,2,3,4,5,6,7,8,9
+    Lorsque nous lisons 156 en fait nous avons à l'esprit que:
+
+                 1 x  100
+               + 5 x   10
+               + 6 x    1
+               ----------
+               =      156
+
+    Les chiffres 1,5,6 ont été utilisés pour écrire ce nombre. Tout ceci semble un peu stupide de faire cela mais lisez ce qui suit.
+    
+    En base 16, nous avons 16 symboles pour écrire un nombre : 0,1,2,3,4,5,6,7,8,9,A,B,C,E,F
+    Le nombre qui s'écrit AB en base 16 a bien sur une écriture en base 10. On veut faire cette conversion. Le tableau de conversion suivant est utile :
+
+    hexadécimal       0  1  2  3  4  5  6  7  8  9   A   B   C   D   E   F      
+    décimal           0  1  2  3  4  5  6  7  8  9  10  11  12  13  14  15 
+
+    A correspond à 10 , multiplié par 16 = 160
+    B correspond à 11 , multiplié par  1 =  11
+                                         -----                               
+                                  total  = 171
+     
+    171 est l'écriture décimale de AB
+
+    Pour convertir le nombre hexadecimal 17DE on fait de même:
+
+ 
+    1 correspond à 1  , multiplié par 16*16*16  =  4096
+    7 correspond à 7  , multiplié par 16*16     =  1792
+    D correspond à 12 , multiplié par 16        =   192
+    E correspond à 14 , multiplié par 1         =    14
+                                                -------
+                                      total     =  6094
+
+
+
+    Pour distinguer l'écriture d' un nombre écrit en hexadécimal, de celle d'un nombre écrit en décimal on ajoute un h à ce nombre: ABh, 17DEh. C'est la façon retenue ,par défaut par tasm pour distinguer l'écriture des nombres. Par défaut si "156" non suivi d'un "h" apparait dans un listing contenant des instructions en assembleur, tasm va supposer que 156 est l'écriture décimale d'un nombre. Notez bien que 156h ,nombre écrit en hexadécimal, ne s'écrit pas 156 en notation décimale.
+
+    En effet,  1   x  256 = 256
+               5   x   16 =  80
+               6   x    1 =   6
+                          -----
+                   total  = 342
+
+    342 est l'écriture décimale de 156h
+
+    Pour pouvoir écrire notre programme nous avons besoin de lire un nombre écrit en hexadécimal c'est a dire d'être capable de savoir quels chiffres hexadécimaux (0,1,..9,a,...,f) le composent. En décimal pour lire le nombre 123 on fait comme suit :
+    On divise 123 par 10 le quotient fait 12 le reste 3, 3 est le chiffre le plus à droite.
+    On divise  12 par 10 le quotient fait  1 le reste 2, 2 est le chiffre suivant précédant.
+    On divise   1 par 10 le quotient fait 0  le reste 1, 1 est le chiffre le plus a gauche.
+
+    Tout ceci semble stupide, une fois de plus, mais lisez la suite. En base 16 il faut juste remplacer la division par 10 par une division par 16 les restes successifs sont les chiffres en base 16 qui composent le nombre. Voici une manière de programmer ceci :
+
+
+      mov eax,342  ;342 est le nombre qu'on veut voir afficher en hexadécimal
+      mov ecx,10h  ;on met 16 dans le registre ecx               
+
+      Chiffre:
+
+      xor edx,edx  ;on met à zéro  le registre edx
+      div ecx      ;on divise edx:eax par ecx
+                   ;le reste est dans edx, le quotient dans eax
+                   ;le reste contient le chiffre Hexadécimal 
+      or eax,eax   ;est ce que le quotient est nul? 
+      jnz Chiffre  ;il n'est pas nul ,il y'a encore des chiffres
+                   
+ 
+    Les valeurs successives de edx : 6,5,1 sont les chiffres utilisés pour écrire 342 en hexadécimal. 342 a 156h pour écriture hexadécimale.
+    Nous avons écrit dans le paragraphe III) un programme qui créait une fenêtre. Le titre de la fenêtre était: "mon programme". Je vous ai indiqué alors de ne pas oublier les guillemets. Les symboles:  m,o,n,p,r,a,m,e que nous utilisons, nous autres francais, pour orthographier les mots "mon" et "programme" ne veulent rien dire pour le microprocesseur de votre machine. Celui-ci ne sait lire que des valeurs hexadécimales. En fait, tasm32 traduit la chaine de caractère: "mon programme" en :
+
+    6dh,6fh,6eh,20h,70hh,72h,6fh,67h,72h,61h,6dh,6dh,65h
+
+    20h est utilisé pour traduire l'espace entre les deux mots. En fait, toutes les lettres et les chiffres ont un code qui permet à Windows de les afficher à l'écran. Cette codification utilise les nombres 00h,01h,02h,..,ffh. C'est le code ASCII. Tous les ordinateurs équipés de Windows comprennent cette codification. Nous, pour notre programme, nous avons besoin d'afficher les caractères suivants:
+
+    0,1,2,3,4,5,6,7,8,9,a,b,c,d,e,f
+
+    Les  valeurs ASCII correspondantes sont:
+
+      Caractère      "0" "1" "2" "3" "4" "5" "6" "7" "8" "9" "a" "b" "c" "d" "e" "f"
+      Code ASCII     30h,31h,32h,33h,34h,35h,36h,37h,38h,39h,61h,62h,63h,64h,65h,66h
+
+    Pour pouvoir afficher les caractères "0","1",....,"9","a",..."f" qui servent à écrire un nombre en hexadécimal on peut penser à faire 16 tests:
+
+ si le chiffre est  0  alors   30h est son code ASCII
+ si le chiffre est  1  alors   31h est son code ASCII
+         [...]
+ si le chiffre est  f  alors   66h est son code ASCII 
+
+    Mais si vous observez bien on peut faire autrement. Plus simplement on a :
+    * Pour obtenir le code ASCII d'un chiffre X Hexadécimal compris entre 0 et 9, il suffit de faire l'addition:
+        X+30h
+    * Pour obtenir le code ASCII d'un chiffre Y Hexadécimal compris entre a et f, il suffit de faire :
+        Y+61h-0ah
+    Pour Y=0ah on obtient bien: 0ah+61h-0ah=61h           
+
+    L'algorithme pour calculer le code ASCII d'un chiffre Hexadécimal est simple :
+ soit Hexa ce chiffre
+ si Hexa>=0Ah  faire CodeASCII=Hexa+61h-0ah
+ sinon         faire CodeASCII=Hexa+30h
+
+    Le programme qui suit n'est pas indispensable pour la compréhension des méthodes d'infection sous Win32. Néammoins, la compréhension du système d'écriture binaire et surtout hexadécimal est nécessaire pour programmer en assembleur.
+
+    Ce qui suit est un exemple de programme un peu plus élaboré que ceux déja rencontrés. On peut écrire un programme, plus court, accomplissant la même tâche, en utilisant une API supplémentaire, mais le code source nécessaire est sans grande utilité pour notre sujet.
+
+    Voici le programme promis :
+
+
+--- HEXAVIEW.ASM --------------------------------------------------------------
+
+
+.386p
+.model flat
+
+.data
+
+db 0                            ; cet octet a une fonction qui se justifie dans ce qui suit
+HEX_Message db 0,0,0,0,0,0,0    ;
+FIN_Message db 0                ;
+            db 0                ;
+
+.code                           ;
+
+    extrn ExitProcess:Proc      ;
+    extrn MessageBoxA:Proc      ;
+
+
+DEBUT:                          ;
+
+; Ce programme affiche le contenu de eax en notation Hexadécimale
+
+
+    lea esi,FIN_Message         ; esi contient un pointeur vers le dernier caractère
+                                ; de la chaine qui va contenir la représentation
+                                ; en code ASCII du nombre à afficher en Hexadécimal.
+    mov eax,14789               ; valeur dont on veut connaitre l'écriture hexadécimale.
+    inc esi                     ; ajouter 1 à la valeur dans esi
+    mov ecx,10h                 ; mettre 16 dans ecx
+
+
+HEX_chiffre:                    ;
+
+    dec esi                     ; soustraire 1 à la valeur dans esi
+    xor edx,edx                 ; mettre à zero edx 
+    div ecx                     ; division de edx:eax par ecx
+                                ; le quotient est dans eax
+                                ; le reste dans edx, edx contient la valeur du 
+                                ; nombre hexa: 0 à F
+ 
+    cmp eax,0Ah                 ; la valeur dans eax est égale ou plus grande que
+    jge Lettre                  ; 10? si oui aller au label Lettre 
+
+
+    add edx,30h                 ; le chiffre est compris entre 0 et 9 
+    mov byte ptr [esi],dl       ; la chaine de caractère est complétee avec le code
+                                ; ASCII du chiffre Hexa lu
+    or eax,eax                  ; eax est nul?
+    jnz HEX_chiffre             ; non? il reste des chiffres à lire
+                      
+
+Lettre:
+
+    add edx,61h-0Ah             ; le chiffre lu est compris entre A et F
+    mov byte ptr [esi],dl       ;
+    or eax,eax                  ;
+    jnz HEX_chiffre             ;
+       
+ 
+; Afficher le résultat
+
+
+    push 0                      ;
+    push offset Titre           ;
+    push offset Hex_Message     ;
+    push 0                      ;
+    call MessageBoxA            ;
+
+; Exit
+
+    push 0                      ;
+    call ExitProcess            ;
+      
+end DEBUT
+    
+
+--- HEXAVIEW.ASM --------------------------------------------------------------
+
+
+-------[  5) Conclusion
+
+
+    J'espère que tout ceci vous aidera dans vos premiers pas dans la programmation de Windows en assembleur. L'article qui devrait suivre celui-ci traitera de la façon de manipuler des fichiers sous Windows (lecture, écriture) en assembleur évidemment!
+
+    A bientot.
+
+
+-------[  Annexe:
+
+
+    Pour commencer à programmer en assembleur sous Windows9x vous avez besoin des programmes cités et de deux fichiers supplémentaires qui vont vous faciliter la tâche. Un modèle de listing, dans lequel vous allez ajouter vos propres instructions pour écrire vos programme ; un fichier bat qui va vous éviter de resaisir à chaque fois les options de compilation pour compiler votre code source.
+    Voici un fichier bat possible : copier ce qui suit dans un fichier que vous appellerez compile.bat
+
+--- COMPILE.BAT ---------------------------------------------------------------
+
+   tasm32  /m /ml %1.asm
+   tlink32 /Tpe /aa /c %1,%.exe,,import32.lib
+   del %.obj
+   del %.map 
+
+--- COMPILE.BAT ---------------------------------------------------------------
+
+
+    Commentaires:
+
+    Vous devez avoir tasm32.exe, tlink32.exe, import32.lib et votre listing dans le même répertoire (ou dans le même sous-répertoire). Il faut taper :
+
+        compile.bat monprog
+
+    Si vous voulez compiler un listing qui s'appelle monprog.asm et non pas :
+
+        compile.bat monprog.asm
+
+
+-------[  EOF

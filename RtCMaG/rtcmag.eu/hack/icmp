@@ -1,0 +1,173 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  ICMP My Friend  ]
+---------[ in RtC mag 2 ]
+----[  by SnEaKie <sneakie-rtc@fr.st>  ]
+
+
+-------[  Introduction
+
+    Qui n'a jamais été victime de cette sauvagerie qu'est l'erreur de transmission TCP/IP qui bloque toute éventuelle transmission? Je suppose qu'il y en a peu! Moi le premier, on me la fait en moyenne 3 à 4 fois par semaine. A quoi est dû ce pb? 
+
+    En fait c simple. Les connexions TCP/IP sont très complexes et pendantles échanges de données, il y a des ratés :) par forcément très avantageux,d'ailleurs. :(
+    Mais bon, donc dans ces connexions, des millions de données transites et les seuls maîtres à bord, sont le serveur, et le routeur! Ils reçoivent toutes les données et s'ocupent de les rediriger selon la vieille technique du "pipe" sous UNIX, LINUX aussi bien que sous Windows. C'est à dire qu'ils s'occupent tous deux de rediriger les paquets afin de les acheminer du mieux qu'ils peuvent jusqu'à votre machine. Seulement il n'y a pas qu'une seule personne connectée, de ce fait des erreurs dans les paquets transmis interviennent : pb d'addressage, pb de contrôle de flux, mauvaise transmision des paquets pour cause de saturation du réseau, mauvaise fragmentation, bref les raisons sont multiples! Un seul protocole est chargé de gérer ces erreurs, il se nomme le protocole ICMP : Internet Control Message Protocol. La fonction principale de ce protocole est de renvoyer vers l'emetteur des messages d'erreur quand les datagrammes rencontrent certains problèmes sur leurs chemins jusqu'au destinataire. 
+
+
+-------[  Le protocole ICMP
+
+
+    Ce protocole est obligatoirement supporté par toute machine quelque soit sa plate-forme. Ces paquets sont acheminés dans un datagramme IP. Ils possèdent alors les mêmes caractéristiques, TTL, etc... :) ==> renvoi à l'article de P4r4noID!
+    Je me dois de rajouter une petite chose, ce champ TTL(Time To Live); prend comme valeur par défaut 32 ou 64. De plus, il existe sous Linux comme sous Windows un utilitaire nommé Traceroute, ou TRACERT.EXE sous Wx. Son nom parle de lui même! :)     En fait, cet utilitaire opère très facilement. Il émet des paquets vers une destination donnée en augmentant à chaque fois la valeur du champ TTL. Chaque paquet est alors détruit par un routeur car le TTL arrivait à 0, lors de son passage vers lui. Des messages ICMP sont alors renvoyés permettant d'identifier les routeurs qui se trouvent sur le trajet d'un point X à un point Y. Avec X l'emetteur, et Y le destinataire, vous l'aviez compris! 
+
+    La structure de ces paquets est des plus simples : 
+
+----------------------------------------------------------------------
+|     TYPE (8 bits)    |      CODE (1 octet)      |   SOMME DE       |
+|                      |                          | CONTROLE (2octs) |
+----------------------------------------------------------------------
+|                   DONNEES DE TAILLE VARIABLE (variable)            |
+|                                                                    |
+----------------------------------------------------------------------
+
+ - Le champ TYPE : Ce champ contient un code qui identifie la fonction ICMP de message.
+ - Le champ CODE : Ce champ défini les différents messages que transporte ICMP alors même qu'ils sont du même type. Si la valeur est 0, ce champ ne possède pas de variante.
+ - Le champ SOMME DE CONTROLE : Ce champ contient un chiffre qui est la somme de toutes les données que contient le paquet ICMP. L'algorithme utilisé est le même que celui utilisé pour les sommes de contrôle des paquets IP.
+
+    Il faut savoir qu'il y a plusieurs grands types de fautes :
+
+  1) DESTINATION INACCESIBLE.
+  2) EXTINCTION DE SOURCE.
+  3) REDIRECTION.
+  4) PROBLEMES DE PARAMETRAGES.
+Ce sont les grands types de problèmes que détecte ICMP et pour lequel il est employé.
+
+
+    Quelques petites explications seraient les bienvenues. C pourquoi je m'emploi à cette tâche! Allons-y...
+
+
+-------[  Explications des types de fautes
+
+
+1) DESTINATION INACCESIBLE.
+
+    C un type de message qui est généré par un routeur ou un ordinateur destinataire en cas d'indisponibilité de la personne), plutôt la machine, à joindre. Lorsqu'un routeur ne peut joindre le destinataire d'un paquet de données, il détruit ces dernières puis se charge de renvoyer un paquet ICMP ordinateur inaccessible. Si le routeur est incapable de router vers un routeur suivant, il renvoie un paquet ICMP encore, portant la mention : réseau inaccessible.
+
+    Maintenant, réfléchissons, il existe pour chaque protocole un MTU, ce MTU (Maximum Transmission Unit), est différent pour chaque protocole : Ethernet 1500 octets; PPP 1500 octets; PPP(faible délai) 296 octets. Ce MTU ne descend pas en dessous de 68 octets et ne monte pas au delà de 65535 octets.
+    Que se passe t'il lorsqu'un datagramme arrive à un routeur? Le protocole de la couche d'interconnexion interroge l'interface réseau sur laquelle le paquet sera émis afin justement d'obtenir des infos sur son MTU! Si la taille de ce datagramme dépasse celle du MTU, alors, en toute logique, le datagramme est fragmenté. 
+    PS: Je fais une grave faute en parlant de paquet IP, cf Article1 TCP/IP by SnEaKie. On parle de paquet UDP, mais de datagramme IP. (C La Base...??!!) Il existe dans l'en-tête IP (et non le header==> parlons français, ne nous laissons pas anglicisé!!!) un champ qui définit si les datagrammes transmis doivent être fragmenté ou non. Si ce champ, pour je ne sais quelle raison :), se trouve à 1, alors imaginons la suite en schéma :
+
+    ETAPE1 : A ---------Connexion PPP--------------> B (routeur)    
+    Vous avez comment ça se passe, je zipe les détails...
+
+    ETAPE2 : A <--------Envoi de datagrammes-------- B
+    Ici, il faut le détail.
+
+    DETAILS ETAPE 2:
+    A <--Routeur1--Routeur2--Routeur3--Routeur4--Routeur5-- B
+
+    En fait, il ne faut pas croire que la liaison s'établie entre votre machine et le routeur directement, le trajet est encombré de multiples autres routeurs, et donc les données traversent plusieurs routeurs. Seulement, les données peuvent passer indépendemmant par un routeur sous NT4.0(bientôt NTFS5.0), que sous un routeur UNIX, Linux, Novell, etc... De ce fait, les MTU changent.
+           
+    A <--Routeur1--Routeur2--Routeur3--Routeur4--Routeur5-- B
+          MTU         MTU       MTU       MTU       MTU  
+         1500oct.     576oct.   1500oct.  276oct.   1000oct.
+
+En réalité cela donne plutôt ça:
+
+        A <--Routeur--Routeur--Routeur--Routeur--Routeur------- B
+                |       \    |      /           |     /
+                |        \   |     /            |    /
+             Routeur      \Routeur/----------Routeur/
+
+    Les interconnexions résaux entre les différents routeurs - qui sont par définition accesibles par tout le monde afin d'être redirigé jusqu'à la destination finale "demandée" en quelque sorte, dans l'en-tête IP, par le biais d'une simple addresse IP qui est l'ordinateur ou destination finale - sont très complexes ce qui fait qu'une connexion qui vise un ordinateurA peut très bien passer par 32 ou 64 routeurs avant d'aboutir (article sur le TTL de Par4noID..). Ce qui fait que le facteur rique d'erreur de trransmission est multiplié par le nbre de routeur traversés. Certains routeurs redirigent les connexions vers d'autres du fait de leur trop fort encombrement, entendez par là, une trop forte solicitation du routeur par des ordinateurs distants. 
+ 
+    Le schéma le montre, il est impossible de définir à l'avance, non seulement le chemin que va prendre votre paquet mais aussi le MTU, il change en fonction des routeurs et ce sont eux, selon la méthode décrite plus haut qui vont se charger de refragmenter les données.
+
+    Donc prenons le cas où, votre datagramme fasse 1500octets et que vous mettez son champ de fragmentation à 1, c a d qu'il ne sera jamais fragmenté, le routeur dont le MTU est 576octets ne pourra pas l'acheminer correctement : il tentera de le fragmenter mais échouera, il renverra alors un paquet ICMP. 
+    PING ancienne version a été retiré justement à cause d'une chose, il pouvait généré des paquets de données de plus de 65535 octets, en l'occurence 65536 octets qui est la valeur maximale multiple de 8 (1 octet = 8 Bits; Binary Coded Digits). De ce fait, lorsque l'ordinateur distant recevait le paquet de 65536 octets, que faisait-il?
+    Alors que la valeur max devait être 65535, il essayait qd même de le démultiplexer : moralité ==> Gros Plantage. Imposibilité du système à démultiplexer le tout ( pour ceux qui ne savent pas ce que c'st: renvoi à article 1 RTCMag SnEaKie:moi! sur TCP/IP).
+
+    Facile, on a qu'à faire pareil et on fera tout planter!
+    Non, depuis, le pb a été palié : on peut toujours envoyer des paquets de 65536 en programmant en C: seul incovénient le système distant ne se fera plus berner => il ne démultiplexe pas! Ca ratte pour pas dire autre chose...
+
+
+2) EXTINCTION DE SOURCE
+
+    Ces messages sont d'une grande importance dans le cas ou l'ordianteur et le serveur possèdent des connexions réseaux fonctionnants à des débits très divers. Lorsque la requête d'un ordiXX se fait a 24000bps et que le servuer possède une ligne allant à 56000bps, les réponses demandées vont s'ammasser à une vitesse telle que l'ordiXX va avoir ses mémoires tampons très rapidement remplies, il va donc y avoir une saturation de la connexion entre les deux. Lorsqu'une telle chose arrive, il faut que l'ordiXX se charge de renvoyer un message ICMP au serveur lui demandant (en gros) de ralentir son envoi d'info. car le pauvre est en train d'en baver pour tout traîter...(cf ordi. de Scientist à ce qui paraît).
+    Donc le message ICMP de ce type : type4, code0 ne signifie pas nécessairement que des données ont été perdues mais ce message précède une situation qui est entrain de virer sur le critique, ce message se veut donc être préventif afin d'éviter d'éventuelles pertes de données ce qui rendrait toutes les données précédemment envoyées totalement inutilisables.
+Lorsqu'il arrive qu'une machine reçoive ce genre de message, elle se doit de réagir, j'entends par là qu'elle se doit de réduire sa transmission de données vers l'ordi. distant jusqu'à ne plus recevoir d'autres messages de ce type. Si la situation rendevient normale, l'ordi. émetteur peut alors se permettre de réaugmenter sa vitesse de transmission progressivement afin de ne rien brusqué!
+Compte tenu du fait que les routeurs sont mieux équipés en ce qui concerne les bandes passantes de données, ces genres de messages représentent un contrôle de flux élémentaire plus généralement émis par des ordi. distants. 
+
+
+3) REDIRECTION   
+
+    Ces messages sont émis lorsu'un routeur s'aperçoit qu'une destination  est accesible sans ses services. Imaginons le schéma suivant:
+
+Réseau n°III
+
+************
+*  ORDI 1  *-------------/Machine A\        -----------/Machine C\
+************                  |             |               |
+      |                       |             |               |
+      |                       |             |               |
+      |                       |             |               |
+      |                       |   |---------|          ************
+      |------------------/Machine B\-------------------*  ORDI 2  *
+                                                       ************
+
+Donc, prenons le cas suivant simple: (le schéma est nul d'acc ms bon ps le tmps!)
+    - L'ordinateur1 veut envoyer des données a l'ordinateur2.
+    - L'ordi.1 envoie donc ces données au routeurA(machineA).
+    - Le routeurA se rend compte que pour que le paquet arrive à destination, il doit joindre le routeurB(machineB): il le voit dans sa table de routage. Il se rend compte d'une chose, c que le routeur B se trouve sur le même réseau que la machine départ ==> Ordi1
+    - Le routeurA se charge tout de même d'envoyer les données au routeurB et se charge en plus, de renvoyer un message ICMP redirection type5 code0, à l'ordi1 pour qu'il sache que dorénavant, il n'est plus nécessaire de passer par A pour accéder au réseau de l'ordi2.
+    - L'ordi 1 va donc modifier sa propre table de routage suite à la réception de ce message.
+
+    Les ordianteurs hôtes ne sont pas en mesure d'émettre de tels messages, en fait seuls les seuveurs en sont capables. De ce fait ils indiquent quelles sont les routes les plus rapides pour atteindre des  réseaux lointains. Ces datagrammes ICMP contiennent un champ en plus ==> Pas con! le truc!
+    Ce champ contient l'adresse du routeur recommandé, voici la structure de ce message:
+
+----------------------------------------------------------------------
+|     TYPE (8 bits)    |      CODE (1 octet)      |   SOMME DE       |
+|                      |                          | CONTROLE (2octs) |
+----------------------------------------------------------------------
+|              Adresse de passerelle Internet (4octets)              |
+|                                                                    |
+----------------------------------------------------------------------
+|         En-tête Internet + 8 octets datagrammes original           |
+|                                                                    |
+----------------------------------------------------------------------
+
+    Les messages de redirection contiennet dans un champ spécifique, l'adresse du routeur permettant de l'atteindre plus aisément.
+
+Code        Définition
+0           Redirection de datagrammes pour le réseau.
+1           Redirection de datagrammes pour l'ordi. hôte.
+2           Redirection de datagrammes pour le type de service et de réseau.
+3           Redirection de datagrammes pour le type de service et l'ordi. hôte.
+
+    Les codes précisent si l'adresse du routeur permet d'accéder plus efficacement à un réseau entier ou à un ordinateur plus particulier. Le code utilisé par l'émetteur du datagramme ICMP détermine le format de l'entrée de la table de routage du destinataire.
+
+
+4) PROBLEMES DE PARAMETRAGES
+
+    Les routeurs ou les ordinateurs distants ont leur mots à dire ici. L'un ou l'autre sont capables d'envoyer de tels messages. Cela survient dans le cas où une machine reçoit des datagrammes dont len-tête IP est érroné et donc qu'il ne permet pas l'utilisation des données. Ces messages peuvent comporter les trois codes suivants:
+
+Code        Définition
+0           En-tête IP erroné
+1           Option obligatoire manquante
+2           Longueur erronée
+    Un tel message ne permet d'alerter que pour des pbs graves qui nécessitent la destruction du datagramme. Il contient encore un champ en plus qui indique le numéro d'ordre de l'octet de l'en-tête IP qui pose pb.
+
+----------------------------------------------------------------------
+|     TYPE (8 bits)    |      CODE (1 octet)      |   SOMME DE       |
+|                      |                          | CONTROLE (2octs) |
+----------------------------------------------------------------------
+|   Pointeur (1 octet) |         Non utilisé (3 octets)              |
+|                                                                    |
+----------------------------------------------------------------------
+|         En-tête Internet + 8 octets datagrammes original           |
+|                                                                    |
+----------------------------------------------------------------------
+
+    Voilà, c'est tout, maintenant j'espére que cela sera assez clair pour l'ensemble car je manque considérablement de temps.
+
+
+-------[  EOF

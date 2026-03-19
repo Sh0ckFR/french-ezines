@@ -1,0 +1,68 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  Virus et dommages matériels  ]
+---------[ in RtC mag 2 ]
+----[  by Androgyne <androgyne-rtc@fr.st>  ]
+
+
+-------[  Introduction
+
+    Contrairement à ce que peuvent penser beaucoup de personnes, les virus ne peuvent pas causer de dommages matériels. En tout cas, plus maintenant... Il y a un petit bout de temps, on pouvait niquer un lecteur de disquettes en lui demandant d'aller chercher sur un cylindre au delà du maximum. On pouvait même détruire le moniteur en lui envoyant des octets inadéquats. Maintenant tout cela est impossible (ou alors cela relève du miracle). Si vous avez déjà entendu dire par exemple que votre barrette de RAM est morte à cause d'un virus ou qu'un virus a détruit votre disque dur ou que votre clavier ne marche plus à cause d'un virus, sachez que celui qui a dit ça n'en sait pas plus que vous (cette attitude fait partie d'une théorie qui veut que toute panne inexpliquée provient nécessairment d'un virus, théorie tout à fait débile). Si c'est un vendeur de matériel informatique, dites lui au revoir et allez autre part car vous avez à faire à un escroc (dans ce domaine, il sont plus nombreux qu'on le pense).
+
+
+-------[  C'est pas de l'arcade, c'est de la simulation !
+
+    Mais attention, si un virus ne peut pas causer de dommages matériels, il peut tout à fait les simuler. Simulation ne signifie pas destruction. Pour vous montrer combien il est facile de simuler une panne de clavier, allez voir dans l'article La bombe du mag, Kill-R. La gachette de cette bombe peut être simple, on incrémente un compteur à chaque frappe du clavier. Si le compteur dépasse une certaine limite, BOUM! Mais on peut le faire plus subtilement... On incrémente un compteur, on tire un nombre au hasard et si le nombre tiré est inférieur au compteur, la touche appuyée ne renvoie rien. Ainsi petit à petit, la touche en question va être de plus en plus défaillante, ce qui va paraître au yeux de l'utilisateur comme une panne physique. C'est débile mais ça marche...
+
+	On peut simuler de même une panne de souris. C'est bien plus facile (grâce à l'interruption 33h) et surtout plus marrant. Plusieurs possibilité s'offrent à nous... On peut par exemple faire disparaître le curseur, échanger les boutons ou les rendre "défaillants". Il suffit d'installer un gestionnaire de l'interruption 33h.
+	Je vais tout d'abord vous montrer comment faire disparaître le curseur. Pour cela il faut détourner la fonction 00 sous fonction 01, qui est chargée d'afficher le curseur, et de remplacer l'appel à la sous fonction 01 par un appel à la sous fonction 02, qui est chargé d'effacer le curseur... Ceci est très facile à faire, voici donc le code à utiliser :
+
+--- NEW_INT_33 (1) ------------------------------------------------------------
+
+NEW_INT_33:
+	cmp ax,0001h
+	jnz INT_33
+	mov ax,0002h
+  INT_33:
+	jmp dword ptr cs:[Old_33]
+
+--- NEW_INT_33 (1) ------------------------------------------------------------
+
+    Comme ce code est ultra simple, je vais également vous donner le code pour échanger les boutons. Cette fois, il faut détourner la fonction 00 sous fonctions 03 et 05. La sous fonction 03 retourne la position et l'état des boutons et la sous fonction 05 retourne des informations sur les boutons qui ont été pressés. Le code se présente ainsi:
+
+--- NEW_INT_33 (2) ------------------------------------------------------------
+
+NEW_INT_33:
+	cmp ax,0003h
+	jz FCTN03
+	cmp ax,0005h
+	jz FCTN05
+  INT_33:
+	jmp dword ptr cs:[Old_33]
+
+FCTN03:
+	pushf
+	call dword ptr cs:[Old_33]
+	xor bx,00000011b
+	ret
+
+FCTN05:
+	cmp bx,0002h
+	jz INT_33
+	push dx
+	mov dx,1
+	sub dx,bx
+	mov bx,dx
+	pop dx
+  NEXT:
+	pushf
+	call dword ptr cs:[Old_33]
+	xor ax,00000011b
+	ret
+
+--- NEW_INT_33 (2) ------------------------------------------------------------
+
+    Pour comprendre le code ci dessus, reportez vous à l'annexe de cet article (int33h). Pour avoir de la documentation plus importante sur l'interruption 33h et sur toutes les autres, dowloadez la Ralf Brown's Interrupt List (tapez Ralf Brown dans un moteur de recherche et vous trouverez).
+
+
+-------[  EOF

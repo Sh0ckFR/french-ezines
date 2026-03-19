@@ -1,0 +1,351 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  Infection Win32 : Part 2  ]
+--------------[  Manipulation de fichiers en asm  ]
+---------[ février 2001 ]
+----[  by Doxtor L. <>  ]
+
+
+-------[  Sommaire
+
+
+    Voici le deuxième volet de notre série d'articles consacrée aux techniques de base utilisées dans le phénomème de réplication d'un programme dans un autre.
+    Pour se dupliquer, un programme auto-reproducteur doit pouvoir ouvrir un fichier (en l'occurence un autre fichier .exe) pour le modifier en ajoutant une partie ou la totalité de son propre code.     
+
+Voila ce que vous trouverez dans cet article:
+    1)  le Mapping.
+    2)  Présentation et utilisation d' APIs pour ouvrir un fichier et écrire dedans.
+    3)  Exemple d'un programme modifiant un autre fichier.
+    4)  Conclusion.
+
+
+-------[  1) Le Mapping
+
+
+    Pour manipuler des fichiers, Windows offre des APIs dont la philosophie est assez proche des fonctions que Msdos, à travers le jeu d'interruptions, met à disposition du programmeur pour réaliser ces tâches dans cet environnement 16 bits. Je ne tiens pas à traiter de cela dans cet article. Je préfère aborder une autre manière de faire, spécifique à Windows, qui n'existe pas sous Msdos. La méthode repose sur le concept de MAPPING.
+
+    Qu'est-ce que le Mapping? L'idée est assez naturelle. On voudrait pouvoir écrire dans un fichier, qui se trouve sur un disque dur, avec la même facilité que l'on écrit en mémoire. Pour écrire en mémoire, on peut procéder de cette façon:
+
+mov eax,01b75480h                    ;on met dans eax une adresse en mémoire
+mov dword ptr [eax],0aabbccddh       ;on va écrire sur l'espace mémoire
+                                     ;qui commence à l'adresse 01b75480h
+                                     ;(tous les nombres sont en écriture
+                                     ;hexadécimales)  
+                                     ;Dword indique que l'on écrit 4 octets
+                                     ;d'un coup.
+
+    Le résultat est : A l'emplacement 01b75480h et aux trois suivants ont va trouver les octets aah,bbh,cch,ddh. Ouvrons une parenthèse. En fait, plus exactement la mémoire ressemble à ça :
+
+adresse:          contenu:
+
+01b75480h         ddh
+01b75481h         cch
+01b75482h         bbh
+01b75483h         aah
+
+    Le micropresseur a stocké le nombre 0aabbccddh dans l'ordre inverse des octects (aah,bbh,cch,ddh) qui le composent. C'est une bizarrerie de tous les microprocesseurs pour PC. (Cela ne porte pas à concéquence dans la pratique car la lecture
+d'une zone mémoire de 4 octects en une fois, se fait aussi dans l'ordre inverse). Si vous voulez analyser le comportement de ce petit programme sous un débogueur tel que td32 n'oubliez pas que l'écriture dans une zone mémoire est sévèrement règlementée par Windows. Ecrire au hazard dans la mémoire va déboucher au mieux sur un écran bleu d'erreur, au pire au crash de Windows! On a vu que la partie d'un programme sous Windows qui correspond à la section appelée ".data" dans le listing du code source est accessible en écriture pour l'usage du programme lui-même. Nous pouvons refermer cette parenthèse.
+
+    Voila en quoi consiste, pour résumer le MAPPING : Par l'intermédiaire d'une série d'APIs on demande à Windows d'ouvrir un fichier et d'en faire une image en mémoire. L'image sera la copie conforme de ce qu'est le fichier sur le disque. Windows va renvoyer de plus l'adresse de début de la copie en mémoire. Apres cela, en connaissant cette adresse et en utilisant les techniques pour écrire en mémoire comme celle déja citée, on peut modifier cette copie.
+    Une fois que l'on a fini notre travail sur cette copie, une autre série d'appels à des APIs permet que ce qui a été fait sur la copie soit aussitôt répliqué sur le fichier qui a servi de modèle ! La mémoire utilisée par la copie sera libérée.
+    Le mot Mapping est issu du mot map qui veut dire carte. La copie est comme une carte qui représente le vrai fichier qui se trouve sur le disque. C'est comme ci nous avions une carte routière, et que si nous plantions une punaise sur la carte à l'emplacement où est indiqué Lyon et qu'au même moment dans la ville réelle à l'endroit précis, qui correspond au trou fait par la punaise, se creusait un gouffre !
+
+
+-------[  2) Présentation et utilisation d'APIs pour ouvrir un fichier et écrire dedans.
+
+
+    Il y'a deux séries d'APIs qui sont utilisées :
+    * Une première série qui doit être appelée avant d'effectuer des modifications sur la copie du fichier en mémoire.
+    * Une deuxième série le sera après que l'on ait fini d'écrire sur la copie.
+
+    Ces successions d'appels à des APIs sont très utilisées pour manipuler des fichiers, pas de scrupules donc à les utiliser, pas la peine de connaitre dans le détail le fonctionnement respectifs de tous ces APIs. Seul le résultat produit est important.
+
+    La première série : (l'ordre d'appel est respecté)
+
+
+API :                Fonction dans notre code :
+CreateFileA          (créé ou) ouvre un fichier, un handle de fichier est retourné.
+CreateFileMappingA   prépare la copie du fichier en mémoire. un handle pour le mapping est renvoyé
+MapViewOfFile        créé la copie. l'adresse où se trouve la copie en mémoire est renvoyée. 
+
+
+    La deuxième série :  (l'ordre d'appel est respecté) 
+
+UnMapViewOfFile      l'image est rendue inacessible
+CloseHandle          1) fermeture du handle du mapping
+                     2) fermeture du handle de fichier
+(cette API est utilisée deux fois de suite comme indiqué)
+ 
+
+    Examinons les paramètre requis pour toutes ces APIs:
+
+    ** CreateFileA **
+
+ 1) doit être 0
+ 2) doit être 0
+ 3) doit être 3, cela indique que l'on veut ouvrir un fichier déja existant.
+ 4) doit être 0
+ 5) doit être 1, indique comment sera partagé l'objet.
+ 6) indique le type d'accès requis: lecture,écriture...
+ 7) un pointeur qui spécifie où se trouve  la chaîne de caractères qui compose le nom du fichier à ouvrir. Le "A" de CreateFileA indique que le nom du fichier est écrit en ASCII. (Par exemple "cible.exe"). Le nom du fichier doit être suivi par 00h pour être lu.
+
+  Cette API renvoit un double mot (quatre octet), un Handle de fichier.
+
+
+    ** CreateFileMappingA **
+
+ 1) doit être 0, (sinon on doit specifier un pointeur qui pointe sur le nom que l'on veut donner à la copie en mémoire, inutile ici)
+ 2) Taille du fichier après infection, Il faut tenir compte de l'accroissement de taille que va occasionner le virus. Prévoir donc suffisemment de place.
+ 3) Doit être 0. La taille sur disque d'un fichier est, pour le moment, jamais plus grande que 4 Giga octets.
+ 4) Doit être 4. Ceci authorise la lecture et l'écriture dans la zone mémoire ou sera crée l'image du fichier.
+ 5) Doit être 0. Attribut concernant la sécurité.
+ 6) Handle retourné par CreateFileA
+
+  Après exécution de cet API si aucune erreur ne survient un handle, c'est à dire un double mot non nul, est renvoyé dans le registre EAX.
+
+
+    ** MapViewOfFile **
+
+1) Taille du fichier, même remarque que précedemment.
+2) Doit être 0.  Ce champ et le suivant sont utilisés si on veut ne pas complètement créer une image complète du fichier.
+3) Doit être 0.
+4) Doit être 2. Authorise la lecture et l'écriture de l'image à créer.
+5) Handle retourné par CreateFileMappingA.
+
+    Cette API renvoie l'adresse mémoire, de l'image crée, dans EAX. Si EAX contient 0, une erreur est survenue.
+
+
+
+    Voici la deuxième séquence d'APIs :
+
+    ** unMapViewOfFile **
+  1) Adresse en mémoire de l'image fichier.(Cette adresse a été renvoyée par MapViewOfFile)
+
+
+    ** CloseHandle **
+  1) le handle renvoyé par CreateFileMappingA
+
+
+    ** CloseHandle  *
+  1) Le handle du fichier.
+
+
+    Il y'a un petit inconvenient à utiliser le Mapping. L'espace mémoire, qui va être alloué pour créer l'image d'un fichier,  est déterminé au moment des appels des APIs déja citées. Maintenant, imaginez la situation suivante : Pour savoir qu'un fichier est déja infecté, un virus doit le mapper pour le lire, et là apparait le problème. Si le virus crée une image du fichier tenant compte de sa taille après infection et si ce fichier est déja infecté, sa taille va s accroitre inutilement et dangereusement. Cela peut être un ennui sérieux.
+    Il y'a une manière simple d'éviter cela. Le virus peut commencer à créer une image qui ait la même taille que le fichier dont elle est la copie. Si le fichier est déja infecté, il ne sera pas modifié par cette opération. S'il ne l'est pas, il faudra utiliser un deuxième Mapping qui cette fois tiendra compte de la taille après infection du fichier.
+    Cette méthode marche mais oblige à utiliser deux fois le mapping la plupart du temps (au début de l'infection l'ordinateur hôte contient presque que des fichiers non infectés).
+
+    Il y'a une alternative a ceci : Avant de fermer le handle d'un fichier, on peut retailler ce fichier. C'est à dire changer sa taille. Deux APIs existent et peuvent faire ce travail.
+
+
+    ** SetFilePointer **
+
+    Un pointeur, c'est à dire un index, indique la position courante dans le fichier. Cette API permet de l'avancer, de le reculer.
+  1) Doit être 0. On spécifie que le pointeur de fichier est déplacé par rapport a la fin.
+  2) Doit être 0. La taille d'un fichier actuellement dépasse pas 4 Giga octets
+  3) La distance de déplacement. En ce qui nous concerne ce sera la taille du virus.
+  4) le handle du fichier.
+
+
+    ** SetEndOfFile **
+
+    Tout ce qui était situé après la position courante du pointeur de fichier est supprimé.
+  1) Handle du fichier
+
+
+    Voila qui achève la description des APIs nécessaires pour l'ouverture et la modification de fichiers.
+
+
+-------[  3) Exemple d'un programme modifiant un autre fichier
+
+
+    Dans ce qui suit, je vous propose le source d'un petit programme qui ouvre un fichier, dont le nom et la taille sont fixés, si ce fichier commence par les deux lettres "VI" le fichier n'est pas modifié sinon, la chaîne de caractères "VIRUS" est ajoutée.
+
+--- FIRST.ASM -----------------------------------------------------------------
+
+; Ce code source est issu de l'article: Infection, partie 2
+; par DoxtorL/[T.I]. Créé en Février 2001.
+;
+;
+; Ce programme est une illustration élémentaire de l'utilisation
+; d'APIs Win32 pour la manipulation de fichiers.
+; Ce programme ouvre un fichier dont le nom et la taille sont déterminés dans
+; le code source qui suit.
+;
+; Si les deux premiers octets de ce fichiers sont "VI" le fichier est refermé 
+; et laissé tel quel. S'il ne contient pas "VI" à son tout début, 
+; elles sont ajoutés et le mot "VIRUS" est ajouté à la fin du fichier.
+; Pour ne pas alourdir le listing j'ai omis volontairement les tests
+; habituels qui suivent chaque appel à une API; par exemple, aucun test
+; n'est effectué sur la réussite de l'opération d'ouverture du fichier.
+;
+;
+; pour tester ce qui suit vous avez besoin d'un fichier de
+; 100 octets que vous appellerez: cible.txt (ces paramètres peuvent être
+; modifiés)
+
+
+.386p                 
+
+.model flat
+
+
+.data
+
+HandleFichier        dd 0
+HandleMap            dd 0
+AdresseMap           dd 0
+TailleMap            dd 0
+
+TailleFichier        dd 100                 ; vous pouvez changer ces deux valeurs
+NomFichier           db "cible.txt",0       ; pour tester
+
+.code
+
+
+DEBUT:                        
+
+    extrn CreateFileA          :Proc        ;
+    extrn CreateFileMappingA   :Proc        ;
+    extrn MapViewOfFile        :Proc        ;
+    extrn UnmapViewOfFile      :Proc        ;
+    extrn CloseHandle          :Proc        ;
+    extrn SetFilePointer       :Proc        ;
+    extrn SetEndOfFile         :Proc        ;
+    extrn ExitProcess          :Proc        ;
+
+
+
+
+    mov eax,dword ptr [TailleFichier]       ; on met dans eax la taille du fichier
+
+; on s'occupe maintenant de la taille qu'aurra l'image:
+
+    mov dword ptr [TailleMap],eax           ;
+    add dword ptr [TailleMap],5             ; pour tenir compte de l'ajout des
+                                            ; 5 lettres du mot "VIRUS"
+    call Ouvrir                             ; on ouvre et mappe le fichier
+    mov edx,dword ptr [AdresseMap]          ; on met dans edx l'adresse de début de l'image
+
+
+; on teste les deux premiers octets:
+
+    cmp word ptr [edx],"IV"                 ; remarquez que "VI" est inversée.
+                                            ; La lecture en mémoire par le micropro-
+                                            ; cesseur est faite à l'envers.
+    jnz PasInfecté                          ;
+    sub dword ptr [TailleMap],5             ; le fichier est déja modifié. Pour ne
+                                            ; pas accroitre inutilement sa taille 
+                                            ; on soustrait ce que l'on avait précedemment
+                                            ; ajouté.
+    call Fermer                             ; le fichier a déja été modifié. 
+    call ExitProcess                        ; On demande la fin du programme.
+
+
+PasInfecté:                                 ; Le fichier n'a pas encore été modifié.
+
+    mov word ptr [edx],"IV"                 ; VI est ajouté au tout début de l'image
+                                            ; du fichier en mémoire.
+    add edx,dword ptr [TailleFichier]       ; on veut pointer sur la fin réelle du fichier
+                                            ; en mémoire. On pointe maintenant sur la
+                                            ; zone de 5 octets que l'on s'est octroyé.
+    mov dword ptr [edx],"URIV"              ; Le mot "VIRUS" est  écris a la fin
+    mov byte ptr [edx+4],"S"                ; de l'image du fichier
+    call Fermer                             ; le fichier est maintenant modifié et
+                                            ; refermé.                               
+    call ExitProcess                        ;
+
+Ouvrir:
+
+
+; ouverture du fichier:
+
+    pushad                                  ; sauvegarde des registres 
+
+    push 0                                  ;
+    push 0                                  ;
+    push 3                                  ;
+    push 0                                  ;
+    push 1                                  ;
+    push 80000000h or 40000000h             ;
+    lea eax,NomFichier                      ;
+    push eax                                ;
+    call CreateFileA                        ;
+
+    mov dword ptr [HandleFichier],eax       ; on sauvegarde le handle du fichier
+
+; prépare le mapping:
+
+    push 0                                  ;
+    push dword ptr [TailleMap]              ;
+    push 0                                  ;
+    push 4                                  ;
+    push 0                                  ;
+    push dword ptr [HandleFichier]          ;
+    call CreateFileMappingA                 ;
+
+    mov dword ptr [HandleMap],eax           ; on sauvegarde ce handle
+
+; le fichier est mappé:
+
+    push dword ptr [TailleMap]              ;
+    push 0                                  ;
+    push 0                                  ;
+    push 2                                  ;
+    push dword ptr [HandleMap]              ;
+    call MapViewOfFile                      ;
+
+    mov dword ptr [AdresseMap],eax          ; on sauvegarde l'adresse de début de l'image
+                                            ; crée en mémoire  
+    popad                                   ; restauration des registres
+    ret                                     ; retour au programme principal
+
+
+Fermer:
+
+    pushad                                  ;
+
+; l'image crée en mémoire est supprimée et le fichier va prendre en compte
+; les modifications apportées.
+
+    push dword ptr [AdresseMap]             ;
+    call UnmapViewOfFile                    ;
+
+    push dword ptr [HandleMap]              ;
+    call CloseHandle                        ;
+
+; on retaille le fichier si nécessaire:
+
+    push 0                                  ;
+    push 0                                  ;
+    push dword ptr [TailleMap]              ;
+    push dword ptr [HandleFichier]          ;
+    call SetFilePointer                     ;
+
+    push dword ptr [HandleFichier]          ;
+    call SetEndOfFile                       ;
+
+; on referme le fichier:
+
+    push dword ptr [HandleFichier]          ;
+    call CloseHandle                        ;
+
+    popad                                   ;
+    ret                                     ; retour au programme principal
+
+end DEBUT
+
+
+--- FIRST.ASM -----------------------------------------------------------------
+
+
+-------[  4) Conclusion
+
+
+    Vous connaissez maintenant les rudiments pour ouvrir et modifier des fichiers à partir d'un programme. J'ai laissé de côté le problème de la modification de l'heure d'un fichier. En effet à chaque fois qu'un fichier est modifié l'heure du fichier est changée. Nous aurrons peut-être l'occasion d'y revenir.
+
+    L'article suivant sera consacré au format d'un fichier exécutable de Windows. En effet pour que les modifications faites à un exécutable le laissent valide il faut tenir compte de sa structure initiale. Cet article sera un peu théorique je m'en excuse d'avance.
+
+    A bientot.
+
+
+-------[  EOF

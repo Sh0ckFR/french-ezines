@@ -1,0 +1,395 @@
+                                   ~~~~~~~~
+                 ~ L'Enregistrement et la r‚solution des noms ~
+
+                                   ~~~~~~~~
+
+    J'avais appel‚ mon dernier article sur le routage dynamique, PART I, 
+il n'y aura pas de PART II, puisque le I contient tout, j'avais pens‚ … le 
+diviser mais j'ai pr‚f‚r‚ le faire en une fois. 
+    Je ferais l'effort cette fois-ci de structurer mon article de fa‡on … 
+ce que ceux qui veulent sauter des parties le puisse ais‚ment. 
+Je propose donc de faire un petit sommaire de l'article dŠs l'intro pour que
+tout le monde s'y retrouve.
+
+	A- NOM D'HOTES ET NOMS NETBIOS.
+
+	B- NOMMAGE NETBIOS.
+        a- Les diff‚rentes methodes de r‚solution des noms;
+        b- Les diff‚rents types de noeuds NetBios;
+		c- Comment fonctionne l'enregistrement des noms NetBios;
+		d- Ce qu'est WINS;
+
+	C- SYSTEME DE NOMS DE DOMAINE.
+		a- Intro;
+        b- Les r‚solveurs;
+
+Voil… ‡a sera tout et je suis pas s–r que ‡a tienne en un article,
+- celui l… fait 37ko et il y a que le A et B a) et b)- sinon je 
+divise en deux voire trois...
+
+#Speed Parade : Don't turn in on, just like a Speed Parade!
+#The Alien :    Just what the hell has happened here!
+                The CIA has got a file on everything I've done!
+                They'll never take Me Alive!
+# Slash's Snakepit "AIN'T LIFE GRAND" 
+My own Motivation...
+
+======================================
+A-NOM D'HOTES ET NOMS NETBIOS
+
+Il existe deux methodes pour r‚soudre un nom d'h“te Inetrnet en une adresseIP
+    La premiŠre, c d'enregistrer, sur chaque station du r‚seau, un fichier 
+(texte) HOSTS qui contiendra alors une table des noms des h“tes et de leur 
+adresse IP respective. 
+
+    La seconde, quant … elle est appuy‚e sur le systŠme Domain Name System, 
+trŠs connu DNS..., c en fait les mˆmes donn‚es qu'un fichier HOSTS mais au 
+niveau global puisqu'il couvre tout l'Internet.Pour obtenir une adresse IP 
+d'un h“te, il suffit d'envoyer une requˆte … un serveur DNS. S'il ne la 
+connaŒt pas directement, il contacte d'autres serveurs DNS, jusqu'… ce que 
+l'un d'entre eux puisse lui r‚pondre par un mess Request au client demandeur.
+
+Depuis quelques temps, les r‚seaux locaux ausi se mettent … utiliser la 
+r‚solution des noms, notamment les r‚seaux locaux UNIX/LINUX qui utilisent un
+systŠme DNS, mˆme si les r‚seaux ne sont pas connect‚s … l'Internet.
+Mˆme dans le cas d'un r‚seau Windows NT/9x, o— pourtant les ordinateurs ne
+sont rep‚r‚s que par des noms, en effet chaque machine peut ˆtre … la fois
+client et serveur, car c un systŠme de r‚seau poste … poste, on utilise la
+r‚solution des noms en adresses IP … cause de TCP/IP.
+Vous connaissez les SMB, Server Message Blocks qui font partie d'une des
+trois piles de protocoles, qui peuvent g‚rer le partage Imprimantes et
+Disques, ces types de Messages sont contenus dans des paquets de messages
+de sessions NetBT (NetBios TCP/IP).
+Les r‚seaux Windows utilisent justement le systŠme de noms NetBios.
+Ces noms ne sont reconnus que sur des r‚seaux priv‚s.
+
+
+======================================
+B-NOMMAGE NETBIOS
+
+Lorsque vous installez Windows9x … la suite d'un plantage (je suis une 
+mauvaise langue...) ou bien pour la premiŠre fois, vous devez donner un nom 
+d'ordinateur, et c'est ce nom qui est le nom NetBIOS qui va servir … 
+identifier cet ordinateur sur le r‚seau. L'espace de noms NetBIOS n‚cessite
+un nom de 16 caractŠres qui ne peut pas commencer par un ast‚risque "*".
+A savoir, le r‚seau Windows n'utilise que 15 caractŠres pour le nom, le 16Šme
+est r‚serv‚ pour d‚finir un identificateur de ressource. Si mon nom NetBIOS 
+est SneakiesMachine, ‡a fait 15 caractŠres, si j'accŠde au disque de Par4noID
+(bien prot‚g‚ MDR) , alors vu que son disque est export‚ (terme LINUX avec 
+Showmount, d‚sol‚...), en terme Windows son disque est partag‚ alors, le
+16Šme caractŠre sera 00. Avant de pouvoir acc‚der … ces ressources (celles de
+Par4), il faut que mon ordinateur r‚solve le nom NetBIOS de Par4 en adresse
+IP. C'est seulement ensuite que je pourrai lui adresser une request SMB,
+qu'il est en droit de refuser d'ailleurs...
+
+
+a- Les diff‚rentes m‚thodes de r‚solution des noms
+
+Tous les diff‚rents processus de r‚solution sont bas‚s sur une table de 
+r‚f‚rence des noms NetBIOS avec leurs adresses IP associ‚es.
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Le fichier LMHOSTS  
+
+La maniŠre la plus simple, c'est de cr‚er une table de r‚f‚rence qui soit 
+plac‚e sur le disque local afin de pouvoir y avoir accŠs rapidement. Chez 
+Windows, ce fichier porte le nom de LMHOSTS. 
+
+Un petit sch‚ma (va faire plaisir … Androgyne, y en aura plein HIHIHI...)
+
+|----------------------------------------------|    
+|                       -------------          |  TCP/IP    ----------------
+|                       |Application|================3====> |    SERVEUR   |
+|                       -------------          |            ----------------
+|           Nom NetBIOS   | |    / \  Adresse  |
+|                         |1|    |2|    IP     |
+|                         \ /    | |           |
+|                       -------------          |
+|                       |  LMHOSTS  |          |
+|                       -------------          |
+|                                              |
+|                                              |
+|----------------------------------------------|
+                     CLIENT
+
+Quand un utilisateur veut acc‚der … une ressource partag‚e d'un ordinateur 
+distant, son ordinateur accŠde au fichier LMHOSTS et recherche le nom indiqu‚
+par l'utilisateur. Ce nom est associ‚ … une adresse IP qui est fournie au 
+programme, et l'ordinateur peut lancer la communication avec l'ordinateur 
+distant.
+Le fichier LMHOSTS possŠde un avantage ind‚niable, c que son enregistrement 
+serait sur un disque dur local, ce qui implique un temps d'accŠs r‚duit au 
+minimum. Seul b‚mol, pour que son fonctionnement soit correcte, le r‚seau
+doit disposer d'un fichier LMHOSTS trŠs proche de l'‚tat actuel du r‚seau en
+cours d'utilisation, en effet, le fichier LMHOSTS s'il veut remplir
+pleinement son r“le doit ˆtre mis  … jour trŠs r‚guliŠrement, ce qui
+sous-entend un trafic intense de donn‚es sur le r‚seau, on fait apparaŒtre
+ici la principale limite au fichier LMHOSTS: l'‚tendue du r‚seau, il est trŠs
+fastidieu de le faire op‚rer correctement sans risquer d'entraver le bon 
+fonctionnement du r‚seau si celui-ci est de grande anvergure.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+La Diffusion
+
+Ceci repr‚sente la seconde m‚thode de r‚solution des noms.
+Quand une machine A du r‚seau … besoin de communiquer avec une autre machine
+B pr‚cise du r‚seau, alors la machine A va ‚mettre un message de diffusion,
+soit … toutes les autres machines, contenant le nom NetBIOS de celui qu'elle
+recherche et va attendre sa r‚ponse.
+Quand la machine portant le nom NetBIOSr‚clam‚ est contact‚e, elle renvoie un
+paquet monodestinataire … l'‚mettur en indiquant son adresse IP.
+Il est alors possible de lancer une connexion entre l'appelant et le
+r‚cepteur.
+
+Sympa, mais on voit tout de suite que si on snif pas mal, il y a moyen de se 
+faire passer pour l'ordinateur qui doit recevoir, en analysant la structure
+du paquet ‚mis pour r‚cup‚rer le nom NetBIOS attendu, ensuite on lui donne
+notre adresse IP (aprŠs ˆtre pass‚ par plusieurs PROXY, histoire de brouiller
+les pistes), et voil…, nous voil… sur le r‚seau... Petit b‚mol, si le prog
+(qui doit ˆtre un d‚mon!) veut rep‚rer le transit des paquets et veut pouvoir
+les intercepter, il faut qu'il soit sur le r‚seau local, sinon Ša voudrait
+dire qu'on est d‚j… sur le r‚seau...
+Re-sch‚ma:
+                                                  TCP/IP: communication          
+                                                 ---------3---------
+                                                 |                 |
+                 Nom    |------------------------|   Nom           |
+ ------------   NetBIOS |                        | NetBIOS    -----------
+ | MachineA | <=====1===|        APPLICATION     |=====1====> |Machine B|
+ ------------           |                        |<====2===== -----------
+                        |------------------------| Adresse IP
+                              |               |
+                              |               |
+              --------1--------               --------1--------
+              |  Nom NetBIOS                     Nom NetBIOS  |
+          -----------                                      -----------
+          |Machine C|                                      |Machine D|
+          -----------                                      -----------
+
+Cette m‚thode de diffusion construit dynamiquement une tablde r‚f‚rence sur
+la machine ‚mettrice. Cette table est stock‚e dans un buffer m‚moire cache de
+la machine, ainsi, … chaque coupure, le cache est d‚truit. De ce fait, il
+n'est pas n‚cessaire de maintenir une table de r‚f‚rence. Des lors qu'une
+nouvelle r‚solution des noms est lanc‚e, les modifications sur le r‚seau sont
+enregistr‚es dans le cache. Le majeur problŠme de ce systŠme est que lui 
+aussi g‚nŠre un trafic intense, chaque ordinateur re‡oit un paquet dont il
+n'a peut-ˆtre rien … faire, deplus, ce paquet doit passer toutes les couches
+de la pile de protocoles pour atteindre l'interface NetBIOS au c“t‚ des API
+et autres, au dessus de l'interface TDI... Toutes les couches sont donc
+monopolis‚es pour rien dans ce cas, tout ‡a pour que le message soit d‚truit
+s'il ne correspond … la machine d‚sir‚e. Une autre limite est le fait que ce
+systŠme ne soit op‚rant que dans le cas d'un r‚seau interconnect‚ en local, 
+puisque si le r‚seau est en deux parties et qu'il utilise une passerelle pour
+relier les deux parcelles du r‚seau, ces paquets soit se limiteront … la
+portion du r‚seau local concern‚, soit irons sur une autre parcelle, si le
+routeur est cnfigur‚ pour, mais ceci aggravera le ph‚nomŠne du flux trop
+important. Ce systŠme est donc recommand‚ pour les petits r‚seaux, encore
+une fois.
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Serveur de noms NetBIOS (NBNS)
+
+La troisiŠme m‚thode, concerne une application nomm‚e NetBIOS Name Server 
+(NBNS). Windows NT Server comprend un NBNS nomm‚ (WINS) Windows Internet Name
+Service. Le but de ce serveur de noms, est de cr‚er un log de tous les noms
+et adresses IP des ordinateurs du r‚seau, puis il s'occupe de mettre … jour
+ce log dynamiquement. Pour pouvoir acceder … un serveur WINS, une station
+cliente doit ˆtre configur‚e avec les adresses IP de serveurs WINS primaire
+et secondaire situ‚s sur le r‚seau. DŠs que la machine est lanc‚e, elle
+transmet un message monodestinataire au serveur WINS, avec son nom NetBIOS et
+son adresse IP, qui l'enregistre dans une base de donn‚es. Cette base de
+donn‚es peut ˆtre dupliqu‚e, (vivement conseill‚!) pour que soit mieux
+r‚parti le travail de routage entre plusieurs serveurs WINS et pour qu'en cas
+de panneun serveur puisse prendre la relŠve temporairement.
+
+Quand une machine veut r‚soudre un nom NetBIOS en adresse IP, elle envoie une
+requˆte au serveur WINS, qui cherche dans ses logs pour trouver qui est le
+nom NetBIOS que le client demande. Ensuite, le serveur WINS renvoie un
+message contenant l'adresse IP du nom NetBIOS demand‚.Comme la m‚thode de
+diffusion, WINS ne demande pas de mise … jour manuelle. Le gros avantage de 
+cette m‚thode est qu'elle s'appuie sur des transmissions monodestinataires; 
+en plus de Ša, cette m‚thode est capable parfaitement de g‚rer plusieurs 
+portions de r‚seau.
+Sch‚ma:
+
+CLIENT |--------------------------------|   
+       |                                |
+       |                                |
+       |       |-------------|          |         
+       |       | Application |=======3=========> SERVEUR
+       |       |-------------|          |         
+       |--------------------------------|
+              ||            /\ 
+ Nom NetBIOS 1||            ||2 Adresse IP
+              \/            || 
+            |------------------|
+            |   Serveur WINS   |
+            |------------------|
+
+Le problŠme de ce type d'installation, c que chaque client doit renseigner
+les adresses de serveurs WINS qu'il utilise. Il est toutefois possible de
+r‚soudre ce problŠme en faisant agir et cohabiter un serveur DHCP et un
+serveur WINS. Car lorsque DHCP configure un client, il indique l'adresse des
+serveurs WINS et par la suite enregistre les adresses IP de tous les clients
+rattach‚s … la base de donn‚e des serveurs WINS.
+
+b- Les diff‚rents types de noeuds NetBIOS
+
+Dans la mesure o— il existe plusieurs m‚thodes de r‚solution des noms sous 
+WinNT, il existe une fa‡on de s‚lectionner la m‚thode … utiliser.
+Il est alors possible, et mˆme recommand‚ de faire cohabiter toutes ces
+m‚thodes afin d'avoir un adressage optimal au sein du r‚seau.
+Le standard NetBT d‚finit plusieurs types de noeuds indiquant les diff‚rentes
+combinaisons et l'ordre dans lequel doivent ˆtre effectu‚es ces m‚thodes.
+On remarque un avantage majeur: trŠs versatile, la cohabitation de tous ces
+systŠmes permet d'‚viter que l'adressage ‚choue de la faute d'une panne d'une
+de ces m‚thodes.
+De ce fait, si panne il y a, toutes les m‚thodes sont essay‚es jusqu'… ce
+qu'enfin le destinataire soit contact‚.
+Voici, les diff‚rents types de noeuds qui sont d‚finis dans le standard
+NetBT:
+
++ BROADCAST NONE (b-node)==> Un systŠme b-node utilise la m‚thode de 
+                             diffusion pour l'enregistrement et la
+                             r‚solution des noms.
+
++ POINT-TO-POINT MODE (p-node)==> Un systŠme p-node utilise les
+                                  transmissions monodestinataires pour
+                                  les serveurs de noms NetBIOS (comme WINS)
+                                  pour l'enregistrement et la r‚solution 
+                                  des noms.
+
++ MIXED MODE NODE (m-node)==> Un systŠme m-node utilise la m‚thode de
+                              diffusion pour l'enregistrement des noms.
+                              Pour la r‚solution des noms, m-node
+                              utilise en premier la diffusion, si il ne
+                              reŠoit aucune r‚ponse, il utilise les
+                              transmissions monodestinataires vers les
+                              serveurs de noms NetBIOS.
+
+Ce dernier mode est sp‚cialement pr‚conis‚ dans les gros r‚seaux compos‚s de
+plusieurs segments, o— il est n‚cessaire de communiquer d'un segment …
+l'autre tout en restant le plus souvent dans une boucle locale.
+Il est conseill‚ (parce qu'int‚ressant!) d'‚tudier 3 autres types de noeuds 
+d‚finis dans WinNT et fourni avec l'OS:
+
++ B-NODE MODIFIED ==> Un systŠme WinNT, qui n'est pas client WINS, peut ˆtre 
+                      configur‚ comme un b-node qui diffŠre l‚gerement du 
+                      standard NetBT. Si le client ne peut r‚soudre un nom
+                      par des requˆtes de diffusion, il consulte le fichier
+                      LMHOSTS sur son disque local.
+
++ NODE HYBRID (h-node)==> Un h-node utilise des transmissions
+                          monodestinataire vers un serveur WINS pour
+                          l'enregistrement et la r‚solution des noms. Si le
+                          systŠme ne peut entrer en contact avec le serveur
+                          WINS (panne ou surchage du flux en local), il passe
+                          … la r‚solution des noms en broadcast, seulement
+                          jusqu'… ce qu'un serveur WINS soit disponible o— il
+                          repasse alors en unicast.
+
++ MICROSOFT-ENHANCED ==> WinNT permet … des utilisateurs ou admin
+                         (chevron‚s MDR), de se permettre le luxe d'ajouter
+                         des posibilit‚s aux types de noeuds d‚j… existants,
+                         comme par exemple avec la r‚solution des noms par
+                         LMHOSTS et des appels standard Windows Sockets …
+                         un serveur DNS et un fichier HOSTS.
+
+Par d‚faut, les WinNT distibu‚s sont en h-node, ils sont en effet destin‚s …
+utiliser les serveurs WINS. Il existe deux options suppl‚mentaires pour 
+configurer un client TCP/IP (Microcro), elles vous permettent d'activer DNS 
+pour la r‚solution des noms Windows et LMHOSTS. L'option DNS fournit les noms
+r‚f‚renc‚s dans le fichier HOSTS, sur le disque local, et les appels aux 
+serveurs DNS indiqu‚s dans la configuration TCP/IP du client. Dans ce cas de 
+figure, si les deux premiŠres m‚thodes ‚chouent, l'option LMHOSTS permet le 
+lancement d'une recherche de noms NetBIOS dans le fichier LMHOSTS situ‚ sur
+le disque local.
+Sur un systŠme h-node - NODE HYBRID - configur‚ de telle maniŠre que toutes 
+les options WinNT sont activ‚es, la r‚solution des noms se passe comme suit:
+
+
+			|--------------------------------------|
+            |           MACHINE LOCALE A           |
+			|--------------------------------------|
+                              || Nom NetBIOS
+                              \/
+			|--------------------------------------|
+            |   (1)          DNS                   |
+            |        Si nom >15 caractŠres         |==|
+			|--------------------------------------|  |
+                              ||                      |
+                              \/                      |
+			|--------------------------------------|  |
+            |   (2)         Cache                  |  |
+            |           des noms NetBIOS           |==|
+			|--------------------------------------|  |
+                              ||                      |
+                              \/                      |
+			|--------------------------------------|  |
+            |   (3)     Mono-destinataires         |  |
+            |                WINS                  |==|
+			|--------------------------------------|  |
+                              ||                      |
+                              \/                      |=====> NOM RESOLU
+			|--------------------------------------|  |
+            |   (4)        Diffusion               |  |
+            |                                      |==|
+			|--------------------------------------|  |
+                              ||                      |
+                              \/                      |
+			|--------------------------------------|  |
+            |   (5)        LMHOSTS                 |  |
+            |                                      |==|
+			|--------------------------------------|  |
+                              ||                      |
+                              \/                      |
+			|--------------------------------------|  |
+            |   (6)          DNS                   |  |
+            |                                      |==| 
+			|--------------------------------------|
+                              ||
+                              \/
+                 Echec de la r‚solution du nom
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+D‚tail des ‚tapes:
+
+(1)> Si le nom comporte plus de 15 caractŠres, c'est un nom DNS. Le systŠme 
+client lance un appel DNS avec la premiŠre m‚thode de r‚solution de noms. 
+
+(2)> Si le nom comporte 15 caractŠres ou moins ou si la r‚solution DNS
+‚choue, le systŠme client recherche le nom dans le cache NetBIOS.
+
+(3)> Si le cache ne contient pas le nom recherch‚, le client envoie une 
+requˆte de recherche de noms. Cette requˆte est envoy‚e en transmission mono-
+destinataire au serveur WINS primaire indiqu‚ dans la config TCP/IP du
+client. Si, … son tour, le serveur WINS primaire ne r‚pond, le client envoie
+la requˆte au serveur WINS secondaire.
+
+(4)> Si les deux serveurs WINS ne r‚pondent toujours pas, le client envoie
+une requˆte par diffusion.
+
+(5)> Si le client ne reŠoit toujours aucune r‚ponse aux requˆtes de
+diffusion, il recherche le nom dans le fichier LMHOSTS du disque local.
+
+(6)> Si le nom ne se trouve pas dans le fichier LMHOSTS (et si le nom possŠde
+15 caractŠres ou moins), le client transmet les requˆtes DNS aux serveurs 
+indiqu‚s dans la config TCP/IP du client.
+
+(7)> Si le DNS ne peut ˆtre contact‚ ou ‚choue dans la r‚solution du nom, le 
+processus de r‚solution a ‚chou‚ et un message d'erreur est envoy‚ au client.
+
+Bon voil… pour cette fois, un article PartII (ps bidon cette fois!
+cfMag4...), est d‚j… programm‚, si vous voulez savoir sur quoi,
+cf Sommaire de cet article...
+
+Conclusion:
+#They'll never take me Alive!
+RDV pour le part II... 
+(Greetz to S/ash for his interface with its 78 caracters' shits standard...
+ND/ : Je t'emmerde Sneakie, de plus tu l'as pas respect‚. T'inquiŠte, la
+prochaine fois, y'aura une interface Windows et une interface Linux)
+

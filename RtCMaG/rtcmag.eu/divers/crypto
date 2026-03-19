@@ -1,0 +1,600 @@
+-------[  RtC Mag, At the end of the universe  ]
+
+--------------[  The Electronic World is rulez by ciphering  ]
+---------[ in RtC mag 5 ]
+----[  by S/ash [RtC] <slash-rtc@fr.st>  ]
+
+-------[  Sommaire
+I.   Les bases : le xor
+II.  Le DES : l'age de pierre
+III. Le RSA : l'age de fer
+IV.  Créez vos algos : que l'acier soit
+IV.  Cracking methods : XOR and RSA
+V.   Cryptanalyse
+
+Joint part : le répertoir crypt contient les codes de cet article
+Mais avant tout regardez le uue64.c : il s'agit d'un encodage
+type UUENCODE 64, il sera utilisé pour la sauvegarde des clefs
+et des fichiers crypté
+
+-------[  I.   Les bases : le xor
+
+Le cryptage XOR est tout cons : on prend un octet de la trame à coder, on prend
+un octet de la clef de cryptage et on applique le XOR (ou exclusif).
+Le xor ? quezaquo ? c'est une fonction binaires qui effectue une addition modulo
+2 (ou encore pour les matheux : c'est l'addition dans Z/2Z) : c'est bô...
+Bon en bref on prend 2 bit a et b, a xor b nous donnera (en fonction de a et b):
+/-----------------\
+| a | b | a xor b |
+|-----------------|
+| 0 | 0 |    0    |
+| 0 | 1 |    1    |
+| 1 | 0 |    1    |
+| 1 | 1 |    0    |
+\-----------------/
+Le truc magic c'est que (a xor b) xor b = a !!!
+Donc si on réaplique le xor avec la même clef le truc est décodé.
+En résumé on a l'octet 2F (en hexa). On veut le crypter, on choisit une clef
+par exemple 5C (tjrs en hexa). ben on fait un xor entre les deux on obtient :
+00101111 : 2F
+01011100 : 5C
+-------------
+01110011 : 73
+Bon et si on refait un xor entre 73 et 5C on obtient 2F. Compris ?
+Bon, pour crypter un message entier on refait la même chose sur plusieurs octets
+Si on a une clef plus petite que le message c'est pas grave on recommence au
+début de la clef.
+Bon ce cryptage est très faible mais c'est un cas d'école. Sa faiblesse vient
+du fait qu'il est très rapide à crypter donc un test sur l'ensemble des clefs
+possibles est très aisé. Cependant sur une clef suffisament grande ce test
+devient infernales (sur 80 bits il y a 2^80 possibilités de clefs !!!).
+En pratique, il sert à quoi ? ben par exemple il est utilisé sous Zin95 (non patché : première version, quasi-inexistente)
+dans les fichier .pwl pour crypter les mots de passe : on prend la clef K (je ne la
+connais pas), on prend le login L (en majuscule), on prend le mot de passe P 
+(idem) et on fait (K xor L xor P) et on a le message crypté.
+Bon, chtit niakouais, tu veut cte clef K ? ben tu créer un utilisateur avec un
+log et un pass de 20 caractères (au delà tu plante zin). tu récup le .pwl (dans
+le rep zin) et tu fais en supposant que l'on note C le code contenu dans le pwl,
+(C xor L xor P) et tu obtient K, cool non ?
+Bon et pour decoder le pass d'un user tu fais (C xor L xor K).
+
+Le cryptage addition
+--------------------
+la fonction utilisée est cette fois l'addition. Cela consiste à effectuer une
+addition pour le cryptage et une soustraction pour le décryptage. L'addition
+sera limité par la capacité de la variable utilisée mais peut importe car cela
+reviendra à faire une addition modulo 256 pour les octets par exemple. En
+réalité cela revient exactement au cryptage xor sauf que pour le xor (aussi
+noté + entouré) la soustraction est aussi l'addition.
+Ce cryptage est nommé cryptage de Jules César car il utilisait une
+addition de 3 modulo 26 sur l'alphabet classique (euh c peut-être pas modulo
+26 car ils avaient moins de lettres il me semble (en grec saurait été 24)).
+
+La Fonction crypt sous unix
+---------------------------
+la fonction crypt est une fonction utilisant le DES et 2 caractères salt pour
+encrypter un mots de passe. Cette fonction s'appelle par crypt(key, salt) où
+key est le mot de passe à encrypter et salt les 2 caractères aléatoires parmis
+64 [./a-zA-Z]. Elle retourne le mot de passe crypté avec les 2 caractères salt
+au  début. En bref pour tester un pass, vous l'extirper (en général d'un fichier
+passwd ou d'un ypcat) dans une variable (par ex cpass) et si on a le mot de
+passe à tester dans la variable pass le teste a éffectuer sera :
+(strcmp(cpass,crypt(pass, cpass))==0)
+                          ^^^^^ ici cpass est là pour donner le salt.
+A noter que lors de la compilation il faudra spécifier au compilo l'option
+-lcrypt pour qu'il compile la lib de cryptage.
+
+<snip snip snip -*-*-*- Crackers' note -*-*-*- snip snip snip>
+Euh, ouais, C'est juste pour dire que le cryptage utilisée pour les
+partages de Windows 9x est le cryptage XOR avec la clef 0x35 qui subit
+une rotation de 1 bits vers la droite pour obtenir la clef de l'octet
+suivant (0x35 rotr 1 = 0xd8, 0xd8 rotr 1 = 0x4d...). Ce qui nous donne
+une clef complète de : 35 D8 4d a6 53 a9 d4 6a.
+Dernier truc : les clefs de partages sont enregistrées dans la base de
+registre : 
+HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Network\LanMan
+dans la clef correspondant au nom du partage est stocké 2 mots de passes :
+Parm1enc et Parm2enc (le premier est celui de lecture, le deuxième d'écriture).
+<snip snip snip -*-*-*- Crackers' note -*-*-*- snip snip snip>
+
+
+-------[  II.  Le DES : l'age de pierre
+
+Bon, le DES est assez simple. Donc je vous file uniquement une explication
+en anglais sur comment l'implémenter :
+
+                          How to implement the
+                     Data Encryption Standard (DES)
+
+                        A step by step tutorial
+                              Version 1.2
+
+
+The Data Encryption Standard (DES) algorithm, adopted by the U.S. 
+government in 1977, is a block cipher that transforms 64-bit data blocks 
+under a 56-bit secret key, by means of permutation and substitution. It 
+is officially described in FIPS PUB 46. The DES algorithm is used for 
+many applications within the government and in the private sector.
+
+This is a tutorial designed to be clear and compact, and to provide a
+newcomer to the DES with all the necessary information to implement it
+himself, without having to track down printed works or wade through C 
+source code. I welcome any comments.
+ Matthew Fischer <mfischer@heinous.isca.uiowa.edu>
+
+
+Here's how to do it, step by step:
+
+ 1  Process the key.
+
+ 1.1  Get a 64-bit key from the user. (Every 8th bit is considered a 
+parity bit. For a key to have correct parity, each byte should contain 
+an odd number of "1" bits.)
+
+ 1.2  Calculate the key schedule.
+
+ 1.2.1  Perform the following permutation on the 64-bit key. (The parity 
+bits are discarded, reducing the key to 56 bits. Bit 1 of the permuted 
+block is bit 57 of the original key, bit 2 is bit 49, and so on with bit 
+56 being bit 4 of the original key.)
+
+                        Permuted Choice 1 (PC-1)
+
+                          57 49 41 33 25 17  9
+                           1 58 50 42 34 26 18
+                          10  2 59 51 43 35 27
+                          19 11  3 60 52 44 36
+                          63 55 47 39 31 23 15
+                           7 62 54 46 38 30 22
+                          14  6 61 53 45 37 29
+                          21 13  5 28 20 12  4
+
+ 1.2.2  Split the permuted key into two halves. The first 28 bits are 
+called C[0] and the last 28 bits are called D[0].
+
+ 1.2.3  Calculate the 16 subkeys. Start with i = 1.
+
+ 1.2.3.1  Perform one or two circular left shifts on both C[i-1] and 
+D[i-1] to get C[i] and D[i], respectively. The number of shifts per 
+iteration are given in the table below.
+
+    Iteration #   1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16
+    Left Shifts   1  1  2  2  2  2  2  2  1  2  2  2  2  2  2  1
+
+ 1.2.3.2  Permute the concatenation C[i]D[i] as indicated below. This 
+will yield K[i], which is 48 bits long.
+
+                        Permuted Choice 2 (PC-2)
+
+                           14 17 11 24  1  5
+                            3 28 15  6 21 10
+                           23 19 12  4 26  8
+                           16  7 27 20 13  2
+                           41 52 31 37 47 55
+                           30 40 51 45 33 48
+                           44 49 39 56 34 53
+                           46 42 50 36 29 32
+
+ 1.2.3.3  Loop back to 1.2.3.1 until K[16] has been calculated.
+
+ 2  Process a 64-bit data block.
+
+ 2.1  Get a 64-bit data block. If the block is shorter than 64 bits, it 
+should be padded as appropriate for the application.
+
+ 2.2  Perform the following permutation on the data block.
+
+                        Initial Permutation (IP)
+
+                        58 50 42 34 26 18 10  2
+                        60 52 44 36 28 20 12  4
+                        62 54 46 38 30 22 14  6
+                        64 56 48 40 32 24 16  8
+                        57 49 41 33 25 17  9  1
+                        59 51 43 35 27 19 11  3
+                        61 53 45 37 29 21 13  5
+                        63 55 47 39 31 23 15  7
+
+ 2.3  Split the block into two halves. The first 32 bits are called L[0], 
+and the last 32 bits are called R[0].
+
+ 2.4  Apply the 16 subkeys to the data block. Start with i = 1.
+
+ 2.4.1  Expand the 32-bit R[i-1] into 48 bits according to the 
+bit-selection function below.
+
+                             Expansion (E)
+
+                           32  1  2  3  4  5
+                            4  5  6  7  8  9
+                            8  9 10 11 12 13
+                           12 13 14 15 16 17
+                           16 17 18 19 20 21
+                           20 21 22 23 24 25
+                           24 25 26 27 28 29
+                           28 29 30 31 32  1
+
+ 2.4.2  Exclusive-or E(R[i-1]) with K[i].
+
+ 2.4.3  Break E(R[i-1]) xor K[i] into eight 6-bit blocks. Bits 1-6 are 
+B[1], bits 7-12 are B[2], and so on with bits 43-48 being B[8].
+
+ 2.4.4  Substitute the values found in the S-boxes for all B[j]. Start 
+with j = 1. All values in the S-boxes should be considered 4 bits wide.
+
+ 2.4.4.1  Take the 1st and 6th bits of B[j] together as a 2-bit value  
+(call it m) indicating the row in S[j] to look in for the substitution.
+
+ 2.4.4.2  Take the 2nd through 5th bits of B[j] together as a 4-bit
+value (call it n) indicating the column in S[j] to find the substitution.
+
+ 2.4.4.3  Replace B[j] with S[j][m][n].
+
+                       Substitution Box 1 (S[1])
+
+            14  4 13  1  2 15 11  8  3 10  6 12  5  9  0  7
+             0 15  7  4 14  2 13  1 10  6 12 11  9  5  3  8
+             4  1 14  8 13  6  2 11 15 12  9  7  3 10  5  0
+            15 12  8  2  4  9  1  7  5 11  3 14 10  0  6 13
+
+                                  S[2]
+
+            15  1  8 14  6 11  3  4  9  7  2 13 12  0  5 10
+             3 13  4  7 15  2  8 14 12  0  1 10  6  9 11  5
+             0 14  7 11 10  4 13  1  5  8 12  6  9  3  2 15
+            13  8 10  1  3 15  4  2 11  6  7 12  0  5 14  9
+
+                                  S[3]
+
+            10  0  9 14  6  3 15  5  1 13 12  7 11  4  2  8
+            13  7  0  9  3  4  6 10  2  8  5 14 12 11 15  1
+            13  6  4  9  8 15  3  0 11  1  2 12  5 10 14  7
+             1 10 13  0  6  9  8  7  4 15 14  3 11  5  2 12
+
+                                  S[4]
+
+             7 13 14  3  0  6  9 10  1  2  8  5 11 12  4 15
+            13  8 11  5  6 15  0  3  4  7  2 12  1 10 14  9
+            10  6  9  0 12 11  7 13 15  1  3 14  5  2  8  4
+             3 15  0  6 10  1 13  8  9  4  5 11 12  7  2 14
+
+                                  S[5]
+
+             2 12  4  1  7 10 11  6  8  5  3 15 13  0 14  9
+            14 11  2 12  4  7 13  1  5  0 15 10  3  9  8  6
+             4  2  1 11 10 13  7  8 15  9 12  5  6  3  0 14
+            11  8 12  7  1 14  2 13  6 15  0  9 10  4  5  3
+
+                                  S[6]
+
+            12  1 10 15  9  2  6  8  0 13  3  4 14  7  5 11
+            10 15  4  2  7 12  9  5  6  1 13 14  0 11  3  8
+             9 14 15  5  2  8 12  3  7  0  4 10  1 13 11  6
+             4  3  2 12  9  5 15 10 11 14  1  7  6  0  8 13
+
+                                  S[7]
+
+             4 11  2 14 15  0  8 13  3 12  9  7  5 10  6  1
+            13  0 11  7  4  9  1 10 14  3  5 12  2 15  8  6
+             1  4 11 13 12  3  7 14 10 15  6  8  0  5  9  2
+             6 11 13  8  1  4 10  7  9  5  0 15 14  2  3 12
+
+                                  S[8]
+
+            13  2  8  4  6 15 11  1 10  9  3 14  5  0 12  7
+             1 15 13  8 10  3  7  4 12  5  6 11  0 14  9  2
+             7 11  4  1  9 12 14  2  0  6 10 13 15  3  5  8
+             2  1 14  7  4 10  8 13 15 12  9  0  3  5  6 11
+
+ 2.4.4.4  Loop back to 2.4.4.1 until all 8 blocks have been replaced.
+
+ 2.4.5  Permute the concatenation of B[1] through B[8] as indicated below.
+
+                             Permutation P
+
+                              16  7 20 21
+                              29 12 28 17
+                               1 15 23 26
+                               5 18 31 10
+                               2  8 24 14
+                              32 27  3  9
+                              19 13 30  6
+                              22 11  4 25
+
+ 2.4.6  Exclusive-or the resulting value with L[i-1]. Thus, all together, 
+your R[i] = L[i-1] xor P(S[1](B[1])...S[8](B[8])), where B[j] is a 6-bit  
+block of E(R[i-1]) xor K[i]. (The function for R[i] is written as, R[i] = 
+L[i-1] xor f(R[i-1], K[i]).)
+
+ 2.4.7  L[i] = R[i-1].
+
+ 2.4.8  Loop back to 2.4.1 until K[16] has been applied.
+
+ 2.5  Perform the following permutation on the block R[16]L[16].
+
+                       Final Permutation (IP**-1)
+
+                        40  8 48 16 56 24 64 32
+                        39  7 47 15 55 23 63 31
+                        38  6 46 14 54 22 62 30
+                        37  5 45 13 53 21 61 29
+                        36  4 44 12 52 20 60 28
+                        35  3 43 11 51 19 59 27
+                        34  2 42 10 50 18 58 26
+                        33  1 41  9 49 17 57 25
+
+
+This has been a description of how to use the DES algorithm to encrypt 
+one 64-bit block. To decrypt, use the same process, but just use the keys 
+K[i] in reverse order. That is, instead of applying K[1] for the first 
+iteration, apply K[16], and then K[15] for the second, on down to K[1].
+
+Summaries:
+
+ Key schedule:
+  C[0]D[0] = PC1(key)
+  for 1 <= i <= 16
+   C[i] = LS[i](C[i-1])
+   D[i] = LS[i](D[i-1])
+   K[i] = PC2(C[i]D[i])
+
+ Encipherment:
+  L[0]R[0] = IP(plain block)
+  for 1 <= i <= 16
+   L[i] = R[i-1]
+   R[i] = L[i-1] xor f(R[i-1], K[i])
+  cipher block = FP(R[16]L[16])
+
+ Decipherment:
+  R[16]L[16] = IP(cipher block)
+  for 1 <= i <= 16
+   R[i-1] = L[i]
+   L[i-1] = R[i] xor f(L[i], K[i])
+  plain block = FP(L[0]R[0])
+
+
+To encrypt or decrypt more than 64 bits there are four official modes 
+(defined in FIPS PUB 81). One is to go through the above-described 
+process for each block in succession. This is called Electronic Codebook 
+(ECB) mode. A stronger method is to exclusive-or each plaintext block 
+with the preceding ciphertext block prior to encryption. (The first 
+block is exclusive-or'ed with a secret 64-bit initialization vector 
+(IV).) This is called Cipher Block Chaining (CBC) mode. The other two 
+modes are Output Feedback (OFB) and Cipher Feedback (CFB).
+
+When it comes to padding the data block, there are several options. One 
+is to simply append zeros. Two suggested by FIPS PUB 81 are, if the data 
+is binary data, fill up the block with bits that are the opposite of the 
+last bit of data, or, if the data is ASCII data, fill up the block with 
+random bytes and put the ASCII character for the number of pad bytes in 
+the last byte of the block. Another technique is to pad the block with 
+random bytes and in the last 3 bits store the original number of data bytes.
+
+The DES algorithm can also be used to calculate checksums up to 64 bits 
+long (see FIPS PUB 113). If the number of data bits to be checksummed is 
+not a multiple of 64, the last data block should be padded with zeros. If 
+the data is ASCII data, the first bit of each byte should be set to 0. 
+The data is then encrypted in CBC mode with IV = 0. The leftmost n bits 
+(where 16 <= n <= 64, and n is a multiple of 8) of the final ciphertext 
+block are an n-bit checksum.
+
+-------[  III. Le RSA : l'age de fer
+
+RSA est un système de cryptage relativement sûr par son système de clef
+asymétrique : il faut une clef pour crypter et une autre pour décrypter.
+Bon ben, tout d'abord, on va faire un peu de math...
+On commence par prendre 2 nombres premiers p et q (si possible très grands).
+On note n=p*q. Et on prend e de tel sorte qu'il soit premier avec (p-1)*(q-1).
+e admet ainsi un inverse dans l'anneau Z/(p-1)(q-1)Z ; c'est-à-dire qu'il 
+existe d tel que e*d mod (p-1)(q-1) = 1. On a ainsi nos 2 clefs : (e,n) et 
+(d,n). On a alors X^(ed) mod n = X. On détruit maintenant p et q pour que e 
+ou d ne puisse être retrouvé.
+Si on note M le message à crypter alors le message crypter sera : 
+C = X^e mod n et on retrouvera M par : M = C^d mod n.
+
+Concrêtement, ce cryptage est très efficace dû à la quasi-impossibilité de
+retrouver d à partir de (e,n) si p et q sont choisis très grand (env 512 
+bits).
+
+A remarquer que ce procéder de cryptage est utilisé dans PGP.
+
+Et la pratique dans tous ça ?
+Il faut d'abord déterminer les clefs RSA (comme avec PGP).
+ * On génère 2 nombres premiers p et q le plus aléatoirement possibles.
+ * Maintenant, on a n=pq et ont veut prendre e un inversible de Z/(p-1)(q-1)Z.
+   Donc on cherche un nombre e premier avec (p-1)(q-1). Bon, ben on va mettre
+   en application l'arithmétique classique. On sait qu'un nombre e est premier
+   avec un nombre m=(p-1)(q-1) si et seulement si aucun des termes de la
+   décomposition en nombre premier de e ne divise m. Concretement, pour 
+   générer e, on prend une série de nombre premier (tiré tout droit des 
+   sources de PGP), et on les tirent au hasard, pour chaque nombre tiré on 
+   vérifie qu'il ne divise pas m. On prend finalement, le produit de ces 
+   nombres de façon à ce que e ne soit ni trop grand ni trop petit (dans les
+   environ de racine n)
+ * Bon ben maintenant, il nous faut générer d (l'inverse de e). On a 
+   (ed mod m) = 1. Donc il existe k appartenant à Z tel que ed + km = 1.
+   On définit 3 suites de nombres d(i), k(i) et g(i). On veut que, pour tout i
+   appartenant à N, d(i)*e + k(i)*m = g(i). On sait que si on prend g(0) = m,
+   d(0) = 0, k(0) = 1 et g(1) = e, d(1) = 1, k(1) = 0, alors la condition est
+   vérifié pour i=0 et i=1. On prend, pour tout i!=0, 
+   g(i+1) = g(i-1) mod g(i). Par l'algorithme D'Euclide, il existe i tel que 
+   g(i)=0. De plus, si on prend i0 le plus petit possible tel que g(i0)=0,
+   alors g(i0-1) = pgcd(g(0), g(1)). Or pgcd(g(0), g(1)) = pgcd(e,m) = 1 car 
+   e et m sont premiers entre eux. Donc, en prenant g(i) de cet façon, on va
+   arriver à un instant où d(i0-1)*e + k(i0-1)*m = g(i0-1) = pgcd(e,m) = 1. 
+   Donc (d(i0-1)*e) mod m = 1, on a ainsi un inverse de e (d(i0-1)).
+   Bon, ben maintenant, il faut déterminer d(i) et k(i). On pose, pour tout
+   i appartenant à N\{0}, y(i) = g(i-1)/g(i) (division entière ici).
+   On a ainsi, pour tout i!=0, g(i+1) + y(i)*g(i) = g(i-1). On traduit cette
+   égalité avec celle voulue et on obtient : e * ( d(i+1) + y(i) * d(i) ) +
+   m * ( k(i+1) + y(i) * k(i) ) = e*d(i-1) + m*k(i-1). Ainsi, il nous suffit
+   de prendre  d(i) tel que : d(i+1) + y(i) * d(i) = d(i-1) et de même pour
+   k(i). On peut maintenant calculer d(i0-1).
+Ainsi, on a trouvé e, d et n, on peut détruire p, q et m.
+puis on travaille en base n : ils nous faut donc créer nos propres fonctions
+de multiplications et d'additions.
+A remarquer que l'exponentiel (C^e) risque d'être très lent si on prend l'algo
+naif (de l'ordre d'un brute force cracking de la clef). Heureusement que 
+l'algo d'exponentiation rapide nous permet de le diminuer, on passe ainsi
+d'un algo d'ordre e à un algo d'ordre log2(e) (soit d'ordre du nombre de bit
+de e). Cet algo est basé sur le fait que x^2m = (x^2)^m.
+
+La génération de nombres premiers
+---------------------------------
+Je n'en ai pas parlé plus tôt car c'est un problème plus compliqué.
+Tout d'abord quand on a trouvé un nombre, il faut vérifier qu'il est premier.
+Pour cela, on ne vas pas s'amuser à tester chaque diviseur possibles (merci
+le boulot quand le nombre fait 512 bits) mais on va utilisé le test
+probabiliste de Miller-Rabin. Le petit théorème de Fermat nous donne que si p
+est premier alors, pour tout a appartenant à Z, a^(p-1) mod p = 1 (kewl !!!).
+
+Bon ce test décompose p-1 = m*(2^b) où b est le plus grand possible.
+On prend a en random.
+On calcul z = (a^m) mod p. Si z = 1 ou z = p-1 (-1) alors p a passé le test.
+On calcul z = z^2 mod p,  b-1 fois. A chaque fois si z=1 alors p n'est pas
+premier. Si z = (p-1) alors p a passer le test.
+Sinon Il n'a pas passer le test.
+
+Concrètement, ce test n'est pas sûr à 100% : on est pas sûr à 100% que p soit 
+premier à la sortie du test. Cepandant, si on le répète environ 5-6 fois, la
+proba que p ne soit pas premier est très faible.
+
+La générations de nombre premier, se fait pratiquement à tous les coups en
+testant les nombres trouvés avec cet algorithme. Pour ma part, j'ai choisi 
+un algorithme lent de génération de nombre premier mais qui a l'avantage 
+d'être facile et efficace : On génére un nombre aléatoire assez haut, puis 
+on test, de 2 en 2, si le nombre est premier.
+Il existe évidemment d'autre générateur mais ils ont le problème que créer
+des nombres factorisables plus facilement avec une méthode spécifique (faut
+pas réver quand même le record à ce niveau est pour les nombres autour de 155
+chiffres en utilisant plusieurs supercalculateurs en parallèle (actuellement
+les clef sont choisie autour de 1024 bits ce qui est 2 fois plus de chiffre
+soit 10^155 fois plus de temps).
+Je suis bien sur preneur de tous générateurs de nombre premiers rapides et
+efficaces.
+
+Bon voilà c'est fini.
+Puis, si vous voulez le code d'un crypteur RSA : y'a les sources de PGP et 
+j'ai mis les sources d'un crypteur RSA fournit avec le mag.
+
+-------[  IV.  Créez vos algos : que l'acier soit
+
+Bon, le plus sur dans un cryptage reste de créer ses propres algos.
+
+La première méthode pour ce faire est de créer un alphabet mais cette
+méthode est peu sur car cassage par la cryptanalyse.
+
+La deuxième méthode est de récupérer des algos classique et de les variés
+un peu, voir memes de les combinés : c'est ce que fait PGP (RSA+DES)
+
+La troisième méthode consiste à trouver de nouveau cryptages. Cette méthode
+est bien évidemment plus dure mais à le mérite de mettre les autres face
+à un cryptage inconnu.
+Les différentes conditions à respecter en fonctions du type de cryptage que
+l'on souhaitent sont :
+* Pour un cryptage simple : une fonction f inversible d'inverse g.
+  Le cryptage s'effectue alors par c=f(m) où m est le message et le décryptage
+  par g(c)=m.
+* En général, à un cryptage on préfère associé une clef à chaque fonction.
+  Ainsi on crypte par c=f(x,m) où x est la clef et m le message et on décrypte
+  par m=g(x,c). (par exemple f(x,y) = g(x,y) = x mod y)
+* Le mieux reste encore le principe des clefs assymétrique (RSA). Les fonctions
+  f et g doivent alors vérifié m=f(x, g(y,m)) où x et y sont les clefs.
+  Plus y est difficile à retrouver avec x et f, plus le cryptage est puissant.
+* Le dernier cryptage repose sur une fonction à sens unique : il s'agit des
+  cryptage pour les mots de passe entre autre. On a alors unicité de f(x,y) 
+  pour un couple (x,y) mais on peut avoir f(x,y1)=f(x,y2) avec y1 != y2.
+  En particulier, une fonction retrouvant y à partir de f(x,y) et de f doit
+  etre difficile à mettre en place (voir impossible).
+  Ainsi les fonctions de ce type sont les hachages du type RC5 ou encore le
+  DES en inversant les roles de la clef et du code (cryptage classique UNIX).
+
+Voilà les bases pour créer vos algos. La meilleur solution pour tester la
+robustesse d'un cryptage est de demandé à une autre personne assez doué de le
+casser...
+
+-------[  IV.  Cracking methods : XOR and RSA
+
+Le XOR :
+Bon ben la première méthode. Si vous avez un message original m et son message
+cryptée c alors la clef se récupère facilement pas k = m xor c.
+La deuxième méthode, le brute force. Contrairement au très connu brute force
+sur les mots de passe. Le brute force en xor peut etre rendu bien plus rapide :
+il suffit de découper le texte en blocs petit (<=48 bits) et de brute forcer
+sur ces blocs : on obtiendra ainsi une série de bloc correct aux endroits
+appropriés (les caractères bien traduit se verront). On sépare ainsi un
+problème en 2^n (où n est le nombre de bits de la clef) en n/p problèmes en
+2^p soit en gros (n*2^p)/p (où p est la taille des blocs).
+Les blocs doivent bien sur rester assez gros pour que l'on puisse identifier
+une partie du message.
+Pour le texte, cela allège encore le problème du au nécessité de syntaxe du
+language (il suffit de compléter les mots par ceux du dictionnaires).
+
+
+Le RSA:
+* Le brute force cracking : on essaie toutes les combinaisons possible pour
+trouver p et q (on essai de factoriser le nombre n) : bon courage. Allez voir
+sur le site de l'INRIA, ils font de la recherche sur la factorisation de grand
+nombre. A noter que certain algo utilise les courbe elliptiques (vous savez,
+les trucs dévelloppés pour la démonstration de 300 pages du théorème de Fermat).
+pour rechercher les nombres premiers p et q : cela accélère la recherche de
+nombre premier mais accélère aussi la factorisation de n :).
+Tiens un exemple trivial à factoriser (à l'aide d'un ordinateur cela ce fait en 
+15 minutes par un langage interprété). e = 7, n = 937169. Les messages 
+original est codé par l'ordre alphabétique (a=01, b=02... et espace=00) et le
+message est regroupé par groupe de 6 chiffre (c'est-à-dire 3 caractère par 
+nombre). Le message crypté est : 917063 414124 019270 093776 210133 872294
+137460 882399 263351 001661 117940.
+
+* Maintenant, on suppose que vous avez réussi à récupérer la clé publique de quelqu'un
+(e,n) ainsi qu'un message c crypté avec. Vous voulez décrypter c.
+Vous prenez r<n et vous cryptez c par x = (r^e)*c mod n. Vous envoyez y au destinataire
+qui va faire w = x^d mod n. Il suffit de récupéré w et de faire (avec t tel que
+1 = t*r mod n) :
+m = t*w mod n = t*x^d mod n = t*(r^ed)*c^d mod n = t*r*c^d mod n = c^d mod n
+(r^ed mod n = r et t*r mod n = 1)
+
+* On cherche maintenant à crypter par la clef privée de quelqu'un. On récupère (e,n).
+On choisit m un message et on pose y = x^e mod n (avec x aléatoire) puis on fait :
+w = m*y mod n. On envoie w au mec qui va faire c = w^d mod n. On récupère c (après
+avoir tué ou soudoyé une demi-douzaine de personne ;-) ).
+On a alors (avec z*x mod n = 1) : c*z mod n = (m*y)^d mod n = (m^d)*(x^ed) mod n
+                                            = m^d mod n <-- ce que l'on voulait :)))
+
+Nota :
+Si vous trouvez une méthodes sûr de décrypter un message C crypté en RSA rien
+que avec e et n si ceux-ci sont grands alors vous êtes un homme dangereux et 
+les services secret de la plupart des états voudront vous avoir avec eux...
+
+
+-------[  V.   Cryptanalyse
+
+Cryptanalyse ? Quesako ? La cryptanalyse est la science qui consiste à étudier
+des cryptages pour arriver à les casser.
+Le but de la cryptanalyse est de comprendre et analyser un cryptage pour mieu
+le forcer.
+En général, on part de message originaux et leur équivalent crypté et on essaye
+de trouver un moyen de décrypter n'importe quel message fait par cet algo.
+L'exemple le plus célèbre fut l'analyse du code de Enigma pendant la seconde guerre
+mondiale par une équipe d'une dizaine de mathématicien.
+En général on commence par chercher un alphabet (il y a alors n! (factorielle de n)
+alphabet possible où n est le nombre de lettre de cet alphabet). Ensuite, on essai
+de rapprocher les messages de cryptages connu...
+Bien sur la cryptanalyse est un travail difficile et demandant de forte connaissance
+notamment en mathématique.
+Il se peut que l'on connaisse l'algorithme et que l'on cherche des méthodes de le casser.
+Là les mathématiques sont le principal outils de cryptanalyse. L'exemple le plus célèbre
+est le cassage du DES (est-ce vrai ???) par la NSA. Il n'y a pas de méthode générique mais
+seulement des recherche sur chaque algo (pour tester un algo, envoyer le à la NSA : si au
+bout d'un an, ils n'y sont pas arrivés, alors vous etes sur la bonne voie). Les recherches
+dans ce domaine s'oriente actuellement vers le RSA (naturel).
+
+
+Bon voilà c'est tout. La cryptographie est une science complexe qui nécessite un travail
+long pour élaborer où casser un algorithme. L'intéret de nouveau algorithme est clair :
+un algorithme inconnu est plus difficile à casser qu'un algorithme connu.
+Si vous trouvez des algo interressants, merci de m'en parler (pas des algo connus).
+
+Note : pour l'exemple RSA la solution est (il me semble) :
+LA CURIOSITE EST UN BEAU DEFAUT
+-------[  EOF
