@@ -16,7 +16,9 @@ The sources have been slightly tweaked for immediate use. And unfortunately, som
 | Secu-info | 1994-1999 | Hacking |
 | Cybpunk | 1995 | Ethic, Chronics |
 | Core Dump | 1997 | Phreaking, News, Hacking |
+| NORB-WRZ | 1997 | Warez, Games |
 | Hack 25 | 1996 | Phreaking, Virus |
+| 3644 | 1996? | Phreaking |
 | MJ13 | 1996 | Crypto,  Coding, Cracking |
 | HVU | 1996-2004 | Radio, Phreaking |
 | Blast | 1997 | Hacking, Lamer, Warez |
@@ -40,6 +42,7 @@ The sources have been slightly tweaked for immediate use. And unfortunately, som
 | Nopast | 1998 | Hacking, Drugs |
 | Pirage | 1998 | Cracking, Carding, Hacking |
 | XIII | 1998 | Hacking, Crypto |
+| VMB_Admin | 1998? | Phreaking |
 | Beef13 | 1998 | Cracking, Warez, Coding, Phreaking, Countercultures |
 | Illegal Granted Access | 1998-1999 | Hacking, Coding, Cracking |
 | Liberté | 1998-1999 | Electronic, Drugs, Phreaking |
@@ -76,6 +79,7 @@ The sources have been slightly tweaked for immediate use. And unfortunately, som
 | Snapscan | 1999 | Phreaking, , Hacking, Cracking |
 | SécuriMag | 1999 | Coding, Hacking |
 | T-S63 | 1999 | Phreaking |
+| United Hacker Army | 1999? | Hacking, Cracking |
 | The Last Click | 1999 | Phreaking, Hacking |
 | The Ultimate | 1999 | Coding, Cracking |
 | The Underground Angels | 1999 | Virus, Hacking, |
@@ -83,6 +87,7 @@ The sources have been slightly tweaked for immediate use. And unfortunately, som
 | USN | 1999 | Hacking, Coding |
 | X-H | 1999 | Hacking, Drugs |
 | Zone 51 | 1999 | Cracking, Coding |
+| Sleazy Wind | 1999-2000 | Coding, Hacking, Bust, Fiction |
 | 3d13 | 1999-2000 | Infosec, Hacking, Cracking |
 | Aktivist | 1999-2000 | Social Engineering, Phreaking, Anarchism, Unix |
 | Belgian Hackers Zone | 1999-2000 | Infosec, Hacking, Web Pentesting, Phreaking, Social Engineering |
