@@ -1,0 +1,148 @@
+<html>
+
+<head>
+<meta http-equiv="Content-Type"
+content="text/html; charset=iso-8859-1">
+<meta name="GENERATOR" content="Microsoft FrontPage Express 2.0">
+<title>Tutorial 2</title>
+</head>
+
+<body bgcolor="#FFFFFF">
+
+<p align="center"><font color="#000000" size="6"><strong><u>CRACK
+POUR VIDEOSTORE 98 3.01</u></strong></font></p>
+
+<p align="left">&nbsp;</p>
+
+<p align="left"><font color="#000000" size="3">Comme le titre
+vous l'indique, on va peter le soft VideoStore 98 version 3.01.
+Le soft est dispo </font><a
+href="http://members.tripod.com/~lullie"><font color="#000000"
+size="3">ICI</font></a><font color="#000000" size="3"> ! C'est un
+soft qui vous permet de gerer une videotheque personnelle...
+c'est pas terrible mais ca va vous donner un exemple de
+limitations qui sont (trop?) facilement crackable....</font></p>
+
+<p align="left"><font color="#000000" size="4"><em><strong><u>What
+you need ?</u></strong></em></font></p>
+
+<p align="left"><font color="#000000" size="3">Le soft bien
+entendu.... W32Dasm 8.9 (ou autre) ... un editeur hexadecimal
+(HexWorkshop 2.54 rulez...)</font></p>
+
+<p align="left"><font color="#000000" size="4"><em><strong><u>Let's
+Go</u></strong></em></font></p>
+
+<p align="left"><font color="#000000" size="3">Une fois qu'on a
+tout bien installé, on lance le soft et on l'essaye.... apres
+quelques minutes on s'appercoit vite que la limitation du soft
+est tout bêtement une limitations a 20 entrées dans la base de
+données! Si on essaye de depasser les 20 entrées, un vilain
+nag-screen nous rappelle gentillement que c'est une version non
+enregistrée ...</font></p>
+
+<p align="left"><font color="#000000" size="3">Comme on trouve
+aucun moyen de rentrer un serial ou un truc du genre, c'est
+partis on desassemble avec W32Dasm (ouch 1.3Mo ... faut pas etre
+pressé...) et on cherche dans les strings references la chaine
+'This Un-registered version is limited to 20 entries...'. on
+trouve ca:</font></p>
+
+<p align="left"><font color="#000000" size="3">:004C0CD4
+8B862C020000 mov eax, dword ptr [esi+0000022C]<br>
+:004C0CDA E8092DFBFF call 004739E8<br>
+:004C0CDF 83F814 cmp eax, 00000014<br>
+:004C0CE2 7C41 jl 004C0D25<br>
+:004C0CE4 6A40 push 00000040</font></p>
+
+<p align="left"><font color="#000000" size="3">* Possible
+StringData Ref from Code Obj -&gt;&quot;Un-Registered
+Version&quot;</font></p>
+
+<p align="left"><font color="#000000" size="3">:004C0CE6
+68340E4C00 push 004C0E34</font></p>
+
+<p align="left"><font color="#000000" size="3">* Possible
+StringData Ref from Code Obj -&gt;&quot;This Un-Registered
+version is limited to 20 entries.&quot;</font></p>
+
+<p align="left"><font color="#000000" size="3">:004C0CEB
+684C0E4C00 push 004C0E4C<br>
+:004C0CF0 8BC6 mov eax, esi<br>
+:004C0CF2 E89998F5FF call 0041A590<br>
+:004C0CF7 50 push eax</font></p>
+
+<p align="left"><font color="#000000" size="3">On voit donc tout
+de suite que si on arrive a ce que le programme nous affiche la
+boite de dialogue, c'est que le saut en 004C0CE</font>2 n'a pas
+été fait, c'est normale pasque juste avant, il compare eax à
+14 et comme par hasard 14 en hexadecimal ca fait 20 en decimale
+!!!</p>
+
+<p align="left">En resumé: le prog compare le nombre d'entrée
+à 20 (14 en hexa) et si le nombre d'entrée est inferieur on
+continue (JL = Jump if Less = Saut si inferieur) , sinon on
+affiche la boite de dialogue. Donc la facon la plus simple de
+patcher ce programme pour permettre une meilleur utilisation est
+de patcher en <font color="#000000" size="3">004C0CE</font>2 et
+de mettre en EB à la place du 7C ( EB c'est equivalent a un JMP
+en hexa), comme ca, meme si le prog compare encore les entrées ,
+on sautera <strong>toujours</strong> ! </p>
+
+<p align="left">Pour cela, on prends un editeur hexadecimal, on
+ouvre VidStore.exe, on va a l'offset C00E2 ( placer la ligne
+verte sur la ligne a patcher dans W32Dasm et voir en bas pour
+obtenir l'offset ) et on change le 7C41 par un EB41, on
+sauvegarde et on relance le programme: COOL ca marche !!</p>
+
+<p align="left">Tout fier d'avoir craqué un truc, on ajoute
+pleins de trucs dans la base de données de K7 Videos... mais ya
+un probleme... quand on ferme le soft et qu'on le relance on
+obtient un message : 'Sorry the database exceeds the
+Un-registered limit. Please Register'. Hahahah le programmeur a
+rajouté un test du nombre d'entrées de la database quand on
+lance le programme...</p>
+
+<p align="left">No problem, on cherche cette fois ci la chaine
+'Sorry the database exceeds the Un-registered limit. Please
+Register' dans les strings references et on trouve ca:</p>
+
+<p align="left">:004C191F 83F814 cmp eax, 00000014<br>
+:004C1922 7E26 jle 004C194A<br>
+:004C1924 6A00 push 00000000<br>
+:004C1926 668B0D741A4C00 mov cx, word ptr [004C1A74]<br>
+:004C192D 33D2 xor edx, edx</p>
+
+<p align="left">* Possible StringData Ref from Code Obj
+-&gt;&quot;Sorry, the Database exceeds the Un-Registered limit.
+Please Register.&quot;</p>
+
+<p align="left">:004C192F B8801A4C00 mov eax, 004C1A80<br>
+:004C1934 E81F80F7FF call 00439958<br>
+:004C1939 A1E4804C00 mov eax, dword ptr [004C80E4]<br>
+:004C193E E8C167F6FF call 00428104<br>
+:004C1943 8BC7 mov eax, edi<br>
+:004C1945 E826110000 call 004C2A70</p>
+
+<p>Mort de rire!!! c'est exactement comme tout a l'heure!!!
+regardons a l'adresse 004C191F, le programme compare encore eax
+à 14 (soit 20 en decimal) et si c'est inferieur on saute et le
+programme se lance....</p>
+
+<p>C'est partis, on hexedit VidStore.exe, on va a l'offset C0D22
+et on change le 7E26 par un EB26, on sauvegarde et on relance: Ca
+Marche!!!</p>
+
+<p><font size="4"><em><strong><u>Conclusion:</u></strong></em></font></p>
+
+<p><font size="3">La protection d'un soft ne tiens parfois qu'a
+un ou 2 octets comme dans ce cas...il ne vous reste plus qu'a
+faire un joli patch qui modifiera les 2 octets et qui en plus
+pourra rajouter votre nom sur l'ecran de chargement a la place du
+'Un-Registered' ;))</font></p>
+
+<p>To be continued ...</p>
+
+<p align="center"><strong>BaMa</strong></p>
+</body>
+</html>
