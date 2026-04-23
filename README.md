@@ -105,6 +105,7 @@ The sources have been slightly tweaked for immediate use. And unfortunately, som
 | Immortal | 2000 | Virus, Phreaking, Hacking, Coding, Cracking |
 | Just Crack It | 2000 | Cracking, Phreaking, Virus, Crypto |
 | Lamah | 2000 | Drugs, Carding, Coding |
+| Le Loup et le Chat | 2000 | Hacking, Warez, Spirit |
 | Lightning Jokers | 2000 | Hacking, Protocols, 💣, Carding, Coding |
 | Nowall | 2000 | Hacking, Phreaking |
 | Polio | 2000 | Hacking, Phreaking |
