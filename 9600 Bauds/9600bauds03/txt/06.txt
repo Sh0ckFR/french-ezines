@@ -1,0 +1,103 @@
+
+_____/\\\\\\\\\_______________/\\\\\_____/\\\\\\\________/\\\\\\\____        
+ ___/\\\///////\\\_________/\\\\////____/\\\/////\\\____/\\\/////\\\__       
+  __/\\\______\//\\\_____/\\\///________/\\\____\//\\\__/\\\____\//\\\_      
+   _\//\\\_____/\\\\\___/\\\\\\\\\\\____\/\\\_____\/\\\_\/\\\_____\/\\\_     
+    __\///\\\\\\\\/\\\__/\\\\///////\\\__\/\\\_____\/\\\_\/\\\_____\/\\\_    
+     ____\////////\/\\\_\/\\\______\//\\\_\/\\\_____\/\\\_\/\\\_____\/\\\_   
+      __/\\________/\\\__\//\\\______/\\\__\//\\\____/\\\__\//\\\____/\\\__  
+       _\//\\\\\\\\\\\/____\///\\\\\\\\\/____\///\\\\\\\/____\///\\\\\\\/___
+        __\///////////________\/////////________\///////________\///////_bauds
+
+┌────────────────────────────────┐
+│ ISSUE No 3 - Avril 2026 06.TXT └─────────────────────────────────────────────┐
+| Archive photo sur android avec syncthing                                     |
+| ./nap                                                                        |
+└──────────────────────────────────────────────────────────────────────────────┘⠀
+
+INTRO ------------------------------------------------------------------
+
+   128GB de stockage contiennent à peu près 6 années de mes photos.   Il
+   me reste 4GB, il est grand temps d'acheter un nouveau smartphone ! Et
+   non pas du tout.  Plutôt  que  de  passer  à  256GB,  voyons  comment
+   archiver  nos  photos  sur  un  ordinateur   équipé   de   syncthing!
+
+SOMMAIRE ---------------------------------------------------------------
+
+   1.  Côté android
+   2.  Côté laptop
+   3.  L'archivage à longs termes
+   4.  Plus loin
+
+
+1.  CÔTÉ ANDROID -------------------------------------------------------
+
+   Sur mon téléphone android, j'ai créé un dossier DCIM-archives, en
+   plus du dossier DCIM qui contient les précieux clichés.
+
+   Je déplacerai ici mes vidéos et photos à archiver.
+
+      /storage/
+      └── emulated
+	  └── 0
+	      ├── DCIM
+	      └── DCIM-archives
+
+   Grâce à syncthing sur android, je partage DCIM-archives avec mon
+   laptop.
+
+
+2.  CÔTÉ LAPTOP --------------------------------------------------------
+
+   Sur mon laptop  équipé  de  syncthing,  j'ai  donc  le  même  dossier
+   "DCIM-archives" dans mon /home. 
+
+   J'ajoute également un second nouveau dossier
+   "DCIM-long-term-archives".   Il  contiendra  au  final   les   photos
+   archivées.
+
+      ~/
+      ├── DCIM
+      ├── DCIM-archives
+      └── DCIM-long-term-archives
+
+   Notons que le dossier DCIM est déjà une synchro complète du DCIM de
+   mon appareil mobile android, en mode "envoi seulement" depuis mon
+   mobile. Il n'est donc pas utile dans le cadre de cet article.
+
+
+3.  L'ARCHIVAGE À LONGS TERMES -----------------------------------------
+
+   Lorsque je souhaite archiver des photos de mon téléphone android,  je
+   les   déplace   dans   le   dossier   DCIM-archives   du   téléphone.
+
+   Syncthing upload automatiquement les fichiers vers mon laptop, et sur
+   ce dernier, un cron va déplacer  les  photos  de  DCIM-archives  vers
+   DCIM-long-term-archives.
+
+   Le petit cron suivant créé aussi une arboresence par années, mois  et
+   jours pour éviter un unique dossier qui contiendrait des milliers  de
+   fichiers.
+
+   ... crontab
+   0 * * * * cd $HOME ; for FILE in $(find DCIM-archives -type f -not -name ".*") ; do LTA="DCIM-long-term-archives/$(date +%Y/%m/%d --reference $FILE)"; mkdir --parents $LTA ; mv $FILE ${LTA}/; done &> /tmp/photo-archive.log
+   ...
+
+   Notes :
+   - dans un cron il faut échapper les % avec \% donc pour la commande
+     date ce sera : date +\%Y/\%m/\%d
+
+   Les fichiers (côté laptop)  étant  déplacés,  le  dossier  "devient"
+   vide.  Syncthing va ainsi le répercuter sur le  téléphone  en  vidant
+   également DCIM-archives du téléphone.
+
+   Et voilà, espace libéré !
+
+
+4.  PLUS LOIN ----------------------------------------------------------
+
+   Penser aux backups...
+
+   Et pourquoi ne pas partager ce dossier DCIM-long-term-archives depuis
+   le laptop vers d'autre syncthing ? Mais attention opter pour du "Send
+   only" ce qui évitera des problèmes !

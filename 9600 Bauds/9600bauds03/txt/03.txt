@@ -1,0 +1,485 @@
+
+_____/\\\\\\\\\_______________/\\\\\_____/\\\\\\\________/\\\\\\\____        
+ ___/\\\///////\\\_________/\\\\////____/\\\/////\\\____/\\\/////\\\__       
+  __/\\\______\//\\\_____/\\\///________/\\\____\//\\\__/\\\____\//\\\_      
+   _\//\\\_____/\\\\\___/\\\\\\\\\\\____\/\\\_____\/\\\_\/\\\_____\/\\\_     
+    __\///\\\\\\\\/\\\__/\\\\///////\\\__\/\\\_____\/\\\_\/\\\_____\/\\\_    
+     ____\////////\/\\\_\/\\\______\//\\\_\/\\\_____\/\\\_\/\\\_____\/\\\_   
+      __/\\________/\\\__\//\\\______/\\\__\//\\\____/\\\__\//\\\____/\\\__  
+       _\//\\\\\\\\\\\/____\///\\\\\\\\\/____\///\\\\\\\/____\///\\\\\\\/___
+        __\///////////________\/////////________\///////________\///////_bauds
+
+┌────────────────────────────────┐
+│ ISSUE No 3 - Avril 2026 03.TXT └─────────────────────────────────────────────┐
+| Développement de driver sous Windows 11: Leçon 2                             |
+| Xylitol <xylitol@temari.fr>                                                  |
+| HACKGYVER HACKERSPACE (Belfort)                                              |
+└──────────────────────────────────────────────────────────────────────────────┘⠀
+
+-- 0x0: Prélude --
+
+On a créé notre premier driver dans l'épisode précédent, maintenant l'étape
+logique consiste à faire de la communication entre notre driver et l'user-land.
+Dans cet article nous allons donc voir comment depuis l'user-land demander
+quelque chose à notre driver et que celui-ci nous réponde "Bonjour!".
+Voici le sommaire, alors accroche ta sangle, c'est parti. 
+
+- 0x1: Les API kernels
+- 0x2: IOCTL et IRP
+- 0x3: Notre deuxième driver 
+- 0x4: Notre application user-land
+- 0x5: Le test !
+- 0x6: Le mot de la fin 
+
+
+
+-- 0x1: Les API kernels --
+
+En kernel mode les choses marchent un peu différemment de l'user-land, ici on
+n'a pas de DLLs qui exportent des fonctions publiques comme kernel32.dll ou
+user32.dll. À la place Windows nous fournit un ensemble d'interfaces internes
+accessibles via des fonctions du Kernel Mode Runtime (ntoskrnl.exe)
+Ces fonctions portent des préfixes spécifiques (Io, Rtl, Zw, etc...) et
+permettent d'interagir avec toutes les couches du système (périphériques,
+mémoire, fichiers, etc.)
+
+Voici ce que vous allez rencontrer comme préfixe en kernel...
+━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ TAG ┃   COMPOSANT KERNEL    ┃                  FONCTION/ROLE                  
+━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Io  ┃ I/O Manager           ┃ Créer/supprimer des devices, gérer IRP et i/o
+ Rtl ┃ Runtime Library       ┃ Fonctions utilitaires kernel (mémoire, chaînes..)
+ Zw  ┃ System Calls          ┃ Appels système pour fichiers, registres...
+ Ke  ┃ Kernel Executive      ┃ Threads, timers, synchronisation
+ Ex  ┃ Executive Support     ┃ Gestion mémoire (pools, listes)
+ Mm  ┃ Memory Manager        ┃ Pages, mapping mémoire, MDL
+ Ps  ┃ Process Manager       ┃ Gestion process & threads
+ Ob  ┃ Object Manager        ┃ Gestion des objets et handles
+ Dbg ┃ Debug                 ┃ Messages debug kernel (DbgPrint)
+ Cm  ┃ Configuration Manager ┃ Registre bas niveau (CmRegisterCallback)
+━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Dans notre cas nous aurons besoin surtout de fonctions provenant d'Io pour gérer
+le device et les IRP, mais aussi de Rtl pour manipuler les chaines et buffers,
+et de Dbg pour tracer les logs dans DebugView.
+
+Attention aux exceptions !
+En user-land les exceptions non gérées du type violation d'accès, etc..
+provoquent généralement le plantage du programme, en kernel mode c'est un peu
+plus chiant, car on peut provoquer un BSoD.. Il est donc conseillé d'éviter
+toute déréférence hasardeuse, valider les tailles/pointeurs et de retourner des
+NTSTATUS propres..
+Évitez d'utiliser des gestionnaires d'exceptions fourre-tout ils sont peu
+professionnels... Si votre code génère des exceptions, il y a de fortes chances
+que vous fassiez une erreur. 
+
+
+-- 0x2: IOCTL et IRP --
+
+Un programme user-land peut communiquer avec un driver de plusieurs façons.
+L'une des plus courantes est par l'intermédiaire de commandes de contrôle d'I/O,
+ou «IOCTL» (I/O Control). Ces commandes sont en fait des messages de commande
+pouvant être définis par le développeur.
+
+L'IRP on en a parlé un peu plus tôt, mais qu'est-ce que c'est que cette merde?
+Cela veut dire «I/O Request Packet», c'est une structure interne du kernel
+utilisée par le gestionnaire d'I/O (I/O Manager) pour transporter les requêtes
+d'entrée/sortie dans le kernel. Un programme user-land peut ouvrir un handle de
+périphérique et faire des opérations comme lire, écrire, envoyer un IOCTL, etc..
+Au niveau du kernel, cette opération d'écriture ou de lecture sera représentée
+par un IRP correspondant à cette action. Par exemple si un programme écrit la
+chaine "Bonjour Driver!" dans le handle, le kernel générera un IRP
+(IRP_MJ_WRITE) contenant le buffer avec cette chaine et l'enverra au driver
+concerné via sa routine de dispatch.
+Voici un petit tableau avec quelques IRP... très loin d'être complet, mais juste
+pour que vous voyiez l'idée. 
+
+━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━
+     user-land (API)     ┃         IRP (kernel)         ┃      Description      
+━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━
+   CreateFile()	         ┃     IRP_MJ_CREATE            ┃ Ouverture du device
+   DeviceIoControl()     ┃     IRP_MJ_DEVICE_CONTROL    ┃ Appel IOCTL
+   ReadFile()            ┃     IRP_MJ_READ              ┃ Lecture
+   WriteFile()           ┃     IRP_MJ_WRITE             ┃ Écriture
+   CloseHandle()         ┃     IRP_MJ_CLOSE             ┃ Fermeture
+━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━
+
+Le «MJ» dans les noms d'IRP signifie «Major», c'est le type principal de la
+requête IRP. nous avons aussi «MN» pour «Minor» un sous-type, mais je ne vais
+pas vous embrouiller avec ça.
+
+Les API user-land ne génèrent pas directement un IRP, ce n'est pas inclus dans
+le tableau par manque de place à cause de la limite des 80 chars, mais entre les
+deux il y a ntdll.dll qui fait le lien entre l'espace utilisateur et le kernel.
+Les API comme CreateFile() ou ReadFile() dans kernel32.dll sont des wrappers de
+fonctions interne de ntdll.dll (NtCreateFile(), NtReadFile(), etc.). Ces
+dernières invoquent ensuite un syscall qui transfère l'exécution à ntoskrnl.exe
+C'est alors que l'I/O Manager à l'intérieur du kernel crée et envoie l'IRP au
+driver concerné. Lors du chargement, le kernel a créé pour chaque driver un
+objet «DRIVER_OBJECT», qui contient entre autres la table MajorFunction[].
+Cette table associe chaque type d'IRP (CREATE, READ, WRITE, DEVICE_CONTROL,
+etc.) à la routine de dispatch correspondante du driver.
+C’est donc par cette table que l'I/O Manager sait quelle fonction du driver
+appeler pour traiter l'IRP.
+
+Par exemple quand une application appelle DeviceIoControl(), le kernel génère un
+IRP_MJ_DEVICE_CONTROL et y place les buffers d'entrée et de sortie. Mais il faut
+encore définir comment ces buffers seront transmis entre l'user et le kernel.
+pour spécifier la méthode de transfert, on passera par «CTL_CODE», nous avons 4
+grandes méthodes pour ça:
+
+METHOD_BUFFERED: Le kernel copie les buffers, parfait pour de petites données.
+METHOD_IN_DIRECT et METHOD_OUT_DIRECT: Les buffers sont mappés directement dans
+la mémoire kernel, c'est utilisées pour les gros transferts entre périphériques
+vers l'user, et inversement.
+METHOD_NEITHER: Le driver reçoit les pointeurs user-mode, c'est utilisées dans
+des cas spéciaux, risqués s'il n'y a pas de validation côté kernel. 
+Dans notre cas, la méthode buffered est parfaite pour nous.
+
+Intéressons-nous maintenant au flux complet de ce que l'on veut faire.
+Pour commencer, notre application en user-land va appeler DeviceIoControl() avec
+le code IOCTL que nous aurons défini.
+Le nom de l'IOCTL contenant le code n'a pas de préfixe obligatoire commençant
+par "IOCTL" mais pour une raison de clarté on l'appellera «IOCTL_GET_BONJOUR»
+
+Pour que notre driver puisse être appelé par DeviceIoControl() on doit créer un
+device et son lien symbolique.
+Nous allons utiliser IoCreateDevice() pour créer un objet dans le namespace NT
+sous le nom «\Device\BonjourDrv» Ce nom est interne au kernel, inaccessible
+directement depuis l'user-land. Nous allons donc créer un lien symbolique DOS
+«\DosDevices\Bonjour» avec IoCreateSymbolicLink()
+Ce lien agit comme une passerelle entre le kernel et l'user-land, ainsi notre
+application user-land pourra ouvrir notre device en utilisant le chemin Win32
+classique: «\\.\Bonjour» C'est grâce à cette chaine d'alias que
+CreateFileA("\\.\Bonjour", ...) finira par atteindre notre driver dans le kernel
+
+Une fois «IOCTL_GET_BONJOUR» envoyé, le kernel va créer un IRP_MJ_DEVICE_CONTROL
+et y place les buffers d'entrée/sortie et le transmet à notre driver.
+Ensuite on va nommer une autre fonction DispatchDeviceControl() pour recevoir
+l'IRP et lire le champ IoControlCode via IoGetCurrentIrpStackLocation(), on 
+traite la commande et on écrit «Bonjour!» dans «Irp->AssociatedIrp.SystemBuffer»
+(car METHOD_BUFFERED) On remplit ensuite «Irp->IoStatus.Status» et
+«Irp->IoStatus.Information» puis on appelle IoCompleteRequest() pour terminer
+l'IRP et renvoyer le résultat à l'application user-land.
+
+
+
+-- 0x3: Notre deuxième driver --
+
+Maintenant que l'on sait ce qu'est un IOCTL, un IRP et comment les données
+circulent entre l'user et le kernel, on va mettre tout ça en pratique.
+On va écrire notre driver qui lorsqu'on lui envoie une commande
+«IOCTL_GET_BONJOUR» il répondra simplement «Bonjour!».
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#include <ntddk.h>
+
+#define IOCTL_GET_BONJOUR CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+VOID DriverUnload(IN PDRIVER_OBJECT DriverObject);
+
+WCHAR DeviceName[]    = L"\\Device\\BonjourDrv";
+WCHAR DosDeviceName[] = L"\\DosDevices\\Bonjour";
+UNICODE_STRING USDeviceName;
+UNICODE_STRING USDosDeviceName;
+
+NTSTATUS DispatchCreateClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+NTSTATUS DispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+NTSTATUS DispatchInvalid(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+
+NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
+{
+    UNREFERENCED_PARAMETER(RegistryPath);
+
+    PDEVICE_OBJECT DeviceObject = NULL;
+    NTSTATUS Status;
+
+    RtlInitUnicodeString(&USDeviceName, DeviceName);
+    RtlInitUnicodeString(&USDosDeviceName, DosDeviceName);
+
+    Status = IoCreateDevice(
+        DriverObject,
+        0,
+        &USDeviceName,
+        FILE_DEVICE_UNKNOWN,
+        FILE_DEVICE_SECURE_OPEN,
+        FALSE,
+        &DeviceObject
+    );
+
+    if (!NT_SUCCESS(Status))
+    {
+        DbgPrint("BonjourDrv: IoCreateDevice failed: %X\n", Status);
+        return STATUS_FAILED_DRIVER_ENTRY;
+    }
+
+    Status = IoCreateSymbolicLink(&USDosDeviceName, &USDeviceName);
+    if (!NT_SUCCESS(Status))
+    {
+        DbgPrint("BonjourDrv: IoCreateSymbolicLink failed: %X\n", Status);
+        IoDeleteDevice(DeviceObject);
+        return STATUS_FAILED_DRIVER_ENTRY;
+    }
+
+    for (ULONG i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; ++i)
+        DriverObject->MajorFunction[i] = DispatchInvalid;
+    DriverObject->MajorFunction[IRP_MJ_CREATE]          = DispatchCreateClose;
+    DriverObject->MajorFunction[IRP_MJ_CLOSE]           = DispatchCreateClose;
+    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]  = DispatchDeviceControl;
+    DriverObject->DriverUnload = DriverUnload;
+    DbgPrint("BonjourDrv: Driver Initialized Successfully!\n");
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS DispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+{
+    UNREFERENCED_PARAMETER(DeviceObject);
+    PIO_STACK_LOCATION isl = IoGetCurrentIrpStackLocation(Irp);
+    ULONG code = isl->Parameters.DeviceIoControl.IoControlCode;
+
+    if (code == IOCTL_GET_BONJOUR)
+    {
+        const CHAR msg[] = "Bonjour!";
+        const ULONG len = (ULONG)sizeof(msg);
+        ULONG outLen = isl->Parameters.DeviceIoControl.OutputBufferLength;
+
+        if (outLen < len)
+        {
+            Irp->IoStatus.Status = STATUS_BUFFER_TOO_SMALL;
+            Irp->IoStatus.Information = 0;
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+            return STATUS_BUFFER_TOO_SMALL;
+        }
+        RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer, msg, len);
+        Irp->IoStatus.Status = STATUS_SUCCESS;
+        Irp->IoStatus.Information = len;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_SUCCESS;
+    }
+    Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+    Irp->IoStatus.Information = 0;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    return STATUS_INVALID_DEVICE_REQUEST;
+}
+
+NTSTATUS DispatchCreateClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+{
+    UNREFERENCED_PARAMETER(DeviceObject);
+    Irp->IoStatus.Status = STATUS_SUCCESS;
+    Irp->IoStatus.Information = 0;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS DispatchInvalid(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+{
+    UNREFERENCED_PARAMETER(DeviceObject);
+    Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+    Irp->IoStatus.Information = 0;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    return STATUS_INVALID_DEVICE_REQUEST;
+}
+
+VOID DriverUnload(IN PDRIVER_OBJECT DriverObject)
+{
+    IoDeleteSymbolicLink(&USDosDeviceName);
+    IoDeleteDevice(DriverObject->DeviceObject);
+    DbgPrint("BonjourDrv: Driver Unloaded!\n");
+}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+
+-- 0x4: Notre application user-land --
+
+Maintenant que l'on a notre driver de compilé et d'installer (vous pouvez
+relire le premier article si vous avez un trou sur comment faire) Il ne nous
+reste plus qu'à faire notre application user-land.
+J'ai choisi l'assembleur syntaxe MASM32 pour ça, car c'est mon langage de coeur.
+Si vous n'avez pas MASM, vous pouvez le télécharger ici:
+-> https://www.masm32.com/download.htm
+
+Ensuite, créez un fichier «bonjour.asm» contenant ceci: 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+.386
+.model flat, stdcall
+option casemap:none
+
+include                \masm32\include\windows.inc
+include                \masm32\include\user32.inc
+include                \masm32\include\kernel32.inc
+
+includelib             \masm32\lib\kernel32.lib
+includelib             \masm32\lib\user32.lib
+
+.const
+INVALID_HANDLE_VALUE          equ -1
+IOCTL_GET_BONJOUR             equ 00222000h
+
+; FormatMessage flags
+FORMAT_MESSAGE_IGNORE_INSERTS equ 0200h
+FORMAT_MESSAGE_FROM_SYSTEM    equ 1000h
+
+.data
+devPath     db "\\.\Bonjour",0
+msgTitle    db "BonjourDrv",0
+msgOpenFail db "Erreur: impossible d'ouvrir \\.\Bonjour",0
+msgIoFail   db "Erreur: DeviceIoControl a échoué",0
+outBuf      db 64 dup(?)
+errBuf      db 512 dup(?) ; buffer pour FormatMessageA
+bytesRet    dd ?
+errCode     dd ?
+
+.code
+start:
+    ; Ouvrir le device
+    invoke CreateFileA, ADDR devPath, (GENERIC_READ or GENERIC_WRITE), 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
+    cmp eax, INVALID_HANDLE_VALUE
+    jne @f
+        ; Erreur ouverture -> afficher texte système
+        invoke GetLastError
+        mov     errCode, eax
+        invoke FormatMessageA, (FORMAT_MESSAGE_FROM_SYSTEM or FORMAT_MESSAGE_IGNORE_INSERTS), NULL, errCode, 0, ADDR errBuf, SIZEOF errBuf, NULL
+        ; si FormatMessageA n'a rien renvoyé, montrer un message générique
+        test eax, eax
+        jnz  _msg_open
+        invoke MessageBoxA, NULL, ADDR msgOpenFail, ADDR msgTitle, MB_ICONERROR
+        jmp _exit
+_msg_open:
+        invoke MessageBoxA, NULL, ADDR errBuf, ADDR msgTitle, MB_ICONERROR
+        jmp _exit
+@@:
+    mov ebx, eax
+    ; Envoyer l'IOCTL
+    invoke DeviceIoControl, ebx, IOCTL_GET_BONJOUR, NULL, 0, ADDR outBuf, SIZEOF outBuf, ADDR bytesRet, NULL
+    test eax, eax
+    jnz  @f
+        invoke GetLastError ; -- erreur IOCTL -> texte système
+        mov     errCode, eax
+        invoke FormatMessageA, (FORMAT_MESSAGE_FROM_SYSTEM or FORMAT_MESSAGE_IGNORE_INSERTS), NULL, errCode, 0, ADDR errBuf, SIZEOF errBuf, NULL
+        test eax, eax
+        jnz  _msg_ioctl
+        invoke MessageBoxA, NULL, ADDR msgIoFail, ADDR msgTitle, MB_ICONERROR
+        jmp _close
+_msg_ioctl:
+        invoke MessageBoxA, NULL, ADDR errBuf, ADDR msgTitle, MB_ICONERROR
+        jmp _close
+@@:
+    ; Succès !
+    invoke MessageBoxA, NULL, ADDR outBuf, ADDR msgTitle, MB_ICONINFORMATION
+_close:
+    invoke CloseHandle, ebx
+_exit:
+    invoke ExitProcess, 0
+END start
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+
+Le CTL_CODE de IOCTL_GET_BONJOUR ici et traduit par «00222000h» ça fait peut
+être assez magie noire comparer a notre version en C, mais on peut le calculer
+à la main. Même si dans la réalité personne ne fait ça (hormis nous pour le fun)
+Dans leur doc en ligne Microsoft nous propose la structure d'un IOCTL sous forme
+de diagramme:
+https://learn.microsoft.com/fr-fr/windows-hardware/drivers/kernel/defining-i-o-control-codes
+
+En voici une version ascii pour le zine:
+
+ 31      30                  16 15        14 13     12                2 1    0
+┌────────┬─────────────────────┬────────────┬────────┬─────────────────┬──────┐
+│ Common │     Device Type     │   Access   │ Custom │    Function     │Method│
+└────────┴─────────────────────┴────────────┴────────┴─────────────────┴──────┘
+
+Pour faire court (et parce que la doc l'explique très bien)
+un code IOCTL est un DWORD (32 bits), numérotés de 0 à 31, le bit 0 est le plus
+à droite, et le bit 31 est le plus à gauche.
+
+on veut reproduire
+IOCTL_GET_BONJOUR CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+pour connaitre ces valeurs, il faut regarder dans les définitions de la WDK.
+devioctl.h: 
+#define FILE_DEVICE_UNKNOWN             0x00000022
+
+wdm.h:
+#define FILE_ANY_ACCESS                   0x00000000
+#define METHOD_BUFFERED                   0
+
+Pour «Function» on la définit nous même, on a choisi «0x800».
+
+Si on transpose ça à notre diagramme:
+DeviceType: bits 31 à 16 --> (FILE_DEVICE_UNKNOWN)
+Access: bits 15 à 14 ------> (FILE_ANY_ACCESS)
+Function: bits 13 à 2 -----> 0x800
+Method: bits 1 à 0 --------> (METHOD_BUFFERED)
+
+On fait un décalage à gauche pour calculer tout ça..
+«DeviceType» commence à 16, donc on décale de 16 positions vers la gauche
+
+                                31                                    0
+                                ┌─────────────────────────────────────┐
+0x00000022 en binaire ça donne: 0000 0000 0000 0000 0000 0000 0010 0010
+En décalé:                      0000 0000 0010 0010 0000 0000 0000 0000
+Résultat: 0x00220000
+
+«FILE_ANY_ACCESS» commence à 14, mais vaut zéro, donc ça fait toujours zéro.
+Pareil pour la méthode buffered qui vaut zéro dans les définitions donc osef.
+
+Reste plus que 0x800 décalé de 2:
+0x800 en binaire ça donne:      0000 0000 0000 0000 0000 1000 0000 0000
+En décalé:                      0000 0000 0000 0000 0010 0000 0000 0000
+Résultat: 0x00002000
+
+l'opération est plutôt simple du coup ici: 0x00220000+0x00002000 = 0x00222000
+Voilà, c'était l'instant psychopathe du zine.
+
+
+Pour compiler notre client user-land, on va créer un «make.bat» à placer dans le
+même dossier que notre «bonjour.asm» avec: 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+@echo off
+\masm32\bin\ml.exe /c /coff bonjour.asm
+\masm32\bin\link.exe /SUBSYSTEM:WINDOWS /RELEASE /VERSION:4.0 /OUT:BonjourDriver.exe bonjour.obj
+del bonjour.obj
+pause
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pensez à créer une exclusion peut-être pour votre programme dans le centre de
+sécurité Windows, pour une raison que j'ignore après la compilation l'antivirus
+intégré de Windows pense que BonjourDriver.exe est hostile.
+Celui-ci semble chez moi détecté en tant que: Trojan:Win32/Wacatac.C!ml
+
+
+
+--  0x5: Le test ! -- 
+
+Bon et bien si votre driver tourne, il n'y a plus qu'à exécuter BonjourDriver
+celui-ci devrait vous retourner une MessageBox contenant "Bonjour!"
+Si quelque chose ne va pas, que le driver n'est pas initialisé, vous devriez
+avoir un message du genre "Le fichier spécifié est introuvable."
+Signifiant que CreateFileA a échoué.
+
+
+-- 0x6: Le mot de la fin --
+
+Voilà, le driver parle enfin avec l'user-land, et c'est déjà la fin de ce petit
+tuto d'introduction au développement kernel. Si vous voulez en savoir plus sur
+le fonctionnement de ntoskrnl et du système I/O, le livre «Windows Internals»
+(en anglais) est la meilleure ressource que vous pouvez espérer lire a l'heure
+où j'écris ces lignes...
+J'espère que j'aurai réussi à en intéresser quelques-uns d'entre vous, et à la
+prochaine dans un autre numéro ou dans un autre zine !
+Une petite pensée au passage pour tous mes mates du défunt forum kernelmode.info
+RIP (ou IRP, chacun voit midi à sa porte.)
+
+     ________                                __________
+    |         ____. . ________        ____   \__  ____/__  -|-- - -----:-
+    |         \_  `-|-'      /_____ _/    \___ /  /\__|  |      __________
+    |_ ___     /____|        \    /  \    /_ (/  / .  \  |____            |
+              /     `-------\______ _/_____/  /_/  |  /__     \           |
+        ____//__  _   cWHQ!      ---'    \___/  \____/   `----'   ________|
+           /              _  _ _______        _______ _  _     .:.
+                                     //__  __\\  t*****.fr      :
+     -  x - y - l - i - t - o - l  -     \/        elite only! -: -------
+     
+-- EOF --
