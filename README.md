@@ -127,7 +127,7 @@ The sources have been slightly tweaked for immediate use. And unfortunately, som
 | Dead End | 2004 | Cracking, Coding, Crypto |
 | Espiozine | 2004 | Hacking, Cracking, Crypto |
 | NoCooking | 2004 | Phreaking, Coding |
-| Brain Faktor Zine | 2005 | Phreaking, Coding, Crypto |
+| Brain Faktor Zine | 2007 | Phreaking, Coding, Crypto |
 | Hack Team L | 2005 | Coding, Hacking |
 | hohs | 2005 | Coding, Cracking, 💣, Hacking |
 | n0name | 2005 | Low-Level, Coding, Cracking |
