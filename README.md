@@ -20,6 +20,7 @@ The sources have been slightly tweaked for immediate use. And unfortunately, som
 | Hack 25 | 1996 | Phreaking, Virus |
 | 3644 | 1996? | Phreaking |
 | MJ13 | 1996 | Crypto,  Coding, Cracking |
+| Realhack | 2000? | Coding, Esprit |
 | HVU | 1996-2004 | Radio, Phreaking |
 | Blast | 1997 | Hacking, Lamer, Warez |
 | Gogo | 1997 | Hacking, Urbex, Phreaking |
@@ -124,7 +125,9 @@ The sources have been slightly tweaked for immediate use. And unfortunately, som
 | Ph34r | 2003 | Hacking, Coding |
 | The Darkunderground Clan (TDC) | 2003 | Cracking, Hacking, Virus, Phreaking |
 | Dead End | 2004 | Cracking, Coding, Crypto |
+| Espiozine | 2004 | Hacking, Cracking, Crypto |
 | NoCooking | 2004 | Phreaking, Coding |
+| Brain Faktor Zine | 2007 | Phreaking, Coding, Crypto |
 | Hack Team L | 2005 | Coding, Hacking |
 | hohs | 2005 | Coding, Cracking, 💣, Hacking |
 | n0name | 2005 | Low-Level, Coding, Cracking |
@@ -152,4 +155,3 @@ Here is the list of the actual contributors:
 - [@tobozo](https://github.com/tobozo)
 - [@vbouzon](https://github.com/vbouzon)
 - [@nflatrea](https://github.com/nflatrea)
-
